@@ -1,12 +1,12 @@
-use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::window::{Window, WindowId};
-
 use heph_gl::renderers::Renderer;
 use heph_gl::renderers::vulkan_renderer::VulkanRenderer;
-
 use renkrs::RGB;
+use winit::application::ApplicationHandler;
+use winit::event::ElementState;
+use winit::event::WindowEvent;
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::window::{Window, WindowId};
 
 pub struct App {
     window: Option<Window>,
@@ -28,11 +28,13 @@ impl ApplicationHandler for App {
             .with_title("HephGL - Window Sandbox")
             .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0));
 
-        self.window = Some(event_loop.create_window(window_attributes).unwrap());
+        let active_window = self
+            .window
+            .insert(event_loop.create_window(window_attributes).unwrap());
         println!("OS Window created successfully.");
 
-        let active_renderer = self.renderer.insert(VulkanRenderer::create());
-        active_renderer.initialize();
+        let active_renderer = self.renderer.insert(VulkanRenderer::new());
+        active_renderer.initialize("Sandbox", active_window);
     }
 
     fn window_event(
@@ -46,10 +48,41 @@ impl ApplicationHandler for App {
                 println!("Close signal received. Shutting down HephGL.");
                 event_loop.exit();
             }
-            WindowEvent::Resized(physical_size) => {
-                println!("{:?}", physical_size);
-                if let Some(ref mut active_renderer) = self.renderer {
-                    active_renderer.clear(RGB::<u8> { r: 0, g: 0, b: 255 });
+            WindowEvent::KeyboardInput { event, .. } => {
+                if event.state == ElementState::Pressed
+                    && let Some(ref mut active_renderer) = self.renderer
+                {
+                    match event.physical_key {
+                        PhysicalKey::Code(KeyCode::KeyE) => {
+                            let graphics_devices = active_renderer.enumerate_devices();
+                            println!("Graphics device count: {}", graphics_devices.len());
+                            for dev in &graphics_devices {
+                                println!("{:?}", dev);
+                            }
+                        }
+                        PhysicalKey::Code(KeyCode::KeyR) => {
+                            active_renderer.clear(RGB::<f32> {
+                                r: 1.0,
+                                g: 0.0,
+                                b: 0.0,
+                            });
+                        }
+                        PhysicalKey::Code(KeyCode::KeyG) => {
+                            active_renderer.clear(RGB::<f32> {
+                                r: 0.0,
+                                g: 1.0,
+                                b: 0.0,
+                            });
+                        }
+                        PhysicalKey::Code(KeyCode::KeyB) => {
+                            active_renderer.clear(RGB::<f32> {
+                                r: 0.0,
+                                g: 0.0,
+                                b: 1.0,
+                            });
+                        }
+                        _ => (),
+                    }
                 }
             }
             _ => (),
