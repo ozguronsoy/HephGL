@@ -1,8 +1,8 @@
 use std::ffi::{CStr, CString};
 
 use ash::vk::{
-    ApplicationInfo, ClearColorValue, ClearValue, InstanceCreateInfo, PhysicalDeviceProperties2,
-    PhysicalDeviceType, StructureType,
+    ApplicationInfo, ClearColorValue, ClearValue, InstanceCreateInfo, MemoryHeapFlags,
+    PhysicalDeviceMemoryProperties2, PhysicalDeviceProperties2, PhysicalDeviceType, StructureType,
 };
 use ash::{Entry, Instance};
 use renkrs::RGB;
@@ -120,41 +120,62 @@ impl Renderer for VulkanRenderer {
                 .enumerate_physical_devices()
                 .expect("Failed to enumerate physical Vulkan devices.")
         };
+
         for physical_device in physical_devices {
-            let mut physical_device_properties2 = PhysicalDeviceProperties2::default();
+            let mut properties2 = PhysicalDeviceProperties2::default();
+            let mut memory_properties2 = PhysicalDeviceMemoryProperties2::default();
             unsafe {
-                self.instance().get_physical_device_properties2(
+                self.instance()
+                    .get_physical_device_properties2(physical_device, &mut properties2);
+                self.instance().get_physical_device_memory_properties2(
                     physical_device,
-                    &mut physical_device_properties2,
+                    &mut memory_properties2,
                 );
-                devices.push(GraphicsDevice {
-                    name: CStr::from_ptr(
-                        physical_device_properties2.properties.device_name.as_ptr(),
-                    )
-                    .to_string_lossy()
-                    .into_owned(),
-
-                    device_type: match physical_device_properties2.properties.device_type {
-                        PhysicalDeviceType::DISCRETE_GPU => GraphicsDeviceType::DiscreteGpu,
-                        PhysicalDeviceType::INTEGRATED_GPU => GraphicsDeviceType::IntegratedGpu,
-                        PhysicalDeviceType::VIRTUAL_GPU => GraphicsDeviceType::VirtualGpu,
-                        PhysicalDeviceType::CPU => GraphicsDeviceType::Cpu,
-                        PhysicalDeviceType::OTHER => GraphicsDeviceType::Other,
-                        _ => GraphicsDeviceType::Invalid,
-                    },
-
-                    vendor_id: physical_device_properties2.properties.vendor_id,
-                    device_id: physical_device_properties2.properties.device_id,
-
-                    api_version: VulkanRenderer::vk_api_version_to_heph_version(
-                        physical_device_properties2.properties.api_version,
-                    ),
-                    driver_version: VulkanRenderer::vk_driver_version_to_heph_version(
-                        physical_device_properties2.properties.vendor_id,
-                        physical_device_properties2.properties.driver_version,
-                    ),
-                });
             };
+
+            let device_name = unsafe {
+                CStr::from_ptr(properties2.properties.device_name.as_ptr())
+                    .to_string_lossy()
+                    .into_owned()
+            };
+
+            let device_type = match properties2.properties.device_type {
+                PhysicalDeviceType::DISCRETE_GPU => GraphicsDeviceType::DiscreteGpu,
+                PhysicalDeviceType::INTEGRATED_GPU => GraphicsDeviceType::IntegratedGpu,
+                PhysicalDeviceType::VIRTUAL_GPU => GraphicsDeviceType::VirtualGpu,
+                PhysicalDeviceType::CPU => GraphicsDeviceType::Cpu,
+                PhysicalDeviceType::OTHER => GraphicsDeviceType::Other,
+                _ => GraphicsDeviceType::Invalid,
+            };
+
+            let device_vendor_id = properties2.properties.vendor_id;
+            let device_id = properties2.properties.device_id;
+
+            let device_api_version =
+                VulkanRenderer::vk_api_version_to_heph_version(properties2.properties.api_version);
+            let device_driver_version = VulkanRenderer::vk_driver_version_to_heph_version(
+                properties2.properties.vendor_id,
+                properties2.properties.driver_version,
+            );
+
+            // VRAM is the sum of the sizes of all DEVICE_LOCAL heaps
+            let mut device_vram: u64 = 0;
+            for i in 0..memory_properties2.memory_properties.memory_heap_count as usize {
+                let heap = memory_properties2.memory_properties.memory_heaps[i];
+                if heap.flags.contains(MemoryHeapFlags::DEVICE_LOCAL) {
+                    device_vram += heap.size;
+                }
+            }
+
+            devices.push(GraphicsDevice {
+                name: device_name,
+                device_type: device_type,
+                vendor_id: device_vendor_id,
+                device_id: device_id,
+                api_version: device_api_version,
+                driver_version: device_driver_version,
+                vram: device_vram,
+            });
         }
 
         devices

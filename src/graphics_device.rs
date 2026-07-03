@@ -18,6 +18,7 @@ pub struct GraphicsDevice {
     pub device_id: u32,
     pub api_version: Version,
     pub driver_version: Version,
+    pub vram: u64,
 }
 
 impl std::fmt::Display for GraphicsDeviceType {
@@ -41,6 +42,11 @@ impl std::fmt::Display for GraphicsDevice {
         writeln!(f, "    Vendor ID:      {:#06X}", self.vendor_id)?;
         writeln!(f, "    Device ID:      {:#06X}", self.device_id)?;
         writeln!(f, "    API Version:    {}", self.api_version)?;
-        write!(f, "    Driver Version: {}", self.driver_version)
+        writeln!(f, "    Driver Version: {}", self.driver_version)?;
+        write!(
+            f,
+            "    VRAM:           {} GB",
+            ((self.vram as f64) / (1024.0 * 1024.0 * 1024.0)).round() as u64
+        )
     }
 }
