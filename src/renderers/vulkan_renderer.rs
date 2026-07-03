@@ -10,10 +10,7 @@ use winit::window::Window;
 
 use crate::graphics_device::{GraphicsDevice, GraphicsDeviceType};
 use crate::renderers::Renderer;
-use crate::{
-    HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION_MAJOR, HEPHGL_ENGINE_VERSION_MINOR,
-    HEPHGL_ENGINE_VERSION_PATCH,
-};
+use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
 
 pub struct VulkanRenderer {
     entry: Option<Entry>,
@@ -22,13 +19,6 @@ pub struct VulkanRenderer {
 
 impl VulkanRenderer {
     #[inline]
-    fn instance(&self) -> &Instance {
-        self.instance
-            .as_ref()
-            .expect("VulkanRenderer is not initialized: Missing Instance.")
-    }
-
-    #[inline]
     fn entry(&self) -> &Entry {
         self.entry
             .as_ref()
@@ -36,13 +26,19 @@ impl VulkanRenderer {
     }
 
     #[inline]
-    fn vk_version_to_string(vk_version: u32) -> String {
-        format!(
-            "v{}.{}.{}",
-            ash::vk::api_version_major(vk_version),
-            ash::vk::api_version_minor(vk_version),
-            ash::vk::api_version_patch(vk_version)
-        )
+    fn instance(&self) -> &Instance {
+        self.instance
+            .as_ref()
+            .expect("VulkanRenderer is not initialized: Missing Instance.")
+    }
+
+    #[inline]
+    fn vk_api_version_to_heph_version(vk_api_version: u32) -> Version {
+        Version {
+            major: ash::vk::api_version_major(vk_api_version),
+            minor: ash::vk::api_version_minor(vk_api_version),
+            patch: ash::vk::api_version_patch(vk_api_version),
+        }
     }
 }
 
@@ -66,9 +62,9 @@ impl Renderer for VulkanRenderer {
             p_application_name: c_app_name.as_ptr(),
             application_version: ash::vk::make_api_version(
                 0,
-                HEPHGL_ENGINE_VERSION_MAJOR,
-                HEPHGL_ENGINE_VERSION_MINOR,
-                HEPHGL_ENGINE_VERSION_PATCH,
+                HEPHGL_ENGINE_VERSION.major,
+                HEPHGL_ENGINE_VERSION.minor,
+                HEPHGL_ENGINE_VERSION.patch,
             ),
             api_version: ash::vk::make_api_version(0, 1, 4, 0),
             ..Default::default()
@@ -124,16 +120,16 @@ impl Renderer for VulkanRenderer {
                     vendor_id: physical_device_properties2.properties.vendor_id,
                     device_id: physical_device_properties2.properties.device_id,
 
-                    api_version: VulkanRenderer::vk_version_to_string(
+                    api_version: VulkanRenderer::vk_api_version_to_heph_version(
                         physical_device_properties2.properties.api_version,
                     ),
-                    driver_version: VulkanRenderer::vk_version_to_string(
+                    driver_version: VulkanRenderer::vk_api_version_to_heph_version(
                         physical_device_properties2.properties.driver_version,
                     ),
                 });
             };
         }
-        
+
         devices
     }
 

@@ -1,3 +1,5 @@
+use crate::Version;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum GraphicsDeviceType {
     DiscreteGpu,
@@ -14,8 +16,8 @@ pub struct GraphicsDevice {
     pub device_type: GraphicsDeviceType,
     pub vendor_id: u32,
     pub device_id: u32,
-    pub api_version: String,
-    pub driver_version: String,
+    pub api_version: Version,
+    pub driver_version: Version,
 }
 
 impl std::fmt::Display for GraphicsDeviceType {

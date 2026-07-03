@@ -57,7 +57,7 @@ impl ApplicationHandler for App {
                             let graphics_devices = active_renderer.enumerate_devices();
                             println!("Graphics device count: {}", graphics_devices.len());
                             for dev in &graphics_devices {
-                                println!("{:?}", dev);
+                                println!("{}", dev);
                             }
                         }
                         PhysicalKey::Code(KeyCode::KeyR) => {
