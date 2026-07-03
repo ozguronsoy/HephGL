@@ -40,6 +40,32 @@ impl VulkanRenderer {
             patch: ash::vk::api_version_patch(vk_api_version),
         }
     }
+
+    #[inline]
+    fn vk_driver_version_to_heph_version(vk_vendor_id: u32, vk_driver_version: u32) -> Version {
+        match vk_vendor_id {
+            // NVIDIA
+            0x10DE => Version {
+                major: (vk_driver_version >> 22) & 0x3FF,
+                minor: (vk_driver_version >> 14) & 0x0FF,
+                patch: (vk_driver_version >> 6) & 0x0FF,
+            },
+
+            // Intel
+            0x8086 => Version {
+                major: vk_driver_version >> 14,
+                minor: vk_driver_version & 0x3FFF,
+                patch: 0,
+            },
+
+            // AMD (0x1002), open-source Linux drivers, and standard Vulkan fallbacks
+            _ => Version {
+                major: ash::vk::api_version_major(vk_driver_version),
+                minor: ash::vk::api_version_minor(vk_driver_version),
+                patch: ash::vk::api_version_patch(vk_driver_version),
+            },
+        }
+    }
 }
 
 impl Renderer for VulkanRenderer {
@@ -123,7 +149,8 @@ impl Renderer for VulkanRenderer {
                     api_version: VulkanRenderer::vk_api_version_to_heph_version(
                         physical_device_properties2.properties.api_version,
                     ),
-                    driver_version: VulkanRenderer::vk_api_version_to_heph_version(
+                    driver_version: VulkanRenderer::vk_driver_version_to_heph_version(
+                        physical_device_properties2.properties.vendor_id,
                         physical_device_properties2.properties.driver_version,
                     ),
                 });
