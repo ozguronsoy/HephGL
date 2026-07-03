@@ -5,6 +5,7 @@ pub enum GraphicsDeviceType {
     VirtualGpu,
     Cpu,
     Other,
+    Invalid,
 }
 
 #[derive(Debug, PartialEq)]
@@ -25,6 +26,7 @@ impl std::fmt::Display for GraphicsDeviceType {
             GraphicsDeviceType::VirtualGpu => write!(f, "Virtual GPU"),
             GraphicsDeviceType::Cpu => write!(f, "CPU"),
             GraphicsDeviceType::Other => write!(f, "Other"),
+            GraphicsDeviceType::Invalid => write!(f, "Invalid graphics device type."),
         }
     }
 }

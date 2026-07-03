@@ -1,11 +1,14 @@
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 
-use ash::vk::{ApplicationInfo, ClearColorValue, ClearValue, InstanceCreateInfo, StructureType};
+use ash::vk::{
+    ApplicationInfo, ClearColorValue, ClearValue, InstanceCreateInfo, PhysicalDeviceProperties2,
+    PhysicalDeviceType, StructureType,
+};
 use ash::{Entry, Instance};
 use renkrs::RGB;
 use winit::window::Window;
 
-use crate::graphics_device::GraphicsDevice;
+use crate::graphics_device::{GraphicsDevice, GraphicsDeviceType};
 use crate::renderers::Renderer;
 use crate::{
     HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION_MAJOR, HEPHGL_ENGINE_VERSION_MINOR,
@@ -30,6 +33,16 @@ impl VulkanRenderer {
         self.entry
             .as_ref()
             .expect("VulkanRenderer is not initialized: Missing Entry.")
+    }
+
+    #[inline]
+    fn vk_version_to_string(vk_version: u32) -> String {
+        format!(
+            "v{}.{}.{}",
+            ash::vk::api_version_major(vk_version),
+            ash::vk::api_version_minor(vk_version),
+            ash::vk::api_version_patch(vk_version)
+        )
     }
 }
 
@@ -80,7 +93,47 @@ impl Renderer for VulkanRenderer {
 
     fn enumerate_devices(&mut self) -> Vec<GraphicsDevice> {
         let mut devices = Vec::<GraphicsDevice>::new();
-        // TODO
+        let physical_devices = unsafe {
+            self.instance()
+                .enumerate_physical_devices()
+                .expect("Failed to enumerate physical Vulkan devices.")
+        };
+        for physical_device in physical_devices {
+            let mut physical_device_properties2 = PhysicalDeviceProperties2::default();
+            unsafe {
+                self.instance().get_physical_device_properties2(
+                    physical_device,
+                    &mut physical_device_properties2,
+                );
+                devices.push(GraphicsDevice {
+                    name: CStr::from_ptr(
+                        physical_device_properties2.properties.device_name.as_ptr(),
+                    )
+                    .to_string_lossy()
+                    .into_owned(),
+
+                    device_type: match physical_device_properties2.properties.device_type {
+                        PhysicalDeviceType::DISCRETE_GPU => GraphicsDeviceType::DiscreteGpu,
+                        PhysicalDeviceType::INTEGRATED_GPU => GraphicsDeviceType::IntegratedGpu,
+                        PhysicalDeviceType::VIRTUAL_GPU => GraphicsDeviceType::VirtualGpu,
+                        PhysicalDeviceType::CPU => GraphicsDeviceType::Cpu,
+                        PhysicalDeviceType::OTHER => GraphicsDeviceType::Other,
+                        _ => GraphicsDeviceType::Invalid,
+                    },
+
+                    vendor_id: physical_device_properties2.properties.vendor_id,
+                    device_id: physical_device_properties2.properties.device_id,
+
+                    api_version: VulkanRenderer::vk_version_to_string(
+                        physical_device_properties2.properties.api_version,
+                    ),
+                    driver_version: VulkanRenderer::vk_version_to_string(
+                        physical_device_properties2.properties.driver_version,
+                    ),
+                });
+            };
+        }
+        
         devices
     }
 
