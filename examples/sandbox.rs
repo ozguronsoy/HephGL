@@ -83,6 +83,10 @@ impl ApplicationHandler for App {
                                 b: 1.0,
                             });
                         }
+                        PhysicalKey::Code(KeyCode::KeyQ) => {
+                            active_renderer.uninitialize();
+                            println!("Uninitializing the renderer");
+                        }
                         _ => (),
                     }
                 }

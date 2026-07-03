@@ -75,7 +75,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn initialize(&mut self, app_name: &str, window: RawWindowHandle, display: RawDisplayHandle) {
-        if self.entry.is_some() {
+        if self.entry.is_some() || self.instance.is_some() {
             panic!("VulkanRenderer is already initialized.");
         }
 
@@ -109,6 +109,17 @@ impl Renderer for VulkanRenderer {
         });
 
         // TODO: Implement WSI.
+    }
+
+    fn uninitialize(&mut self) {
+        if let Some(instance) = self.instance.as_ref() {
+            unsafe {
+                instance.destroy_instance(None);
+            }
+        }
+
+        self.instance = None;
+        self.entry = None;
     }
 
     fn enumerate_devices(&mut self) -> Vec<GraphicsDevice> {
