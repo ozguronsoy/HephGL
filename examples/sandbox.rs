@@ -1,9 +1,9 @@
 use heph_gl::renderers::Renderer;
 use heph_gl::renderers::vulkan_renderer::VulkanRenderer;
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use renkrs::RGB;
 use winit::application::ApplicationHandler;
-use winit::event::ElementState;
-use winit::event::WindowEvent;
+use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
@@ -34,7 +34,9 @@ impl ApplicationHandler for App {
         println!("OS Window created successfully.");
 
         let active_renderer = self.renderer.insert(VulkanRenderer::new());
-        active_renderer.initialize("Sandbox", active_window);
+        let display_handle = active_window.display_handle().unwrap().as_raw();
+        let window_handle = active_window.window_handle().unwrap().as_raw();
+        active_renderer.initialize("Sandbox", window_handle, display_handle);
     }
 
     fn window_event(

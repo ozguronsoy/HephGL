@@ -5,8 +5,8 @@ use ash::vk::{
     PhysicalDeviceMemoryProperties2, PhysicalDeviceProperties2, PhysicalDeviceType, StructureType,
 };
 use ash::{Entry, Instance};
+use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
-use winit::window::Window;
 
 use crate::graphics_device::{GraphicsDevice, GraphicsDeviceType, GraphicsDeviceVendor};
 use crate::renderers::Renderer;
@@ -74,7 +74,7 @@ impl Renderer for VulkanRenderer {
         }
     }
 
-    fn initialize(&mut self, app_name: &str, window: &Window) {
+    fn initialize(&mut self, app_name: &str, window: RawWindowHandle, display: RawDisplayHandle) {
         if self.entry.is_some() {
             panic!("VulkanRenderer is already initialized.");
         }

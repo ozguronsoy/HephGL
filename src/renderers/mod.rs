@@ -1,11 +1,11 @@
+use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
-use winit::window::Window;
 
 use crate::graphics_device::GraphicsDevice;
 
 pub trait Renderer {
     fn new() -> Self;
-    fn initialize(&mut self, app_name: &str, window: &Window);
+    fn initialize(&mut self, app_name: &str, window: RawWindowHandle, display: RawDisplayHandle);
     fn enumerate_devices(&mut self) -> Vec<GraphicsDevice>;
     fn clear(&mut self, color: RGB<f32>);
 }
