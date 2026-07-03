@@ -8,7 +8,7 @@ use ash::{Entry, Instance};
 use renkrs::RGB;
 use winit::window::Window;
 
-use crate::graphics_device::{GraphicsDevice, GraphicsDeviceType};
+use crate::graphics_device::{GraphicsDevice, GraphicsDeviceType, GraphicsDeviceVendor};
 use crate::renderers::Renderer;
 use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
 
@@ -32,7 +32,6 @@ impl VulkanRenderer {
             .expect("VulkanRenderer is not initialized: Missing Instance.")
     }
 
-    #[inline]
     fn vk_api_version_to_heph_version(vk_api_version: u32) -> Version {
         Version {
             major: ash::vk::api_version_major(vk_api_version),
@@ -41,24 +40,23 @@ impl VulkanRenderer {
         }
     }
 
-    #[inline]
-    fn vk_driver_version_to_heph_version(vk_vendor_id: u32, vk_driver_version: u32) -> Version {
-        match vk_vendor_id {
-            // NVIDIA
-            0x10DE => Version {
+    fn vk_driver_version_to_heph_version(
+        vk_vendor: GraphicsDeviceVendor,
+        vk_driver_version: u32,
+    ) -> Version {
+        match vk_vendor {
+            GraphicsDeviceVendor::Nvidia => Version {
                 major: (vk_driver_version >> 22) & 0x3FF,
                 minor: (vk_driver_version >> 14) & 0x0FF,
                 patch: (vk_driver_version >> 6) & 0x0FF,
             },
 
-            // Intel
-            0x8086 => Version {
+            GraphicsDeviceVendor::Intel => Version {
                 major: vk_driver_version >> 14,
                 minor: vk_driver_version & 0x3FFF,
                 patch: 0,
             },
 
-            // AMD (0x1002), open-source Linux drivers, and standard Vulkan fallbacks
             _ => Version {
                 major: ash::vk::api_version_major(vk_driver_version),
                 minor: ash::vk::api_version_minor(vk_driver_version),
@@ -154,7 +152,7 @@ impl Renderer for VulkanRenderer {
             let device_api_version =
                 VulkanRenderer::vk_api_version_to_heph_version(properties2.properties.api_version);
             let device_driver_version = VulkanRenderer::vk_driver_version_to_heph_version(
-                properties2.properties.vendor_id,
+                GraphicsDevice::vendor_from_id(properties2.properties.vendor_id),
                 properties2.properties.driver_version,
             );
 
