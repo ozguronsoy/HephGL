@@ -18,6 +18,9 @@ pub struct InitializeOptions<'a> {
 #[derive(Debug, Clone)]
 pub enum RendererError {
     InvalidAppName,
+    InvalidArgument(String),
+    InvalidOperation(String),
+    Fail(String),
     FailedToInitialize(String),
     FailedToCreateSurface(String),
     FailedToEnumerateDevices(String),
@@ -46,6 +49,9 @@ impl std::fmt::Display for RendererError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidAppName => write!(f, "Invalid application name provided."),
+            Self::InvalidArgument(err) => write!(f, "Invalid argument: {}", err),
+            Self::InvalidOperation(err) => write!(f, "Invalid operation: {}", err),
+            Self::Fail(err) => write!(f, "{}", err),
             Self::FailedToInitialize(err) => write!(f, "Failed to load graphics backend: {}", err),
             Self::FailedToCreateSurface(err) => {
                 write!(f, "Failed to create window surface: {}", err)

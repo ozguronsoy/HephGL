@@ -1,5 +1,5 @@
 use heph_gl::renderers::vulkan_renderer::VulkanRenderer;
-use heph_gl::renderers::{InitializeOptions, Renderer};
+use heph_gl::renderers::{FeatureRequest, InitializeOptions, Renderer};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use renkrs::RGB;
 use winit::application::ApplicationHandler;
@@ -64,6 +64,15 @@ impl ApplicationHandler for App {
                             for dev in &graphics_devices {
                                 println!("{}", dev);
                             }
+                            active_renderer
+                                .set_device(
+                                    &graphics_devices[0],
+                                    &vec![FeatureRequest {
+                                        feature: heph_gl::graphics_device::Feature::ComputeShaders,
+                                        required: true,
+                                    }],
+                                )
+                                .unwrap();
                         }
                         PhysicalKey::Code(KeyCode::KeyR) => {
                             active_renderer

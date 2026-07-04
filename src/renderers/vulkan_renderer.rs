@@ -2,9 +2,9 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString};
 
 use ash::vk::{
-    ApplicationInfo, InstanceCreateInfo, MemoryHeapFlags, PhysicalDeviceFeatures2,
-    PhysicalDeviceMemoryProperties2, PhysicalDeviceProperties2, PhysicalDeviceType,
-    QueueFamilyProperties2, QueueFlags, StructureType, SurfaceKHR,
+    ApplicationInfo, DeviceQueueCreateInfo, InstanceCreateInfo, MemoryHeapFlags,
+    PhysicalDeviceFeatures2, PhysicalDeviceMemoryProperties2, PhysicalDeviceProperties2,
+    PhysicalDeviceType, Queue, QueueFamilyProperties2, QueueFlags, StructureType, SurfaceKHR,
 };
 use ash::{Entry, Instance};
 use renkrs::RGB;
@@ -20,6 +20,17 @@ struct QueueFamily {
     pub present_supported: bool,
 }
 
+pub struct DeviceQueues {
+    pub graphics_queue: Queue,
+    pub graphics_family_index: u32,
+
+    pub transfer_queue: Option<Queue>,
+    pub transfer_family_index: Option<u32>,
+
+    pub compute_queue: Option<Queue>,
+    pub compute_family_index: Option<u32>,
+}
+
 pub struct VulkanRenderer {
     entry: Option<Entry>,
     instance: Option<Instance>,
@@ -28,7 +39,9 @@ pub struct VulkanRenderer {
     window_surface_loader: Option<ash::khr::surface::Instance>,
 
     device_queue_families: HashMap<u32, Vec<QueueFamily>>,
-    device: Option<GraphicsDevice>,
+    graphics_device: Option<GraphicsDevice>,
+    logical_device: Option<ash::Device>,
+    queues: Option<DeviceQueues>,
 }
 
 impl Renderer for VulkanRenderer {
@@ -41,7 +54,9 @@ impl Renderer for VulkanRenderer {
             window_surface_loader: None,
 
             device_queue_families: HashMap::default(),
-            device: None,
+            graphics_device: None,
+            logical_device: None,
+            queues: None,
         }
     }
 
@@ -119,6 +134,8 @@ impl Renderer for VulkanRenderer {
     }
 
     fn uninitialize(&mut self) {
+        self.uninitialize_device();
+
         if let (Some(surface), Some(surface_loader)) =
             (self.window_surface, self.window_surface_loader.as_ref())
         {
@@ -132,8 +149,6 @@ impl Renderer for VulkanRenderer {
                 instance.destroy_instance(None);
             }
         }
-
-        self.uninitialize_device();
 
         self.window_surface_loader = None;
         self.window_surface = None;
@@ -307,7 +322,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn get_device(&self) -> &Option<GraphicsDevice> {
-        &self.device
+        &self.graphics_device
     }
 
     fn set_device(
@@ -315,11 +330,12 @@ impl Renderer for VulkanRenderer {
         device: &GraphicsDevice,
         requested_features: &Vec<FeatureRequest>,
     ) -> Result<(), RendererError> {
-        if self.device.is_some() {
+        if self.graphics_device.is_some() {
             self.uninitialize_device();
         }
 
         // Create logical device and queues.
+
         let mut available_features = Vec::<Feature>::default();
         for requested_feature in requested_features {
             if device
@@ -334,9 +350,177 @@ impl Renderer for VulkanRenderer {
             }
         }
 
+        let queue_families = self
+            .device_queue_families
+            .get(&device.device_id)
+            .ok_or_else(|| {
+                RendererError::InvalidOperation(
+                    "Provided device is not properly enumerated.".to_string(),
+                )
+            })?;
+        let mut queue_family_queue_counts: HashMap<u32, u32> = HashMap::new();
+        let mut request_queue = |family_index: u32, max_queues: u32| {
+            let count = queue_family_queue_counts.entry(family_index).or_insert(0);
+            if *count < max_queues {
+                *count += 1;
+            }
+        };
+
+        let graphics_family = queue_families
+            .iter()
+            .find(|f| f.queue_flags.contains(QueueFlags::GRAPHICS) && f.present_supported)
+            .ok_or_else(|| {
+                RendererError::InvalidOperation(
+                    "No queue family supports both graphics and presentation.".to_string(),
+                )
+            })?;
+        request_queue(graphics_family.index, graphics_family.queue_count);
+
+        // Use DMA Transfer family if available. Otherwise, use the main graphics family.
+        let mut transfer_family = None;
+        if available_features.contains(&Feature::AsyncTransfer) {
+            let transfer_family = transfer_family.insert(
+                queue_families
+                    .iter()
+                    .find(|f| {
+                        f.queue_flags.contains(QueueFlags::TRANSFER)
+                            && !f.queue_flags.contains(QueueFlags::GRAPHICS)
+                            && !f.queue_flags.contains(QueueFlags::COMPUTE)
+                    })
+                    .or_else(|| {
+                        queue_families.iter().find(|f| {
+                            f.queue_flags.contains(QueueFlags::TRANSFER)
+                                && !f.queue_flags.contains(QueueFlags::GRAPHICS)
+                        })
+                    })
+                    .unwrap_or(graphics_family),
+            );
+            request_queue(transfer_family.index, transfer_family.queue_count);
+        }
+
+        // Use the pure compute family if available. Otherwise, use the main graphics family.
+        let mut compute_family = None;
+        if available_features.contains(&Feature::ComputeShaders) {
+            let compute_family = compute_family.insert(
+                queue_families
+                    .iter()
+                    .find(|f| {
+                        f.queue_flags.contains(QueueFlags::COMPUTE)
+                            && !f.queue_flags.contains(QueueFlags::GRAPHICS)
+                    })
+                    .unwrap_or(graphics_family),
+            );
+            request_queue(compute_family.index, compute_family.queue_count);
+        }
+
+        let queue_setup_data: Vec<(u32, Vec<f32>)> = queue_family_queue_counts
+            .into_iter()
+            .map(|(index, count)| (index, vec![1.0; count as usize]))
+            .collect();
+        let mut queue_create_infos = Vec::new();
+        for (family_index, priorities) in &queue_setup_data {
+            let create_info = DeviceQueueCreateInfo::default()
+                .queue_family_index(*family_index)
+                .queue_priorities(priorities);
+            queue_create_infos.push(create_info);
+        }
+
+        let physical_devices = unsafe {
+            self.instance()
+                .enumerate_physical_devices()
+                .map_err(|_| RendererError::Fail("Failed to create logical device.".to_owned()))?
+        };
+        let mut vk_physical_device = None;
+        for pd in physical_devices {
+            let mut properties2 = ash::vk::PhysicalDeviceProperties2::default();
+            unsafe {
+                self.instance()
+                    .get_physical_device_properties2(pd, &mut properties2);
+            }
+            if properties2.properties.device_id == device.device_id {
+                vk_physical_device = Some(pd);
+                break;
+            }
+        }
+        let vk_physical_device = vk_physical_device.ok_or_else(|| {
+            RendererError::InvalidArgument(format!(
+                "Graphics device with the id {:#06X} not found.",
+                device.device_id
+            ))
+        })?;
+
+        let device_extension_names = [ash::vk::KHR_SWAPCHAIN_NAME.as_ptr()];
+        let mut physical_features2 = ash::vk::PhysicalDeviceFeatures2::default();
+        if available_features.contains(&Feature::GeometryShaders) {
+            physical_features2.features.geometry_shader = ash::vk::TRUE;
+        }
+        if available_features.contains(&Feature::WireframeMode) {
+            physical_features2.features.fill_mode_non_solid = ash::vk::TRUE;
+        }
+        if available_features.contains(&Feature::WideLines) {
+            physical_features2.features.wide_lines = ash::vk::TRUE;
+        }
+        if available_features.contains(&Feature::AnisotropicFiltering) {
+            physical_features2.features.sampler_anisotropy = ash::vk::TRUE;
+        }
+
+        let mut device_create_info = ash::vk::DeviceCreateInfo::default()
+            .queue_create_infos(&queue_create_infos)
+            .enabled_extension_names(&device_extension_names);
+        device_create_info.p_next = &physical_features2 as *const _ as *const std::ffi::c_void;
+        let logical_device = unsafe {
+            self.instance()
+                .create_device(vk_physical_device, &device_create_info, None)
+                .map_err(|e| {
+                    RendererError::Fail(format!("Failed to create Vulkan logical device: {}", e))
+                })?
+        };
+
+        let mut extracted_queue_counts: HashMap<u32, u32> = HashMap::new();
+        let mut get_next_queue = |family_index: u32, max_queues: u32| {
+            let queue_index = extracted_queue_counts.entry(family_index).or_insert(0);
+            let queue = unsafe { logical_device.get_device_queue(family_index, *queue_index) };
+            *queue_index = (*queue_index + 1) % max_queues;
+            queue
+        };
+
+        let graphics_queue = get_next_queue(graphics_family.index, graphics_family.queue_count);
+
+        let mut transfer_queue_handle = None;
+        let mut transfer_family_idx = None;
+        if let Some(transfer_family) = transfer_family {
+            transfer_queue_handle = Some(get_next_queue(
+                transfer_family.index,
+                transfer_family.queue_count,
+            ));
+            transfer_family_idx = Some(transfer_family.index);
+        }
+
+        let mut compute_queue_handle = None;
+        let mut compute_family_idx = None;
+        if let Some(compute_family) = compute_family {
+            compute_queue_handle = Some(get_next_queue(
+                compute_family.index,
+                compute_family.queue_count,
+            ));
+            compute_family_idx = Some(compute_family.index);
+        }
+
+        self.logical_device = Some(logical_device);
+        self.queues = Some(DeviceQueues {
+            graphics_queue,
+            graphics_family_index: graphics_family.index,
+
+            transfer_queue: transfer_queue_handle,
+            transfer_family_index: transfer_family_idx,
+
+            compute_queue: compute_queue_handle,
+            compute_family_index: compute_family_idx,
+        });
+
         // Initialize VMA.
 
-        self.device = Some(device.clone());
+        self.graphics_device = Some(device.clone());
         Ok(())
     }
 
@@ -411,6 +595,21 @@ impl VulkanRenderer {
     }
 
     fn uninitialize_device(&mut self) {
-        // TODO
+        // Wait for the GPU to finish all pending operations before uninitializing to prevent segfaults.
+        if let Some(device) = self.logical_device.as_ref() {
+            unsafe {
+                let _ = device.device_wait_idle();
+            }
+        }
+
+        self.queues = None;
+
+        if let Some(logical_device) = self.logical_device.take() {
+            unsafe {
+                logical_device.destroy_device(None);
+            }
+        }
+
+        self.graphics_device = None;
     }
 }
