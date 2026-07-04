@@ -9,11 +9,10 @@ use ash::vk::{
 use ash::{Entry, Instance};
 use renkrs::RGB;
 
-use crate::graphics_device::GraphicsDevice;
-use crate::renderers::{InitializeOptions, Renderer};
+use crate::graphics_device::{Feature, GraphicsDevice};
+use crate::renderers::{FeatureRequest, InitializeOptions, Renderer, RendererError};
 use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
 
-#[derive(Default)]
 struct QueueFamily {
     pub index: u32,
     pub queue_count: u32,
@@ -32,69 +31,6 @@ pub struct VulkanRenderer {
     device: Option<GraphicsDevice>,
 }
 
-impl VulkanRenderer {
-    #[inline]
-    fn entry(&self) -> &Entry {
-        self.entry
-            .as_ref()
-            .expect("VulkanRenderer is not initialized: Missing Entry.")
-    }
-
-    #[inline]
-    fn instance(&self) -> &Instance {
-        self.instance
-            .as_ref()
-            .expect("VulkanRenderer is not initialized: Missing Instance.")
-    }
-
-    #[inline]
-    fn window_surface(&self) -> &SurfaceKHR {
-        self.window_surface
-            .as_ref()
-            .expect("VulkanRenderer is not initialized: Missing Window Surface.")
-    }
-
-    #[inline]
-    fn window_surface_loader(&self) -> &ash::khr::surface::Instance {
-        self.window_surface_loader
-            .as_ref()
-            .expect("VulkanRenderer is not initialized: Missing Window Surface Loader.")
-    }
-
-    fn vk_api_version_to_heph_version(vk_api_version: u32) -> Version {
-        Version {
-            major: ash::vk::api_version_major(vk_api_version),
-            minor: ash::vk::api_version_minor(vk_api_version),
-            patch: ash::vk::api_version_patch(vk_api_version),
-        }
-    }
-
-    fn vk_driver_version_to_heph_version(
-        vk_vendor: crate::graphics_device::Vendor,
-        vk_driver_version: u32,
-    ) -> Version {
-        match vk_vendor {
-            crate::graphics_device::Vendor::Nvidia => Version {
-                major: (vk_driver_version >> 22) & 0x3FF,
-                minor: (vk_driver_version >> 14) & 0x0FF,
-                patch: (vk_driver_version >> 6) & 0x0FF,
-            },
-
-            crate::graphics_device::Vendor::Intel => Version {
-                major: vk_driver_version >> 14,
-                minor: vk_driver_version & 0x3FFF,
-                patch: 0,
-            },
-
-            _ => Version {
-                major: ash::vk::api_version_major(vk_driver_version),
-                minor: ash::vk::api_version_minor(vk_driver_version),
-                patch: ash::vk::api_version_patch(vk_driver_version),
-            },
-        }
-    }
-}
-
 impl Renderer for VulkanRenderer {
     fn new() -> Self {
         Self {
@@ -109,7 +45,7 @@ impl Renderer for VulkanRenderer {
         }
     }
 
-    fn initialize(&mut self, options: &InitializeOptions) {
+    fn initialize(&mut self, options: &InitializeOptions) -> Result<(), RendererError> {
         if self.entry.is_some() || self.instance.is_some() {
             panic!("VulkanRenderer is already initialized.");
         }
@@ -117,10 +53,13 @@ impl Renderer for VulkanRenderer {
         // Create instance.
 
         let c_app_name =
-            CString::new(options.app_name).expect("App name cannot contain null bytes");
+            CString::new(options.app_name).map_err(|_| RendererError::InvalidAppName)?;
         let required_extension_names =
-            ash_window::enumerate_required_extensions(options.display_handle)
-                .expect("Failed to enumerate WSI extensions");
+            ash_window::enumerate_required_extensions(options.display_handle).map_err(|_| {
+                RendererError::FailedToCreateSurface(
+                    "Failed to enumerate WSI extensions".to_owned(),
+                )
+            })?;
         let app_info = ApplicationInfo {
             s_type: StructureType::APPLICATION_INFO,
             p_engine_name: HEPHGL_ENGINE_NAME.as_ptr(),
@@ -142,15 +81,20 @@ impl Renderer for VulkanRenderer {
             ..Default::default()
         };
 
-        self.entry =
-            Some(unsafe { Entry::load().expect("Failed to load Vulkan graphics driver library") });
+        self.entry = Some(unsafe {
+            Entry::load().map_err(|_| {
+                RendererError::FailedToInitialize(
+                    "Failed to load Vulkan graphics driver library".to_owned(),
+                )
+            })?
+        });
         self.instance = Some(unsafe {
             self.entry()
                 .create_instance(&instance_create_info, None)
-                .expect("Failed to create Vulkan Instance")
+                .map_err(|_| {
+                    RendererError::FailedToInitialize("Failed to create Vulkan Instance".to_owned())
+                })?
         });
-
-        // Enumerate supported features.
 
         // WSI for rendering to the native window.
 
@@ -162,12 +106,16 @@ impl Renderer for VulkanRenderer {
                 options.window_handle,
                 None,
             )
-            .expect("Failed to create WSI Surface")
+            .map_err(|_| {
+                RendererError::FailedToCreateSurface("Failed to create WSI Surface".to_owned())
+            })?
         });
         self.window_surface_loader = Some(ash::khr::surface::Instance::new(
             self.entry(),
             self.instance(),
         ));
+
+        Ok(())
     }
 
     fn uninitialize(&mut self) {
@@ -185,18 +133,22 @@ impl Renderer for VulkanRenderer {
             }
         }
 
+        self.uninitialize_device();
+
         self.window_surface_loader = None;
         self.window_surface = None;
         self.instance = None;
         self.entry = None;
     }
 
-    fn enumerate_devices(&mut self) -> Vec<GraphicsDevice> {
+    fn enumerate_devices(&mut self) -> Result<Vec<GraphicsDevice>, RendererError> {
         let mut devices = Vec::<GraphicsDevice>::new();
         let physical_devices = unsafe {
-            self.instance()
-                .enumerate_physical_devices()
-                .expect("Failed to enumerate physical Vulkan devices.")
+            self.instance().enumerate_physical_devices().map_err(|_| {
+                RendererError::FailedToEnumerateDevices(
+                    "Failed to enumerate physical Vulkan devices.".to_owned(),
+                )
+            })?
         };
 
         for physical_device in physical_devices {
@@ -267,7 +219,11 @@ impl Renderer for VulkanRenderer {
             let extension_properties = unsafe {
                 self.instance()
                     .enumerate_device_extension_properties(physical_device)
-                    .expect("Failed to enumerate the supported device features.")
+                    .map_err(|_| {
+                        RendererError::FailedToEnumerateSupportedFeatures(
+                            "Failed to enumerate the supported device features.".to_owned(),
+                        )
+                    })?
             };
             if physical_features2.features.geometry_shader == ash::vk::TRUE {
                 supported_features.insert(crate::graphics_device::Feature::GeometryShaders);
@@ -322,7 +278,12 @@ impl Renderer for VulkanRenderer {
                                 index as u32,
                                 *self.window_surface(),
                             )
-                            .expect("Failed to query presentation support for queue family")
+                            .map_err(|_| {
+                                RendererError::FailedToEnumerateSupportedFeatures(
+                                    "Failed to query presentation support for queue family"
+                                        .to_owned(),
+                                )
+                            })?
                     },
                 };
                 self.device_queue_families
@@ -342,23 +303,114 @@ impl Renderer for VulkanRenderer {
             });
         }
 
-        devices
+        Ok(devices)
     }
 
     fn get_device(&self) -> &Option<GraphicsDevice> {
         &self.device
     }
 
-    fn set_device(&mut self, device: &GraphicsDevice) {
+    fn set_device(
+        &mut self,
+        device: &GraphicsDevice,
+        requested_features: &Vec<FeatureRequest>,
+    ) -> Result<(), RendererError> {
         if self.device.is_some() {
-            // TODO: uninitialize old device.
+            self.uninitialize_device();
         }
 
+        // Create logical device and queues.
+        let mut available_features = Vec::<Feature>::default();
+        for requested_feature in requested_features {
+            if device
+                .supported_features
+                .contains(&requested_feature.feature)
+            {
+                available_features.push(requested_feature.feature);
+            } else if requested_feature.required {
+                return Err(RendererError::UnsupportedRequiredFeature(
+                    requested_feature.feature,
+                ));
+            }
+        }
+
+        // Initialize VMA.
+
         self.device = Some(device.clone());
+        Ok(())
     }
 
-    fn clear(&mut self, color: RGB<f32>) {
+    fn clear(&mut self, color: RGB<f32>) -> Result<(), RendererError> {
         let _ = color;
+        // TODO
+
+        Ok(())
+    }
+}
+
+impl VulkanRenderer {
+    #[inline]
+    fn entry(&self) -> &Entry {
+        self.entry
+            .as_ref()
+            .expect("VulkanRenderer is not initialized: Missing Entry.")
+    }
+
+    #[inline]
+    fn instance(&self) -> &Instance {
+        self.instance
+            .as_ref()
+            .expect("VulkanRenderer is not initialized: Missing Instance.")
+    }
+
+    #[inline]
+    fn window_surface(&self) -> &SurfaceKHR {
+        self.window_surface
+            .as_ref()
+            .expect("VulkanRenderer is not initialized: Missing Window Surface.")
+    }
+
+    #[inline]
+    fn window_surface_loader(&self) -> &ash::khr::surface::Instance {
+        self.window_surface_loader
+            .as_ref()
+            .expect("VulkanRenderer is not initialized: Missing Window Surface Loader.")
+    }
+
+    fn vk_api_version_to_heph_version(vk_api_version: u32) -> Version {
+        Version {
+            major: ash::vk::api_version_major(vk_api_version),
+            minor: ash::vk::api_version_minor(vk_api_version),
+            patch: ash::vk::api_version_patch(vk_api_version),
+        }
+    }
+
+    fn vk_driver_version_to_heph_version(
+        vk_vendor: crate::graphics_device::Vendor,
+        vk_driver_version: u32,
+    ) -> Version {
+        match vk_vendor {
+            crate::graphics_device::Vendor::Nvidia => Version {
+                major: (vk_driver_version >> 22) & 0x3FF,
+                minor: (vk_driver_version >> 14) & 0x0FF,
+                patch: (vk_driver_version >> 6) & 0x0FF,
+            },
+
+            crate::graphics_device::Vendor::Intel => Version {
+                major: vk_driver_version >> 14,
+                minor: vk_driver_version & 0x3FFF,
+                patch: 0,
+            },
+
+            _ => Version {
+                major: ash::vk::api_version_major(vk_driver_version),
+                minor: ash::vk::api_version_minor(vk_driver_version),
+                patch: ash::vk::api_version_patch(vk_driver_version),
+            },
+        }
+    }
+
+    fn uninitialize_device(&mut self) {
         // TODO
     }
 }

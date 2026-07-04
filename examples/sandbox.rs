@@ -39,7 +39,7 @@ impl ApplicationHandler for App {
             window_handle: active_window.window_handle().unwrap().as_raw(),
             display_handle: active_window.display_handle().unwrap().as_raw(),
         };
-        active_renderer.initialize(&initialize_options);
+        active_renderer.initialize(&initialize_options).unwrap();
     }
 
     fn window_event(
@@ -59,32 +59,38 @@ impl ApplicationHandler for App {
                 {
                     match event.physical_key {
                         PhysicalKey::Code(KeyCode::KeyE) => {
-                            let graphics_devices = active_renderer.enumerate_devices();
+                            let graphics_devices = active_renderer.enumerate_devices().unwrap();
                             println!("Graphics device count: {}", graphics_devices.len());
                             for dev in &graphics_devices {
                                 println!("{}", dev);
                             }
                         }
                         PhysicalKey::Code(KeyCode::KeyR) => {
-                            active_renderer.clear(RGB::<f32> {
-                                r: 1.0,
-                                g: 0.0,
-                                b: 0.0,
-                            });
+                            active_renderer
+                                .clear(RGB::<f32> {
+                                    r: 1.0,
+                                    g: 0.0,
+                                    b: 0.0,
+                                })
+                                .unwrap();
                         }
                         PhysicalKey::Code(KeyCode::KeyG) => {
-                            active_renderer.clear(RGB::<f32> {
-                                r: 0.0,
-                                g: 1.0,
-                                b: 0.0,
-                            });
+                            active_renderer
+                                .clear(RGB::<f32> {
+                                    r: 0.0,
+                                    g: 1.0,
+                                    b: 0.0,
+                                })
+                                .unwrap();
                         }
                         PhysicalKey::Code(KeyCode::KeyB) => {
-                            active_renderer.clear(RGB::<f32> {
-                                r: 0.0,
-                                g: 0.0,
-                                b: 1.0,
-                            });
+                            active_renderer
+                                .clear(RGB::<f32> {
+                                    r: 0.0,
+                                    g: 0.0,
+                                    b: 1.0,
+                                })
+                                .unwrap();
                         }
                         PhysicalKey::Code(KeyCode::KeyQ) => {
                             active_renderer.uninitialize();
