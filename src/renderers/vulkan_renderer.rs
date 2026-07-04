@@ -3,6 +3,7 @@ use std::ffi::{CStr, CString};
 use ash::vk::{
     ApplicationInfo, ClearColorValue, ClearValue, InstanceCreateInfo, MemoryHeapFlags,
     PhysicalDeviceMemoryProperties2, PhysicalDeviceProperties2, PhysicalDeviceType, StructureType,
+    SurfaceKHR,
 };
 use ash::{Entry, Instance};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -15,6 +16,8 @@ use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
 pub struct VulkanRenderer {
     entry: Option<Entry>,
     instance: Option<Instance>,
+    window_surface: Option<SurfaceKHR>,
+    window_surface_loader: Option<ash::khr::surface::Instance>,
 }
 
 impl VulkanRenderer {
@@ -30,6 +33,20 @@ impl VulkanRenderer {
         self.instance
             .as_ref()
             .expect("VulkanRenderer is not initialized: Missing Instance.")
+    }
+
+    #[inline]
+    fn window_surface(&self) -> &SurfaceKHR {
+        self.window_surface
+            .as_ref()
+            .expect("VulkanRenderer is not initialized: Missing Window Surface.")
+    }
+
+    #[inline]
+    fn window_surface_loader(&self) -> &ash::khr::surface::Instance {
+        self.window_surface_loader
+            .as_ref()
+            .expect("VulkanRenderer is not initialized: Missing Window Surface Loader.")
     }
 
     fn vk_api_version_to_heph_version(vk_api_version: u32) -> Version {
@@ -71,15 +88,24 @@ impl Renderer for VulkanRenderer {
         Self {
             entry: None,
             instance: None,
+            window_surface: None,
+            window_surface_loader: None,
         }
     }
 
-    fn initialize(&mut self, app_name: &str, window: RawWindowHandle, display: RawDisplayHandle) {
+    fn initialize(
+        &mut self,
+        app_name: &str,
+        window_handle: RawWindowHandle,
+        display_handle: RawDisplayHandle,
+    ) {
         if self.entry.is_some() || self.instance.is_some() {
             panic!("VulkanRenderer is already initialized.");
         }
 
         let c_app_name = CString::new(app_name).expect("App name cannot contain null bytes");
+        let required_extension_names = ash_window::enumerate_required_extensions(display_handle)
+            .expect("Failed to enumerate WSI extensions");
         let app_info = ApplicationInfo {
             s_type: StructureType::APPLICATION_INFO,
             p_engine_name: HEPHGL_ENGINE_NAME.as_ptr(),
@@ -96,28 +122,52 @@ impl Renderer for VulkanRenderer {
         let instance_create_info = InstanceCreateInfo {
             s_type: StructureType::INSTANCE_CREATE_INFO,
             p_application_info: &app_info,
+            enabled_extension_count: required_extension_names.len() as u32,
+            pp_enabled_extension_names: required_extension_names.as_ptr(),
             ..Default::default()
         };
 
-        let active_entry = self.entry.insert(unsafe {
-            Entry::load().expect("Failed to load Vulkan graphics driver library")
-        });
+        self.entry =
+            Some(unsafe { Entry::load().expect("Failed to load Vulkan graphics driver library") });
         self.instance = Some(unsafe {
-            active_entry
+            self.entry()
                 .create_instance(&instance_create_info, None)
                 .expect("Failed to create Vulkan Instance")
         });
 
-        // TODO: Implement WSI.
+        self.window_surface = Some(unsafe {
+            ash_window::create_surface(
+                self.entry(),
+                self.instance(),
+                display_handle,
+                window_handle,
+                None,
+            )
+            .expect("Failed to create WSI Surface")
+        });
+        self.window_surface_loader = Some(ash::khr::surface::Instance::new(
+            self.entry(),
+            self.instance(),
+        ));
     }
 
     fn uninitialize(&mut self) {
+        if let (Some(surface), Some(surface_loader)) =
+            (self.window_surface, self.window_surface_loader.as_ref())
+        {
+            unsafe {
+                surface_loader.destroy_surface(surface, None);
+            }
+        }
+
         if let Some(instance) = self.instance.as_ref() {
             unsafe {
                 instance.destroy_instance(None);
             }
         }
 
+        self.window_surface_loader = None;
+        self.window_surface = None;
         self.instance = None;
         self.entry = None;
     }
