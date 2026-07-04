@@ -122,8 +122,8 @@ impl std::fmt::Display for GraphicsDevice {
         writeln!(f, "    Device ID:          {:#06X}", self.device_id)?;
         writeln!(f, "    API Version:        {}", self.api_version)?;
         writeln!(f, "    Driver Version:     {}", self.driver_version)?;
-        writeln!(f, "    Supported Features:")?;
         if !self.supported_features.is_empty() {
+            writeln!(f, "    Supported Features:")?;
             for feature in &self.supported_features {
                 writeln!(f, "     - {}", feature)?;
             }
