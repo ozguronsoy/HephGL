@@ -42,6 +42,7 @@ pub struct VulkanRenderer {
     graphics_device: Option<GraphicsDevice>,
     logical_device: Option<ash::Device>,
     queues: Option<DeviceQueues>,
+    vma_allocator: Option<vk_mem::Allocator>,
 }
 
 impl Renderer for VulkanRenderer {
@@ -57,6 +58,7 @@ impl Renderer for VulkanRenderer {
             graphics_device: None,
             logical_device: None,
             queues: None,
+            vma_allocator: None,
         }
     }
 
@@ -85,7 +87,7 @@ impl Renderer for VulkanRenderer {
                 HEPHGL_ENGINE_VERSION.minor,
                 HEPHGL_ENGINE_VERSION.patch,
             ),
-            api_version: ash::vk::make_api_version(0, 1, 4, 0),
+            api_version: VulkanRenderer::VK_API_VERSION,
             ..Default::default()
         };
         let instance_create_info = InstanceCreateInfo {
@@ -520,6 +522,17 @@ impl Renderer for VulkanRenderer {
 
         // Initialize VMA.
 
+        let mut allocator_create_info = vk_mem::AllocatorCreateInfo::new(
+            self.instance(),
+            self.logical_device.as_ref().unwrap(),
+            vk_physical_device,
+        );
+        allocator_create_info.vulkan_api_version = VulkanRenderer::VK_API_VERSION;
+        self.vma_allocator = Some(unsafe {
+            vk_mem::Allocator::new(allocator_create_info)
+                .map_err(|e| RendererError::Fail(format!("Failed to initialize VMA: {}", e)))?
+        });
+
         self.graphics_device = Some(device.clone());
         Ok(())
     }
@@ -533,6 +546,9 @@ impl Renderer for VulkanRenderer {
 }
 
 impl VulkanRenderer {
+    // TODO: Get this from the user.
+    const VK_API_VERSION: u32 = ash::vk::make_api_version(0, 1, 4, 0);
+
     #[inline]
     fn entry(&self) -> &Entry {
         self.entry
@@ -603,6 +619,7 @@ impl VulkanRenderer {
         }
 
         self.queues = None;
+        self.vma_allocator = None;
 
         if let Some(logical_device) = self.logical_device.take() {
             unsafe {
