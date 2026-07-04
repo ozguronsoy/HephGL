@@ -371,19 +371,20 @@ impl Renderer for VulkanRenderer {
                         });
                     supported_features.insert(crate::graphics_device::Feature::OpticalFlow);
                 }
+                if queue_flags.contains(QueueFlags::TRANSFER) {
+                    self.queue_index_cache
+                        .entry(device_id)
+                        .and_modify(|queue_family_indices| {
+                            queue_family_indices.transfer = Some(index as u32)
+                        });
+                    supported_features.insert(crate::graphics_device::Feature::AsyncTransfer);
+                }
 
                 if queue_flags.contains(QueueFlags::GRAPHICS) {
                     self.queue_index_cache
                         .entry(device_id)
                         .and_modify(|queue_family_indices| {
                             queue_family_indices.graphics = Some(index as u32)
-                        });
-                }
-                if queue_flags.contains(QueueFlags::TRANSFER) {
-                    self.queue_index_cache
-                        .entry(device_id)
-                        .and_modify(|queue_family_indices| {
-                            queue_family_indices.transfer = Some(index as u32)
                         });
                 }
 

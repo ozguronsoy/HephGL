@@ -35,6 +35,7 @@ pub enum Feature {
     VideoDecoding,
     VideoEncoding,
     OpticalFlow,
+    AsyncTransfer,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -108,6 +109,7 @@ impl std::fmt::Display for Feature {
             Feature::VideoDecoding => write!(f, "Video Decoding"),
             Feature::VideoEncoding => write!(f, "Video Encoding"),
             Feature::OpticalFlow => write!(f, "Optical Flow"),
+            Feature::AsyncTransfer => write!(f, "Async Transfer"),
         }
     }
 }
