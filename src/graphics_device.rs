@@ -122,16 +122,17 @@ impl std::fmt::Display for GraphicsDevice {
         writeln!(f, "    Device ID:          {:#06X}", self.device_id)?;
         writeln!(f, "    API Version:        {}", self.api_version)?;
         writeln!(f, "    Driver Version:     {}", self.driver_version)?;
+        writeln!(
+            f,
+            "    VRAM:           {} GB",
+            ((self.vram as f64) / (1024.0 * 1024.0 * 1024.0)).round() as u64
+        )?;
         if !self.supported_features.is_empty() {
             writeln!(f, "    Supported Features:")?;
             for feature in &self.supported_features {
                 writeln!(f, "     - {}", feature)?;
             }
         }
-        write!(
-            f,
-            "    VRAM:           {} GB",
-            ((self.vram as f64) / (1024.0 * 1024.0 * 1024.0)).round() as u64
-        )
+        std::fmt::Result::Ok(())
     }
 }
