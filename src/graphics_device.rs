@@ -37,7 +37,7 @@ pub enum Feature {
     OpticalFlow,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct GraphicsDevice {
     pub name: String,
     pub device_type: Type,

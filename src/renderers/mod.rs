@@ -17,9 +17,14 @@ pub struct InitializeOptions<'a> {
 
 pub trait Renderer {
     fn new() -> Self;
+
     fn initialize(&mut self, options: &InitializeOptions);
     fn uninitialize(&mut self);
+
     fn enumerate_devices(&mut self) -> Vec<GraphicsDevice>;
+    fn get_device(&self) -> &Option<GraphicsDevice>;
+    fn set_device(&mut self, device: &GraphicsDevice);
+
     fn clear(&mut self, color: RGB<f32>);
 }
 

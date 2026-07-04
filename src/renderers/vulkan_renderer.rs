@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString};
 
 use ash::vk::{
@@ -13,11 +13,71 @@ use crate::graphics_device::GraphicsDevice;
 use crate::renderers::{InitializeOptions, Renderer};
 use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
 
+#[derive(Debug, Default)]
+struct QueueFamilyIndices {
+    pub graphics: Option<u32>,
+    pub compute: Option<u32>,
+    pub transfer: Option<u32>,
+    pub video_decode: Option<u32>,
+    pub video_encode: Option<u32>,
+    pub optical_flow: Option<u32>,
+    pub present: Option<u32>,
+}
+
 pub struct VulkanRenderer {
     entry: Option<Entry>,
     instance: Option<Instance>,
+
     window_surface: Option<SurfaceKHR>,
     window_surface_loader: Option<ash::khr::surface::Instance>,
+
+    queue_index_cache: HashMap<u32, QueueFamilyIndices>,
+
+    device: Option<GraphicsDevice>,
+}
+
+impl QueueFamilyIndices {
+    #[inline]
+    pub fn graphics(&self) -> u32 {
+        self.graphics.expect("Graphics queue not found.")
+    }
+
+    #[inline]
+    pub fn compute(&self) -> u32 {
+        self.compute.expect("Compute queue not found.")
+    }
+
+    #[inline]
+    pub fn transfer(&self) -> u32 {
+        self.transfer.expect("Transfer queue not found.")
+    }
+
+    #[inline]
+    pub fn video_decode(&self) -> u32 {
+        self.video_decode.expect("Video decode queue not found.")
+    }
+
+    #[inline]
+    pub fn video_encode(&self) -> u32 {
+        self.video_encode.expect("Video encode queue not found.")
+    }
+
+    #[inline]
+    pub fn optical_flow(&self) -> u32 {
+        self.optical_flow.expect("Optical flow queue not found.")
+    }
+
+    #[inline]
+    pub fn present(&self) -> u32 {
+        self.present.expect("Present queue not found.")
+    }
+
+    pub fn is_complete(&self) -> bool {
+        // We only check graphics, compute, and present for completion,
+        // as transfer can implicitly fallback to the graphics queue,
+        // and video/optical flow are highly specialized hardware features.
+        self.graphics.is_some() && self.compute.is_some() && self.present.is_some()
+    }
 }
 
 impl VulkanRenderer {
@@ -88,8 +148,13 @@ impl Renderer for VulkanRenderer {
         Self {
             entry: None,
             instance: None,
+
             window_surface: None,
             window_surface_loader: None,
+
+            queue_index_cache: HashMap::default(),
+
+            device: None,
         }
     }
 
@@ -229,6 +294,8 @@ impl Renderer for VulkanRenderer {
 
             let device_vendor_id = properties2.properties.vendor_id;
             let device_id = properties2.properties.device_id;
+            self.queue_index_cache
+                .insert(device_id, QueueFamilyIndices::default());
 
             let device_api_version =
                 VulkanRenderer::vk_api_version_to_heph_version(properties2.properties.api_version);
@@ -270,19 +337,71 @@ impl Renderer for VulkanRenderer {
                     supported_features.insert(crate::graphics_device::Feature::RayTracing);
                 }
             }
-            for queue_family in &queue_family_properties2 {
+            for (index, queue_family) in queue_family_properties2.iter().enumerate() {
                 let queue_flags = queue_family.queue_family_properties.queue_flags;
                 if queue_flags.contains(QueueFlags::COMPUTE) {
+                    self.queue_index_cache
+                        .entry(device_id)
+                        .and_modify(|queue_family_indices| {
+                            queue_family_indices.compute = Some(index as u32)
+                        });
                     supported_features.insert(crate::graphics_device::Feature::ComputeShaders);
                 }
                 if queue_flags.contains(QueueFlags::VIDEO_DECODE_KHR) {
+                    self.queue_index_cache
+                        .entry(device_id)
+                        .and_modify(|queue_family_indices| {
+                            queue_family_indices.video_decode = Some(index as u32)
+                        });
                     supported_features.insert(crate::graphics_device::Feature::VideoDecoding);
                 }
                 if queue_flags.contains(QueueFlags::VIDEO_ENCODE_KHR) {
+                    self.queue_index_cache
+                        .entry(device_id)
+                        .and_modify(|queue_family_indices| {
+                            queue_family_indices.video_encode = Some(index as u32)
+                        });
                     supported_features.insert(crate::graphics_device::Feature::VideoEncoding);
                 }
                 if queue_flags.contains(QueueFlags::OPTICAL_FLOW_NV) {
+                    self.queue_index_cache
+                        .entry(device_id)
+                        .and_modify(|queue_family_indices| {
+                            queue_family_indices.optical_flow = Some(index as u32)
+                        });
                     supported_features.insert(crate::graphics_device::Feature::OpticalFlow);
+                }
+
+                if queue_flags.contains(QueueFlags::GRAPHICS) {
+                    self.queue_index_cache
+                        .entry(device_id)
+                        .and_modify(|queue_family_indices| {
+                            queue_family_indices.graphics = Some(index as u32)
+                        });
+                }
+                if queue_flags.contains(QueueFlags::TRANSFER) {
+                    self.queue_index_cache
+                        .entry(device_id)
+                        .and_modify(|queue_family_indices| {
+                            queue_family_indices.transfer = Some(index as u32)
+                        });
+                }
+
+                let is_present_supported = unsafe {
+                    self.window_surface_loader()
+                        .get_physical_device_surface_support(
+                            physical_device,
+                            index as u32,
+                            *self.window_surface(),
+                        )
+                        .expect("Failed to query presentation support for queue family")
+                };
+                if is_present_supported {
+                    self.queue_index_cache
+                        .entry(device_id)
+                        .and_modify(|queue_family_indices| {
+                            queue_family_indices.present = Some(index as u32);
+                        });
                 }
             }
 
@@ -299,6 +418,18 @@ impl Renderer for VulkanRenderer {
         }
 
         devices
+    }
+
+    fn get_device(&self) -> &Option<GraphicsDevice> {
+        &self.device
+    }
+
+    fn set_device(&mut self, device: &GraphicsDevice) {
+        if self.device.is_some() {
+            // TODO: uninitialize old device.
+        }
+
+        self.device = Some(device.clone());
     }
 
     fn clear(&mut self, color: RGB<f32>) {
