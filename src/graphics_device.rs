@@ -1,7 +1,9 @@
+use std::collections::HashSet;
+
 use crate::Version;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum GraphicsDeviceType {
+pub enum Type {
     DiscreteGpu,
     IntegratedGpu,
     VirtualGpu,
@@ -11,7 +13,7 @@ pub enum GraphicsDeviceType {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum GraphicsDeviceVendor {
+pub enum Vendor {
     Nvidia,
     Amd,
     Intel,
@@ -22,60 +24,90 @@ pub enum GraphicsDeviceVendor {
     Other,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Feature {
+    GeometryShaders,
+    ComputeShaders,
+    WireframeMode,
+    WideLines,
+    AnisotropicFiltering,
+    RayTracing,
+    VideoDecoding,
+    VideoEncoding,
+    OpticalFlow,
+}
+
 #[derive(Debug, PartialEq)]
 pub struct GraphicsDevice {
     pub name: String,
-    pub device_type: GraphicsDeviceType,
+    pub device_type: Type,
     pub vendor_id: u32,
     pub device_id: u32,
     pub api_version: Version,
     pub driver_version: Version,
     pub vram: u64,
+    pub supported_features: HashSet<Feature>,
 }
 
 impl GraphicsDevice {
-    pub fn vendor(&self) -> GraphicsDeviceVendor {
+    pub fn vendor(&self) -> Vendor {
         GraphicsDevice::vendor_from_id(self.vendor_id)
     }
 
-    pub fn vendor_from_id(vendor_id: u32) -> GraphicsDeviceVendor {
+    pub fn vendor_from_id(vendor_id: u32) -> Vendor {
         match vendor_id {
-            0x10DE => GraphicsDeviceVendor::Nvidia,
-            0x1002 => GraphicsDeviceVendor::Amd,
-            0x8086 => GraphicsDeviceVendor::Intel,
-            0x5143 => GraphicsDeviceVendor::Qualcomm,
-            0x13B5 => GraphicsDeviceVendor::Arm,
-            0x106B => GraphicsDeviceVendor::Apple,
-            0x1414 => GraphicsDeviceVendor::Microsoft,
-            _ => GraphicsDeviceVendor::Other,
+            0x10DE => Vendor::Nvidia,
+            0x1002 => Vendor::Amd,
+            0x8086 => Vendor::Intel,
+            0x5143 => Vendor::Qualcomm,
+            0x13B5 => Vendor::Arm,
+            0x106B => Vendor::Apple,
+            0x1414 => Vendor::Microsoft,
+            _ => Vendor::Other,
         }
     }
 }
 
-impl std::fmt::Display for GraphicsDeviceType {
+impl std::fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            GraphicsDeviceType::DiscreteGpu => write!(f, "Discrete GPU"),
-            GraphicsDeviceType::IntegratedGpu => write!(f, "Integrated GPU"),
-            GraphicsDeviceType::VirtualGpu => write!(f, "Virtual GPU"),
-            GraphicsDeviceType::Cpu => write!(f, "CPU"),
-            GraphicsDeviceType::Other => write!(f, "Other"),
-            GraphicsDeviceType::Invalid => write!(f, "Invalid graphics device type."),
+            Type::DiscreteGpu => write!(f, "Discrete GPU"),
+            Type::IntegratedGpu => write!(f, "Integrated GPU"),
+            Type::VirtualGpu => write!(f, "Virtual GPU"),
+            Type::Cpu => write!(f, "CPU"),
+            Type::Other => write!(f, "Other"),
+            Type::Invalid => write!(f, "Invalid graphics device type."),
         }
     }
 }
 
-impl std::fmt::Display for GraphicsDeviceVendor {
+impl std::fmt::Display for Vendor {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            GraphicsDeviceVendor::Nvidia => write!(f, "NVIDIA"),
-            GraphicsDeviceVendor::Amd => write!(f, "AMD"),
-            GraphicsDeviceVendor::Intel => write!(f, "Intel"),
-            GraphicsDeviceVendor::Qualcomm => write!(f, "Qualcomm"),
-            GraphicsDeviceVendor::Arm => write!(f, "ARM"),
-            GraphicsDeviceVendor::Apple => write!(f, "Apple"),
-            GraphicsDeviceVendor::Microsoft => write!(f, "Microsoft"),
-            GraphicsDeviceVendor::Other => write!(f, "Other"),
+            Vendor::Nvidia => write!(f, "NVIDIA"),
+            Vendor::Amd => write!(f, "AMD"),
+            Vendor::Intel => write!(f, "Intel"),
+            Vendor::Qualcomm => write!(f, "Qualcomm"),
+            Vendor::Arm => write!(f, "ARM"),
+            Vendor::Apple => write!(f, "Apple"),
+            Vendor::Microsoft => write!(f, "Microsoft"),
+            Vendor::Other => write!(f, "Other"),
+        }
+    }
+}
+
+impl std::fmt::Display for Feature {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Feature::GeometryShaders => write!(f, "Geometry Shaders"),
+            Feature::ComputeShaders => write!(f, "Compute Shaders"),
+            Feature::WireframeMode => write!(f, "Wireframe Mode"),
+            Feature::WideLines => write!(f, "Wide Lines"),
+            Feature::AnisotropicFiltering => write!(f, "Anisotropic Filtering"),
+            Feature::RayTracing => write!(f, "Ray Tracing"),
+            Feature::VideoDecoding => write!(f, "Video Decoding"),
+            Feature::VideoEncoding => write!(f, "Video Encoding"),
+            Feature::OpticalFlow => write!(f, "Optical Flow"),
         }
     }
 }
@@ -83,13 +115,19 @@ impl std::fmt::Display for GraphicsDeviceVendor {
 impl std::fmt::Display for GraphicsDevice {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         writeln!(f, "Graphics Device:")?;
-        writeln!(f, "    Name:           {}", self.name)?;
-        writeln!(f, "    Type:           {}", self.device_type)?;
-        writeln!(f, "    Vendor:         {}", self.vendor())?;
-        writeln!(f, "    Vendor ID:      {:#06X}", self.vendor_id)?;
-        writeln!(f, "    Device ID:      {:#06X}", self.device_id)?;
-        writeln!(f, "    API Version:    {}", self.api_version)?;
-        writeln!(f, "    Driver Version: {}", self.driver_version)?;
+        writeln!(f, "    Name:               {}", self.name)?;
+        writeln!(f, "    Type:               {}", self.device_type)?;
+        writeln!(f, "    Vendor:             {}", self.vendor())?;
+        writeln!(f, "    Vendor ID:          {:#06X}", self.vendor_id)?;
+        writeln!(f, "    Device ID:          {:#06X}", self.device_id)?;
+        writeln!(f, "    API Version:        {}", self.api_version)?;
+        writeln!(f, "    Driver Version:     {}", self.driver_version)?;
+        writeln!(f, "    Supported Features:")?;
+        if !self.supported_features.is_empty() {
+            for feature in &self.supported_features {
+                writeln!(f, "     - {}", feature)?;
+            }
+        }
         write!(
             f,
             "    VRAM:           {} GB",

@@ -1,5 +1,5 @@
-use heph_gl::renderers::Renderer;
 use heph_gl::renderers::vulkan_renderer::VulkanRenderer;
+use heph_gl::renderers::{InitializeOptions, Renderer};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use renkrs::RGB;
 use winit::application::ApplicationHandler;
@@ -34,9 +34,12 @@ impl ApplicationHandler for App {
         println!("OS Window created successfully.");
 
         let active_renderer = self.renderer.insert(VulkanRenderer::new());
-        let display_handle = active_window.display_handle().unwrap().as_raw();
-        let window_handle = active_window.window_handle().unwrap().as_raw();
-        active_renderer.initialize("Sandbox", window_handle, display_handle);
+        let initialize_options = InitializeOptions {
+            app_name: "Sandbox",
+            window_handle: active_window.window_handle().unwrap().as_raw(),
+            display_handle: active_window.display_handle().unwrap().as_raw(),
+        };
+        active_renderer.initialize(&initialize_options);
     }
 
     fn window_event(
