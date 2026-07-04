@@ -2,9 +2,9 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString};
 
 use ash::vk::{
-    ApplicationInfo, ClearColorValue, ClearValue, InstanceCreateInfo, MemoryHeapFlags,
-    PhysicalDeviceFeatures2, PhysicalDeviceMemoryProperties2, PhysicalDeviceProperties2,
-    PhysicalDeviceType, QueueFamilyProperties2, QueueFlags, StructureType, SurfaceKHR,
+    ApplicationInfo, InstanceCreateInfo, MemoryHeapFlags, PhysicalDeviceFeatures2,
+    PhysicalDeviceMemoryProperties2, PhysicalDeviceProperties2, PhysicalDeviceType,
+    QueueFamilyProperties2, QueueFlags, StructureType, SurfaceKHR,
 };
 use ash::{Entry, Instance};
 use renkrs::RGB;
@@ -13,15 +13,12 @@ use crate::graphics_device::GraphicsDevice;
 use crate::renderers::{InitializeOptions, Renderer};
 use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
 
-#[derive(Debug, Default)]
-struct QueueFamilyIndices {
-    pub graphics: Option<u32>,
-    pub compute: Option<u32>,
-    pub transfer: Option<u32>,
-    pub video_decode: Option<u32>,
-    pub video_encode: Option<u32>,
-    pub optical_flow: Option<u32>,
-    pub present: Option<u32>,
+#[derive(Default)]
+struct QueueFamily {
+    pub index: u32,
+    pub queue_count: u32,
+    pub queue_flags: QueueFlags,
+    pub present_supported: bool,
 }
 
 pub struct VulkanRenderer {
@@ -31,53 +28,8 @@ pub struct VulkanRenderer {
     window_surface: Option<SurfaceKHR>,
     window_surface_loader: Option<ash::khr::surface::Instance>,
 
-    queue_index_cache: HashMap<u32, QueueFamilyIndices>,
-
+    device_queue_families: HashMap<u32, Vec<QueueFamily>>,
     device: Option<GraphicsDevice>,
-}
-
-impl QueueFamilyIndices {
-    #[inline]
-    pub fn graphics(&self) -> u32 {
-        self.graphics.expect("Graphics queue not found.")
-    }
-
-    #[inline]
-    pub fn compute(&self) -> u32 {
-        self.compute.expect("Compute queue not found.")
-    }
-
-    #[inline]
-    pub fn transfer(&self) -> u32 {
-        self.transfer.expect("Transfer queue not found.")
-    }
-
-    #[inline]
-    pub fn video_decode(&self) -> u32 {
-        self.video_decode.expect("Video decode queue not found.")
-    }
-
-    #[inline]
-    pub fn video_encode(&self) -> u32 {
-        self.video_encode.expect("Video encode queue not found.")
-    }
-
-    #[inline]
-    pub fn optical_flow(&self) -> u32 {
-        self.optical_flow.expect("Optical flow queue not found.")
-    }
-
-    #[inline]
-    pub fn present(&self) -> u32 {
-        self.present.expect("Present queue not found.")
-    }
-
-    pub fn is_complete(&self) -> bool {
-        // We only check graphics, compute, and present for completion,
-        // as transfer can implicitly fallback to the graphics queue,
-        // and video/optical flow are highly specialized hardware features.
-        self.graphics.is_some() && self.compute.is_some() && self.present.is_some()
-    }
 }
 
 impl VulkanRenderer {
@@ -152,8 +104,7 @@ impl Renderer for VulkanRenderer {
             window_surface: None,
             window_surface_loader: None,
 
-            queue_index_cache: HashMap::default(),
-
+            device_queue_families: HashMap::default(),
             device: None,
         }
     }
@@ -252,7 +203,7 @@ impl Renderer for VulkanRenderer {
             let mut properties2 = PhysicalDeviceProperties2::default();
             let mut memory_properties2 = PhysicalDeviceMemoryProperties2::default();
             let mut physical_features2 = PhysicalDeviceFeatures2::default();
-            let mut queue_family_properties2 = Vec::<QueueFamilyProperties2>::default();
+            let mut queue_family_properties2_vec = Vec::<QueueFamilyProperties2>::default();
             unsafe {
                 self.instance()
                     .get_physical_device_properties2(physical_device, &mut properties2);
@@ -263,17 +214,17 @@ impl Renderer for VulkanRenderer {
                 self.instance()
                     .get_physical_device_features2(physical_device, &mut physical_features2);
 
-                let queue_family_properties2_size = self
+                let queue_family_properties2_vec_size = self
                     .instance()
                     .get_physical_device_queue_family_properties2_len(physical_device);
-                queue_family_properties2.resize(
-                    queue_family_properties2_size,
+                queue_family_properties2_vec.resize(
+                    queue_family_properties2_vec_size,
                     QueueFamilyProperties2::default(),
                 );
                 self.instance()
                     .get_physical_device_queue_family_properties2(
                         physical_device,
-                        &mut queue_family_properties2,
+                        &mut queue_family_properties2_vec,
                     );
             };
 
@@ -294,8 +245,7 @@ impl Renderer for VulkanRenderer {
 
             let device_vendor_id = properties2.properties.vendor_id;
             let device_id = properties2.properties.device_id;
-            self.queue_index_cache
-                .insert(device_id, QueueFamilyIndices::default());
+            self.device_queue_families.insert(device_id, Vec::default());
 
             let device_api_version =
                 VulkanRenderer::vk_api_version_to_heph_version(properties2.properties.api_version);
@@ -337,73 +287,47 @@ impl Renderer for VulkanRenderer {
                     supported_features.insert(crate::graphics_device::Feature::RayTracing);
                 }
             }
-            for (index, queue_family) in queue_family_properties2.iter().enumerate() {
-                let queue_flags = queue_family.queue_family_properties.queue_flags;
+            for (index, queue_family_properties2) in queue_family_properties2_vec.iter().enumerate()
+            {
+                let queue_flags = queue_family_properties2.queue_family_properties.queue_flags;
                 if queue_flags.contains(QueueFlags::COMPUTE) {
-                    self.queue_index_cache
-                        .entry(device_id)
-                        .and_modify(|queue_family_indices| {
-                            queue_family_indices.compute = Some(index as u32)
-                        });
                     supported_features.insert(crate::graphics_device::Feature::ComputeShaders);
                 }
                 if queue_flags.contains(QueueFlags::VIDEO_DECODE_KHR) {
-                    self.queue_index_cache
-                        .entry(device_id)
-                        .and_modify(|queue_family_indices| {
-                            queue_family_indices.video_decode = Some(index as u32)
-                        });
                     supported_features.insert(crate::graphics_device::Feature::VideoDecoding);
                 }
                 if queue_flags.contains(QueueFlags::VIDEO_ENCODE_KHR) {
-                    self.queue_index_cache
-                        .entry(device_id)
-                        .and_modify(|queue_family_indices| {
-                            queue_family_indices.video_encode = Some(index as u32)
-                        });
                     supported_features.insert(crate::graphics_device::Feature::VideoEncoding);
                 }
                 if queue_flags.contains(QueueFlags::OPTICAL_FLOW_NV) {
-                    self.queue_index_cache
-                        .entry(device_id)
-                        .and_modify(|queue_family_indices| {
-                            queue_family_indices.optical_flow = Some(index as u32)
-                        });
                     supported_features.insert(crate::graphics_device::Feature::OpticalFlow);
                 }
-                if queue_flags.contains(QueueFlags::TRANSFER) {
-                    self.queue_index_cache
-                        .entry(device_id)
-                        .and_modify(|queue_family_indices| {
-                            queue_family_indices.transfer = Some(index as u32)
-                        });
+                // Vulkan guarantees that the main graphics family will also support
+                // TRANSFER. Thus, we only consider families that support TRANSFER
+                // but do not support GRAPHICS to be dedicated async (DMA) transfer queues.
+                if queue_flags.contains(QueueFlags::TRANSFER)
+                    && !queue_flags.contains(QueueFlags::GRAPHICS)
+                {
                     supported_features.insert(crate::graphics_device::Feature::AsyncTransfer);
                 }
 
-                if queue_flags.contains(QueueFlags::GRAPHICS) {
-                    self.queue_index_cache
-                        .entry(device_id)
-                        .and_modify(|queue_family_indices| {
-                            queue_family_indices.graphics = Some(index as u32)
-                        });
-                }
-
-                let is_present_supported = unsafe {
-                    self.window_surface_loader()
-                        .get_physical_device_surface_support(
-                            physical_device,
-                            index as u32,
-                            *self.window_surface(),
-                        )
-                        .expect("Failed to query presentation support for queue family")
+                let queue_family = QueueFamily {
+                    index: index as u32,
+                    queue_count: queue_family_properties2.queue_family_properties.queue_count,
+                    queue_flags: queue_flags,
+                    present_supported: unsafe {
+                        self.window_surface_loader()
+                            .get_physical_device_surface_support(
+                                physical_device,
+                                index as u32,
+                                *self.window_surface(),
+                            )
+                            .expect("Failed to query presentation support for queue family")
+                    },
                 };
-                if is_present_supported {
-                    self.queue_index_cache
-                        .entry(device_id)
-                        .and_modify(|queue_family_indices| {
-                            queue_family_indices.present = Some(index as u32);
-                        });
-                }
+                self.device_queue_families
+                    .entry(device_id)
+                    .and_modify(|queue_families| queue_families.push(queue_family));
             }
 
             devices.push(GraphicsDevice {
@@ -434,12 +358,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn clear(&mut self, color: RGB<f32>) {
-        let clear_value = ClearValue {
-            color: ClearColorValue {
-                float32: [color.r, color.g, color.b, 1.0],
-            },
-        };
-
+        let _ = color;
         // TODO
     }
 }
