@@ -28,12 +28,15 @@ struct DeviceContext {
 
     pub graphics_queue: Queue,
     pub graphics_family_index: u32,
+    pub graphics_command_pool: ash::vk::CommandPool,
 
     pub transfer_queue: Option<Queue>,
     pub transfer_family_index: Option<u32>,
+    pub transfer_command_pool: Option<ash::vk::CommandPool>,
 
     pub compute_queue: Option<Queue>,
     pub compute_family_index: Option<u32>,
+    pub compute_command_pool: Option<ash::vk::CommandPool>,
 
     pub logical_device: ash::Device,
 }
@@ -523,6 +526,50 @@ impl Renderer for VulkanRenderer {
                 .map_err(|e| RendererError::Fail(format!("Failed to initialize VMA: {}", e)))?
         };
 
+        // Create the command pools
+
+        let graphics_pool_info = ash::vk::CommandPoolCreateInfo::default()
+            .flags(ash::vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+            .queue_family_index(graphics_family.index);
+        let graphics_command_pool = unsafe {
+            logical_device
+                .create_command_pool(&graphics_pool_info, None)
+                .map_err(|e| {
+                    RendererError::Fail(format!("Failed to create Graphics Command Pool: {}", e))
+                })?
+        };
+
+        let mut transfer_command_pool = None;
+        if let Some(transfer_family) = transfer_family {
+            let transfer_pool_info = ash::vk::CommandPoolCreateInfo::default()
+                .flags(ash::vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+                .queue_family_index(transfer_family.index);
+            transfer_command_pool = Some(unsafe {
+                logical_device
+                    .create_command_pool(&transfer_pool_info, None)
+                    .map_err(|e| {
+                        RendererError::Fail(format!(
+                            "Failed to create Transfer Command Pool: {}",
+                            e
+                        ))
+                    })?
+            });
+        }
+
+        let mut compute_command_pool = None;
+        if let Some(compute_family) = compute_family {
+            let compute_pool_info = ash::vk::CommandPoolCreateInfo::default()
+                .flags(ash::vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+                .queue_family_index(compute_family.index);
+            compute_command_pool = Some(unsafe {
+                logical_device
+                    .create_command_pool(&compute_pool_info, None)
+                    .map_err(|e| {
+                        RendererError::Fail(format!("Failed to create Compute Command Pool: {}", e))
+                    })?
+            });
+        }
+
         self.device_context = Some(DeviceContext {
             graphics_device: device.clone(),
 
@@ -530,12 +577,15 @@ impl Renderer for VulkanRenderer {
 
             graphics_queue,
             graphics_family_index: graphics_family.index,
+            graphics_command_pool: graphics_command_pool,
 
             transfer_queue: transfer_queue_handle,
             transfer_family_index: transfer_family_idx,
+            transfer_command_pool: transfer_command_pool,
 
             compute_queue: compute_queue_handle,
             compute_family_index: compute_family_idx,
+            compute_command_pool: compute_command_pool,
 
             logical_device: logical_device,
         });
@@ -626,6 +676,21 @@ impl VulkanRenderer {
             unsafe {
                 // Wait for the GPU to finish all pending operations before uninitializing to prevent segfaults.
                 let _ = device_context.logical_device.device_wait_idle();
+
+                // Destroy the command pools
+                device_context
+                    .logical_device
+                    .destroy_command_pool(device_context.graphics_command_pool, None);
+                if let Some(transfer_command_pool) = device_context.transfer_command_pool {
+                    device_context
+                        .logical_device
+                        .destroy_command_pool(transfer_command_pool, None);
+                }
+                if let Some(compute_command_pool) = device_context.compute_command_pool {
+                    device_context
+                        .logical_device
+                        .destroy_command_pool(compute_command_pool, None);
+                }
 
                 drop(device_context.vma_allocator);
                 device_context.logical_device.destroy_device(None);
