@@ -35,7 +35,7 @@ pub trait Renderer {
     fn uninitialize(&mut self);
 
     fn enumerate_devices(&mut self) -> Result<Vec<GraphicsDevice>, RendererError>;
-    fn get_device(&self) -> &Option<GraphicsDevice>;
+    fn get_device(&self) -> Option<GraphicsDevice>;
     fn set_device(
         &mut self,
         device: &GraphicsDevice,

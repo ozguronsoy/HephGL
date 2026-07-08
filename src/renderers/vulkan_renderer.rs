@@ -20,7 +20,12 @@ struct QueueFamily {
     pub present_supported: bool,
 }
 
-pub struct DeviceQueues {
+// Order of the fields matter as it determines the destruction order.
+struct DeviceContext {
+    pub graphics_device: GraphicsDevice,
+
+    pub vma_allocator: vk_mem::Allocator,
+
     pub graphics_queue: Queue,
     pub graphics_family_index: u32,
 
@@ -29,6 +34,8 @@ pub struct DeviceQueues {
 
     pub compute_queue: Option<Queue>,
     pub compute_family_index: Option<u32>,
+
+    pub logical_device: ash::Device,
 }
 
 pub struct VulkanRenderer {
@@ -39,10 +46,7 @@ pub struct VulkanRenderer {
     window_surface_loader: Option<ash::khr::surface::Instance>,
 
     device_queue_families: HashMap<u32, Vec<QueueFamily>>,
-    graphics_device: Option<GraphicsDevice>,
-    logical_device: Option<ash::Device>,
-    queues: Option<DeviceQueues>,
-    vma_allocator: Option<vk_mem::Allocator>,
+    device_context: Option<DeviceContext>,
 }
 
 impl Renderer for VulkanRenderer {
@@ -55,10 +59,7 @@ impl Renderer for VulkanRenderer {
             window_surface_loader: None,
 
             device_queue_families: HashMap::default(),
-            graphics_device: None,
-            logical_device: None,
-            queues: None,
-            vma_allocator: None,
+            device_context: None,
         }
     }
 
@@ -323,8 +324,12 @@ impl Renderer for VulkanRenderer {
         Ok(devices)
     }
 
-    fn get_device(&self) -> &Option<GraphicsDevice> {
-        &self.graphics_device
+    fn get_device(&self) -> Option<GraphicsDevice> {
+        if let Some(device_context) = &self.device_context {
+            Some(device_context.graphics_device.clone())
+        } else {
+            None
+        }
     }
 
     fn set_device(
@@ -332,7 +337,7 @@ impl Renderer for VulkanRenderer {
         device: &GraphicsDevice,
         requested_features: &Vec<FeatureRequest>,
     ) -> Result<(), RendererError> {
-        if self.graphics_device.is_some() {
+        if self.device_context.is_some() {
             self.uninitialize_device();
         }
 
@@ -508,8 +513,21 @@ impl Renderer for VulkanRenderer {
             compute_family_idx = Some(compute_family.index);
         }
 
-        self.logical_device = Some(logical_device);
-        self.queues = Some(DeviceQueues {
+        // Initialize VMA.
+
+        let mut allocator_create_info =
+            vk_mem::AllocatorCreateInfo::new(self.instance(), &logical_device, vk_physical_device);
+        allocator_create_info.vulkan_api_version = VulkanRenderer::VK_API_VERSION;
+        let vma_allocator = unsafe {
+            vk_mem::Allocator::new(allocator_create_info)
+                .map_err(|e| RendererError::Fail(format!("Failed to initialize VMA: {}", e)))?
+        };
+
+        self.device_context = Some(DeviceContext {
+            graphics_device: device.clone(),
+
+            vma_allocator: vma_allocator,
+
             graphics_queue,
             graphics_family_index: graphics_family.index,
 
@@ -518,22 +536,10 @@ impl Renderer for VulkanRenderer {
 
             compute_queue: compute_queue_handle,
             compute_family_index: compute_family_idx,
+
+            logical_device: logical_device,
         });
 
-        // Initialize VMA.
-
-        let mut allocator_create_info = vk_mem::AllocatorCreateInfo::new(
-            self.instance(),
-            self.logical_device.as_ref().unwrap(),
-            vk_physical_device,
-        );
-        allocator_create_info.vulkan_api_version = VulkanRenderer::VK_API_VERSION;
-        self.vma_allocator = Some(unsafe {
-            vk_mem::Allocator::new(allocator_create_info)
-                .map_err(|e| RendererError::Fail(format!("Failed to initialize VMA: {}", e)))?
-        });
-
-        self.graphics_device = Some(device.clone());
         Ok(())
     }
 
@@ -577,6 +583,11 @@ impl VulkanRenderer {
             .expect("VulkanRenderer is not initialized: Missing Window Surface Loader.")
     }
 
+    #[inline]
+    fn device_context(&self) -> &DeviceContext {
+        self.device_context.as_ref().expect("Device is not set.")
+    }
+
     fn vk_api_version_to_heph_version(vk_api_version: u32) -> Version {
         Version {
             major: ash::vk::api_version_major(vk_api_version),
@@ -611,22 +622,14 @@ impl VulkanRenderer {
     }
 
     fn uninitialize_device(&mut self) {
-        // Wait for the GPU to finish all pending operations before uninitializing to prevent segfaults.
-        if let Some(device) = self.logical_device.as_ref() {
+        if let Some(device_context) = self.device_context.take() {
             unsafe {
-                let _ = device.device_wait_idle();
+                // Wait for the GPU to finish all pending operations before uninitializing to prevent segfaults.
+                let _ = device_context.logical_device.device_wait_idle();
+
+                drop(device_context.vma_allocator);
+                device_context.logical_device.destroy_device(None);
             }
         }
-
-        self.queues = None;
-        self.vma_allocator = None;
-
-        if let Some(logical_device) = self.logical_device.take() {
-            unsafe {
-                logical_device.destroy_device(None);
-            }
-        }
-
-        self.graphics_device = None;
     }
 }
