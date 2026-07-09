@@ -1,7 +1,9 @@
+use std::path::Path;
+
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
 
-use crate::graphics_device::GraphicsDevice;
+use crate::{graphics_device::GraphicsDevice, shader::ShaderSource};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Settings {
@@ -34,6 +36,8 @@ pub enum RendererError {
 }
 
 pub trait Renderer {
+    type ShaderHandle;
+
     fn new() -> Self;
 
     fn get_settings(&self) -> &Settings;
@@ -49,6 +53,9 @@ pub trait Renderer {
         device: &GraphicsDevice,
         requested_features: &Vec<FeatureRequest>,
     ) -> Result<(), RendererError>;
+
+    fn create_shader(&self, source: &ShaderSource) -> Result<Self::ShaderHandle, RendererError>;
+    fn destroy_shader(&self, shader: Self::ShaderHandle);
 
     fn clear(&mut self, color: RGB<f32>) -> Result<(), RendererError>;
 }

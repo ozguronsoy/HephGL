@@ -5,13 +5,14 @@ use ash::vk::{
     ApplicationInfo, CommandBuffer, CommandPool, DeviceQueueCreateInfo, InstanceCreateInfo,
     MemoryHeapFlags, PhysicalDeviceFeatures2, PhysicalDeviceMemoryProperties2,
     PhysicalDeviceProperties2, PhysicalDeviceType, Queue, QueueFamilyProperties2, QueueFlags,
-    StructureType, SurfaceKHR,
+    ShaderModuleCreateInfo, StructureType, SurfaceKHR,
 };
 use ash::{Entry, Instance};
 use renkrs::RGB;
 
 use crate::graphics_device::{Feature, GraphicsDevice};
 use crate::renderers::{FeatureRequest, InitializeOptions, Renderer, RendererError, Settings};
+use crate::shader::ShaderSource;
 use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
 
 struct QueueFamily {
@@ -59,6 +60,8 @@ pub struct VulkanRenderer {
 }
 
 impl Renderer for VulkanRenderer {
+    type ShaderHandle = ash::vk::ShaderModule;
+
     fn new() -> Self {
         Self {
             settings: Settings::default(),
@@ -620,11 +623,37 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn clear(&mut self, color: RGB<f32>) -> Result<(), RendererError> {
-        let _ = color;
-        // TODO
+    fn create_shader(&self, source: &ShaderSource) -> Result<Self::ShaderHandle, RendererError> {
+        let (prefix, code_u32, suffix) = unsafe { source.data.align_to::<u32>() };
 
-        Ok(())
+        // Data is not aligned properly.
+        if !prefix.is_empty() || !suffix.is_empty() {
+            return Err(RendererError::Fail(format!(
+                "Shader data from '{}' is not valid SPIR-V (not 4-byte aligned).",
+                source.file_path
+            )));
+        }
+
+        let create_info = ShaderModuleCreateInfo::default().code(code_u32);
+        unsafe {
+            self.device_context()
+                .logical_device
+                .create_shader_module(&create_info, None)
+                .map_err(|e| RendererError::Fail(format!("Failed to create shader module: {}", e)))
+        }
+    }
+
+    fn destroy_shader(&self, shader: Self::ShaderHandle) {
+        unsafe {
+            self.device_context()
+                .logical_device
+                .destroy_shader_module(shader, None);
+        }
+    }
+
+    fn clear(&mut self, color: RGB<f32>) -> Result<(), RendererError> {
+        // TODO
+        unimplemented!();
     }
 }
 

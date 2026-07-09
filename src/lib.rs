@@ -1,6 +1,7 @@
 pub mod graphics_device;
 pub mod math;
 pub mod renderers;
+pub mod shader;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Version {
