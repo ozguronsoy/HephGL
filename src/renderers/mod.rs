@@ -3,6 +3,11 @@ use renkrs::RGB;
 
 use crate::graphics_device::GraphicsDevice;
 
+#[derive(Debug, Clone, Copy)]
+pub struct Settings {
+    pub frames_in_flight: u32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FeatureRequest {
     pub feature: crate::graphics_device::Feature,
@@ -31,6 +36,9 @@ pub enum RendererError {
 pub trait Renderer {
     fn new() -> Self;
 
+    fn get_settings(&self) -> &Settings;
+    fn set_settings(&mut self, settings: &Settings);
+
     fn initialize(&mut self, options: &InitializeOptions) -> Result<(), RendererError>;
     fn uninitialize(&mut self);
 
@@ -43,6 +51,14 @@ pub trait Renderer {
     ) -> Result<(), RendererError>;
 
     fn clear(&mut self, color: RGB<f32>) -> Result<(), RendererError>;
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            frames_in_flight: 1,
+        }
+    }
 }
 
 impl std::fmt::Display for RendererError {

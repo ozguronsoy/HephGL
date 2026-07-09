@@ -2,15 +2,16 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString};
 
 use ash::vk::{
-    ApplicationInfo, DeviceQueueCreateInfo, InstanceCreateInfo, MemoryHeapFlags,
-    PhysicalDeviceFeatures2, PhysicalDeviceMemoryProperties2, PhysicalDeviceProperties2,
-    PhysicalDeviceType, Queue, QueueFamilyProperties2, QueueFlags, StructureType, SurfaceKHR,
+    ApplicationInfo, CommandBuffer, CommandPool, DeviceQueueCreateInfo, InstanceCreateInfo,
+    MemoryHeapFlags, PhysicalDeviceFeatures2, PhysicalDeviceMemoryProperties2,
+    PhysicalDeviceProperties2, PhysicalDeviceType, Queue, QueueFamilyProperties2, QueueFlags,
+    StructureType, SurfaceKHR,
 };
 use ash::{Entry, Instance};
 use renkrs::RGB;
 
 use crate::graphics_device::{Feature, GraphicsDevice};
-use crate::renderers::{FeatureRequest, InitializeOptions, Renderer, RendererError};
+use crate::renderers::{FeatureRequest, InitializeOptions, Renderer, RendererError, Settings};
 use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
 
 struct QueueFamily {
@@ -28,20 +29,25 @@ struct DeviceContext {
 
     pub graphics_queue: Queue,
     pub graphics_family_index: u32,
-    pub graphics_command_pool: ash::vk::CommandPool,
+    pub graphics_command_pool: CommandPool,
+    pub graphics_command_buffers: Vec<CommandBuffer>,
 
     pub transfer_queue: Option<Queue>,
     pub transfer_family_index: Option<u32>,
-    pub transfer_command_pool: Option<ash::vk::CommandPool>,
+    pub transfer_command_pool: Option<CommandPool>,
+    pub transfer_command_buffers: Vec<CommandBuffer>,
 
     pub compute_queue: Option<Queue>,
     pub compute_family_index: Option<u32>,
-    pub compute_command_pool: Option<ash::vk::CommandPool>,
+    pub compute_command_pool: Option<CommandPool>,
+    pub compute_command_buffers: Vec<CommandBuffer>,
 
     pub logical_device: ash::Device,
 }
 
 pub struct VulkanRenderer {
+    settings: Settings,
+
     entry: Option<Entry>,
     instance: Option<Instance>,
 
@@ -55,6 +61,8 @@ pub struct VulkanRenderer {
 impl Renderer for VulkanRenderer {
     fn new() -> Self {
         Self {
+            settings: Settings::default(),
+
             entry: None,
             instance: None,
 
@@ -64,6 +72,14 @@ impl Renderer for VulkanRenderer {
             device_queue_families: HashMap::default(),
             device_context: None,
         }
+    }
+
+    fn get_settings(&self) -> &Settings {
+        &self.settings
+    }
+
+    fn set_settings(&mut self, settings: &Settings) {
+        self.settings = *settings;
     }
 
     fn initialize(&mut self, options: &InitializeOptions) -> Result<(), RendererError> {
@@ -526,7 +542,7 @@ impl Renderer for VulkanRenderer {
                 .map_err(|e| RendererError::Fail(format!("Failed to initialize VMA: {}", e)))?
         };
 
-        // Create the command pools
+        // Create command pools.
 
         let graphics_pool_info = ash::vk::CommandPoolCreateInfo::default()
             .flags(ash::vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
@@ -578,17 +594,21 @@ impl Renderer for VulkanRenderer {
             graphics_queue,
             graphics_family_index: graphics_family.index,
             graphics_command_pool: graphics_command_pool,
+            graphics_command_buffers: Vec::default(),
 
             transfer_queue: transfer_queue_handle,
             transfer_family_index: transfer_family_idx,
             transfer_command_pool: transfer_command_pool,
+            transfer_command_buffers: Vec::default(),
 
             compute_queue: compute_queue_handle,
             compute_family_index: compute_family_idx,
             compute_command_pool: compute_command_pool,
+            compute_command_buffers: Vec::default(),
 
             logical_device: logical_device,
         });
+        self.create_command_buffers()?;
 
         Ok(())
     }
@@ -637,6 +657,10 @@ impl VulkanRenderer {
     fn device_context(&self) -> &DeviceContext {
         self.device_context.as_ref().expect("Device is not set.")
     }
+    #[inline]
+    fn device_context_mut(&mut self) -> &mut DeviceContext {
+        self.device_context.as_mut().expect("Device is not set.")
+    }
 
     fn vk_api_version_to_heph_version(vk_api_version: u32) -> Version {
         Version {
@@ -669,6 +693,69 @@ impl VulkanRenderer {
                 patch: ash::vk::api_version_patch(vk_driver_version),
             },
         }
+    }
+
+    fn create_command_buffers(&mut self) -> Result<(), RendererError> {
+        let fif = self.settings.frames_in_flight;
+        let device_context = self.device_context_mut();
+        let allocate_buffers = |pool: ash::vk::CommandPool,
+                                count: u32|
+         -> Result<Vec<ash::vk::CommandBuffer>, RendererError> {
+            let alloc_info = ash::vk::CommandBufferAllocateInfo::default()
+                .command_pool(pool)
+                .level(ash::vk::CommandBufferLevel::PRIMARY)
+                .command_buffer_count(count);
+            unsafe {
+                device_context
+                    .logical_device
+                    .allocate_command_buffers(&alloc_info)
+                    .map_err(|e| {
+                        RendererError::Fail(format!("Failed to allocate command buffers: {}", e))
+                    })
+            }
+        };
+
+        // Free the old buffers.
+        if device_context.graphics_command_buffers.len() > 0 {
+            unsafe {
+                let _ = device_context.logical_device.device_wait_idle();
+
+                device_context.logical_device.free_command_buffers(
+                    device_context.graphics_command_pool,
+                    &device_context.graphics_command_buffers,
+                );
+                device_context.graphics_command_buffers.clear();
+
+                if device_context.transfer_command_buffers.len() > 0 {
+                    device_context.logical_device.free_command_buffers(
+                        device_context.transfer_command_pool.unwrap(),
+                        &device_context.transfer_command_buffers,
+                    );
+                    device_context.transfer_command_buffers.clear();
+                }
+
+                if device_context.compute_command_buffers.len() > 0 {
+                    device_context.logical_device.free_command_buffers(
+                        device_context.compute_command_pool.unwrap(),
+                        &device_context.compute_command_buffers,
+                    );
+                    device_context.compute_command_buffers.clear();
+                }
+            }
+        }
+
+        device_context.graphics_command_buffers =
+            allocate_buffers(device_context.graphics_command_pool, fif)?;
+
+        if let Some(pool) = device_context.transfer_command_pool {
+            device_context.transfer_command_buffers = allocate_buffers(pool, fif)?;
+        }
+
+        if let Some(pool) = device_context.compute_command_pool {
+            device_context.compute_command_buffers = allocate_buffers(pool, fif)?;
+        }
+
+        Ok(())
     }
 
     fn uninitialize_device(&mut self) {
