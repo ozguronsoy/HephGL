@@ -64,6 +64,9 @@ impl ApplicationHandler for App {
                             for dev in &graphics_devices {
                                 println!("{}", dev);
                             }
+                            active_renderer.set_settings(heph_gl::renderers::Settings {
+                                frames_in_flight: 2,
+                            }).unwrap();
                             active_renderer
                                 .set_device(
                                     &graphics_devices[0],

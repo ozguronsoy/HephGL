@@ -78,8 +78,15 @@ impl Renderer for VulkanRenderer {
         &self.settings
     }
 
-    fn set_settings(&mut self, settings: &Settings) {
-        self.settings = *settings;
+    fn set_settings(&mut self, settings: Settings) -> Result<(), RendererError> {
+        self.settings = settings;
+
+        if self.device_context.is_some() {
+            // Reallocate command buffers.
+            self.create_command_buffers()?;
+        }
+
+        Ok(())
     }
 
     fn initialize(&mut self, options: &InitializeOptions) -> Result<(), RendererError> {

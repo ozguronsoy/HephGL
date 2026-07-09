@@ -37,7 +37,7 @@ pub trait Renderer {
     fn new() -> Self;
 
     fn get_settings(&self) -> &Settings;
-    fn set_settings(&mut self, settings: &Settings);
+    fn set_settings(&mut self, settings: Settings) -> Result<(), RendererError>;
 
     fn initialize(&mut self, options: &InitializeOptions) -> Result<(), RendererError>;
     fn uninitialize(&mut self);
