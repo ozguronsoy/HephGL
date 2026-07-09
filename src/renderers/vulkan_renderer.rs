@@ -9,9 +9,12 @@ use ash::vk::{
 };
 use ash::{Entry, Instance};
 use renkrs::RGB;
+use vk_mem::Alloc;
 
 use crate::graphics_device::{Feature, GraphicsDevice};
-use crate::renderers::{FeatureRequest, InitializeOptions, Renderer, RendererError, Settings};
+use crate::renderers::{
+    BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererError, Settings,
+};
 use crate::shader::ShaderSource;
 use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
 
@@ -46,6 +49,18 @@ struct DeviceContext {
     pub logical_device: ash::Device,
 }
 
+pub struct VulkanBuffer {
+    pub(crate) buffer: ash::vk::Buffer,
+    pub(crate) vma_allocation: vk_mem::Allocation,
+    pub size: u64,
+}
+
+pub struct VulkanComputePipeline {
+    pub(crate) pipeline: ash::vk::Pipeline,
+    pub(crate) layout: ash::vk::PipelineLayout,
+    pub(crate) descriptor_layout: ash::vk::DescriptorSetLayout,
+}
+
 pub struct VulkanRenderer {
     settings: Settings,
 
@@ -61,6 +76,8 @@ pub struct VulkanRenderer {
 
 impl Renderer for VulkanRenderer {
     type ShaderHandle = ash::vk::ShaderModule;
+    type BufferHandle = VulkanBuffer;
+    type ComputePipelineHandle = VulkanComputePipeline;
 
     fn new() -> Self {
         Self {
@@ -649,6 +666,293 @@ impl Renderer for VulkanRenderer {
                 .logical_device
                 .destroy_shader_module(shader, None);
         }
+    }
+
+    fn create_buffer(
+        &self,
+        size: u64,
+        usage: BufferUsage,
+    ) -> Result<Self::BufferHandle, RendererError> {
+        let device_context = self.device_context();
+        let vk_usage = match usage {
+            BufferUsage::Storage => ash::vk::BufferUsageFlags::STORAGE_BUFFER,
+            BufferUsage::Uniform => ash::vk::BufferUsageFlags::UNIFORM_BUFFER,
+            BufferUsage::Vertex => ash::vk::BufferUsageFlags::VERTEX_BUFFER,
+            BufferUsage::Index => ash::vk::BufferUsageFlags::INDEX_BUFFER,
+        };
+
+        let buffer_info = ash::vk::BufferCreateInfo::default()
+            .size(size)
+            .usage(vk_usage);
+        let alloc_info = vk_mem::AllocationCreateInfo {
+            usage: vk_mem::MemoryUsage::Auto,
+            flags: vk_mem::AllocationCreateFlags::MAPPED
+                | vk_mem::AllocationCreateFlags::HOST_ACCESS_RANDOM,
+            ..Default::default()
+        };
+        let (buffer, vma_allocation) = unsafe {
+            device_context
+                .vma_allocator
+                .create_buffer(&buffer_info, &alloc_info)
+                .map_err(|e| RendererError::Fail(format!("VMA Allocation failed: {}", e)))?
+        };
+
+        Ok(VulkanBuffer {
+            buffer,
+            vma_allocation,
+            size,
+        })
+    }
+
+    fn write_buffer(&self, buffer: &Self::BufferHandle, data: &[u8]) -> Result<(), RendererError> {
+        if data.len() as u64 > buffer.size {
+            return Err(RendererError::Fail("Data exceeds buffer size!".to_string()));
+        }
+
+        let device_context = self.device_context();
+        unsafe {
+            let alloc_info = device_context
+                .vma_allocator
+                .get_allocation_info(&buffer.vma_allocation);
+            std::ptr::copy_nonoverlapping(
+                data.as_ptr(),
+                alloc_info.mapped_data as *mut u8,
+                data.len(),
+            );
+        }
+
+        Ok(())
+    }
+
+    fn read_buffer(
+        &self,
+        buffer: &Self::BufferHandle,
+        dest: &mut [u8],
+    ) -> Result<(), RendererError> {
+        if dest.len() as u64 > buffer.size {
+            return Err(RendererError::Fail(
+                "Destination slice is larger than buffer!".to_string(),
+            ));
+        }
+
+        let device_context = self.device_context();
+        unsafe {
+            let alloc_info = device_context
+                .vma_allocator
+                .get_allocation_info(&buffer.vma_allocation);
+            std::ptr::copy_nonoverlapping(
+                alloc_info.mapped_data as *const u8,
+                dest.as_mut_ptr(),
+                dest.len(),
+            );
+        }
+
+        Ok(())
+    }
+
+    fn destroy_buffer(&self, buffer: &mut Self::BufferHandle) {
+        unsafe {
+            self.device_context()
+                .vma_allocator
+                .destroy_buffer(buffer.buffer, &mut buffer.vma_allocation);
+        }
+    }
+
+    fn create_compute_pipeline(
+        &self,
+        shader: &Self::ShaderHandle,
+    ) -> Result<Self::ComputePipelineHandle, RendererError> {
+        let device_context = &self.device_context();
+        let bindings = (0..4)
+            .map(|i| {
+                ash::vk::DescriptorSetLayoutBinding::default()
+                    .binding(i)
+                    .descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER)
+                    .descriptor_count(1)
+                    .stage_flags(ash::vk::ShaderStageFlags::COMPUTE)
+            })
+            .collect::<Vec<_>>();
+
+        let layout_info = ash::vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
+        let descriptor_layout = unsafe {
+            device_context
+                .logical_device
+                .create_descriptor_set_layout(&layout_info, None)
+                .unwrap()
+        };
+
+        let pipeline_layout_info = ash::vk::PipelineLayoutCreateInfo::default()
+            .set_layouts(std::slice::from_ref(&descriptor_layout));
+        let layout = unsafe {
+            device_context
+                .logical_device
+                .create_pipeline_layout(&pipeline_layout_info, None)
+                .unwrap()
+        };
+
+        let entry_name = std::ffi::CString::new("main").unwrap();
+        let stage_info = ash::vk::PipelineShaderStageCreateInfo::default()
+            .stage(ash::vk::ShaderStageFlags::COMPUTE)
+            .module(*shader)
+            .name(&entry_name);
+
+        let compute_info = ash::vk::ComputePipelineCreateInfo::default()
+            .layout(layout)
+            .stage(stage_info);
+        let pipeline = unsafe {
+            device_context
+                .logical_device
+                .create_compute_pipelines(ash::vk::PipelineCache::null(), &[compute_info], None)
+                .unwrap()[0]
+        };
+
+        Ok(VulkanComputePipeline {
+            pipeline,
+            layout,
+            descriptor_layout,
+        })
+    }
+
+    fn destroy_compute_pipeline(&self, pipeline: Self::ComputePipelineHandle) {
+        let device_context = self.device_context();
+        unsafe {
+            device_context
+                .logical_device
+                .destroy_pipeline(pipeline.pipeline, None);
+            device_context
+                .logical_device
+                .destroy_pipeline_layout(pipeline.layout, None);
+            device_context
+                .logical_device
+                .destroy_descriptor_set_layout(pipeline.descriptor_layout, None);
+        }
+    }
+
+    fn wait_idle(&self) -> Result<(), RendererError> {
+        let device_context = self.device_context();
+        unsafe {
+            device_context
+                .logical_device
+                .device_wait_idle()
+                .map_err(|e| RendererError::Fail(format!("Wait idle failed: {}", e)))?;
+        }
+        Ok(())
+    }
+
+    fn dispatch_compute(
+        &mut self,
+        pipeline: &Self::ComputePipelineHandle,
+        buffers: &[&Self::BufferHandle],
+        group_count: (u32, u32, u32),
+    ) -> Result<(), RendererError> {
+        let device_context = self.device_context();
+
+        let pool_sizes = [ash::vk::DescriptorPoolSize::default()
+            .ty(ash::vk::DescriptorType::STORAGE_BUFFER)
+            .descriptor_count(buffers.len() as u32)];
+        let pool_info = ash::vk::DescriptorPoolCreateInfo::default()
+            .max_sets(1)
+            .pool_sizes(&pool_sizes);
+        let desc_pool = unsafe {
+            device_context
+                .logical_device
+                .create_descriptor_pool(&pool_info, None)
+                .unwrap()
+        };
+
+        let alloc_info = ash::vk::DescriptorSetAllocateInfo::default()
+            .descriptor_pool(desc_pool)
+            .set_layouts(std::slice::from_ref(&pipeline.descriptor_layout));
+        let desc_set = unsafe {
+            device_context
+                .logical_device
+                .allocate_descriptor_sets(&alloc_info)
+                .unwrap()[0]
+        };
+
+        let buffer_infos: Vec<_> = buffers
+            .iter()
+            .map(|buf| {
+                ash::vk::DescriptorBufferInfo::default()
+                    .buffer(buf.buffer)
+                    .offset(0)
+                    .range(ash::vk::WHOLE_SIZE)
+            })
+            .collect();
+
+        let writes: Vec<_> = buffer_infos
+            .iter()
+            .enumerate()
+            .map(|(i, info)| {
+                ash::vk::WriteDescriptorSet::default()
+                    .dst_set(desc_set)
+                    .dst_binding(i as u32)
+                    .descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER)
+                    .buffer_info(std::slice::from_ref(info))
+            })
+            .collect();
+
+        unsafe {
+            device_context
+                .logical_device
+                .update_descriptor_sets(&writes, &[]);
+        }
+
+        let cmd = device_context.compute_command_buffers[0];
+        let begin_info = ash::vk::CommandBufferBeginInfo::default()
+            .flags(ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+
+        unsafe {
+            device_context
+                .logical_device
+                .begin_command_buffer(cmd, &begin_info)
+                .unwrap();
+            device_context.logical_device.cmd_bind_pipeline(
+                cmd,
+                ash::vk::PipelineBindPoint::COMPUTE,
+                pipeline.pipeline,
+            );
+            device_context.logical_device.cmd_bind_descriptor_sets(
+                cmd,
+                ash::vk::PipelineBindPoint::COMPUTE,
+                pipeline.layout,
+                0,
+                &[desc_set],
+                &[],
+            );
+            device_context.logical_device.cmd_dispatch(
+                cmd,
+                group_count.0,
+                group_count.1,
+                group_count.2,
+            );
+            device_context
+                .logical_device
+                .end_command_buffer(cmd)
+                .unwrap();
+        }
+
+        let submit_info =
+            ash::vk::SubmitInfo::default().command_buffers(std::slice::from_ref(&cmd));
+        unsafe {
+            device_context
+                .logical_device
+                .queue_submit(
+                    device_context.compute_queue.unwrap(),
+                    &[submit_info],
+                    ash::vk::Fence::null(),
+                )
+                .unwrap();
+            device_context
+                .logical_device
+                .queue_wait_idle(device_context.compute_queue.unwrap())
+                .unwrap();
+            device_context
+                .logical_device
+                .destroy_descriptor_pool(desc_pool, None);
+        }
+
+        Ok(())
     }
 
     fn clear(&mut self, color: RGB<f32>) -> Result<(), RendererError> {

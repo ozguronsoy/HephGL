@@ -12,4 +12,5 @@ ash-window = "0.13.0"
 vk-mem = "0.5.0"
 
 [dev-dependencies]
+bytemuck = "1.25.0"
 winit = "0.30.13"

@@ -1,5 +1,6 @@
 use heph_gl::renderers::vulkan_renderer::VulkanRenderer;
-use heph_gl::renderers::{FeatureRequest, InitializeOptions, Renderer};
+use heph_gl::renderers::{BufferUsage, FeatureRequest, InitializeOptions, Renderer};
+use heph_gl::shader::ShaderSource;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use renkrs::RGB;
 use winit::application::ApplicationHandler;
@@ -64,9 +65,11 @@ impl ApplicationHandler for App {
                             for dev in &graphics_devices {
                                 println!("{}", dev);
                             }
-                            active_renderer.set_settings(heph_gl::renderers::Settings {
-                                frames_in_flight: 2,
-                            }).unwrap();
+                            active_renderer
+                                .set_settings(heph_gl::renderers::Settings {
+                                    frames_in_flight: 2,
+                                })
+                                .unwrap();
                             active_renderer
                                 .set_device(
                                     &graphics_devices[0],
@@ -103,6 +106,70 @@ impl ApplicationHandler for App {
                                     b: 1.0,
                                 })
                                 .unwrap();
+                        }
+                        PhysicalKey::Code(KeyCode::KeyC) => {
+                            let shader_path = "C:\\Users\\ozgur\\OneDrive\\Desktop\\Projects\\HephGL\\examples\\shaders\\addition.spv";
+                            let shader_module = active_renderer
+                                .create_shader(&ShaderSource::from_file(shader_path).unwrap())
+                                .unwrap();
+
+                            let pipeline = active_renderer
+                                .create_compute_pipeline(&shader_module)
+                                .unwrap();
+                            let data_count = 256;
+                            let byte_size = (data_count * std::mem::size_of::<f32>()) as u64;
+
+                            let mut a_data = vec![0.0f32; data_count];
+                            let mut b_data = vec![0.0f32; data_count];
+                            for i in 0..data_count {
+                                a_data[i] = i as f32;
+                                b_data[i] = (i * 2) as f32;
+                            }
+
+                            let mut buffer_a = active_renderer
+                                .create_buffer(byte_size, BufferUsage::Storage)
+                                .unwrap();
+                            let mut buffer_b = active_renderer
+                                .create_buffer(byte_size, BufferUsage::Storage)
+                                .unwrap();
+                            let mut buffer_c = active_renderer
+                                .create_buffer(byte_size, BufferUsage::Storage)
+                                .unwrap();
+
+                            active_renderer
+                                .write_buffer(&buffer_a, bytemuck::cast_slice(&a_data))
+                                .unwrap();
+                            active_renderer
+                                .write_buffer(&buffer_b, bytemuck::cast_slice(&b_data))
+                                .unwrap();
+
+                            active_renderer
+                                .dispatch_compute(
+                                    &pipeline,
+                                    &[&buffer_a, &buffer_b, &buffer_c], // Binds to set=0: binding=0, binding=1, binding=2
+                                    (1, 1, 1),
+                                )
+                                .unwrap();
+
+                            active_renderer.wait_idle().unwrap();
+
+                            let mut c_data = vec![0.0f32; data_count];
+                            active_renderer
+                                .read_buffer(&buffer_c, bytemuck::cast_slice_mut(&mut c_data))
+                                .unwrap();
+
+                            for i in 0..data_count {
+                                println!(
+                                    "Result {}: {} + {} = {}",
+                                    i, a_data[i], b_data[i], c_data[i]
+                                );
+                            }
+
+                            active_renderer.destroy_buffer(&mut buffer_a);
+                            active_renderer.destroy_buffer(&mut buffer_b);
+                            active_renderer.destroy_buffer(&mut buffer_c);
+                            active_renderer.destroy_compute_pipeline(pipeline);
+                            active_renderer.destroy_shader(shader_module);
                         }
                         PhysicalKey::Code(KeyCode::KeyQ) => {
                             active_renderer.uninitialize();

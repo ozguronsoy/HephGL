@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
 
@@ -22,6 +20,13 @@ pub struct InitializeOptions<'a> {
     pub display_handle: RawDisplayHandle,
 }
 
+pub enum BufferUsage {
+    Storage,
+    Uniform,
+    Vertex,
+    Index,
+}
+
 #[derive(Debug, Clone)]
 pub enum RendererError {
     InvalidAppName,
@@ -37,6 +42,8 @@ pub enum RendererError {
 
 pub trait Renderer {
     type ShaderHandle;
+    type BufferHandle;
+    type ComputePipelineHandle;
 
     fn new() -> Self;
 
@@ -56,6 +63,33 @@ pub trait Renderer {
 
     fn create_shader(&self, source: &ShaderSource) -> Result<Self::ShaderHandle, RendererError>;
     fn destroy_shader(&self, shader: Self::ShaderHandle);
+
+    fn create_buffer(
+        &self,
+        size: u64,
+        usage: BufferUsage,
+    ) -> Result<Self::BufferHandle, RendererError>;
+    fn write_buffer(&self, buffer: &Self::BufferHandle, data: &[u8]) -> Result<(), RendererError>;
+    fn read_buffer(
+        &self,
+        buffer: &Self::BufferHandle,
+        dest: &mut [u8],
+    ) -> Result<(), RendererError>;
+    fn destroy_buffer(&self, buffer: &mut Self::BufferHandle);
+
+    fn create_compute_pipeline(
+        &self,
+        shader: &Self::ShaderHandle,
+    ) -> Result<Self::ComputePipelineHandle, RendererError>;
+    fn destroy_compute_pipeline(&self, pipeline: Self::ComputePipelineHandle);
+
+    fn wait_idle(&self) -> Result<(), RendererError>;
+    fn dispatch_compute(
+        &mut self,
+        pipeline: &Self::ComputePipelineHandle,
+        buffers: &[&Self::BufferHandle],
+        group_count: (u32, u32, u32),
+    ) -> Result<(), RendererError>;
 
     fn clear(&mut self, color: RGB<f32>) -> Result<(), RendererError>;
 }

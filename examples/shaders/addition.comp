@@ -1,0 +1,12 @@
+#version 450
+
+layout(local_size_x = 256) in;
+
+layout(std430, set = 0, binding = 0) readonly buffer BufferA { float a[]; };
+layout(std430, set = 0, binding = 1) readonly buffer BufferB { float b[]; };
+layout(std430, set = 0, binding = 2) writeonly buffer BufferC { float c[]; };
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+    c[index] = a[index] + b[index];
+}
