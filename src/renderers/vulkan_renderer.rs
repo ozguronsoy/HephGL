@@ -48,7 +48,7 @@ struct DeviceContext {
 pub struct VulkanBuffer {
     pub(crate) buffer: ash::vk::Buffer,
     pub(crate) vma_allocation: vk_mem::Allocation,
-    pub size: u64,
+    pub(crate) size: u64,
 }
 
 pub struct VulkanComputePipeline {
@@ -1168,5 +1168,11 @@ impl DeviceContext {
         self.compute_queue_info
             .as_mut()
             .expect("Device is not initialized with `ComputeShaders` feature.")
+    }
+}
+
+impl VulkanBuffer {
+    fn size(&self) -> u64 {
+        self.size
     }
 }
