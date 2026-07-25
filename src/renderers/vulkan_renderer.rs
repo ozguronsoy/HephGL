@@ -2,10 +2,17 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString};
 
 use ash::vk::{
-    ApplicationInfo, CommandBuffer, CommandPool, DeviceQueueCreateInfo, InstanceCreateInfo,
-    MemoryHeapFlags, PhysicalDeviceFeatures2, PhysicalDeviceMemoryProperties2,
-    PhysicalDeviceProperties2, PhysicalDeviceType, Queue, QueueFamilyProperties2, QueueFlags,
-    ShaderModuleCreateInfo, StructureType, SurfaceKHR,
+    ApplicationInfo, Buffer, BufferCreateInfo, BufferUsageFlags, CommandBuffer,
+    CommandBufferAllocateInfo, CommandBufferBeginInfo, CommandBufferLevel, CommandBufferUsageFlags,
+    CommandPool, CommandPoolCreateFlags, CommandPoolCreateInfo, ComputePipelineCreateInfo,
+    DescriptorBufferInfo, DescriptorPoolCreateInfo, DescriptorPoolSize, DescriptorSetAllocateInfo,
+    DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType,
+    DeviceCreateInfo, DeviceQueueCreateInfo, Fence, InstanceCreateInfo, MemoryHeapFlags,
+    PhysicalDeviceFeatures2, PhysicalDeviceMemoryProperties2, PhysicalDeviceProperties2,
+    PhysicalDeviceType, Pipeline, PipelineBindPoint, PipelineCache, PipelineLayout,
+    PipelineLayoutCreateInfo, PipelineShaderStageCreateInfo, Queue, QueueFamilyProperties2,
+    QueueFlags, ShaderModule, ShaderModuleCreateInfo, ShaderStageFlags, StructureType, SubmitInfo,
+    SurfaceKHR, WriteDescriptorSet,
 };
 use ash::{Entry, Instance};
 use renkrs::RGB;
@@ -46,15 +53,15 @@ struct DeviceContext {
 }
 
 pub struct VulkanBuffer {
-    pub(crate) buffer: ash::vk::Buffer,
+    pub(crate) buffer: Buffer,
     pub(crate) vma_allocation: vk_mem::Allocation,
     pub(crate) size: u64,
 }
 
 pub struct VulkanComputePipeline {
-    pub(crate) pipeline: ash::vk::Pipeline,
-    pub(crate) layout: ash::vk::PipelineLayout,
-    pub(crate) descriptor_layout: ash::vk::DescriptorSetLayout,
+    pub(crate) pipeline: Pipeline,
+    pub(crate) layout: PipelineLayout,
+    pub(crate) descriptor_layout: DescriptorSetLayout,
 }
 
 pub struct VulkanRenderer {
@@ -71,7 +78,7 @@ pub struct VulkanRenderer {
 }
 
 impl Renderer for VulkanRenderer {
-    type ShaderHandle = ash::vk::ShaderModule;
+    type ShaderHandle = ShaderModule;
     type BufferHandle = VulkanBuffer;
     type ComputePipelineHandle = VulkanComputePipeline;
 
@@ -481,7 +488,7 @@ impl Renderer for VulkanRenderer {
         };
         let mut vk_physical_device = None;
         for pd in physical_devices {
-            let mut properties2 = ash::vk::PhysicalDeviceProperties2::default();
+            let mut properties2 = PhysicalDeviceProperties2::default();
             unsafe {
                 self.instance()
                     .get_physical_device_properties2(pd, &mut properties2);
@@ -499,7 +506,7 @@ impl Renderer for VulkanRenderer {
         })?;
 
         let device_extension_names = [ash::vk::KHR_SWAPCHAIN_NAME.as_ptr()];
-        let mut physical_features2 = ash::vk::PhysicalDeviceFeatures2::default();
+        let mut physical_features2 = PhysicalDeviceFeatures2::default();
         if available_features.contains(&Feature::GeometryShaders) {
             physical_features2.features.geometry_shader = ash::vk::TRUE;
         }
@@ -513,7 +520,7 @@ impl Renderer for VulkanRenderer {
             physical_features2.features.sampler_anisotropy = ash::vk::TRUE;
         }
 
-        let mut device_create_info = ash::vk::DeviceCreateInfo::default()
+        let mut device_create_info = DeviceCreateInfo::default()
             .queue_create_infos(&queue_create_infos)
             .enabled_extension_names(&device_extension_names);
         device_create_info.p_next = &physical_features2 as *const _ as *const std::ffi::c_void;
@@ -567,8 +574,8 @@ impl Renderer for VulkanRenderer {
 
         // Create command pools.
 
-        let graphics_pool_info = ash::vk::CommandPoolCreateInfo::default()
-            .flags(ash::vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+        let graphics_pool_info = CommandPoolCreateInfo::default()
+            .flags(CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
             .queue_family_index(graphics_family.index);
         let graphics_command_pool = unsafe {
             logical_device
@@ -580,8 +587,8 @@ impl Renderer for VulkanRenderer {
 
         let mut transfer_command_pool = None;
         if let Some(transfer_family) = transfer_family {
-            let transfer_pool_info = ash::vk::CommandPoolCreateInfo::default()
-                .flags(ash::vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+            let transfer_pool_info = CommandPoolCreateInfo::default()
+                .flags(CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
                 .queue_family_index(transfer_family.index);
             transfer_command_pool = Some(unsafe {
                 logical_device
@@ -597,8 +604,8 @@ impl Renderer for VulkanRenderer {
 
         let mut compute_command_pool = None;
         if let Some(compute_family) = compute_family {
-            let compute_pool_info = ash::vk::CommandPoolCreateInfo::default()
-                .flags(ash::vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+            let compute_pool_info = CommandPoolCreateInfo::default()
+                .flags(CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
                 .queue_family_index(compute_family.index);
             compute_command_pool = Some(unsafe {
                 logical_device
@@ -685,15 +692,13 @@ impl Renderer for VulkanRenderer {
     ) -> Result<Self::BufferHandle, RendererError> {
         let device_context = self.device_context();
         let vk_usage = match usage {
-            BufferUsage::Storage => ash::vk::BufferUsageFlags::STORAGE_BUFFER,
-            BufferUsage::Uniform => ash::vk::BufferUsageFlags::UNIFORM_BUFFER,
-            BufferUsage::Vertex => ash::vk::BufferUsageFlags::VERTEX_BUFFER,
-            BufferUsage::Index => ash::vk::BufferUsageFlags::INDEX_BUFFER,
+            BufferUsage::Storage => BufferUsageFlags::STORAGE_BUFFER,
+            BufferUsage::Uniform => BufferUsageFlags::UNIFORM_BUFFER,
+            BufferUsage::Vertex => BufferUsageFlags::VERTEX_BUFFER,
+            BufferUsage::Index => BufferUsageFlags::INDEX_BUFFER,
         };
 
-        let buffer_info = ash::vk::BufferCreateInfo::default()
-            .size(size)
-            .usage(vk_usage);
+        let buffer_info = BufferCreateInfo::default().size(size).usage(vk_usage);
         let alloc_info = vk_mem::AllocationCreateInfo {
             usage: vk_mem::MemoryUsage::Auto,
             flags: vk_mem::AllocationCreateFlags::MAPPED
@@ -775,15 +780,15 @@ impl Renderer for VulkanRenderer {
         let device_context = &self.device_context();
         let bindings = (0..4)
             .map(|i| {
-                ash::vk::DescriptorSetLayoutBinding::default()
+                DescriptorSetLayoutBinding::default()
                     .binding(i)
-                    .descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER)
+                    .descriptor_type(DescriptorType::STORAGE_BUFFER)
                     .descriptor_count(1)
-                    .stage_flags(ash::vk::ShaderStageFlags::COMPUTE)
+                    .stage_flags(ShaderStageFlags::COMPUTE)
             })
             .collect::<Vec<_>>();
 
-        let layout_info = ash::vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
+        let layout_info = DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
         let descriptor_layout = unsafe {
             device_context
                 .logical_device
@@ -791,7 +796,7 @@ impl Renderer for VulkanRenderer {
                 .unwrap()
         };
 
-        let pipeline_layout_info = ash::vk::PipelineLayoutCreateInfo::default()
+        let pipeline_layout_info = PipelineLayoutCreateInfo::default()
             .set_layouts(std::slice::from_ref(&descriptor_layout));
         let layout = unsafe {
             device_context
@@ -801,18 +806,18 @@ impl Renderer for VulkanRenderer {
         };
 
         let entry_name = std::ffi::CString::new("main").unwrap();
-        let stage_info = ash::vk::PipelineShaderStageCreateInfo::default()
-            .stage(ash::vk::ShaderStageFlags::COMPUTE)
+        let stage_info = PipelineShaderStageCreateInfo::default()
+            .stage(ShaderStageFlags::COMPUTE)
             .module(*shader)
             .name(&entry_name);
 
-        let compute_info = ash::vk::ComputePipelineCreateInfo::default()
+        let compute_info = ComputePipelineCreateInfo::default()
             .layout(layout)
             .stage(stage_info);
         let pipeline = unsafe {
             device_context
                 .logical_device
-                .create_compute_pipelines(ash::vk::PipelineCache::null(), &[compute_info], None)
+                .create_compute_pipelines(PipelineCache::null(), &[compute_info], None)
                 .unwrap()[0]
         };
 
@@ -858,10 +863,10 @@ impl Renderer for VulkanRenderer {
         let device_context = self.device_context();
         let compute_queue_info = device_context.compute_queue_info();
 
-        let pool_sizes = [ash::vk::DescriptorPoolSize::default()
-            .ty(ash::vk::DescriptorType::STORAGE_BUFFER)
+        let pool_sizes = [DescriptorPoolSize::default()
+            .ty(DescriptorType::STORAGE_BUFFER)
             .descriptor_count(buffers.len() as u32)];
-        let pool_info = ash::vk::DescriptorPoolCreateInfo::default()
+        let pool_info = DescriptorPoolCreateInfo::default()
             .max_sets(1)
             .pool_sizes(&pool_sizes);
         let desc_pool = unsafe {
@@ -871,7 +876,7 @@ impl Renderer for VulkanRenderer {
                 .unwrap()
         };
 
-        let alloc_info = ash::vk::DescriptorSetAllocateInfo::default()
+        let alloc_info = DescriptorSetAllocateInfo::default()
             .descriptor_pool(desc_pool)
             .set_layouts(std::slice::from_ref(&pipeline.descriptor_layout));
         let desc_set = unsafe {
@@ -884,7 +889,7 @@ impl Renderer for VulkanRenderer {
         let buffer_infos: Vec<_> = buffers
             .iter()
             .map(|buf| {
-                ash::vk::DescriptorBufferInfo::default()
+                DescriptorBufferInfo::default()
                     .buffer(buf.buffer)
                     .offset(0)
                     .range(ash::vk::WHOLE_SIZE)
@@ -895,10 +900,10 @@ impl Renderer for VulkanRenderer {
             .iter()
             .enumerate()
             .map(|(i, info)| {
-                ash::vk::WriteDescriptorSet::default()
+                WriteDescriptorSet::default()
                     .dst_set(desc_set)
                     .dst_binding(i as u32)
-                    .descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER)
+                    .descriptor_type(DescriptorType::STORAGE_BUFFER)
                     .buffer_info(std::slice::from_ref(info))
             })
             .collect();
@@ -910,8 +915,8 @@ impl Renderer for VulkanRenderer {
         }
 
         let cmd = compute_queue_info.command_buffers[0];
-        let begin_info = ash::vk::CommandBufferBeginInfo::default()
-            .flags(ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        let begin_info =
+            CommandBufferBeginInfo::default().flags(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
         unsafe {
             device_context
@@ -920,12 +925,12 @@ impl Renderer for VulkanRenderer {
                 .unwrap();
             device_context.logical_device.cmd_bind_pipeline(
                 cmd,
-                ash::vk::PipelineBindPoint::COMPUTE,
+                PipelineBindPoint::COMPUTE,
                 pipeline.pipeline,
             );
             device_context.logical_device.cmd_bind_descriptor_sets(
                 cmd,
-                ash::vk::PipelineBindPoint::COMPUTE,
+                PipelineBindPoint::COMPUTE,
                 pipeline.layout,
                 0,
                 &[desc_set],
@@ -943,16 +948,11 @@ impl Renderer for VulkanRenderer {
                 .unwrap();
         }
 
-        let submit_info =
-            ash::vk::SubmitInfo::default().command_buffers(std::slice::from_ref(&cmd));
+        let submit_info = SubmitInfo::default().command_buffers(std::slice::from_ref(&cmd));
         unsafe {
             device_context
                 .logical_device
-                .queue_submit(
-                    compute_queue_info.queue,
-                    &[submit_info],
-                    ash::vk::Fence::null(),
-                )
+                .queue_submit(compute_queue_info.queue, &[submit_info], Fence::null())
                 .unwrap();
             device_context
                 .logical_device
@@ -1049,12 +1049,12 @@ impl VulkanRenderer {
     fn create_command_buffers(&mut self) -> Result<(), RendererError> {
         let fif = self.settings.frames_in_flight;
         let device_context = self.device_context_mut();
-        let allocate_buffers = |pool: ash::vk::CommandPool,
+        let allocate_buffers = |pool: CommandPool,
                                 count: u32|
-         -> Result<Vec<ash::vk::CommandBuffer>, RendererError> {
-            let alloc_info = ash::vk::CommandBufferAllocateInfo::default()
+         -> Result<Vec<CommandBuffer>, RendererError> {
+            let alloc_info = CommandBufferAllocateInfo::default()
                 .command_pool(pool)
-                .level(ash::vk::CommandBufferLevel::PRIMARY)
+                .level(CommandBufferLevel::PRIMARY)
                 .command_buffer_count(count);
             unsafe {
                 device_context
