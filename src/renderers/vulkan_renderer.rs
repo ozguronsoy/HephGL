@@ -25,26 +25,22 @@ struct QueueFamily {
     pub present_supported: bool,
 }
 
+struct VulkanQueueInfo {
+    pub queue: Queue,
+    pub family_index: u32,
+    pub command_pool: CommandPool,
+    pub command_buffers: Vec<CommandBuffer>,
+}
+
 // Order of the fields matter as it determines the destruction order.
 struct DeviceContext {
     pub graphics_device: GraphicsDevice,
 
     pub vma_allocator: vk_mem::Allocator,
 
-    pub graphics_queue: Queue,
-    pub graphics_family_index: u32,
-    pub graphics_command_pool: CommandPool,
-    pub graphics_command_buffers: Vec<CommandBuffer>,
-
-    pub transfer_queue: Option<Queue>,
-    pub transfer_family_index: Option<u32>,
-    pub transfer_command_pool: Option<CommandPool>,
-    pub transfer_command_buffers: Vec<CommandBuffer>,
-
-    pub compute_queue: Option<Queue>,
-    pub compute_family_index: Option<u32>,
-    pub compute_command_pool: Option<CommandPool>,
-    pub compute_command_buffers: Vec<CommandBuffer>,
+    pub graphics_queue_info: VulkanQueueInfo,
+    pub transfer_queue_info: Option<VulkanQueueInfo>,
+    pub compute_queue_info: Option<VulkanQueueInfo>,
 
     pub logical_device: ash::Device,
 }
@@ -618,20 +614,34 @@ impl Renderer for VulkanRenderer {
 
             vma_allocator: vma_allocator,
 
-            graphics_queue,
-            graphics_family_index: graphics_family.index,
-            graphics_command_pool: graphics_command_pool,
-            graphics_command_buffers: Vec::default(),
+            graphics_queue_info: VulkanQueueInfo {
+                queue: graphics_queue,
+                family_index: graphics_family.index,
+                command_pool: graphics_command_pool,
+                command_buffers: Vec::default(),
+            },
 
-            transfer_queue: transfer_queue_handle,
-            transfer_family_index: transfer_family_idx,
-            transfer_command_pool: transfer_command_pool,
-            transfer_command_buffers: Vec::default(),
+            transfer_queue_info: if transfer_queue_handle.is_none() {
+                None
+            } else {
+                Some(VulkanQueueInfo {
+                    queue: transfer_queue_handle.unwrap(),
+                    family_index: transfer_family_idx.unwrap(),
+                    command_pool: transfer_command_pool.unwrap(),
+                    command_buffers: Vec::default(),
+                })
+            },
 
-            compute_queue: compute_queue_handle,
-            compute_family_index: compute_family_idx,
-            compute_command_pool: compute_command_pool,
-            compute_command_buffers: Vec::default(),
+            compute_queue_info: if compute_queue_handle.is_none() {
+                None
+            } else {
+                Some(VulkanQueueInfo {
+                    queue: compute_queue_handle.unwrap(),
+                    family_index: compute_family_idx.unwrap(),
+                    command_pool: compute_command_pool.unwrap(),
+                    command_buffers: Vec::default(),
+                })
+            },
 
             logical_device: logical_device,
         });
@@ -846,6 +856,7 @@ impl Renderer for VulkanRenderer {
         group_count: (u32, u32, u32),
     ) -> Result<(), RendererError> {
         let device_context = self.device_context();
+        let compute_queue_info = device_context.compute_queue_info();
 
         let pool_sizes = [ash::vk::DescriptorPoolSize::default()
             .ty(ash::vk::DescriptorType::STORAGE_BUFFER)
@@ -898,7 +909,7 @@ impl Renderer for VulkanRenderer {
                 .update_descriptor_sets(&writes, &[]);
         }
 
-        let cmd = device_context.compute_command_buffers[0];
+        let cmd = compute_queue_info.command_buffers[0];
         let begin_info = ash::vk::CommandBufferBeginInfo::default()
             .flags(ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
@@ -938,14 +949,14 @@ impl Renderer for VulkanRenderer {
             device_context
                 .logical_device
                 .queue_submit(
-                    device_context.compute_queue.unwrap(),
+                    compute_queue_info.queue,
                     &[submit_info],
                     ash::vk::Fence::null(),
                 )
                 .unwrap();
             device_context
                 .logical_device
-                .queue_wait_idle(device_context.compute_queue.unwrap())
+                .queue_wait_idle(compute_queue_info.queue)
                 .unwrap();
             device_context
                 .logical_device
@@ -1056,50 +1067,56 @@ impl VulkanRenderer {
         };
 
         // Free the old buffers.
-        if device_context.graphics_command_buffers.len() > 0 {
+        if device_context.graphics_queue_info.command_buffers.len() > 0 {
             unsafe {
                 let _ = device_context.logical_device.device_wait_idle();
 
                 device_context.logical_device.free_command_buffers(
-                    device_context.graphics_command_pool,
-                    &device_context.graphics_command_buffers,
+                    device_context.graphics_queue_info.command_pool,
+                    &device_context.graphics_queue_info.command_buffers,
                 );
-                device_context.graphics_command_buffers.clear();
+                device_context.graphics_queue_info.command_buffers.clear();
 
-                if device_context.transfer_command_buffers.len() > 0 {
+                if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info
+                    && transfer_queue_info.command_buffers.len() > 0
+                {
                     device_context.logical_device.free_command_buffers(
-                        device_context.transfer_command_pool.unwrap(),
-                        &device_context.transfer_command_buffers,
+                        transfer_queue_info.command_pool,
+                        &transfer_queue_info.command_buffers,
                     );
-                    device_context.transfer_command_buffers.clear();
+                    transfer_queue_info.command_buffers.clear();
                 }
 
-                if device_context.compute_command_buffers.len() > 0 {
+                if let Some(compute_queue_info) = &mut device_context.compute_queue_info
+                    && compute_queue_info.command_buffers.len() > 0
+                {
                     device_context.logical_device.free_command_buffers(
-                        device_context.compute_command_pool.unwrap(),
-                        &device_context.compute_command_buffers,
+                        compute_queue_info.command_pool,
+                        &compute_queue_info.command_buffers,
                     );
-                    device_context.compute_command_buffers.clear();
+                    compute_queue_info.command_buffers.clear();
                 }
             }
         }
 
-        device_context.graphics_command_buffers =
-            allocate_buffers(device_context.graphics_command_pool, fif)?;
+        device_context.graphics_queue_info.command_buffers =
+            allocate_buffers(device_context.graphics_queue_info.command_pool, fif)?;
 
-        if let Some(pool) = device_context.transfer_command_pool {
-            device_context.transfer_command_buffers = allocate_buffers(pool, fif)?;
+        if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info {
+            transfer_queue_info.command_buffers =
+                allocate_buffers(transfer_queue_info.command_pool, fif)?;
         }
 
-        if let Some(pool) = device_context.compute_command_pool {
-            device_context.compute_command_buffers = allocate_buffers(pool, fif)?;
+        if let Some(compute_queue_info) = &mut device_context.compute_queue_info {
+            compute_queue_info.command_buffers =
+                allocate_buffers(compute_queue_info.command_pool, fif)?;
         }
 
         Ok(())
     }
 
     fn uninitialize_device(&mut self) {
-        if let Some(device_context) = self.device_context.take() {
+        if let Some(mut device_context) = self.device_context.take() {
             unsafe {
                 // Wait for the GPU to finish all pending operations before uninitializing to prevent segfaults.
                 let _ = device_context.logical_device.device_wait_idle();
@@ -1107,21 +1124,49 @@ impl VulkanRenderer {
                 // Destroy the command pools
                 device_context
                     .logical_device
-                    .destroy_command_pool(device_context.graphics_command_pool, None);
-                if let Some(transfer_command_pool) = device_context.transfer_command_pool {
+                    .destroy_command_pool(device_context.graphics_queue_info.command_pool, None);
+                if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info {
                     device_context
                         .logical_device
-                        .destroy_command_pool(transfer_command_pool, None);
+                        .destroy_command_pool(transfer_queue_info.command_pool, None);
                 }
-                if let Some(compute_command_pool) = device_context.compute_command_pool {
+                if let Some(compute_queue_info) = &mut device_context.compute_queue_info {
                     device_context
                         .logical_device
-                        .destroy_command_pool(compute_command_pool, None);
+                        .destroy_command_pool(compute_queue_info.command_pool, None);
                 }
 
                 drop(device_context.vma_allocator);
                 device_context.logical_device.destroy_device(None);
             }
         }
+    }
+}
+
+impl DeviceContext {
+    #[inline]
+    fn transfer_queue_info(&self) -> &VulkanQueueInfo {
+        self.transfer_queue_info
+            .as_ref()
+            .expect("Device is not initialized with `AsyncTransfer` feature.")
+    }
+    #[inline]
+    fn transfer_queue_info_mut(&mut self) -> &mut VulkanQueueInfo {
+        self.transfer_queue_info
+            .as_mut()
+            .expect("Device is not initialized with `AsyncTransfer` feature.")
+    }
+
+    #[inline]
+    fn compute_queue_info(&self) -> &VulkanQueueInfo {
+        self.compute_queue_info
+            .as_ref()
+            .expect("Device is not initialized with `ComputeShaders` feature.")
+    }
+    #[inline]
+    fn compute_queue_info_mut(&mut self) -> &mut VulkanQueueInfo {
+        self.compute_queue_info
+            .as_mut()
+            .expect("Device is not initialized with `ComputeShaders` feature.")
     }
 }
