@@ -53,15 +53,15 @@ struct DeviceContext {
 }
 
 pub struct VulkanBuffer {
-    pub(crate) buffer: Buffer,
-    pub(crate) vma_allocation: vk_mem::Allocation,
-    pub(crate) size: u64,
+    buffer: Buffer,
+    vma_allocation: vk_mem::Allocation,
+    size: u64,
 }
 
 pub struct VulkanComputePipeline {
-    pub(crate) pipeline: Pipeline,
-    pub(crate) layout: PipelineLayout,
-    pub(crate) descriptor_layout: DescriptorSetLayout,
+    pipeline: Pipeline,
+    layout: PipelineLayout,
+    descriptor_layout: DescriptorSetLayout,
 }
 
 pub struct VulkanRenderer {
