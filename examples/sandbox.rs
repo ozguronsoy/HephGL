@@ -113,62 +113,65 @@ impl ApplicationHandler for App {
                                 .create_shader(&ShaderSource::from_file(shader_path).unwrap())
                                 .unwrap();
 
-                            let pipeline = active_renderer
-                                .create_compute_pipeline(&shader_module)
-                                .unwrap();
-                            let data_count = 256;
-                            let byte_size = (data_count * std::mem::size_of::<f32>()) as u64;
+                            for i in 1..10 {
+                                let pipeline = active_renderer
+                                    .create_compute_pipeline(&shader_module)
+                                    .unwrap();
+                                let data_count = 256;
+                                let byte_size = (data_count * std::mem::size_of::<f32>()) as u64;
 
-                            let mut a_data = vec![0.0f32; data_count];
-                            let mut b_data = vec![0.0f32; data_count];
-                            for i in 0..data_count {
-                                a_data[i] = i as f32;
-                                b_data[i] = (i * 2) as f32;
+                                let mut a_data = vec![0.0f32; data_count];
+                                let mut b_data = vec![0.0f32; data_count];
+                                for j in 0..data_count {
+                                    a_data[j] = (j * i) as f32;
+                                    b_data[j] = ((j * 2) * i) as f32;
+                                }
+
+                                let mut buffer_a = active_renderer
+                                    .create_buffer(byte_size, BufferUsage::Storage)
+                                    .unwrap();
+                                let mut buffer_b = active_renderer
+                                    .create_buffer(byte_size, BufferUsage::Storage)
+                                    .unwrap();
+                                let mut buffer_c = active_renderer
+                                    .create_buffer(byte_size, BufferUsage::Storage)
+                                    .unwrap();
+
+                                active_renderer
+                                    .write_buffer(&buffer_a, bytemuck::cast_slice(&a_data))
+                                    .unwrap();
+                                active_renderer
+                                    .write_buffer(&buffer_b, bytemuck::cast_slice(&b_data))
+                                    .unwrap();
+
+                                active_renderer
+                                    .dispatch_compute(
+                                        &pipeline,
+                                        &[&buffer_a, &buffer_b, &buffer_c], // Binds to set=0: binding=0, binding=1, binding=2
+                                        (1, 1, 1),
+                                    )
+                                    .unwrap();
+
+                                active_renderer.wait_idle().unwrap();
+
+                                let mut c_data = vec![0.0f32; data_count];
+                                active_renderer
+                                    .read_buffer(&buffer_c, bytemuck::cast_slice_mut(&mut c_data))
+                                    .unwrap();
+
+                                {
+                                    let j = 10;
+                                    println!(
+                                        "Result[{}] {}: {} + {} = {}",
+                                        i, j, a_data[j], b_data[j], c_data[j]
+                                    );
+                                }
+
+                                active_renderer.destroy_buffer(&mut buffer_a);
+                                active_renderer.destroy_buffer(&mut buffer_b);
+                                active_renderer.destroy_buffer(&mut buffer_c);
+                                active_renderer.destroy_compute_pipeline(pipeline);
                             }
-
-                            let mut buffer_a = active_renderer
-                                .create_buffer(byte_size, BufferUsage::Storage)
-                                .unwrap();
-                            let mut buffer_b = active_renderer
-                                .create_buffer(byte_size, BufferUsage::Storage)
-                                .unwrap();
-                            let mut buffer_c = active_renderer
-                                .create_buffer(byte_size, BufferUsage::Storage)
-                                .unwrap();
-
-                            active_renderer
-                                .write_buffer(&buffer_a, bytemuck::cast_slice(&a_data))
-                                .unwrap();
-                            active_renderer
-                                .write_buffer(&buffer_b, bytemuck::cast_slice(&b_data))
-                                .unwrap();
-
-                            active_renderer
-                                .dispatch_compute(
-                                    &pipeline,
-                                    &[&buffer_a, &buffer_b, &buffer_c], // Binds to set=0: binding=0, binding=1, binding=2
-                                    (1, 1, 1),
-                                )
-                                .unwrap();
-
-                            active_renderer.wait_idle().unwrap();
-
-                            let mut c_data = vec![0.0f32; data_count];
-                            active_renderer
-                                .read_buffer(&buffer_c, bytemuck::cast_slice_mut(&mut c_data))
-                                .unwrap();
-
-                            for i in 0..data_count {
-                                println!(
-                                    "Result {}: {} + {} = {}",
-                                    i, a_data[i], b_data[i], c_data[i]
-                                );
-                            }
-
-                            active_renderer.destroy_buffer(&mut buffer_a);
-                            active_renderer.destroy_buffer(&mut buffer_b);
-                            active_renderer.destroy_buffer(&mut buffer_c);
-                            active_renderer.destroy_compute_pipeline(pipeline);
                             active_renderer.destroy_shader(shader_module);
                         }
                         PhysicalKey::Code(KeyCode::KeyQ) => {

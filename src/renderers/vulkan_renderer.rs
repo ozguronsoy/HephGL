@@ -5,14 +5,14 @@ use ash::vk::{
     ApplicationInfo, Buffer, BufferCreateInfo, BufferUsageFlags, CommandBuffer,
     CommandBufferAllocateInfo, CommandBufferBeginInfo, CommandBufferLevel, CommandBufferUsageFlags,
     CommandPool, CommandPoolCreateFlags, CommandPoolCreateInfo, ComputePipelineCreateInfo,
-    DescriptorBufferInfo, DescriptorPoolCreateInfo, DescriptorPoolSize, DescriptorSetAllocateInfo,
-    DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType,
-    DeviceCreateInfo, DeviceQueueCreateInfo, Fence, InstanceCreateInfo, MemoryHeapFlags,
-    PhysicalDeviceFeatures2, PhysicalDeviceMemoryProperties2, PhysicalDeviceProperties2,
-    PhysicalDeviceType, Pipeline, PipelineBindPoint, PipelineCache, PipelineLayout,
-    PipelineLayoutCreateInfo, PipelineShaderStageCreateInfo, Queue, QueueFamilyProperties2,
-    QueueFlags, ShaderModule, ShaderModuleCreateInfo, ShaderStageFlags, StructureType, SubmitInfo,
-    SurfaceKHR, WriteDescriptorSet,
+    DescriptorBufferInfo, DescriptorPool, DescriptorPoolCreateInfo, DescriptorPoolSize,
+    DescriptorSetAllocateInfo, DescriptorSetLayout, DescriptorSetLayoutBinding,
+    DescriptorSetLayoutCreateInfo, DescriptorType, DeviceCreateInfo, DeviceQueueCreateInfo, Fence,
+    InstanceCreateInfo, MemoryHeapFlags, PhysicalDeviceFeatures2, PhysicalDeviceMemoryProperties2,
+    PhysicalDeviceProperties2, PhysicalDeviceType, Pipeline, PipelineBindPoint, PipelineCache,
+    PipelineLayout, PipelineLayoutCreateInfo, PipelineShaderStageCreateInfo, Queue,
+    QueueFamilyProperties2, QueueFlags, ShaderModule, ShaderModuleCreateInfo, ShaderStageFlags,
+    StructureType, SubmitInfo, SurfaceKHR, WriteDescriptorSet,
 };
 use ash::{Entry, Instance};
 use renkrs::RGB;
@@ -37,6 +37,8 @@ struct VulkanQueueInfo {
     pub family_index: u32,
     pub command_pool: CommandPool,
     pub command_buffers: Vec<CommandBuffer>,
+    pub fences: Vec<Fence>,
+    pub descriptor_pools: HashMap<u32, DescriptorPool>,
 }
 
 // Order of the fields matter as it determines the destruction order.
@@ -66,6 +68,7 @@ pub struct VulkanComputePipeline {
 
 pub struct VulkanRenderer {
     settings: Settings,
+    current_frame: u32,
 
     entry: Option<Entry>,
     instance: Option<Instance>,
@@ -85,6 +88,7 @@ impl Renderer for VulkanRenderer {
     fn new() -> Self {
         Self {
             settings: Settings::default(),
+            current_frame: 0,
 
             entry: None,
             instance: None,
@@ -626,6 +630,8 @@ impl Renderer for VulkanRenderer {
                 family_index: graphics_family.index,
                 command_pool: graphics_command_pool,
                 command_buffers: Vec::default(),
+                fences: Vec::default(),
+                descriptor_pools: HashMap::default(),
             },
 
             transfer_queue_info: if transfer_queue_handle.is_none() {
@@ -636,6 +642,8 @@ impl Renderer for VulkanRenderer {
                     family_index: transfer_family_idx.unwrap(),
                     command_pool: transfer_command_pool.unwrap(),
                     command_buffers: Vec::default(),
+                    fences: Vec::default(),
+                    descriptor_pools: HashMap::default(),
                 })
             },
 
@@ -647,12 +655,15 @@ impl Renderer for VulkanRenderer {
                     family_index: compute_family_idx.unwrap(),
                     command_pool: compute_command_pool.unwrap(),
                     command_buffers: Vec::default(),
+                    fences: Vec::default(),
+                    descriptor_pools: HashMap::default(),
                 })
             },
 
             logical_device: logical_device,
         });
         self.create_command_buffers()?;
+        self.create_fences()?;
 
         Ok(())
     }
@@ -860,8 +871,11 @@ impl Renderer for VulkanRenderer {
         buffers: &[&Self::BufferHandle],
         group_count: (u32, u32, u32),
     ) -> Result<(), RendererError> {
-        let device_context = self.device_context();
-        let compute_queue_info = device_context.compute_queue_info();
+        let current_frame = self.current_frame;
+        let device_context = self.device_context_mut();
+        let logical_device = &device_context.logical_device;
+        // TODO: fix this.
+        let compute_queue_info = device_context.compute_queue_info.as_mut().unwrap();
 
         let pool_sizes = [DescriptorPoolSize::default()
             .ty(DescriptorType::STORAGE_BUFFER)
@@ -870,8 +884,7 @@ impl Renderer for VulkanRenderer {
             .max_sets(1)
             .pool_sizes(&pool_sizes);
         let desc_pool = unsafe {
-            device_context
-                .logical_device
+            logical_device
                 .create_descriptor_pool(&pool_info, None)
                 .unwrap()
         };
@@ -880,8 +893,7 @@ impl Renderer for VulkanRenderer {
             .descriptor_pool(desc_pool)
             .set_layouts(std::slice::from_ref(&pipeline.descriptor_layout));
         let desc_set = unsafe {
-            device_context
-                .logical_device
+            logical_device
                 .allocate_descriptor_sets(&alloc_info)
                 .unwrap()[0]
         };
@@ -909,26 +921,19 @@ impl Renderer for VulkanRenderer {
             .collect();
 
         unsafe {
-            device_context
-                .logical_device
-                .update_descriptor_sets(&writes, &[]);
+            logical_device.update_descriptor_sets(&writes, &[]);
         }
 
-        let cmd = compute_queue_info.command_buffers[0];
+        let cmd = compute_queue_info.command_buffers[current_frame as usize];
         let begin_info =
             CommandBufferBeginInfo::default().flags(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
         unsafe {
-            device_context
-                .logical_device
+            logical_device
                 .begin_command_buffer(cmd, &begin_info)
                 .unwrap();
-            device_context.logical_device.cmd_bind_pipeline(
-                cmd,
-                PipelineBindPoint::COMPUTE,
-                pipeline.pipeline,
-            );
-            device_context.logical_device.cmd_bind_descriptor_sets(
+            logical_device.cmd_bind_pipeline(cmd, PipelineBindPoint::COMPUTE, pipeline.pipeline);
+            logical_device.cmd_bind_descriptor_sets(
                 cmd,
                 PipelineBindPoint::COMPUTE,
                 pipeline.layout,
@@ -936,32 +941,29 @@ impl Renderer for VulkanRenderer {
                 &[desc_set],
                 &[],
             );
-            device_context.logical_device.cmd_dispatch(
-                cmd,
-                group_count.0,
-                group_count.1,
-                group_count.2,
-            );
-            device_context
-                .logical_device
-                .end_command_buffer(cmd)
-                .unwrap();
+            logical_device.cmd_dispatch(cmd, group_count.0, group_count.1, group_count.2);
+            logical_device.end_command_buffer(cmd).unwrap();
         }
 
         let submit_info = SubmitInfo::default().command_buffers(std::slice::from_ref(&cmd));
+        let current_fence = compute_queue_info.fences[current_frame as usize];
         unsafe {
-            device_context
-                .logical_device
-                .queue_submit(compute_queue_info.queue, &[submit_info], Fence::null())
+            logical_device
+                .wait_for_fences(&[current_fence], true, std::u64::MAX)
                 .unwrap();
-            device_context
-                .logical_device
-                .queue_wait_idle(compute_queue_info.queue)
+            logical_device.reset_fences(&[current_fence]).unwrap();
+            logical_device
+                .queue_submit(compute_queue_info.queue, &[submit_info], current_fence)
                 .unwrap();
-            device_context
-                .logical_device
-                .destroy_descriptor_pool(desc_pool, None);
+
+            if let Some(prev_desc_pool) = compute_queue_info.descriptor_pools.get(&current_frame) {
+                logical_device.destroy_descriptor_pool(*prev_desc_pool, None);
+            }
+            compute_queue_info
+                .descriptor_pools
+                .insert(current_frame, desc_pool);
         }
+        self.current_frame = (self.current_frame + 1) % self.settings.frames_in_flight;
 
         Ok(())
     }
@@ -1110,6 +1112,97 @@ impl VulkanRenderer {
         if let Some(compute_queue_info) = &mut device_context.compute_queue_info {
             compute_queue_info.command_buffers =
                 allocate_buffers(compute_queue_info.command_pool, fif)?;
+        }
+
+        Ok(())
+    }
+
+    fn create_fences(&mut self) -> Result<(), RendererError> {
+        let fif = self.settings.frames_in_flight as usize;
+        let device_context = self.device_context_mut();
+
+        // Destroy old fences.
+        unsafe {
+            if device_context.graphics_queue_info.fences.len() > 0 {
+                device_context
+                    .logical_device
+                    .wait_for_fences(
+                        &device_context.graphics_queue_info.fences,
+                        true,
+                        std::u64::MAX,
+                    )
+                    .unwrap();
+                for fence in &device_context.graphics_queue_info.fences {
+                    device_context.logical_device.destroy_fence(*fence, None);
+                }
+                device_context.graphics_queue_info.fences.clear();
+            }
+
+            if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info
+                && transfer_queue_info.fences.len() > 0
+            {
+                device_context
+                    .logical_device
+                    .wait_for_fences(&transfer_queue_info.fences, true, std::u64::MAX)
+                    .unwrap();
+                for fence in &transfer_queue_info.fences {
+                    device_context.logical_device.destroy_fence(*fence, None);
+                }
+                transfer_queue_info.fences.clear();
+            }
+
+            if let Some(compute_queue_info) = &mut device_context.compute_queue_info
+                && compute_queue_info.fences.len() > 0
+            {
+                device_context
+                    .logical_device
+                    .wait_for_fences(&compute_queue_info.fences, true, std::u64::MAX)
+                    .unwrap();
+                for fence in &compute_queue_info.fences {
+                    device_context.logical_device.destroy_fence(*fence, None);
+                }
+                compute_queue_info.fences.clear();
+            }
+        }
+
+        let fence_info =
+            ash::vk::FenceCreateInfo::default().flags(ash::vk::FenceCreateFlags::SIGNALED);
+
+        device_context.graphics_queue_info.fences = Vec::with_capacity(fif);
+        if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info {
+            transfer_queue_info.fences = Vec::with_capacity(fif);
+        }
+        if let Some(compute_queue_info) = &mut device_context.compute_queue_info {
+            compute_queue_info.fences = Vec::with_capacity(fif);
+        }
+
+        unsafe {
+            for _ in 0..fif {
+                device_context.graphics_queue_info.fences.push(
+                    device_context
+                        .logical_device
+                        .create_fence(&fence_info, None)
+                        .unwrap(),
+                );
+
+                if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info {
+                    transfer_queue_info.fences.push(
+                        device_context
+                            .logical_device
+                            .create_fence(&fence_info, None)
+                            .unwrap(),
+                    );
+                }
+
+                if let Some(compute_queue_info) = &mut device_context.compute_queue_info {
+                    compute_queue_info.fences.push(
+                        device_context
+                            .logical_device
+                            .create_fence(&fence_info, None)
+                            .unwrap(),
+                    );
+                }
+            }
         }
 
         Ok(())
