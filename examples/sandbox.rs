@@ -1,5 +1,8 @@
 use heph_gl::renderers::vulkan_renderer::VulkanRenderer;
-use heph_gl::renderers::{BufferUsage, FeatureRequest, InitializeOptions, Renderer};
+use heph_gl::renderers::{
+    BufferUsage, FeatureRequest, InitializeOptions, PipelineHandle, Renderer, ResourceBinding,
+    ResourceBindingType,
+};
 use heph_gl::shader::ShaderSource;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use renkrs::RGB;
@@ -146,12 +149,45 @@ impl ApplicationHandler for App {
                                     .write_buffer(&buffer_b, bytemuck::cast_slice(&b_data))
                                     .unwrap();
 
-                                active_renderer
-                                    .dispatch_compute(
-                                        &pipeline,
-                                        &[&buffer_a, &buffer_b, &buffer_c], // Binds to set=0: binding=0, binding=1, binding=2
-                                        (1, 1, 1),
+                                let bindings = [
+                                    ResourceBinding {
+                                        binding: 0,
+                                        resource: ResourceBindingType::Buffer {
+                                            handle: buffer_a,
+                                            usage: BufferUsage::Storage,
+                                            offset: 0,
+                                            size: buffer_a.size(),
+                                        },
+                                    },
+                                    ResourceBinding {
+                                        binding: 1,
+                                        resource: ResourceBindingType::Buffer {
+                                            handle: buffer_b,
+                                            usage: BufferUsage::Storage,
+                                            offset: 0,
+                                            size: buffer_b.size(),
+                                        },
+                                    },
+                                    ResourceBinding {
+                                        binding: 2,
+                                        resource: ResourceBindingType::Buffer {
+                                            handle: buffer_c,
+                                            usage: BufferUsage::Storage,
+                                            offset: 0,
+                                            size: buffer_c.size(),
+                                        },
+                                    },
+                                ];
+
+                                let resource_set = active_renderer
+                                    .create_resource_set(
+                                        &PipelineHandle::Compute(pipeline),
+                                        &bindings,
                                     )
+                                    .unwrap();
+
+                                active_renderer
+                                    .dispatch_compute(&pipeline, &[&resource_set], (1, 1, 1))
                                     .unwrap();
 
                                 active_renderer.wait_idle().unwrap();

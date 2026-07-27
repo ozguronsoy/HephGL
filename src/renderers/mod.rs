@@ -29,7 +29,18 @@ pub struct InitializeOptions<'a> {
     pub display_handle: RawDisplayHandle,
 }
 
+/// Represents a resource binding.
+#[derive(Debug, Clone, Copy)]
+pub struct ResourceBinding<B> {
+    /// The binding number specified in the shader (e.g., `layout(binding = 0)`).
+    pub binding: u32,
+
+    /// The actual resource this slot binds to.
+    pub resource: ResourceBindingType<B>,
+}
+
 /// Defines the possible usages of a buffer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BufferUsage {
     /// The buffer is used to store general purpose data.
     Storage,
@@ -39,6 +50,28 @@ pub enum BufferUsage {
     Vertex,
     /// The buffer is used to store index data for drawing geometry.
     Index,
+}
+
+/// Defines the types of resources being bound to a shader slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ResourceBindingType<BufferHandle> {
+    /// A block of GPU memory.
+    Buffer {
+        /// The handle referencing the allocated buffer.
+        handle: BufferHandle,
+        /// Specifies how the shader intends to use this buffer.
+        usage: BufferUsage,
+        /// The starting byte offset within the buffer where the binding begins.
+        offset: u64,
+        /// The size in bytes of the buffer region being bound.
+        size: u64,
+    },
+}
+
+///
+pub enum PipelineHandle<G, C> {
+    Graphics(G),
+    Compute(C),
 }
 
 /// Defines the errors that may occur while using the renderer.
@@ -70,8 +103,12 @@ pub trait Renderer {
     type ShaderHandle;
     /// Represents a block of memory on the GPU.
     type BufferHandle;
+    /// Represents a compiled graphics pipeline.
+    type GraphicsPipelineHandle;
     /// Represents a compiled compute pipeline.
     type ComputePipelineHandle;
+    /// Represents a resource set.
+    type ResourceSetHandle;
 
     /// Creates an uninitialized instance of the renderer.
     fn new() -> Self;
@@ -102,6 +139,13 @@ pub trait Renderer {
     /// Destroys the shader and frees the resources.
     fn destroy_shader(&self, shader: &Self::ShaderHandle);
 
+    /// Creates a resource set.
+    fn create_resource_set(
+        &self,
+        pipeline_handle: &PipelineHandle<Self::GraphicsPipelineHandle, Self::ComputePipelineHandle>,
+        bindings: &[ResourceBinding<Self::BufferHandle>],
+    ) -> Result<Self::ResourceSetHandle, RendererError>;
+
     /// Allocates a new buffer on the GPU with the specified size and usage.
     fn create_buffer(
         &self,
@@ -130,7 +174,7 @@ pub trait Renderer {
     fn dispatch_compute(
         &mut self,
         pipeline: &Self::ComputePipelineHandle,
-        buffers: &[&Self::BufferHandle],
+        resource_sets: &[&Self::ResourceSetHandle],
         group_count: (u32, u32, u32),
     ) -> Result<(), RendererError>;
 

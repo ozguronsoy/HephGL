@@ -6,7 +6,7 @@ use ash::vk::{
     CommandBufferAllocateInfo, CommandBufferBeginInfo, CommandBufferLevel, CommandBufferUsageFlags,
     CommandPool, CommandPoolCreateFlags, CommandPoolCreateInfo, ComputePipelineCreateInfo,
     DescriptorBufferInfo, DescriptorPool, DescriptorPoolCreateInfo, DescriptorPoolSize,
-    DescriptorSetAllocateInfo, DescriptorSetLayout, DescriptorSetLayoutBinding,
+    DescriptorSet, DescriptorSetAllocateInfo, DescriptorSetLayout, DescriptorSetLayoutBinding,
     DescriptorSetLayoutCreateInfo, DescriptorType, DeviceCreateInfo, DeviceQueueCreateInfo, Fence,
     InstanceCreateInfo, MemoryHeapFlags, PhysicalDeviceFeatures2, PhysicalDeviceMemoryProperties2,
     PhysicalDeviceProperties2, PhysicalDeviceType, Pipeline, PipelineBindPoint, PipelineCache,
@@ -20,7 +20,8 @@ use vk_mem::Alloc;
 
 use crate::graphics_device::{Feature, GraphicsDevice};
 use crate::renderers::{
-    BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererError, Settings,
+    BufferUsage, FeatureRequest, InitializeOptions, PipelineHandle, Renderer, RendererError,
+    ResourceBinding, ResourceBindingType, Settings,
 };
 use crate::shader::ShaderSource;
 use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
@@ -74,6 +75,7 @@ struct DeviceContext {
 }
 
 /// Represents a Vulkan buffer with additional information.
+#[derive(Debug, Copy, Clone)]
 pub struct VulkanBuffer {
     /// The Vulkan buffer.
     buffer: Buffer,
@@ -83,11 +85,25 @@ pub struct VulkanBuffer {
     size: u64,
 }
 
+/// Represents a Vulkan graphics pipeline.
+#[derive(Debug, Copy, Clone)]
+pub struct VulkanGraphicsPipeline {
+    // TODO
+}
+
 /// Represents a Vulkan compute pipeline.
+#[derive(Debug, Copy, Clone)]
 pub struct VulkanComputePipeline {
     pipeline: Pipeline,
     layout: PipelineLayout,
     descriptor_layout: DescriptorSetLayout,
+}
+
+/// Represents a resource set compatible to a specific shader.
+#[derive(Debug, Copy, Clone)]
+pub struct VulkanResourceSet {
+    /// The Vulkan descriptor set.
+    descriptor_set: DescriptorSet,
 }
 
 /// The Vulkan implementation of the `Renderer` trait.
@@ -108,7 +124,9 @@ pub struct VulkanRenderer {
 impl Renderer for VulkanRenderer {
     type ShaderHandle = ShaderModule;
     type BufferHandle = VulkanBuffer;
+    type GraphicsPipelineHandle = VulkanGraphicsPipeline;
     type ComputePipelineHandle = VulkanComputePipeline;
+    type ResourceSetHandle = VulkanResourceSet;
 
     fn new() -> Self {
         Self {
@@ -136,18 +154,7 @@ impl Renderer for VulkanRenderer {
         if self.device_context.is_some() {
             self.create_command_buffers()?;
             self.create_fences()?;
-
-            self.destroy_descriptor_pools();
-            let fif = self.settings.frames_in_flight as usize;
-            let device_context = self.device_context_mut();
-            device_context.graphics_queue_info.descriptor_pools =
-                vec![DescriptorPool::default(); fif];
-            if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info {
-                transfer_queue_info.descriptor_pools = vec![DescriptorPool::default(); fif];
-            }
-            if let Some(compute_queue_info) = &mut device_context.compute_queue_info {
-                compute_queue_info.descriptor_pools = vec![DescriptorPool::default(); fif];
-            }
+            self.create_descriptor_pools()?;
         }
 
         Ok(())
@@ -668,10 +675,7 @@ impl Renderer for VulkanRenderer {
                 command_pool: graphics_command_pool,
                 command_buffers: Vec::default(),
                 fences: Vec::default(),
-                descriptor_pools: vec![
-                    DescriptorPool::default();
-                    self.settings.frames_in_flight as usize
-                ],
+                descriptor_pools: Vec::default(),
             },
 
             transfer_queue_info: if transfer_queue_handle.is_none() {
@@ -683,10 +687,7 @@ impl Renderer for VulkanRenderer {
                     command_pool: transfer_command_pool.unwrap(),
                     command_buffers: Vec::default(),
                     fences: Vec::default(),
-                    descriptor_pools: vec![
-                        DescriptorPool::default();
-                        self.settings.frames_in_flight as usize
-                    ],
+                    descriptor_pools: Vec::default(),
                 })
             },
 
@@ -699,10 +700,7 @@ impl Renderer for VulkanRenderer {
                     command_pool: compute_command_pool.unwrap(),
                     command_buffers: Vec::default(),
                     fences: Vec::default(),
-                    descriptor_pools: vec![
-                        DescriptorPool::default();
-                        self.settings.frames_in_flight as usize
-                    ],
+                    descriptor_pools: Vec::default(),
                 })
             },
 
@@ -710,6 +708,7 @@ impl Renderer for VulkanRenderer {
         });
         self.create_command_buffers()?;
         self.create_fences()?;
+        self.create_descriptor_pools()?;
 
         Ok(())
     }
@@ -739,6 +738,96 @@ impl Renderer for VulkanRenderer {
             self.device_context()
                 .logical_device
                 .destroy_shader_module(*shader, None);
+        }
+    }
+
+    fn create_resource_set(
+        &self,
+        pipeline_handle: &PipelineHandle<Self::GraphicsPipelineHandle, Self::ComputePipelineHandle>,
+        bindings: &[ResourceBinding<Self::BufferHandle>],
+    ) -> Result<Self::ResourceSetHandle, RendererError> {
+        match pipeline_handle {
+            PipelineHandle::Compute(pipeline) => {
+                for binding in bindings {
+                    match binding.resource {
+                        ResourceBindingType::Buffer {
+                            handle,
+                            offset,
+                            size,
+                            ..
+                        } => {
+                            if (offset + size) > handle.size {
+                                return Err(RendererError::InvalidArgument(
+                                    "Buffer overflow when binding resources.".to_string(),
+                                ));
+                            }
+                        }
+                        _ => {
+                            return Err(RendererError::InvalidArgument(
+                                "Invalid binding type for compute pipeline".to_string(),
+                            ));
+                        }
+                    }
+                }
+
+                let current_frame = self.current_frame as usize;
+                let device_context = self.device_context();
+                let compute_queue_info = device_context.compute_queue_info();
+                let descriptor_pool = compute_queue_info.descriptor_pools[current_frame];
+
+                let alloc_info = ash::vk::DescriptorSetAllocateInfo::default()
+                    .descriptor_pool(descriptor_pool)
+                    .set_layouts(std::slice::from_ref(&pipeline.descriptor_layout));
+
+                let descriptor_set = unsafe {
+                    device_context
+                        .logical_device
+                        .allocate_descriptor_sets(&alloc_info)
+                        .map_err(|e| RendererError::Fail(e.to_string()))?[0]
+                };
+
+                let buffer_infos: Vec<_> = bindings
+                    .iter()
+                    .map(|binding| match &binding.resource {
+                        ResourceBindingType::Buffer {
+                            handle,
+                            offset,
+                            size,
+                            ..
+                        } => ash::vk::DescriptorBufferInfo::default()
+                            .buffer(handle.buffer)
+                            .offset(*offset as u64)
+                            .range(*size as u64),
+                    })
+                    .collect();
+
+                let writes: Vec<_> = buffer_infos
+                    .iter()
+                    .enumerate()
+                    .map(|(i, info)| {
+                        ash::vk::WriteDescriptorSet::default()
+                            .dst_set(descriptor_set)
+                            .dst_binding(i as u32)
+                            // Note: You can dynamically map this by checking `binding.usage`
+                            // if you need UNIFORM_BUFFER support later.
+                            .descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER)
+                            .buffer_info(std::slice::from_ref(info))
+                    })
+                    .collect();
+
+                // 5. Submit the Update
+                unsafe {
+                    device_context
+                        .logical_device
+                        .update_descriptor_sets(&writes, &[]);
+                }
+
+                // 6. Return the Handle wrapper
+                Ok(Self::ResourceSetHandle {
+                    descriptor_set: descriptor_set,
+                })
+            }
+            _ => unimplemented!(),
         }
     }
 
@@ -903,97 +992,64 @@ impl Renderer for VulkanRenderer {
     fn dispatch_compute(
         &mut self,
         pipeline: &Self::ComputePipelineHandle,
-        buffers: &[&Self::BufferHandle],
+        resource_sets: &[&Self::ResourceSetHandle],
         group_count: (u32, u32, u32),
     ) -> Result<(), RendererError> {
         let current_frame = self.current_frame as usize;
         let device_context = self.device_context_mut();
-        let logical_device = &device_context.logical_device;
-        // TODO: fix this.
         let compute_queue_info = device_context.compute_queue_info.as_mut().unwrap();
-
-        let pool_sizes = [DescriptorPoolSize::default()
-            .ty(DescriptorType::STORAGE_BUFFER)
-            .descriptor_count(buffers.len() as u32)];
-        let pool_info = DescriptorPoolCreateInfo::default()
-            .max_sets(1)
-            .pool_sizes(&pool_sizes);
-        let desc_pool = unsafe {
-            logical_device
-                .create_descriptor_pool(&pool_info, None)
-                .unwrap()
-        };
-
-        let alloc_info = DescriptorSetAllocateInfo::default()
-            .descriptor_pool(desc_pool)
-            .set_layouts(std::slice::from_ref(&pipeline.descriptor_layout));
-        let desc_set = unsafe {
-            logical_device
-                .allocate_descriptor_sets(&alloc_info)
-                .unwrap()[0]
-        };
-
-        let buffer_infos: Vec<_> = buffers
-            .iter()
-            .map(|buf| {
-                DescriptorBufferInfo::default()
-                    .buffer(buf.buffer)
-                    .offset(0)
-                    .range(ash::vk::WHOLE_SIZE)
-            })
-            .collect();
-
-        let writes: Vec<_> = buffer_infos
-            .iter()
-            .enumerate()
-            .map(|(i, info)| {
-                WriteDescriptorSet::default()
-                    .dst_set(desc_set)
-                    .dst_binding(i as u32)
-                    .descriptor_type(DescriptorType::STORAGE_BUFFER)
-                    .buffer_info(std::slice::from_ref(info))
-            })
-            .collect();
-
-        unsafe {
-            logical_device.update_descriptor_sets(&writes, &[]);
-        }
 
         let cmd = compute_queue_info.command_buffers[current_frame];
         let begin_info =
             CommandBufferBeginInfo::default().flags(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
+        let mapped_sets: Vec<ash::vk::DescriptorSet> =
+            resource_sets.iter().map(|set| set.descriptor_set).collect();
         unsafe {
-            logical_device
+            device_context
+                .logical_device
                 .begin_command_buffer(cmd, &begin_info)
                 .unwrap();
-            logical_device.cmd_bind_pipeline(cmd, PipelineBindPoint::COMPUTE, pipeline.pipeline);
-            logical_device.cmd_bind_descriptor_sets(
+            device_context.logical_device.cmd_bind_pipeline(
+                cmd,
+                PipelineBindPoint::COMPUTE,
+                pipeline.pipeline,
+            );
+            device_context.logical_device.cmd_bind_descriptor_sets(
                 cmd,
                 PipelineBindPoint::COMPUTE,
                 pipeline.layout,
                 0,
-                &[desc_set],
+                &mapped_sets,
                 &[],
             );
-            logical_device.cmd_dispatch(cmd, group_count.0, group_count.1, group_count.2);
-            logical_device.end_command_buffer(cmd).unwrap();
+            device_context.logical_device.cmd_dispatch(
+                cmd,
+                group_count.0,
+                group_count.1,
+                group_count.2,
+            );
+            device_context
+                .logical_device
+                .end_command_buffer(cmd)
+                .unwrap();
         }
 
         let submit_info = SubmitInfo::default().command_buffers(std::slice::from_ref(&cmd));
         let current_fence = compute_queue_info.fences[current_frame];
         unsafe {
-            logical_device
+            device_context
+                .logical_device
                 .wait_for_fences(&[current_fence], true, std::u64::MAX)
                 .unwrap();
-            logical_device.reset_fences(&[current_fence]).unwrap();
-            logical_device
+            device_context
+                .logical_device
+                .reset_fences(&[current_fence])
+                .unwrap();
+            device_context
+                .logical_device
                 .queue_submit(compute_queue_info.queue, &[submit_info], current_fence)
                 .unwrap();
-
-            logical_device
-                .destroy_descriptor_pool(compute_queue_info.descriptor_pools[current_frame], None);
-            compute_queue_info.descriptor_pools[current_frame] = desc_pool;
         }
         self.current_frame = (self.current_frame + 1) % self.settings.frames_in_flight;
 
@@ -1183,6 +1239,56 @@ impl VulkanRenderer {
         Ok(())
     }
 
+    /// Creates descriptor pools for each frame.
+    fn create_descriptor_pools(&mut self) -> Result<(), RendererError> {
+        const DESCRIPTOR_COUNT: u32 = 1000;
+        const DESCRIPTOR_MAX_SETS: u32 = 1000;
+
+        self.destroy_descriptor_pools();
+
+        let fif = self.settings.frames_in_flight as usize;
+        let device_context = self.device_context_mut();
+        let logical_device = &device_context.logical_device;
+
+        let pool_sizes = [
+            DescriptorPoolSize::default()
+                .ty(DescriptorType::UNIFORM_BUFFER)
+                .descriptor_count(DESCRIPTOR_COUNT),
+            DescriptorPoolSize::default()
+                .ty(DescriptorType::STORAGE_BUFFER)
+                .descriptor_count(DESCRIPTOR_COUNT),
+        ];
+
+        let pool_info = DescriptorPoolCreateInfo::default()
+            .max_sets(DESCRIPTOR_MAX_SETS)
+            .pool_sizes(&pool_sizes);
+
+        let allocate_pools = |queue_info: &mut VulkanQueueInfo| -> Result<(), RendererError> {
+            queue_info.descriptor_pools = Vec::with_capacity(fif);
+            for _ in 0..fif {
+                let pool = unsafe {
+                    logical_device
+                        .create_descriptor_pool(&pool_info, None)
+                        .map_err(|e| {
+                            RendererError::Fail(format!("Failed to create descriptor pool: {}", e))
+                        })?
+                };
+                queue_info.descriptor_pools.push(pool);
+            }
+            Ok(())
+        };
+
+        allocate_pools(&mut device_context.graphics_queue_info)?;
+        if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info {
+            allocate_pools(transfer_queue_info)?;
+        }
+        if let Some(compute_queue_info) = &mut device_context.compute_queue_info {
+            allocate_pools(compute_queue_info)?;
+        }
+
+        Ok(())
+    }
+
     /// Frees the resources used by the graphics device, and sets the currently active device to `None`.
     fn uninitialize_device(&mut self) {
         if self.device_context.is_some() {
@@ -1312,7 +1418,7 @@ impl DeviceContext {
 }
 
 impl VulkanBuffer {
-    fn size(&self) -> u64 {
+    pub fn size(&self) -> u64 {
         self.size
     }
 }
