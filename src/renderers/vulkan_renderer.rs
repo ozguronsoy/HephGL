@@ -26,32 +26,32 @@ use crate::shader::ShaderSource;
 use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
 
 struct QueueFamily {
-    pub index: u32,
-    pub queue_count: u32,
-    pub queue_flags: QueueFlags,
-    pub present_supported: bool,
+    index: u32,
+    queue_count: u32,
+    queue_flags: QueueFlags,
+    present_supported: bool,
 }
 
 struct VulkanQueueInfo {
-    pub queue: Queue,
-    pub family_index: u32,
-    pub command_pool: CommandPool,
-    pub command_buffers: Vec<CommandBuffer>,
-    pub fences: Vec<Fence>,
-    pub descriptor_pools: HashMap<u32, DescriptorPool>,
+    queue: Queue,
+    family_index: u32,
+    command_pool: CommandPool,
+    command_buffers: Vec<CommandBuffer>,
+    fences: Vec<Fence>,
+    descriptor_pools: HashMap<u32, DescriptorPool>,
 }
 
 // Order of the fields matter as it determines the destruction order.
 struct DeviceContext {
-    pub graphics_device: GraphicsDevice,
+    graphics_device: GraphicsDevice,
 
-    pub vma_allocator: vk_mem::Allocator,
+    vma_allocator: vk_mem::Allocator,
 
-    pub graphics_queue_info: VulkanQueueInfo,
-    pub transfer_queue_info: Option<VulkanQueueInfo>,
-    pub compute_queue_info: Option<VulkanQueueInfo>,
+    graphics_queue_info: VulkanQueueInfo,
+    transfer_queue_info: Option<VulkanQueueInfo>,
+    compute_queue_info: Option<VulkanQueueInfo>,
 
-    pub logical_device: ash::Device,
+    logical_device: ash::Device,
 }
 
 pub struct VulkanBuffer {
