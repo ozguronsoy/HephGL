@@ -1220,84 +1220,43 @@ impl VulkanRenderer {
     /// Destroys the command buffers if there are any.
     fn destroy_command_buffers(&mut self) {
         let device_context = self.device_context_mut();
-        if device_context.graphics_queue_info.command_buffers.len() > 0 {
-            unsafe {
-                let _ = device_context.logical_device.device_wait_idle();
-
-                device_context.logical_device.free_command_buffers(
-                    device_context.graphics_queue_info.command_pool,
-                    &device_context.graphics_queue_info.command_buffers,
-                );
-                device_context.graphics_queue_info.command_buffers.clear();
-
-                if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info
-                    && transfer_queue_info.command_buffers.len() > 0
-                {
-                    device_context.logical_device.free_command_buffers(
-                        transfer_queue_info.command_pool,
-                        &transfer_queue_info.command_buffers,
-                    );
-                    transfer_queue_info.command_buffers.clear();
-                }
-
-                if let Some(compute_queue_info) = &mut device_context.compute_queue_info
-                    && compute_queue_info.command_buffers.len() > 0
-                {
-                    device_context.logical_device.free_command_buffers(
-                        compute_queue_info.command_pool,
-                        &compute_queue_info.command_buffers,
-                    );
-                    compute_queue_info.command_buffers.clear();
-                }
+        let destroy_command_buffer = |queue_info: &mut VulkanQueueInfo| unsafe {
+            if queue_info.command_buffers.len() > 0 {
+                device_context
+                    .logical_device
+                    .free_command_buffers(queue_info.command_pool, &queue_info.command_buffers);
+                queue_info.command_buffers.clear();
             }
+        };
+        unsafe { device_context.logical_device.device_wait_idle().unwrap() };
+        destroy_command_buffer(&mut device_context.graphics_queue_info);
+        if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info {
+            destroy_command_buffer(transfer_queue_info);
+        }
+        if let Some(compute_queue_info) = &mut device_context.compute_queue_info {
+            destroy_command_buffer(compute_queue_info);
         }
     }
 
     /// Destroys the fences if there are any.
     fn destroy_fences(&mut self) {
         let device_context = self.device_context_mut();
-
-        unsafe {
-            if device_context.graphics_queue_info.fences.len() > 0 {
-                device_context
-                    .logical_device
-                    .wait_for_fences(
-                        &device_context.graphics_queue_info.fences,
-                        true,
-                        std::u64::MAX,
-                    )
-                    .unwrap();
-                for fence in &device_context.graphics_queue_info.fences {
-                    device_context.logical_device.destroy_fence(*fence, None);
-                }
-                device_context.graphics_queue_info.fences.clear();
+        let destroy_fence = |queue_info: &mut VulkanQueueInfo| unsafe {
+            device_context
+                .logical_device
+                .wait_for_fences(&queue_info.fences, true, std::u64::MAX)
+                .unwrap();
+            for fence in &queue_info.fences {
+                device_context.logical_device.destroy_fence(*fence, None);
             }
-
-            if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info
-                && transfer_queue_info.fences.len() > 0
-            {
-                device_context
-                    .logical_device
-                    .wait_for_fences(&transfer_queue_info.fences, true, std::u64::MAX)
-                    .unwrap();
-                for fence in &transfer_queue_info.fences {
-                    device_context.logical_device.destroy_fence(*fence, None);
-                }
-                transfer_queue_info.fences.clear();
-            }
-
-            if let Some(compute_queue_info) = &mut device_context.compute_queue_info
-                && compute_queue_info.fences.len() > 0
-            {
-                device_context
-                    .logical_device
-                    .wait_for_fences(&compute_queue_info.fences, true, std::u64::MAX)
-                    .unwrap();
-                for fence in &compute_queue_info.fences {
-                    device_context.logical_device.destroy_fence(*fence, None);
-                }
-                compute_queue_info.fences.clear();
-            }
+            queue_info.fences.clear();
+        };
+        destroy_fence(&mut device_context.graphics_queue_info);
+        if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info {
+            destroy_fence(transfer_queue_info);
+        }
+        if let Some(compute_queue_info) = &mut device_context.compute_queue_info {
+            destroy_fence(compute_queue_info);
         }
     }
 
