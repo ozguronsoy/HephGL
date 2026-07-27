@@ -840,7 +840,7 @@ impl Renderer for VulkanRenderer {
         })
     }
 
-    fn destroy_compute_pipeline(&self, pipeline: Self::ComputePipelineHandle) {
+    fn destroy_compute_pipeline(&self, pipeline: &Self::ComputePipelineHandle) {
         let device_context = self.device_context();
         unsafe {
             device_context
@@ -853,17 +853,6 @@ impl Renderer for VulkanRenderer {
                 .logical_device
                 .destroy_descriptor_set_layout(pipeline.descriptor_layout, None);
         }
-    }
-
-    fn wait_idle(&self) -> Result<(), RendererError> {
-        let device_context = self.device_context();
-        unsafe {
-            device_context
-                .logical_device
-                .device_wait_idle()
-                .map_err(|e| RendererError::Fail(format!("Wait idle failed: {}", e)))?;
-        }
-        Ok(())
     }
 
     fn dispatch_compute(
@@ -966,6 +955,17 @@ impl Renderer for VulkanRenderer {
         }
         self.current_frame = (self.current_frame + 1) % self.settings.frames_in_flight;
 
+        Ok(())
+    }
+
+    fn wait_idle(&self) -> Result<(), RendererError> {
+        let device_context = self.device_context();
+        unsafe {
+            device_context
+                .logical_device
+                .device_wait_idle()
+                .map_err(|e| RendererError::Fail(format!("Wait idle failed: {}", e)))?;
+        }
         Ok(())
     }
 

@@ -172,7 +172,7 @@ impl ApplicationHandler for App {
                                 active_renderer.destroy_buffer(&mut buffer_a);
                                 active_renderer.destroy_buffer(&mut buffer_b);
                                 active_renderer.destroy_buffer(&mut buffer_c);
-                                active_renderer.destroy_compute_pipeline(pipeline);
+                                active_renderer.destroy_compute_pipeline(&pipeline);
                             }
                             active_renderer.destroy_shader(shader_module);
                         }

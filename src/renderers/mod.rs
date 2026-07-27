@@ -81,15 +81,15 @@ pub trait Renderer {
         &self,
         shader: &Self::ShaderHandle,
     ) -> Result<Self::ComputePipelineHandle, RendererError>;
-    fn destroy_compute_pipeline(&self, pipeline: Self::ComputePipelineHandle);
-
-    fn wait_idle(&self) -> Result<(), RendererError>;
+    fn destroy_compute_pipeline(&self, pipeline: &Self::ComputePipelineHandle);
     fn dispatch_compute(
         &mut self,
         pipeline: &Self::ComputePipelineHandle,
         buffers: &[&Self::BufferHandle],
         group_count: (u32, u32, u32),
     ) -> Result<(), RendererError>;
+
+    fn wait_idle(&self) -> Result<(), RendererError>;
 
     fn clear(&mut self, color: RGB<f32>) -> Result<(), RendererError>;
 }
