@@ -109,8 +109,9 @@ impl Renderer for VulkanRenderer {
         self.settings = settings;
 
         if self.device_context.is_some() {
-            // Reallocate command buffers.
+            // Recreate command buffers and fences.
             self.create_command_buffers()?;
+            self.create_fences()?;
         }
 
         Ok(())
@@ -1118,52 +1119,10 @@ impl VulkanRenderer {
     }
 
     fn create_fences(&mut self) -> Result<(), RendererError> {
+        self.destroy_fences();
+
         let fif = self.settings.frames_in_flight as usize;
         let device_context = self.device_context_mut();
-
-        // Destroy old fences.
-        unsafe {
-            if device_context.graphics_queue_info.fences.len() > 0 {
-                device_context
-                    .logical_device
-                    .wait_for_fences(
-                        &device_context.graphics_queue_info.fences,
-                        true,
-                        std::u64::MAX,
-                    )
-                    .unwrap();
-                for fence in &device_context.graphics_queue_info.fences {
-                    device_context.logical_device.destroy_fence(*fence, None);
-                }
-                device_context.graphics_queue_info.fences.clear();
-            }
-
-            if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info
-                && transfer_queue_info.fences.len() > 0
-            {
-                device_context
-                    .logical_device
-                    .wait_for_fences(&transfer_queue_info.fences, true, std::u64::MAX)
-                    .unwrap();
-                for fence in &transfer_queue_info.fences {
-                    device_context.logical_device.destroy_fence(*fence, None);
-                }
-                transfer_queue_info.fences.clear();
-            }
-
-            if let Some(compute_queue_info) = &mut device_context.compute_queue_info
-                && compute_queue_info.fences.len() > 0
-            {
-                device_context
-                    .logical_device
-                    .wait_for_fences(&compute_queue_info.fences, true, std::u64::MAX)
-                    .unwrap();
-                for fence in &compute_queue_info.fences {
-                    device_context.logical_device.destroy_fence(*fence, None);
-                }
-                compute_queue_info.fences.clear();
-            }
-        }
 
         let fence_info =
             ash::vk::FenceCreateInfo::default().flags(ash::vk::FenceCreateFlags::SIGNALED);
@@ -1209,6 +1168,10 @@ impl VulkanRenderer {
     }
 
     fn uninitialize_device(&mut self) {
+        if self.device_context.is_some() {
+            self.destroy_fences();
+        }
+
         if let Some(mut device_context) = self.device_context.take() {
             unsafe {
                 // Wait for the GPU to finish all pending operations before uninitializing to prevent segfaults.
@@ -1231,6 +1194,53 @@ impl VulkanRenderer {
 
                 drop(device_context.vma_allocator);
                 device_context.logical_device.destroy_device(None);
+            }
+        }
+    }
+
+    fn destroy_fences(&mut self) {
+        let device_context = self.device_context_mut();
+
+        unsafe {
+            if device_context.graphics_queue_info.fences.len() > 0 {
+                device_context
+                    .logical_device
+                    .wait_for_fences(
+                        &device_context.graphics_queue_info.fences,
+                        true,
+                        std::u64::MAX,
+                    )
+                    .unwrap();
+                for fence in &device_context.graphics_queue_info.fences {
+                    device_context.logical_device.destroy_fence(*fence, None);
+                }
+                device_context.graphics_queue_info.fences.clear();
+            }
+
+            if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info
+                && transfer_queue_info.fences.len() > 0
+            {
+                device_context
+                    .logical_device
+                    .wait_for_fences(&transfer_queue_info.fences, true, std::u64::MAX)
+                    .unwrap();
+                for fence in &transfer_queue_info.fences {
+                    device_context.logical_device.destroy_fence(*fence, None);
+                }
+                transfer_queue_info.fences.clear();
+            }
+
+            if let Some(compute_queue_info) = &mut device_context.compute_queue_info
+                && compute_queue_info.fences.len() > 0
+            {
+                device_context
+                    .logical_device
+                    .wait_for_fences(&compute_queue_info.fences, true, std::u64::MAX)
+                    .unwrap();
+                for fence in &compute_queue_info.fences {
+                    device_context.logical_device.destroy_fence(*fence, None);
+                }
+                compute_queue_info.fences.clear();
             }
         }
     }
