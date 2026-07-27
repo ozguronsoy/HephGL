@@ -622,47 +622,30 @@ impl Renderer for VulkanRenderer {
 
         // Create command pools.
 
-        let graphics_pool_info = CommandPoolCreateInfo::default()
-            .flags(CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-            .queue_family_index(graphics_family.index);
-        let graphics_command_pool = unsafe {
-            logical_device
-                .create_command_pool(&graphics_pool_info, None)
-                .map_err(|e| {
-                    RendererError::Fail(format!("Failed to create Graphics Command Pool: {}", e))
-                })?
+        let create_command_pool = |family_index: u32| {
+            let pool_info = CommandPoolCreateInfo::default()
+                .flags(CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+                .queue_family_index(family_index);
+            unsafe {
+                let command_pool = logical_device
+                    .create_command_pool(&pool_info, None)
+                    .map_err(|e| {
+                        RendererError::Fail(format!("Failed to create command pool: {}", e))
+                    })?;
+                Ok(command_pool)
+            }
         };
-
-        let mut transfer_command_pool = None;
-        if let Some(transfer_family) = transfer_family {
-            let transfer_pool_info = CommandPoolCreateInfo::default()
-                .flags(CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-                .queue_family_index(transfer_family.index);
-            transfer_command_pool = Some(unsafe {
-                logical_device
-                    .create_command_pool(&transfer_pool_info, None)
-                    .map_err(|e| {
-                        RendererError::Fail(format!(
-                            "Failed to create Transfer Command Pool: {}",
-                            e
-                        ))
-                    })?
-            });
-        }
-
-        let mut compute_command_pool = None;
-        if let Some(compute_family) = compute_family {
-            let compute_pool_info = CommandPoolCreateInfo::default()
-                .flags(CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-                .queue_family_index(compute_family.index);
-            compute_command_pool = Some(unsafe {
-                logical_device
-                    .create_command_pool(&compute_pool_info, None)
-                    .map_err(|e| {
-                        RendererError::Fail(format!("Failed to create Compute Command Pool: {}", e))
-                    })?
-            });
-        }
+        let graphics_command_pool = create_command_pool(graphics_family.index)?;
+        let transfer_command_pool = if let Some(transfer_family) = transfer_family {
+            Some(create_command_pool(transfer_family.index)?)
+        } else {
+            None
+        };
+        let compute_command_pool = if let Some(compute_family) = compute_family {
+            Some(create_command_pool(compute_family.index)?)
+        } else {
+            None
+        };
 
         self.device_context = Some(DeviceContext {
             graphics_device: device.clone(),
