@@ -1050,6 +1050,8 @@ impl VulkanRenderer {
     }
 
     fn create_command_buffers(&mut self) -> Result<(), RendererError> {
+        self.destroy_command_buffers();
+
         let fif = self.settings.frames_in_flight;
         let device_context = self.device_context_mut();
         let allocate_buffers = |pool: CommandPool,
@@ -1068,39 +1070,6 @@ impl VulkanRenderer {
                     })
             }
         };
-
-        // Free the old buffers.
-        if device_context.graphics_queue_info.command_buffers.len() > 0 {
-            unsafe {
-                let _ = device_context.logical_device.device_wait_idle();
-
-                device_context.logical_device.free_command_buffers(
-                    device_context.graphics_queue_info.command_pool,
-                    &device_context.graphics_queue_info.command_buffers,
-                );
-                device_context.graphics_queue_info.command_buffers.clear();
-
-                if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info
-                    && transfer_queue_info.command_buffers.len() > 0
-                {
-                    device_context.logical_device.free_command_buffers(
-                        transfer_queue_info.command_pool,
-                        &transfer_queue_info.command_buffers,
-                    );
-                    transfer_queue_info.command_buffers.clear();
-                }
-
-                if let Some(compute_queue_info) = &mut device_context.compute_queue_info
-                    && compute_queue_info.command_buffers.len() > 0
-                {
-                    device_context.logical_device.free_command_buffers(
-                        compute_queue_info.command_pool,
-                        &compute_queue_info.command_buffers,
-                    );
-                    compute_queue_info.command_buffers.clear();
-                }
-            }
-        }
 
         device_context.graphics_queue_info.command_buffers =
             allocate_buffers(device_context.graphics_queue_info.command_pool, fif)?;
@@ -1169,6 +1138,7 @@ impl VulkanRenderer {
 
     fn uninitialize_device(&mut self) {
         if self.device_context.is_some() {
+            self.destroy_command_buffers();
             self.destroy_fences();
         }
 
@@ -1194,6 +1164,41 @@ impl VulkanRenderer {
 
                 drop(device_context.vma_allocator);
                 device_context.logical_device.destroy_device(None);
+            }
+        }
+    }
+
+    fn destroy_command_buffers(&mut self) {
+        let device_context = self.device_context_mut();
+        if device_context.graphics_queue_info.command_buffers.len() > 0 {
+            unsafe {
+                let _ = device_context.logical_device.device_wait_idle();
+
+                device_context.logical_device.free_command_buffers(
+                    device_context.graphics_queue_info.command_pool,
+                    &device_context.graphics_queue_info.command_buffers,
+                );
+                device_context.graphics_queue_info.command_buffers.clear();
+
+                if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info
+                    && transfer_queue_info.command_buffers.len() > 0
+                {
+                    device_context.logical_device.free_command_buffers(
+                        transfer_queue_info.command_pool,
+                        &transfer_queue_info.command_buffers,
+                    );
+                    transfer_queue_info.command_buffers.clear();
+                }
+
+                if let Some(compute_queue_info) = &mut device_context.compute_queue_info
+                    && compute_queue_info.command_buffers.len() > 0
+                {
+                    device_context.logical_device.free_command_buffers(
+                        compute_queue_info.command_pool,
+                        &compute_queue_info.command_buffers,
+                    );
+                    compute_queue_info.command_buffers.clear();
+                }
             }
         }
     }
