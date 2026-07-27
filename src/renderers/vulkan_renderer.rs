@@ -5,14 +5,14 @@ use ash::vk::{
     ApplicationInfo, Buffer, BufferCreateInfo, BufferUsageFlags, CommandBuffer,
     CommandBufferAllocateInfo, CommandBufferBeginInfo, CommandBufferLevel, CommandBufferUsageFlags,
     CommandPool, CommandPoolCreateFlags, CommandPoolCreateInfo, ComputePipelineCreateInfo,
-    DescriptorBufferInfo, DescriptorPool, DescriptorPoolCreateInfo, DescriptorPoolSize,
-    DescriptorSet, DescriptorSetAllocateInfo, DescriptorSetLayout, DescriptorSetLayoutBinding,
-    DescriptorSetLayoutCreateInfo, DescriptorType, DeviceCreateInfo, DeviceQueueCreateInfo, Fence,
-    InstanceCreateInfo, MemoryHeapFlags, PhysicalDeviceFeatures2, PhysicalDeviceMemoryProperties2,
+    DescriptorPool, DescriptorPoolCreateInfo, DescriptorPoolResetFlags, DescriptorPoolSize,
+    DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
+    DescriptorType, DeviceCreateInfo, DeviceQueueCreateInfo, Fence, InstanceCreateInfo,
+    MemoryHeapFlags, PhysicalDeviceFeatures2, PhysicalDeviceMemoryProperties2,
     PhysicalDeviceProperties2, PhysicalDeviceType, Pipeline, PipelineBindPoint, PipelineCache,
     PipelineLayout, PipelineLayoutCreateInfo, PipelineShaderStageCreateInfo, Queue,
     QueueFamilyProperties2, QueueFlags, ShaderModule, ShaderModuleCreateInfo, ShaderStageFlags,
-    StructureType, SubmitInfo, SurfaceKHR, WriteDescriptorSet,
+    StructureType, SubmitInfo, SurfaceKHR,
 };
 use ash::{Entry, Instance};
 use renkrs::RGB;
@@ -46,8 +46,8 @@ struct VulkanQueueInfo {
     command_pool: CommandPool,
     /// Contains the command buffers for each frame.
     command_buffers: Vec<CommandBuffer>,
-    /// Contains the fence for each frame.
-    fences: Vec<Fence>,
+    /// Contains the fence and whether it's submitted for each frame.
+    fences: Vec<(Fence, bool)>,
     /// Contains the descriptor pool for each frame.
     descriptor_pools: Vec<DescriptorPool>,
 }
@@ -1036,22 +1036,14 @@ impl Renderer for VulkanRenderer {
         }
 
         let submit_info = SubmitInfo::default().command_buffers(std::slice::from_ref(&cmd));
-        let current_fence = compute_queue_info.fences[current_frame];
+        let current_fence = compute_queue_info.fences[current_frame].0;
         unsafe {
-            device_context
-                .logical_device
-                .wait_for_fences(&[current_fence], true, std::u64::MAX)
-                .unwrap();
-            device_context
-                .logical_device
-                .reset_fences(&[current_fence])
-                .unwrap();
             device_context
                 .logical_device
                 .queue_submit(compute_queue_info.queue, &[submit_info], current_fence)
                 .unwrap();
+            compute_queue_info.fences[current_frame].1 = true;
         }
-        self.current_frame = (self.current_frame + 1) % self.settings.frames_in_flight;
 
         Ok(())
     }
@@ -1070,6 +1062,82 @@ impl Renderer for VulkanRenderer {
     fn clear(&mut self, color: RGB<f32>) -> Result<(), RendererError> {
         // TODO
         unimplemented!();
+    }
+
+    fn begin_frame(&mut self) -> Result<(), RendererError> {
+        let current_frame = self.current_frame as usize;
+        let device_context = self.device_context();
+
+        // Wait for fences.
+        let mut fences = Vec::with_capacity(3);
+        if device_context.graphics_queue_info.fences[current_frame].1 {
+            fences.push(device_context.graphics_queue_info.fences[current_frame].0);
+        }
+        if let Some(transfer_queue_info) = &device_context.transfer_queue_info
+            && transfer_queue_info.fences[current_frame].1
+        {
+            fences.push(transfer_queue_info.fences[current_frame].0);
+        }
+        if let Some(compute_queue_info) = &device_context.compute_queue_info
+            && compute_queue_info.fences[current_frame].1
+        {
+            fences.push(compute_queue_info.fences[current_frame].0);
+        }
+        unsafe {
+            device_context
+                .logical_device
+                .wait_for_fences(&fences, true, std::u64::MAX)
+                .map_err(|e| RendererError::Fail(e.to_string()))?;
+            device_context
+                .logical_device
+                .reset_fences(&fences)
+                .map_err(|e| RendererError::Fail(e.to_string()))?;
+        }
+
+        // Reset the command buffers.
+        let reset_command_buffer = |queue_info: &VulkanQueueInfo| unsafe {
+            device_context
+                .logical_device
+                .reset_command_buffer(
+                    queue_info.command_buffers[current_frame],
+                    ash::vk::CommandBufferResetFlags::empty(),
+                )
+                .map_err(|e| RendererError::Fail(e.to_string()))?;
+            Ok(())
+        };
+        reset_command_buffer(&device_context.graphics_queue_info)?;
+        if let Some(transfer_queue_info) = &device_context.transfer_queue_info {
+            reset_command_buffer(transfer_queue_info)?;
+        }
+        if let Some(compute_queue_info) = &device_context.compute_queue_info {
+            reset_command_buffer(compute_queue_info)?;
+        }
+
+        // Reset the descriptor pools.
+        let reset_descriptor_pool = |queue_info: &VulkanQueueInfo| unsafe {
+            device_context
+                .logical_device
+                .reset_descriptor_pool(
+                    queue_info.descriptor_pools[current_frame],
+                    DescriptorPoolResetFlags::empty(),
+                )
+                .map_err(|e| RendererError::Fail(e.to_string()))?;
+            Ok(())
+        };
+        reset_descriptor_pool(&device_context.graphics_queue_info)?;
+        if let Some(transfer_queue_info) = &device_context.transfer_queue_info {
+            reset_descriptor_pool(transfer_queue_info)?;
+        }
+        if let Some(compute_queue_info) = &device_context.compute_queue_info {
+            reset_descriptor_pool(compute_queue_info)?;
+        }
+
+        Ok(())
+    }
+
+    fn end_frame(&mut self) -> Result<(), RendererError> {
+        self.current_frame = (self.current_frame + 1) % self.settings.frames_in_flight;
+        Ok(())
     }
 }
 
@@ -1209,29 +1277,32 @@ impl VulkanRenderer {
 
         unsafe {
             for _ in 0..fif {
-                device_context.graphics_queue_info.fences.push(
+                device_context.graphics_queue_info.fences.push((
                     device_context
                         .logical_device
                         .create_fence(&fence_info, None)
                         .unwrap(),
-                );
+                    false,
+                ));
 
                 if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info {
-                    transfer_queue_info.fences.push(
+                    transfer_queue_info.fences.push((
                         device_context
                             .logical_device
                             .create_fence(&fence_info, None)
                             .unwrap(),
-                    );
+                        false,
+                    ));
                 }
 
                 if let Some(compute_queue_info) = &mut device_context.compute_queue_info {
-                    compute_queue_info.fences.push(
+                    compute_queue_info.fences.push((
                         device_context
                             .logical_device
                             .create_fence(&fence_info, None)
                             .unwrap(),
-                    );
+                        false,
+                    ));
                 }
             }
         }
@@ -1348,11 +1419,12 @@ impl VulkanRenderer {
     fn destroy_fences(&mut self) {
         let device_context = self.device_context_mut();
         let destroy_fence = |queue_info: &mut VulkanQueueInfo| unsafe {
+            let fences: Vec<Fence> = queue_info.fences.iter().map(|t| t.0).collect();
             device_context
                 .logical_device
-                .wait_for_fences(&queue_info.fences, true, std::u64::MAX)
+                .wait_for_fences(&fences, true, std::u64::MAX)
                 .unwrap();
-            for fence in &queue_info.fences {
+            for (fence, _) in &queue_info.fences {
                 device_context.logical_device.destroy_fence(*fence, None);
             }
             queue_info.fences.clear();

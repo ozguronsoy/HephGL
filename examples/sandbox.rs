@@ -72,7 +72,7 @@ impl ApplicationHandler for App {
                             }
                             active_renderer
                                 .set_settings(heph_gl::renderers::Settings {
-                                    frames_in_flight: 2,
+                                    frames_in_flight: 1,
                                 })
                                 .unwrap();
                             active_renderer
@@ -117,11 +117,13 @@ impl ApplicationHandler for App {
                             let shader_module = active_renderer
                                 .create_shader(&ShaderSource::from_file(shader_path).unwrap())
                                 .unwrap();
+                            let pipeline = active_renderer
+                                .create_compute_pipeline(&shader_module)
+                                .unwrap();
 
-                            for i in 1..10 {
-                                let pipeline = active_renderer
-                                    .create_compute_pipeline(&shader_module)
-                                    .unwrap();
+                            for i in 1..11 {
+                                active_renderer.begin_frame().unwrap();
+
                                 let data_count = 256;
                                 let byte_size = (data_count * std::mem::size_of::<f32>()) as u64;
 
@@ -190,8 +192,6 @@ impl ApplicationHandler for App {
                                     .dispatch_compute(&pipeline, &[&resource_set], (1, 1, 1))
                                     .unwrap();
 
-                                active_renderer.wait_idle().unwrap();
-
                                 let mut c_data = vec![0.0f32; data_count];
                                 active_renderer
                                     .read_buffer(&buffer_c, bytemuck::cast_slice_mut(&mut c_data))
@@ -208,8 +208,10 @@ impl ApplicationHandler for App {
                                 active_renderer.destroy_buffer(&mut buffer_a);
                                 active_renderer.destroy_buffer(&mut buffer_b);
                                 active_renderer.destroy_buffer(&mut buffer_c);
-                                active_renderer.destroy_compute_pipeline(&pipeline);
+
+                                active_renderer.end_frame().unwrap();
                             }
+                            active_renderer.destroy_compute_pipeline(&pipeline);
                             active_renderer.destroy_shader(&shader_module);
                         }
                         PhysicalKey::Code(KeyCode::KeyQ) => {

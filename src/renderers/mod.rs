@@ -183,6 +183,11 @@ pub trait Renderer {
 
     /// Clears the current render target with the specified color.
     fn clear(&mut self, color: RGB<f32>) -> Result<(), RendererError>;
+
+    /// Begins a new frame. `end_frame` must be called when the frame is done.
+    fn begin_frame(&mut self) -> Result<(), RendererError>;
+    /// Ends the frame. `begin_frame` must be called before calling this method.
+    fn end_frame(&mut self) -> Result<(), RendererError>;
 }
 
 impl Default for Settings {
