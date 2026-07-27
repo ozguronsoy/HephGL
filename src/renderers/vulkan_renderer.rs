@@ -21,7 +21,7 @@ use vk_mem::Alloc;
 use crate::graphics_device::{Feature, GraphicsDevice};
 use crate::renderers::{
     BufferUsage, FeatureRequest, InitializeOptions, PipelineHandle, Renderer, RendererError,
-    ResourceBinding, ResourceBindingType, Settings,
+    RendererResult, ResourceBinding, ResourceBindingType, Settings,
 };
 use crate::shader::ShaderSource;
 use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
@@ -148,7 +148,7 @@ impl Renderer for VulkanRenderer {
         &self.settings
     }
 
-    fn set_settings(&mut self, settings: Settings) -> Result<(), RendererError> {
+    fn set_settings(&mut self, settings: Settings) -> RendererResult<()> {
         self.settings = settings;
 
         if self.device_context.is_some() {
@@ -160,7 +160,7 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn initialize(&mut self, options: &InitializeOptions) -> Result<(), RendererError> {
+    fn initialize(&mut self, options: &InitializeOptions) -> RendererResult<()> {
         if self.entry.is_some() || self.instance.is_some() {
             panic!("VulkanRenderer is already initialized.");
         }
@@ -256,7 +256,7 @@ impl Renderer for VulkanRenderer {
         self.entry = None;
     }
 
-    fn enumerate_devices(&mut self) -> Result<Vec<GraphicsDevice>, RendererError> {
+    fn enumerate_devices(&mut self) -> RendererResult<Vec<GraphicsDevice>> {
         let mut devices = Vec::<GraphicsDevice>::new();
         let physical_devices = unsafe {
             self.instance().enumerate_physical_devices().map_err(|_| {
@@ -433,7 +433,7 @@ impl Renderer for VulkanRenderer {
         &mut self,
         device: &GraphicsDevice,
         requested_features: &Vec<FeatureRequest>,
-    ) -> Result<(), RendererError> {
+    ) -> RendererResult<()> {
         if self.device_context.is_some() {
             self.uninitialize_device();
         }
@@ -696,7 +696,7 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn create_shader(&self, source: &ShaderSource) -> Result<Self::ShaderHandle, RendererError> {
+    fn create_shader(&self, source: &ShaderSource) -> RendererResult<Self::ShaderHandle> {
         let (prefix, code_u32, suffix) = unsafe { source.data.align_to::<u32>() };
 
         // Data is not aligned properly.
@@ -728,7 +728,7 @@ impl Renderer for VulkanRenderer {
         &self,
         pipeline_handle: &PipelineHandle<Self::GraphicsPipelineHandle, Self::ComputePipelineHandle>,
         bindings: &[ResourceBinding<Self::BufferHandle>],
-    ) -> Result<Self::ResourceSetHandle, RendererError> {
+    ) -> RendererResult<Self::ResourceSetHandle> {
         match pipeline_handle {
             PipelineHandle::Compute(pipeline) => {
                 for binding in bindings {
@@ -814,11 +814,7 @@ impl Renderer for VulkanRenderer {
         }
     }
 
-    fn create_buffer(
-        &self,
-        size: u64,
-        usage: BufferUsage,
-    ) -> Result<Self::BufferHandle, RendererError> {
+    fn create_buffer(&self, size: u64, usage: BufferUsage) -> RendererResult<Self::BufferHandle> {
         let device_context = self.device_context();
         let vk_usage = match usage {
             BufferUsage::Storage => BufferUsageFlags::STORAGE_BUFFER,
@@ -848,7 +844,7 @@ impl Renderer for VulkanRenderer {
         })
     }
 
-    fn write_buffer(&self, buffer: &Self::BufferHandle, data: &[u8]) -> Result<(), RendererError> {
+    fn write_buffer(&self, buffer: &Self::BufferHandle, data: &[u8]) -> RendererResult<()> {
         if data.len() as u64 > buffer.size {
             return Err(RendererError::Fail("Data exceeds buffer size!".to_string()));
         }
@@ -868,11 +864,7 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn read_buffer(
-        &self,
-        buffer: &Self::BufferHandle,
-        dest: &mut [u8],
-    ) -> Result<(), RendererError> {
+    fn read_buffer(&self, buffer: &Self::BufferHandle, dest: &mut [u8]) -> RendererResult<()> {
         if dest.len() as u64 > buffer.size {
             return Err(RendererError::Fail(
                 "Destination slice is larger than buffer!".to_string(),
@@ -905,7 +897,7 @@ impl Renderer for VulkanRenderer {
     fn create_compute_pipeline(
         &self,
         shader: &Self::ShaderHandle,
-    ) -> Result<Self::ComputePipelineHandle, RendererError> {
+    ) -> RendererResult<Self::ComputePipelineHandle> {
         let device_context = &self.device_context();
         let bindings = (0..4)
             .map(|i| {
@@ -977,7 +969,7 @@ impl Renderer for VulkanRenderer {
         pipeline: &Self::ComputePipelineHandle,
         resource_sets: &[&Self::ResourceSetHandle],
         group_count: (u32, u32, u32),
-    ) -> Result<(), RendererError> {
+    ) -> RendererResult<()> {
         let current_frame = self.current_frame as usize;
         let device_context = self.device_context_mut();
         let compute_queue_info = device_context.compute_queue_info.as_mut().unwrap();
@@ -1031,7 +1023,7 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn wait_idle(&self) -> Result<(), RendererError> {
+    fn wait_idle(&self) -> RendererResult<()> {
         let device_context = self.device_context();
         unsafe {
             device_context
@@ -1042,12 +1034,12 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn clear(&mut self, color: RGB<f32>) -> Result<(), RendererError> {
+    fn clear(&mut self, color: RGB<f32>) -> RendererResult<()> {
         // TODO
         unimplemented!();
     }
 
-    fn begin_frame(&mut self) -> Result<(), RendererError> {
+    fn begin_frame(&mut self) -> RendererResult<()> {
         let current_frame = self.current_frame as usize;
         let device_context = self.device_context();
 
@@ -1118,7 +1110,7 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn end_frame(&mut self) -> Result<(), RendererError> {
+    fn end_frame(&mut self) -> RendererResult<()> {
         self.current_frame = (self.current_frame + 1) % self.settings.frames_in_flight;
         Ok(())
     }
@@ -1202,14 +1194,14 @@ impl VulkanRenderer {
     }
 
     /// Creates a command buffer for each frame.
-    fn create_command_buffers(&mut self) -> Result<(), RendererError> {
+    fn create_command_buffers(&mut self) -> RendererResult<()> {
         self.destroy_command_buffers();
 
         let fif = self.settings.frames_in_flight;
         let device_context = self.device_context_mut();
         let allocate_buffers = |pool: CommandPool,
                                 count: u32|
-         -> Result<Vec<CommandBuffer>, RendererError> {
+         -> RendererResult<Vec<CommandBuffer>> {
             let alloc_info = CommandBufferAllocateInfo::default()
                 .command_pool(pool)
                 .level(CommandBufferLevel::PRIMARY)
@@ -1241,7 +1233,7 @@ impl VulkanRenderer {
     }
 
     /// Creates a fence for each frame.
-    fn create_fences(&mut self) -> Result<(), RendererError> {
+    fn create_fences(&mut self) -> RendererResult<()> {
         self.destroy_fences();
 
         let fif = self.settings.frames_in_flight as usize;
@@ -1294,7 +1286,7 @@ impl VulkanRenderer {
     }
 
     /// Creates descriptor pools for each frame.
-    fn create_descriptor_pools(&mut self) -> Result<(), RendererError> {
+    fn create_descriptor_pools(&mut self) -> RendererResult<()> {
         const DESCRIPTOR_COUNT: u32 = 1000;
         const DESCRIPTOR_MAX_SETS: u32 = 1000;
 
@@ -1317,7 +1309,7 @@ impl VulkanRenderer {
             .max_sets(DESCRIPTOR_MAX_SETS)
             .pool_sizes(&pool_sizes);
 
-        let allocate_pools = |queue_info: &mut VulkanQueueInfo| -> Result<(), RendererError> {
+        let allocate_pools = |queue_info: &mut VulkanQueueInfo| -> RendererResult<()> {
             queue_info.descriptor_pools = Vec::with_capacity(fif);
             for _ in 0..fif {
                 let pool = unsafe {

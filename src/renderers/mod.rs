@@ -97,6 +97,9 @@ pub enum RendererError {
     UnsupportedRequiredFeature(crate::graphics_device::Feature),
 }
 
+// Represents the result of a renderer operation.
+type RendererResult<T> = Result<T, RendererError>;
+
 /// The core interface for a graphics renderer.
 pub trait Renderer {
     /// Represents a compiled shader module on the GPU.
@@ -116,15 +119,15 @@ pub trait Renderer {
     /// Returns the current settings used by the renderer.
     fn get_settings(&self) -> &Settings;
     /// Updates the settings.
-    fn set_settings(&mut self, settings: Settings) -> Result<(), RendererError>;
+    fn set_settings(&mut self, settings: Settings) -> RendererResult<()>;
 
     /// Initializes the renderer using the provided options.
-    fn initialize(&mut self, options: &InitializeOptions) -> Result<(), RendererError>;
+    fn initialize(&mut self, options: &InitializeOptions) -> RendererResult<()>;
     /// Frees all internal resources and shutdowns the internal API.
     fn uninitialize(&mut self);
 
     /// Enumerates all available graphics devices on the system.
-    fn enumerate_devices(&mut self) -> Result<Vec<GraphicsDevice>, RendererError>;
+    fn enumerate_devices(&mut self) -> RendererResult<Vec<GraphicsDevice>>;
     /// Returns the currently active device, or `None` if there is no active device.
     fn get_device(&self) -> Option<GraphicsDevice>;
     /// Sets the active graphics device and initializes it with the requested features.
@@ -132,10 +135,10 @@ pub trait Renderer {
         &mut self,
         device: &GraphicsDevice,
         requested_features: &Vec<FeatureRequest>,
-    ) -> Result<(), RendererError>;
+    ) -> RendererResult<()>;
 
     /// Compiles the shader from the provided source.
-    fn create_shader(&self, source: &ShaderSource) -> Result<Self::ShaderHandle, RendererError>;
+    fn create_shader(&self, source: &ShaderSource) -> RendererResult<Self::ShaderHandle>;
     /// Destroys the shader and frees the resources.
     fn destroy_shader(&self, shader: &Self::ShaderHandle);
 
@@ -144,22 +147,14 @@ pub trait Renderer {
         &self,
         pipeline_handle: &PipelineHandle<Self::GraphicsPipelineHandle, Self::ComputePipelineHandle>,
         bindings: &[ResourceBinding<Self::BufferHandle>],
-    ) -> Result<Self::ResourceSetHandle, RendererError>;
+    ) -> RendererResult<Self::ResourceSetHandle>;
 
     /// Allocates a new buffer on the GPU with the specified size and usage.
-    fn create_buffer(
-        &self,
-        size: u64,
-        usage: BufferUsage,
-    ) -> Result<Self::BufferHandle, RendererError>;
+    fn create_buffer(&self, size: u64, usage: BufferUsage) -> RendererResult<Self::BufferHandle>;
     /// Writes data to the buffer on the GPU.
-    fn write_buffer(&self, buffer: &Self::BufferHandle, data: &[u8]) -> Result<(), RendererError>;
+    fn write_buffer(&self, buffer: &Self::BufferHandle, data: &[u8]) -> RendererResult<()>;
     /// Reads data from the buffer on the GPU.
-    fn read_buffer(
-        &self,
-        buffer: &Self::BufferHandle,
-        dest: &mut [u8],
-    ) -> Result<(), RendererError>;
+    fn read_buffer(&self, buffer: &Self::BufferHandle, dest: &mut [u8]) -> RendererResult<()>;
     /// Frees the memory allocated for the provided buffer.
     fn destroy_buffer(&self, buffer: &mut Self::BufferHandle);
 
@@ -167,7 +162,7 @@ pub trait Renderer {
     fn create_compute_pipeline(
         &self,
         shader: &Self::ShaderHandle,
-    ) -> Result<Self::ComputePipelineHandle, RendererError>;
+    ) -> RendererResult<Self::ComputePipelineHandle>;
     /// Destroys the compute pipeline.
     fn destroy_compute_pipeline(&self, pipeline: &Self::ComputePipelineHandle);
     /// Dispatches a compute workload to the GPU.
@@ -176,18 +171,18 @@ pub trait Renderer {
         pipeline: &Self::ComputePipelineHandle,
         resource_sets: &[&Self::ResourceSetHandle],
         group_count: (u32, u32, u32),
-    ) -> Result<(), RendererError>;
+    ) -> RendererResult<()>;
 
     /// Blocks the current CPU thread until the GPU has finished executing all pending commands.
-    fn wait_idle(&self) -> Result<(), RendererError>;
+    fn wait_idle(&self) -> RendererResult<()>;
 
     /// Clears the current render target with the specified color.
-    fn clear(&mut self, color: RGB<f32>) -> Result<(), RendererError>;
+    fn clear(&mut self, color: RGB<f32>) -> RendererResult<()>;
 
     /// Begins a new frame. `end_frame` must be called when the frame is done.
-    fn begin_frame(&mut self) -> Result<(), RendererError>;
+    fn begin_frame(&mut self) -> RendererResult<()>;
     /// Ends the frame. `begin_frame` must be called before calling this method.
-    fn end_frame(&mut self) -> Result<(), RendererError>;
+    fn end_frame(&mut self) -> RendererResult<()>;
 }
 
 impl Default for Settings {
