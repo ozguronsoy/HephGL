@@ -1147,6 +1147,23 @@ impl VulkanRenderer {
                 // Wait for the GPU to finish all pending operations before uninitializing to prevent segfaults.
                 let _ = device_context.logical_device.device_wait_idle();
 
+                // Destroy the descriptor pools.
+                let destroy_desc_pools = |queue_info: &mut VulkanQueueInfo| {
+                    for (_, pool) in &queue_info.descriptor_pools {
+                        device_context
+                            .logical_device
+                            .destroy_descriptor_pool(*pool, None);
+                    }
+                    queue_info.descriptor_pools.clear();
+                };
+                destroy_desc_pools(&mut device_context.graphics_queue_info);
+                if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info {
+                    destroy_desc_pools(transfer_queue_info);
+                }
+                if let Some(compute_queue_info) = &mut device_context.compute_queue_info {
+                    destroy_desc_pools(compute_queue_info);
+                }
+
                 // Destroy the command pools
                 device_context
                     .logical_device

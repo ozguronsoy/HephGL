@@ -29,18 +29,10 @@ impl ApplicationHandler for App {
             .with_title("HephGL - Window Sandbox")
             .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0));
 
-        let active_window = self
-            .window
-            .insert(event_loop.create_window(window_attributes).unwrap());
+        self.window = Some(event_loop.create_window(window_attributes).unwrap());
         println!("OS Window created successfully.");
-
-        let active_renderer = self.renderer.insert(VulkanRenderer::new());
-        let initialize_options = InitializeOptions {
-            app_name: "Sandbox",
-            window_handle: active_window.window_handle().unwrap().as_raw(),
-            display_handle: active_window.display_handle().unwrap().as_raw(),
-        };
-        active_renderer.initialize(&initialize_options).unwrap();
+        self.renderer = Some(VulkanRenderer::new());
+        println!("Renderer created successfully.");
     }
 
     fn window_event(
@@ -59,6 +51,16 @@ impl ApplicationHandler for App {
                     && let Some(ref mut active_renderer) = self.renderer
                 {
                     match event.physical_key {
+                        PhysicalKey::Code(KeyCode::KeyI) => {
+                            let window = self.window.as_ref().unwrap();
+                            let initialize_options = InitializeOptions {
+                                app_name: "Sandbox",
+                                window_handle: window.window_handle().unwrap().as_raw(),
+                                display_handle: window.display_handle().unwrap().as_raw(),
+                            };
+                            active_renderer.initialize(&initialize_options).unwrap();
+                            println!("Renderer initialized.");
+                        }
                         PhysicalKey::Code(KeyCode::KeyE) => {
                             let graphics_devices = active_renderer.enumerate_devices().unwrap();
                             println!("Graphics device count: {}", graphics_devices.len());
@@ -176,7 +178,7 @@ impl ApplicationHandler for App {
                         }
                         PhysicalKey::Code(KeyCode::KeyQ) => {
                             active_renderer.uninitialize();
-                            println!("Uninitializing the renderer");
+                            println!("Renderer uninitialized.");
                         }
                         _ => (),
                     }
