@@ -689,11 +689,11 @@ impl Renderer for VulkanRenderer {
         }
     }
 
-    fn destroy_shader(&self, shader: Self::ShaderHandle) {
+    fn destroy_shader(&self, shader: &Self::ShaderHandle) {
         unsafe {
             self.device_context()
                 .logical_device
-                .destroy_shader_module(shader, None);
+                .destroy_shader_module(*shader, None);
         }
     }
 

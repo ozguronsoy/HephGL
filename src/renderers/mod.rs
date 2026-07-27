@@ -62,7 +62,7 @@ pub trait Renderer {
     ) -> Result<(), RendererError>;
 
     fn create_shader(&self, source: &ShaderSource) -> Result<Self::ShaderHandle, RendererError>;
-    fn destroy_shader(&self, shader: Self::ShaderHandle);
+    fn destroy_shader(&self, shader: &Self::ShaderHandle);
 
     fn create_buffer(
         &self,
