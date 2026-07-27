@@ -25,47 +25,72 @@ use crate::renderers::{
 use crate::shader::ShaderSource;
 use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
 
+/// Represents a Vulkan queue family.
 struct QueueFamily {
+    /// The index of the graphics family.
     index: u32,
+    /// The number of queues available for this family.
     queue_count: u32,
     queue_flags: QueueFlags,
+    /// Indicates whether this family supports presenting to a device.
     present_supported: bool,
 }
 
+/// Stores information about a Vulkan queue.
 struct VulkanQueueInfo {
+    /// The Vulkan queue instance.
     queue: Queue,
+    /// The index of the family this queue belongs to.
     family_index: u32,
     command_pool: CommandPool,
+    /// Contains the command buffers for each frame.
     command_buffers: Vec<CommandBuffer>,
+    /// Contains the fence for each frame.
     fences: Vec<Fence>,
+    /// Contains the descriptor pool for each frame.
     descriptor_pools: HashMap<u32, DescriptorPool>,
 }
 
-// Order of the fields matter as it determines the destruction order.
+/// Encapsulates the Vulkan device state.
+///
+/// ### Note
+/// Order of the fields matter as it determines the destruction order.
 struct DeviceContext {
+    /// The currently active graphics device.
     graphics_device: GraphicsDevice,
 
+    /// The memory allocator.
     vma_allocator: vk_mem::Allocator,
 
+    /// The graphics queue.
     graphics_queue_info: VulkanQueueInfo,
+    /// The transfer queue.
     transfer_queue_info: Option<VulkanQueueInfo>,
+    /// The compute queue.
     compute_queue_info: Option<VulkanQueueInfo>,
 
+    /// The logical Vulkan device.
     logical_device: ash::Device,
 }
 
+/// Represents a Vulkan buffer with additional information.
 pub struct VulkanBuffer {
+    /// The Vulkan buffer.
     buffer: Buffer,
+    /// The memory allocation.
     vma_allocation: vk_mem::Allocation,
+    /// The size of the buffer in bytes.
     size: u64,
 }
 
+/// Represents a Vulkan compute pipeline.
 pub struct VulkanComputePipeline {
     pipeline: Pipeline,
     layout: PipelineLayout,
     descriptor_layout: DescriptorSetLayout,
 }
 
+/// The Vulkan implementation of the `Renderer` trait.
 pub struct VulkanRenderer {
     settings: Settings,
     current_frame: u32,
@@ -976,6 +1001,7 @@ impl Renderer for VulkanRenderer {
 }
 
 impl VulkanRenderer {
+    /// The Vulkan API version used internally.
     // TODO: Get this from the user.
     const VK_API_VERSION: u32 = ash::vk::make_api_version(0, 1, 4, 0);
 
@@ -1016,6 +1042,7 @@ impl VulkanRenderer {
         self.device_context.as_mut().expect("Device is not set.")
     }
 
+    /// Converts the Vulkan API version to `crate::Version`.
     fn vk_api_version_to_heph_version(vk_api_version: u32) -> Version {
         Version {
             major: ash::vk::api_version_major(vk_api_version),
@@ -1024,6 +1051,7 @@ impl VulkanRenderer {
         }
     }
 
+    /// Converts the Vulkan driver version to `crate::Version`.
     fn vk_driver_version_to_heph_version(
         vk_vendor: crate::graphics_device::Vendor,
         vk_driver_version: u32,
@@ -1049,6 +1077,7 @@ impl VulkanRenderer {
         }
     }
 
+    /// Creates a command buffer for each frame.
     fn create_command_buffers(&mut self) -> Result<(), RendererError> {
         self.destroy_command_buffers();
 
@@ -1087,6 +1116,7 @@ impl VulkanRenderer {
         Ok(())
     }
 
+    /// Creates a fence for each frame.
     fn create_fences(&mut self) -> Result<(), RendererError> {
         self.destroy_fences();
 
@@ -1136,6 +1166,7 @@ impl VulkanRenderer {
         Ok(())
     }
 
+    /// Frees the resources used by the graphics device, and sets the currently active device to `None`.
     fn uninitialize_device(&mut self) {
         if self.device_context.is_some() {
             self.destroy_command_buffers();
@@ -1185,6 +1216,7 @@ impl VulkanRenderer {
         }
     }
 
+    /// Destroys the command buffers if there are any.
     fn destroy_command_buffers(&mut self) {
         let device_context = self.device_context_mut();
         if device_context.graphics_queue_info.command_buffers.len() > 0 {
@@ -1220,6 +1252,7 @@ impl VulkanRenderer {
         }
     }
 
+    /// Destroys the fences if there are any.
     fn destroy_fences(&mut self) {
         let device_context = self.device_context_mut();
 
