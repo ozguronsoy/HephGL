@@ -48,7 +48,7 @@ struct VulkanQueueInfo {
     /// Contains the fence for each frame.
     fences: Vec<Fence>,
     /// Contains the descriptor pool for each frame.
-    descriptor_pools: HashMap<u32, DescriptorPool>,
+    descriptor_pools: Vec<DescriptorPool>,
 }
 
 /// Encapsulates the Vulkan device state.
@@ -134,9 +134,20 @@ impl Renderer for VulkanRenderer {
         self.settings = settings;
 
         if self.device_context.is_some() {
-            // Recreate command buffers and fences.
             self.create_command_buffers()?;
             self.create_fences()?;
+
+            self.destroy_descriptor_pools();
+            let fif = self.settings.frames_in_flight as usize;
+            let device_context = self.device_context_mut();
+            device_context.graphics_queue_info.descriptor_pools =
+                vec![DescriptorPool::default(); fif];
+            if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info {
+                transfer_queue_info.descriptor_pools = vec![DescriptorPool::default(); fif];
+            }
+            if let Some(compute_queue_info) = &mut device_context.compute_queue_info {
+                compute_queue_info.descriptor_pools = vec![DescriptorPool::default(); fif];
+            }
         }
 
         Ok(())
@@ -657,7 +668,10 @@ impl Renderer for VulkanRenderer {
                 command_pool: graphics_command_pool,
                 command_buffers: Vec::default(),
                 fences: Vec::default(),
-                descriptor_pools: HashMap::default(),
+                descriptor_pools: vec![
+                    DescriptorPool::default();
+                    self.settings.frames_in_flight as usize
+                ],
             },
 
             transfer_queue_info: if transfer_queue_handle.is_none() {
@@ -669,7 +683,10 @@ impl Renderer for VulkanRenderer {
                     command_pool: transfer_command_pool.unwrap(),
                     command_buffers: Vec::default(),
                     fences: Vec::default(),
-                    descriptor_pools: HashMap::default(),
+                    descriptor_pools: vec![
+                        DescriptorPool::default();
+                        self.settings.frames_in_flight as usize
+                    ],
                 })
             },
 
@@ -682,7 +699,10 @@ impl Renderer for VulkanRenderer {
                     command_pool: compute_command_pool.unwrap(),
                     command_buffers: Vec::default(),
                     fences: Vec::default(),
-                    descriptor_pools: HashMap::default(),
+                    descriptor_pools: vec![
+                        DescriptorPool::default();
+                        self.settings.frames_in_flight as usize
+                    ],
                 })
             },
 
@@ -886,7 +906,7 @@ impl Renderer for VulkanRenderer {
         buffers: &[&Self::BufferHandle],
         group_count: (u32, u32, u32),
     ) -> Result<(), RendererError> {
-        let current_frame = self.current_frame;
+        let current_frame = self.current_frame as usize;
         let device_context = self.device_context_mut();
         let logical_device = &device_context.logical_device;
         // TODO: fix this.
@@ -939,7 +959,7 @@ impl Renderer for VulkanRenderer {
             logical_device.update_descriptor_sets(&writes, &[]);
         }
 
-        let cmd = compute_queue_info.command_buffers[current_frame as usize];
+        let cmd = compute_queue_info.command_buffers[current_frame];
         let begin_info =
             CommandBufferBeginInfo::default().flags(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
@@ -961,7 +981,7 @@ impl Renderer for VulkanRenderer {
         }
 
         let submit_info = SubmitInfo::default().command_buffers(std::slice::from_ref(&cmd));
-        let current_fence = compute_queue_info.fences[current_frame as usize];
+        let current_fence = compute_queue_info.fences[current_frame];
         unsafe {
             logical_device
                 .wait_for_fences(&[current_fence], true, std::u64::MAX)
@@ -971,12 +991,9 @@ impl Renderer for VulkanRenderer {
                 .queue_submit(compute_queue_info.queue, &[submit_info], current_fence)
                 .unwrap();
 
-            if let Some(prev_desc_pool) = compute_queue_info.descriptor_pools.get(&current_frame) {
-                logical_device.destroy_descriptor_pool(*prev_desc_pool, None);
-            }
-            compute_queue_info
-                .descriptor_pools
-                .insert(current_frame, desc_pool);
+            logical_device
+                .destroy_descriptor_pool(compute_queue_info.descriptor_pools[current_frame], None);
+            compute_queue_info.descriptor_pools[current_frame] = desc_pool;
         }
         self.current_frame = (self.current_frame + 1) % self.settings.frames_in_flight;
 
@@ -1169,31 +1186,15 @@ impl VulkanRenderer {
     /// Frees the resources used by the graphics device, and sets the currently active device to `None`.
     fn uninitialize_device(&mut self) {
         if self.device_context.is_some() {
-            self.destroy_command_buffers();
             self.destroy_fences();
+            self.destroy_descriptor_pools();
+            self.destroy_command_buffers();
         }
 
         if let Some(mut device_context) = self.device_context.take() {
             unsafe {
                 // Wait for the GPU to finish all pending operations before uninitializing to prevent segfaults.
                 let _ = device_context.logical_device.device_wait_idle();
-
-                // Destroy the descriptor pools.
-                let destroy_desc_pools = |queue_info: &mut VulkanQueueInfo| {
-                    for (_, pool) in &queue_info.descriptor_pools {
-                        device_context
-                            .logical_device
-                            .destroy_descriptor_pool(*pool, None);
-                    }
-                    queue_info.descriptor_pools.clear();
-                };
-                destroy_desc_pools(&mut device_context.graphics_queue_info);
-                if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info {
-                    destroy_desc_pools(transfer_queue_info);
-                }
-                if let Some(compute_queue_info) = &mut device_context.compute_queue_info {
-                    destroy_desc_pools(compute_queue_info);
-                }
 
                 // Destroy the command pools
                 device_context
@@ -1297,6 +1298,28 @@ impl VulkanRenderer {
                 }
                 compute_queue_info.fences.clear();
             }
+        }
+    }
+
+    /// Destroys the descriptor pools if there are any.
+    fn destroy_descriptor_pools(&mut self) {
+        let device_context = self.device_context_mut();
+        let destroy_desc_pools = |queue_info: &mut VulkanQueueInfo| {
+            for pool in &queue_info.descriptor_pools {
+                unsafe {
+                    device_context
+                        .logical_device
+                        .destroy_descriptor_pool(*pool, None);
+                }
+            }
+            queue_info.descriptor_pools.clear();
+        };
+        destroy_desc_pools(&mut device_context.graphics_queue_info);
+        if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info {
+            destroy_desc_pools(transfer_queue_info);
+        }
+        if let Some(compute_queue_info) = &mut device_context.compute_queue_info {
+            destroy_desc_pools(compute_queue_info);
         }
     }
 }
