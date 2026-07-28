@@ -10,7 +10,7 @@ pub struct ShaderSource {
 }
 
 impl ShaderSource {
-    /// Loads the shader from a file. 
+    /// Loads the shader from a file.
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, std::io::Error> {
         let data = std::fs::read(path.as_ref())?;
         Ok(Self {

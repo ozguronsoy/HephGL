@@ -41,8 +41,6 @@ struct QueueFamily {
 struct VulkanQueueInfo {
     /// The Vulkan queue instance.
     queue: Queue,
-    /// The index of the family this queue belongs to.
-    family_index: u32,
     command_pool: CommandPool,
     /// Contains the command buffers for each frame.
     command_buffers: Vec<CommandBuffer>,
@@ -591,23 +589,19 @@ impl Renderer for VulkanRenderer {
         let graphics_queue = get_next_queue(graphics_family.index, graphics_family.queue_count);
 
         let mut transfer_queue_handle = None;
-        let mut transfer_family_idx = None;
         if let Some(transfer_family) = transfer_family {
             transfer_queue_handle = Some(get_next_queue(
                 transfer_family.index,
                 transfer_family.queue_count,
             ));
-            transfer_family_idx = Some(transfer_family.index);
         }
 
         let mut compute_queue_handle = None;
-        let mut compute_family_idx = None;
         if let Some(compute_family) = compute_family {
             compute_queue_handle = Some(get_next_queue(
                 compute_family.index,
                 compute_family.queue_count,
             ));
-            compute_family_idx = Some(compute_family.index);
         }
 
         // Initialize VMA.
@@ -654,7 +648,6 @@ impl Renderer for VulkanRenderer {
 
             graphics_queue_info: VulkanQueueInfo {
                 queue: graphics_queue,
-                family_index: graphics_family.index,
                 command_pool: graphics_command_pool,
                 command_buffers: Vec::default(),
                 fences: Vec::default(),
@@ -666,7 +659,6 @@ impl Renderer for VulkanRenderer {
             } else {
                 Some(VulkanQueueInfo {
                     queue: transfer_queue_handle.unwrap(),
-                    family_index: transfer_family_idx.unwrap(),
                     command_pool: transfer_command_pool.unwrap(),
                     command_buffers: Vec::default(),
                     fences: Vec::default(),
@@ -679,7 +671,6 @@ impl Renderer for VulkanRenderer {
             } else {
                 Some(VulkanQueueInfo {
                     queue: compute_queue_handle.unwrap(),
-                    family_index: compute_family_idx.unwrap(),
                     command_pool: compute_command_pool.unwrap(),
                     command_buffers: Vec::default(),
                     fences: Vec::default(),
@@ -744,11 +735,6 @@ impl Renderer for VulkanRenderer {
                                     "Buffer overflow when binding resources.".to_string(),
                                 ));
                             }
-                        }
-                        _ => {
-                            return Err(RendererError::InvalidArgument(
-                                "Invalid binding type for compute pipeline".to_string(),
-                            ));
                         }
                     }
                 }
@@ -1034,7 +1020,7 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn clear(&mut self, color: RGB<f32>) -> RendererResult<()> {
+    fn clear(&mut self, _color: RGB<f32>) -> RendererResult<()> {
         // TODO
         unimplemented!();
     }
@@ -1438,28 +1424,9 @@ impl VulkanRenderer {
 
 impl DeviceContext {
     #[inline]
-    fn transfer_queue_info(&self) -> &VulkanQueueInfo {
-        self.transfer_queue_info
-            .as_ref()
-            .expect("Device is not initialized with `AsyncTransfer` feature.")
-    }
-    #[inline]
-    fn transfer_queue_info_mut(&mut self) -> &mut VulkanQueueInfo {
-        self.transfer_queue_info
-            .as_mut()
-            .expect("Device is not initialized with `AsyncTransfer` feature.")
-    }
-
-    #[inline]
     fn compute_queue_info(&self) -> &VulkanQueueInfo {
         self.compute_queue_info
             .as_ref()
-            .expect("Device is not initialized with `ComputeShaders` feature.")
-    }
-    #[inline]
-    fn compute_queue_info_mut(&mut self) -> &mut VulkanQueueInfo {
-        self.compute_queue_info
-            .as_mut()
             .expect("Device is not initialized with `ComputeShaders` feature.")
     }
 }
