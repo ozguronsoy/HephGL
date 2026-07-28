@@ -68,7 +68,6 @@ pub enum ResourceBindingType<BufferHandle> {
     },
 }
 
-///
 pub enum PipelineHandle<G, C> {
     Graphics(G),
     Compute(C),
@@ -129,12 +128,12 @@ pub trait Renderer {
     /// Enumerates all available graphics devices on the system.
     fn enumerate_devices(&mut self) -> RendererResult<Vec<GraphicsDevice>>;
     /// Returns the currently active device, or `None` if there is no active device.
-    fn get_device(&self) -> Option<GraphicsDevice>;
+    fn get_device(&self) -> Option<&GraphicsDevice>;
     /// Sets the active graphics device and initializes it with the requested features.
     fn set_device(
         &mut self,
         device: &GraphicsDevice,
-        requested_features: &Vec<FeatureRequest>,
+        requested_features: &[FeatureRequest],
     ) -> RendererResult<()>;
 
     /// Compiles the shader from the provided source.

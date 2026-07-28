@@ -383,7 +383,7 @@ impl Renderer for VulkanRenderer {
                 let queue_family = QueueFamily {
                     index: index as u32,
                     queue_count: queue_family_properties2.queue_family_properties.queue_count,
-                    queue_flags: queue_flags,
+                    queue_flags,
                     present_supported: unsafe {
                         self.window_surface_loader()
                             .get_physical_device_surface_support(
@@ -406,31 +406,29 @@ impl Renderer for VulkanRenderer {
 
             devices.push(GraphicsDevice {
                 name: device_name,
-                device_type: device_type,
+                device_type,
                 vendor_id: device_vendor_id,
-                device_id: device_id,
+                device_id,
                 api_version: device_api_version,
                 driver_version: device_driver_version,
                 vram: device_vram,
-                supported_features: supported_features,
+                supported_features,
             });
         }
 
         Ok(devices)
     }
 
-    fn get_device(&self) -> Option<GraphicsDevice> {
-        if let Some(device_context) = &self.device_context {
-            Some(device_context.graphics_device.clone())
-        } else {
-            None
-        }
+    fn get_device(&self) -> Option<&GraphicsDevice> {
+        self.device_context
+            .as_ref()
+            .map(|device_context| &device_context.graphics_device)
     }
 
     fn set_device(
         &mut self,
         device: &GraphicsDevice,
-        requested_features: &Vec<FeatureRequest>,
+        requested_features: &[FeatureRequest],
     ) -> RendererResult<()> {
         if self.device_context.is_some() {
             self.uninitialize_device();
@@ -644,7 +642,7 @@ impl Renderer for VulkanRenderer {
         self.device_context = Some(DeviceContext {
             graphics_device: device.clone(),
 
-            vma_allocator: vma_allocator,
+            vma_allocator,
 
             graphics_queue_info: VulkanQueueInfo {
                 queue: graphics_queue,
@@ -654,31 +652,27 @@ impl Renderer for VulkanRenderer {
                 descriptor_pools: Vec::default(),
             },
 
-            transfer_queue_info: if transfer_queue_handle.is_none() {
-                None
-            } else {
-                Some(VulkanQueueInfo {
-                    queue: transfer_queue_handle.unwrap(),
-                    command_pool: transfer_command_pool.unwrap(),
+            transfer_queue_info: transfer_queue_handle.and_then(|queue| {
+                transfer_command_pool.map(|command_pool| VulkanQueueInfo {
+                    queue,
+                    command_pool,
                     command_buffers: Vec::default(),
                     fences: Vec::default(),
                     descriptor_pools: Vec::default(),
                 })
-            },
+            }),
 
-            compute_queue_info: if compute_queue_handle.is_none() {
-                None
-            } else {
-                Some(VulkanQueueInfo {
-                    queue: compute_queue_handle.unwrap(),
-                    command_pool: compute_command_pool.unwrap(),
+            compute_queue_info: compute_queue_handle.and_then(|queue| {
+                compute_command_pool.map(|command_pool| VulkanQueueInfo {
+                    queue,
+                    command_pool,
                     command_buffers: Vec::default(),
                     fences: Vec::default(),
                     descriptor_pools: Vec::default(),
                 })
-            },
+            }),
 
-            logical_device: logical_device,
+            logical_device,
         });
         self.create_command_buffers()?;
         self.create_fences()?;
@@ -765,8 +759,8 @@ impl Renderer for VulkanRenderer {
                             ..
                         } => ash::vk::DescriptorBufferInfo::default()
                             .buffer(handle.buffer)
-                            .offset(*offset as u64)
-                            .range(*size as u64),
+                            .offset(*offset)
+                            .range(*size),
                     })
                     .collect();
 
@@ -792,9 +786,7 @@ impl Renderer for VulkanRenderer {
                 }
 
                 // 6. Return the Handle wrapper
-                Ok(Self::ResourceSetHandle {
-                    descriptor_set: descriptor_set,
-                })
+                Ok(Self::ResourceSetHandle { descriptor_set })
             }
             _ => unimplemented!(),
         }
@@ -1047,7 +1039,7 @@ impl Renderer for VulkanRenderer {
         unsafe {
             device_context
                 .logical_device
-                .wait_for_fences(&fences, true, std::u64::MAX)
+                .wait_for_fences(&fences, true, u64::MAX)
                 .map_err(|e| RendererError::Fail(e.to_string()))?;
             device_context
                 .logical_device
@@ -1359,7 +1351,7 @@ impl VulkanRenderer {
     fn destroy_command_buffers(&mut self) {
         let device_context = self.device_context_mut();
         let destroy_command_buffer = |queue_info: &mut VulkanQueueInfo| unsafe {
-            if queue_info.command_buffers.len() > 0 {
+            if !queue_info.command_buffers.is_empty() {
                 device_context
                     .logical_device
                     .free_command_buffers(queue_info.command_pool, &queue_info.command_buffers);
@@ -1383,7 +1375,7 @@ impl VulkanRenderer {
             let fences: Vec<Fence> = queue_info.fences.iter().map(|t| t.0).collect();
             device_context
                 .logical_device
-                .wait_for_fences(&fences, true, std::u64::MAX)
+                .wait_for_fences(&fences, true, u64::MAX)
                 .unwrap();
             for (fence, _) in &queue_info.fences {
                 device_context.logical_device.destroy_fence(*fence, None);

@@ -12,18 +12,10 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
+#[derive(Default)]
 pub struct App {
     window: Option<Window>,
     renderer: Option<VulkanRenderer>,
-}
-
-impl Default for App {
-    fn default() -> Self {
-        Self {
-            window: None,
-            renderer: None,
-        }
-    }
 }
 
 impl ApplicationHandler for App {
@@ -78,7 +70,7 @@ impl ApplicationHandler for App {
                             active_renderer
                                 .set_device(
                                     &graphics_devices[0],
-                                    &vec![FeatureRequest {
+                                    &[FeatureRequest {
                                         feature: heph_gl::graphics_device::Feature::ComputeShaders,
                                         required: true,
                                     }],
