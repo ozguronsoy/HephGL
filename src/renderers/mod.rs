@@ -123,7 +123,7 @@ pub trait Renderer {
     /// Initializes the renderer using the provided options.
     fn initialize(&mut self, options: &InitializeOptions) -> RendererResult<()>;
     /// Frees all internal resources and shutdowns the internal API.
-    fn uninitialize(&mut self);
+    fn uninitialize(&mut self) -> RendererResult<()>;
 
     /// Enumerates all available graphics devices on the system.
     fn enumerate_devices(&mut self) -> RendererResult<Vec<GraphicsDevice>>;
@@ -139,7 +139,7 @@ pub trait Renderer {
     /// Compiles the shader from the provided source.
     fn create_shader(&self, source: &ShaderSource) -> RendererResult<Self::ShaderHandle>;
     /// Destroys the shader and frees the resources.
-    fn destroy_shader(&self, shader: &Self::ShaderHandle);
+    fn destroy_shader(&self, shader: &Self::ShaderHandle) -> RendererResult<()>;
 
     /// Creates a resource set.
     fn create_resource_set(
@@ -155,7 +155,7 @@ pub trait Renderer {
     /// Reads data from the buffer on the GPU.
     fn read_buffer(&self, buffer: &Self::BufferHandle, dest: &mut [u8]) -> RendererResult<()>;
     /// Frees the memory allocated for the provided buffer.
-    fn destroy_buffer(&self, buffer: &mut Self::BufferHandle);
+    fn destroy_buffer(&self, buffer: &mut Self::BufferHandle) -> RendererResult<()>;
 
     /// Creates a compute pipeline using the provided shader.
     fn create_compute_pipeline(
@@ -163,7 +163,10 @@ pub trait Renderer {
         shader: &Self::ShaderHandle,
     ) -> RendererResult<Self::ComputePipelineHandle>;
     /// Destroys the compute pipeline.
-    fn destroy_compute_pipeline(&self, pipeline: &Self::ComputePipelineHandle);
+    fn destroy_compute_pipeline(
+        &self,
+        pipeline: &Self::ComputePipelineHandle,
+    ) -> RendererResult<()>;
     /// Dispatches a compute workload to the GPU.
     fn dispatch_compute(
         &mut self,

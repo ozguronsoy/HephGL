@@ -197,18 +197,21 @@ impl ApplicationHandler for App {
                                     );
                                 }
 
-                                active_renderer.destroy_buffer(&mut buffer_a);
-                                active_renderer.destroy_buffer(&mut buffer_b);
-                                active_renderer.destroy_buffer(&mut buffer_c);
+                                active_renderer.destroy_buffer(&mut buffer_a).unwrap();
+                                active_renderer.destroy_buffer(&mut buffer_b).unwrap();
+                                active_renderer.destroy_buffer(&mut buffer_c).unwrap();
 
                                 active_renderer.end_frame().unwrap();
                             }
-                            active_renderer.destroy_compute_pipeline(&pipeline);
-                            active_renderer.destroy_shader(&shader_module);
+                            active_renderer.destroy_compute_pipeline(&pipeline).unwrap();
+                            active_renderer.destroy_shader(&shader_module).unwrap();
                         }
-                        PhysicalKey::Code(KeyCode::KeyQ) => {
+                        PhysicalKey::Code(KeyCode::KeyU) => {
                             active_renderer.uninitialize();
                             println!("Renderer uninitialized.");
+                        }
+                        PhysicalKey::Code(KeyCode::KeyQ) => {
+                            event_loop.exit();
                         }
                         _ => (),
                     }

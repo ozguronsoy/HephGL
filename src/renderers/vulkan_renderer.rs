@@ -194,27 +194,27 @@ impl Renderer for VulkanRenderer {
             ..Default::default()
         };
 
-        self.entry = Some(unsafe {
+        let entry = unsafe {
             Entry::load().map_err(|_| {
                 RendererError::FailedToInitialize(
                     "Failed to load Vulkan graphics driver library".to_owned(),
                 )
             })?
-        });
-        self.instance = Some(unsafe {
-            self.entry()
+        };
+        let instance = unsafe {
+            entry
                 .create_instance(&instance_create_info, None)
                 .map_err(|_| {
                     RendererError::FailedToInitialize("Failed to create Vulkan Instance".to_owned())
                 })?
-        });
+        };
 
         // WSI for rendering to the native window.
 
         self.window_surface = Some(unsafe {
             ash_window::create_surface(
-                self.entry(),
-                self.instance(),
+                &entry,
+                &instance,
                 options.display_handle,
                 options.window_handle,
                 None,
@@ -223,16 +223,16 @@ impl Renderer for VulkanRenderer {
                 RendererError::FailedToCreateSurface("Failed to create WSI Surface".to_owned())
             })?
         });
-        self.window_surface_loader = Some(ash::khr::surface::Instance::new(
-            self.entry(),
-            self.instance(),
-        ));
+        self.window_surface_loader = Some(ash::khr::surface::Instance::new(&entry, &instance));
+
+        self.entry = Some(entry);
+        self.instance = Some(instance);
 
         Ok(())
     }
 
-    fn uninitialize(&mut self) {
-        self.uninitialize_device();
+    fn uninitialize(&mut self) -> RendererResult<()> {
+        self.uninitialize_device()?;
 
         if let (Some(surface), Some(surface_loader)) =
             (self.window_surface, self.window_surface_loader.as_ref())
@@ -252,12 +252,33 @@ impl Renderer for VulkanRenderer {
         self.window_surface = None;
         self.instance = None;
         self.entry = None;
+
+        Ok(())
     }
 
     fn enumerate_devices(&mut self) -> RendererResult<Vec<GraphicsDevice>> {
+        let instance = self
+            .instance
+            .as_ref()
+            .ok_or(RendererError::InvalidOperation(
+                "Renderer is not initialized".to_string(),
+            ))?;
+        let window_surface_loader =
+            self.window_surface_loader
+                .as_ref()
+                .ok_or(RendererError::InvalidOperation(
+                    "Renderer is not initialize.".to_string(),
+                ))?;
+        let window_surface =
+            self.window_surface
+                .as_ref()
+                .ok_or(RendererError::InvalidOperation(
+                    "Renderer is not initialize.".to_string(),
+                ))?;
+
         let mut devices = Vec::<GraphicsDevice>::new();
         let physical_devices = unsafe {
-            self.instance().enumerate_physical_devices().map_err(|_| {
+            instance.enumerate_physical_devices().map_err(|_| {
                 RendererError::FailedToEnumerateDevices(
                     "Failed to enumerate physical Vulkan devices.".to_owned(),
                 )
@@ -270,27 +291,23 @@ impl Renderer for VulkanRenderer {
             let mut physical_features2 = PhysicalDeviceFeatures2::default();
             let mut queue_family_properties2_vec = Vec::<QueueFamilyProperties2>::default();
             unsafe {
-                self.instance()
-                    .get_physical_device_properties2(physical_device, &mut properties2);
-                self.instance().get_physical_device_memory_properties2(
+                instance.get_physical_device_properties2(physical_device, &mut properties2);
+                instance.get_physical_device_memory_properties2(
                     physical_device,
                     &mut memory_properties2,
                 );
-                self.instance()
-                    .get_physical_device_features2(physical_device, &mut physical_features2);
+                instance.get_physical_device_features2(physical_device, &mut physical_features2);
 
-                let queue_family_properties2_vec_size = self
-                    .instance()
-                    .get_physical_device_queue_family_properties2_len(physical_device);
+                let queue_family_properties2_vec_size =
+                    instance.get_physical_device_queue_family_properties2_len(physical_device);
                 queue_family_properties2_vec.resize(
                     queue_family_properties2_vec_size,
                     QueueFamilyProperties2::default(),
                 );
-                self.instance()
-                    .get_physical_device_queue_family_properties2(
-                        physical_device,
-                        &mut queue_family_properties2_vec,
-                    );
+                instance.get_physical_device_queue_family_properties2(
+                    physical_device,
+                    &mut queue_family_properties2_vec,
+                );
             };
 
             let device_name = unsafe {
@@ -330,7 +347,7 @@ impl Renderer for VulkanRenderer {
 
             let mut supported_features = HashSet::<crate::graphics_device::Feature>::default();
             let extension_properties = unsafe {
-                self.instance()
+                instance
                     .enumerate_device_extension_properties(physical_device)
                     .map_err(|_| {
                         RendererError::FailedToEnumerateSupportedFeatures(
@@ -385,11 +402,11 @@ impl Renderer for VulkanRenderer {
                     queue_count: queue_family_properties2.queue_family_properties.queue_count,
                     queue_flags,
                     present_supported: unsafe {
-                        self.window_surface_loader()
+                        window_surface_loader
                             .get_physical_device_surface_support(
                                 physical_device,
                                 index as u32,
-                                *self.window_surface(),
+                                *window_surface,
                             )
                             .map_err(|_| {
                                 RendererError::FailedToEnumerateSupportedFeatures(
@@ -431,8 +448,15 @@ impl Renderer for VulkanRenderer {
         requested_features: &[FeatureRequest],
     ) -> RendererResult<()> {
         if self.device_context.is_some() {
-            self.uninitialize_device();
+            self.uninitialize_device()?;
         }
+
+        let instance = self
+            .instance
+            .as_ref()
+            .ok_or(RendererError::InvalidOperation(
+                "Renderer is not initialized".to_string(),
+            ))?;
 
         // Create logical device and queues.
 
@@ -526,7 +550,7 @@ impl Renderer for VulkanRenderer {
         }
 
         let physical_devices = unsafe {
-            self.instance()
+            instance
                 .enumerate_physical_devices()
                 .map_err(|_| RendererError::Fail("Failed to create logical device.".to_owned()))?
         };
@@ -534,8 +558,7 @@ impl Renderer for VulkanRenderer {
         for pd in physical_devices {
             let mut properties2 = PhysicalDeviceProperties2::default();
             unsafe {
-                self.instance()
-                    .get_physical_device_properties2(pd, &mut properties2);
+                instance.get_physical_device_properties2(pd, &mut properties2);
             }
             if properties2.properties.device_id == device.device_id {
                 vk_physical_device = Some(pd);
@@ -569,7 +592,7 @@ impl Renderer for VulkanRenderer {
             .enabled_extension_names(&device_extension_names);
         device_create_info.p_next = &physical_features2 as *const _ as *const std::ffi::c_void;
         let logical_device = unsafe {
-            self.instance()
+            instance
                 .create_device(vk_physical_device, &device_create_info, None)
                 .map_err(|e| {
                     RendererError::Fail(format!("Failed to create Vulkan logical device: {}", e))
@@ -605,7 +628,7 @@ impl Renderer for VulkanRenderer {
         // Initialize VMA.
 
         let mut allocator_create_info =
-            vk_mem::AllocatorCreateInfo::new(self.instance(), &logical_device, vk_physical_device);
+            vk_mem::AllocatorCreateInfo::new(instance, &logical_device, vk_physical_device);
         allocator_create_info.vulkan_api_version = VulkanRenderer::VK_API_VERSION;
         let vma_allocator = unsafe {
             vk_mem::Allocator::new(allocator_create_info)
@@ -682,6 +705,13 @@ impl Renderer for VulkanRenderer {
     }
 
     fn create_shader(&self, source: &ShaderSource) -> RendererResult<Self::ShaderHandle> {
+        let device_context =
+            self.device_context
+                .as_ref()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
+
         let (prefix, code_u32, suffix) = unsafe { source.data.align_to::<u32>() };
 
         // Data is not aligned properly.
@@ -694,19 +724,27 @@ impl Renderer for VulkanRenderer {
 
         let create_info = ShaderModuleCreateInfo::default().code(code_u32);
         unsafe {
-            self.device_context()
+            device_context
                 .logical_device
                 .create_shader_module(&create_info, None)
                 .map_err(|e| RendererError::Fail(format!("Failed to create shader module: {}", e)))
         }
     }
 
-    fn destroy_shader(&self, shader: &Self::ShaderHandle) {
+    fn destroy_shader(&self, shader: &Self::ShaderHandle) -> RendererResult<()> {
+        let device_context =
+            self.device_context
+                .as_ref()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
+
         unsafe {
-            self.device_context()
+            device_context
                 .logical_device
                 .destroy_shader_module(*shader, None);
         }
+        Ok(())
     }
 
     fn create_resource_set(
@@ -733,9 +771,18 @@ impl Renderer for VulkanRenderer {
                     }
                 }
 
+                let device_context =
+                    self.device_context
+                        .as_ref()
+                        .ok_or(RendererError::InvalidOperation(
+                            "Device is not set.".to_string(),
+                        ))?;
                 let current_frame = self.current_frame as usize;
-                let device_context = self.device_context();
-                let compute_queue_info = device_context.compute_queue_info();
+                let compute_queue_info = device_context.compute_queue_info.as_ref().ok_or(
+                    RendererError::InvalidOperation(
+                        "Device is not initialized with `ComputeShaders` feature.".to_string(),
+                    ),
+                )?;
                 let descriptor_pool = compute_queue_info.descriptor_pools[current_frame];
 
                 let alloc_info = ash::vk::DescriptorSetAllocateInfo::default()
@@ -793,7 +840,13 @@ impl Renderer for VulkanRenderer {
     }
 
     fn create_buffer(&self, size: u64, usage: BufferUsage) -> RendererResult<Self::BufferHandle> {
-        let device_context = self.device_context();
+        let device_context =
+            self.device_context
+                .as_ref()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
+
         let vk_usage = match usage {
             BufferUsage::Storage => BufferUsageFlags::STORAGE_BUFFER,
             BufferUsage::Uniform => BufferUsageFlags::UNIFORM_BUFFER,
@@ -827,7 +880,13 @@ impl Renderer for VulkanRenderer {
             return Err(RendererError::Fail("Data exceeds buffer size!".to_string()));
         }
 
-        let device_context = self.device_context();
+        let device_context =
+            self.device_context
+                .as_ref()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
+
         unsafe {
             let alloc_info = device_context
                 .vma_allocator
@@ -849,7 +908,13 @@ impl Renderer for VulkanRenderer {
             ));
         }
 
-        let device_context = self.device_context();
+        let device_context =
+            self.device_context
+                .as_ref()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
+
         unsafe {
             let alloc_info = device_context
                 .vma_allocator
@@ -864,19 +929,33 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn destroy_buffer(&self, buffer: &mut Self::BufferHandle) {
+    fn destroy_buffer(&self, buffer: &mut Self::BufferHandle) -> RendererResult<()> {
+        let device_context =
+            self.device_context
+                .as_ref()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
+
         unsafe {
-            self.device_context()
+            device_context
                 .vma_allocator
                 .destroy_buffer(buffer.buffer, &mut buffer.vma_allocation);
         }
+        Ok(())
     }
 
     fn create_compute_pipeline(
         &self,
         shader: &Self::ShaderHandle,
     ) -> RendererResult<Self::ComputePipelineHandle> {
-        let device_context = &self.device_context();
+        let device_context =
+            self.device_context
+                .as_ref()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
+
         let bindings = (0..4)
             .map(|i| {
                 DescriptorSetLayoutBinding::default()
@@ -927,8 +1006,17 @@ impl Renderer for VulkanRenderer {
         })
     }
 
-    fn destroy_compute_pipeline(&self, pipeline: &Self::ComputePipelineHandle) {
-        let device_context = self.device_context();
+    fn destroy_compute_pipeline(
+        &self,
+        pipeline: &Self::ComputePipelineHandle,
+    ) -> RendererResult<()> {
+        let device_context =
+            self.device_context
+                .as_ref()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
+
         unsafe {
             device_context
                 .logical_device
@@ -940,6 +1028,7 @@ impl Renderer for VulkanRenderer {
                 .logical_device
                 .destroy_descriptor_set_layout(pipeline.descriptor_layout, None);
         }
+        Ok(())
     }
 
     fn dispatch_compute(
@@ -949,8 +1038,19 @@ impl Renderer for VulkanRenderer {
         group_count: (u32, u32, u32),
     ) -> RendererResult<()> {
         let current_frame = self.current_frame as usize;
-        let device_context = self.device_context_mut();
-        let compute_queue_info = device_context.compute_queue_info.as_mut().unwrap();
+        let device_context =
+            self.device_context
+                .as_mut()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
+        let compute_queue_info =
+            device_context
+                .compute_queue_info
+                .as_mut()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not initialized with `ComputeShaders` feature.".to_string(),
+                ))?;
 
         let cmd = compute_queue_info.command_buffers[current_frame];
         let begin_info =
@@ -1002,7 +1102,13 @@ impl Renderer for VulkanRenderer {
     }
 
     fn wait_idle(&self) -> RendererResult<()> {
-        let device_context = self.device_context();
+        let device_context =
+            self.device_context
+                .as_ref()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
+
         unsafe {
             device_context
                 .logical_device
@@ -1018,8 +1124,13 @@ impl Renderer for VulkanRenderer {
     }
 
     fn begin_frame(&mut self) -> RendererResult<()> {
+        let device_context =
+            self.device_context
+                .as_ref()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
         let current_frame = self.current_frame as usize;
-        let device_context = self.device_context();
 
         // Wait for fences.
         let mut fences = Vec::with_capacity(3);
@@ -1099,43 +1210,6 @@ impl VulkanRenderer {
     // TODO: Get this from the user.
     const VK_API_VERSION: u32 = ash::vk::make_api_version(0, 1, 4, 0);
 
-    #[inline]
-    fn entry(&self) -> &Entry {
-        self.entry
-            .as_ref()
-            .expect("VulkanRenderer is not initialized: Missing Entry.")
-    }
-
-    #[inline]
-    fn instance(&self) -> &Instance {
-        self.instance
-            .as_ref()
-            .expect("VulkanRenderer is not initialized: Missing Instance.")
-    }
-
-    #[inline]
-    fn window_surface(&self) -> &SurfaceKHR {
-        self.window_surface
-            .as_ref()
-            .expect("VulkanRenderer is not initialized: Missing Window Surface.")
-    }
-
-    #[inline]
-    fn window_surface_loader(&self) -> &ash::khr::surface::Instance {
-        self.window_surface_loader
-            .as_ref()
-            .expect("VulkanRenderer is not initialized: Missing Window Surface Loader.")
-    }
-
-    #[inline]
-    fn device_context(&self) -> &DeviceContext {
-        self.device_context.as_ref().expect("Device is not set.")
-    }
-    #[inline]
-    fn device_context_mut(&mut self) -> &mut DeviceContext {
-        self.device_context.as_mut().expect("Device is not set.")
-    }
-
     /// Converts the Vulkan API version to `crate::Version`.
     fn vk_api_version_to_heph_version(vk_api_version: u32) -> Version {
         Version {
@@ -1173,10 +1247,16 @@ impl VulkanRenderer {
 
     /// Creates a command buffer for each frame.
     fn create_command_buffers(&mut self) -> RendererResult<()> {
-        self.destroy_command_buffers();
+        self.destroy_command_buffers()?;
 
+        let device_context =
+            self.device_context
+                .as_mut()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
         let fif = self.settings.frames_in_flight;
-        let device_context = self.device_context_mut();
+
         let allocate_buffers = |pool: CommandPool,
                                 count: u32|
          -> RendererResult<Vec<CommandBuffer>> {
@@ -1212,10 +1292,15 @@ impl VulkanRenderer {
 
     /// Creates a fence for each frame.
     fn create_fences(&mut self) -> RendererResult<()> {
-        self.destroy_fences();
+        self.destroy_fences()?;
 
+        let device_context =
+            self.device_context
+                .as_mut()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
         let fif = self.settings.frames_in_flight as usize;
-        let device_context = self.device_context_mut();
 
         let fence_info =
             ash::vk::FenceCreateInfo::default().flags(ash::vk::FenceCreateFlags::SIGNALED);
@@ -1268,10 +1353,15 @@ impl VulkanRenderer {
         const DESCRIPTOR_COUNT: u32 = 1000;
         const DESCRIPTOR_MAX_SETS: u32 = 1000;
 
-        self.destroy_descriptor_pools();
+        self.destroy_descriptor_pools()?;
 
+        let device_context =
+            self.device_context
+                .as_mut()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
         let fif = self.settings.frames_in_flight as usize;
-        let device_context = self.device_context_mut();
         let logical_device = &device_context.logical_device;
 
         let pool_sizes = [
@@ -1314,11 +1404,11 @@ impl VulkanRenderer {
     }
 
     /// Frees the resources used by the graphics device, and sets the currently active device to `None`.
-    fn uninitialize_device(&mut self) {
+    fn uninitialize_device(&mut self) -> RendererResult<()> {
         if self.device_context.is_some() {
-            self.destroy_fences();
-            self.destroy_descriptor_pools();
-            self.destroy_command_buffers();
+            self.destroy_fences()?;
+            self.destroy_descriptor_pools()?;
+            self.destroy_command_buffers()?;
         }
 
         if let Some(mut device_context) = self.device_context.take() {
@@ -1345,11 +1435,18 @@ impl VulkanRenderer {
                 device_context.logical_device.destroy_device(None);
             }
         }
+
+        Ok(())
     }
 
     /// Destroys the command buffers if there are any.
-    fn destroy_command_buffers(&mut self) {
-        let device_context = self.device_context_mut();
+    fn destroy_command_buffers(&mut self) -> RendererResult<()> {
+        let device_context =
+            self.device_context
+                .as_mut()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
         let destroy_command_buffer = |queue_info: &mut VulkanQueueInfo| unsafe {
             if !queue_info.command_buffers.is_empty() {
                 device_context
@@ -1366,11 +1463,17 @@ impl VulkanRenderer {
         if let Some(compute_queue_info) = &mut device_context.compute_queue_info {
             destroy_command_buffer(compute_queue_info);
         }
+        Ok(())
     }
 
     /// Destroys the fences if there are any.
-    fn destroy_fences(&mut self) {
-        let device_context = self.device_context_mut();
+    fn destroy_fences(&mut self) -> RendererResult<()> {
+        let device_context =
+            self.device_context
+                .as_mut()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
         let destroy_fence = |queue_info: &mut VulkanQueueInfo| unsafe {
             let fences: Vec<Fence> = queue_info.fences.iter().map(|t| t.0).collect();
             device_context
@@ -1389,11 +1492,17 @@ impl VulkanRenderer {
         if let Some(compute_queue_info) = &mut device_context.compute_queue_info {
             destroy_fence(compute_queue_info);
         }
+        Ok(())
     }
 
     /// Destroys the descriptor pools if there are any.
-    fn destroy_descriptor_pools(&mut self) {
-        let device_context = self.device_context_mut();
+    fn destroy_descriptor_pools(&mut self) -> RendererResult<()> {
+        let device_context =
+            self.device_context
+                .as_mut()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
         let destroy_desc_pools = |queue_info: &mut VulkanQueueInfo| {
             for pool in &queue_info.descriptor_pools {
                 unsafe {
@@ -1411,15 +1520,7 @@ impl VulkanRenderer {
         if let Some(compute_queue_info) = &mut device_context.compute_queue_info {
             destroy_desc_pools(compute_queue_info);
         }
-    }
-}
-
-impl DeviceContext {
-    #[inline]
-    fn compute_queue_info(&self) -> &VulkanQueueInfo {
-        self.compute_queue_info
-            .as_ref()
-            .expect("Device is not initialized with `ComputeShaders` feature.")
+        Ok(())
     }
 }
 
