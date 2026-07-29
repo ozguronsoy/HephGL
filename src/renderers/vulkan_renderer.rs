@@ -971,7 +971,9 @@ impl Renderer for VulkanRenderer {
             device_context
                 .logical_device
                 .create_descriptor_set_layout(&layout_info, None)
-                .unwrap()
+                .map_err(|e| {
+                    RendererError::Fail(format!("Failed to create the descriptor layer: {}", e))
+                })?
         };
 
         let pipeline_layout_info = PipelineLayoutCreateInfo::default()
@@ -980,10 +982,13 @@ impl Renderer for VulkanRenderer {
             device_context
                 .logical_device
                 .create_pipeline_layout(&pipeline_layout_info, None)
-                .unwrap()
+                .map_err(|e| {
+                    RendererError::Fail(format!("Failed to create the pipeline layout: {}", e))
+                })?
         };
 
-        let entry_name = std::ffi::CString::new("main").unwrap();
+        let entry_name =
+            std::ffi::CString::new("main").map_err(|e| RendererError::Fail(e.to_string()))?;
         let stage_info = PipelineShaderStageCreateInfo::default()
             .stage(ShaderStageFlags::COMPUTE)
             .module(*shader)
@@ -996,7 +1001,9 @@ impl Renderer for VulkanRenderer {
             device_context
                 .logical_device
                 .create_compute_pipelines(PipelineCache::null(), &[compute_info], None)
-                .unwrap()[0]
+                .map_err(|e| {
+                    RendererError::Fail(format!("Failed to create the compute pipeline: {}", e.1))
+                })?[0]
         };
 
         Ok(VulkanComputePipeline {
@@ -1062,7 +1069,7 @@ impl Renderer for VulkanRenderer {
             device_context
                 .logical_device
                 .begin_command_buffer(cmd, &begin_info)
-                .unwrap();
+                .map_err(|e| RendererError::Fail(e.to_string()))?;
             device_context.logical_device.cmd_bind_pipeline(
                 cmd,
                 PipelineBindPoint::COMPUTE,
@@ -1085,7 +1092,7 @@ impl Renderer for VulkanRenderer {
             device_context
                 .logical_device
                 .end_command_buffer(cmd)
-                .unwrap();
+                .map_err(|e| RendererError::Fail(e.to_string()))?;
         }
 
         let submit_info = SubmitInfo::default().command_buffers(std::slice::from_ref(&cmd));
@@ -1094,7 +1101,9 @@ impl Renderer for VulkanRenderer {
             device_context
                 .logical_device
                 .queue_submit(compute_queue_info.queue, &[submit_info], current_fence)
-                .unwrap();
+                .map_err(|e| {
+                    RendererError::Fail(format!("Failed to dispatch compute command: {}", e))
+                })?;
             compute_queue_info.fences[current_frame].1 = true;
         }
 
@@ -1319,7 +1328,9 @@ impl VulkanRenderer {
                     device_context
                         .logical_device
                         .create_fence(&fence_info, None)
-                        .unwrap(),
+                        .map_err(|e| {
+                            RendererError::Fail(format!("Failed to create fences: {}", e))
+                        })?,
                     false,
                 ));
 
@@ -1328,7 +1339,9 @@ impl VulkanRenderer {
                         device_context
                             .logical_device
                             .create_fence(&fence_info, None)
-                            .unwrap(),
+                            .map_err(|e| {
+                                RendererError::Fail(format!("Failed to create fences: {}", e))
+                            })?,
                         false,
                     ));
                 }
@@ -1338,7 +1351,9 @@ impl VulkanRenderer {
                         device_context
                             .logical_device
                             .create_fence(&fence_info, None)
-                            .unwrap(),
+                            .map_err(|e| {
+                                RendererError::Fail(format!("Failed to create fences: {}", e))
+                            })?,
                         false,
                     ));
                 }
@@ -1455,7 +1470,12 @@ impl VulkanRenderer {
                 queue_info.command_buffers.clear();
             }
         };
-        unsafe { device_context.logical_device.device_wait_idle().unwrap() };
+        unsafe {
+            device_context
+                .logical_device
+                .device_wait_idle()
+                .map_err(|e| RendererError::Fail(e.to_string()))?
+        };
         destroy_command_buffer(&mut device_context.graphics_queue_info);
         if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info {
             destroy_command_buffer(transfer_queue_info);
@@ -1479,18 +1499,19 @@ impl VulkanRenderer {
             device_context
                 .logical_device
                 .wait_for_fences(&fences, true, u64::MAX)
-                .unwrap();
+                .map_err(|e| RendererError::Fail(format!("Failed to wait for fences: {}", e)))?;
             for (fence, _) in &queue_info.fences {
                 device_context.logical_device.destroy_fence(*fence, None);
             }
             queue_info.fences.clear();
+            Ok(())
         };
-        destroy_fence(&mut device_context.graphics_queue_info);
+        destroy_fence(&mut device_context.graphics_queue_info)?;
         if let Some(transfer_queue_info) = &mut device_context.transfer_queue_info {
-            destroy_fence(transfer_queue_info);
+            destroy_fence(transfer_queue_info)?;
         }
         if let Some(compute_queue_info) = &mut device_context.compute_queue_info {
-            destroy_fence(compute_queue_info);
+            destroy_fence(compute_queue_info)?;
         }
         Ok(())
     }

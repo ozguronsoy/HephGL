@@ -207,7 +207,7 @@ impl ApplicationHandler for App {
                             active_renderer.destroy_shader(&shader_module).unwrap();
                         }
                         PhysicalKey::Code(KeyCode::KeyU) => {
-                            active_renderer.uninitialize();
+                            active_renderer.uninitialize().unwrap();
                             println!("Renderer uninitialized.");
                         }
                         PhysicalKey::Code(KeyCode::KeyQ) => {
