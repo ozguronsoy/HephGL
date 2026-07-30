@@ -136,6 +136,14 @@ pub trait Renderer {
         requested_features: &[FeatureRequest],
     ) -> RendererResult<()>;
 
+    /// Initializes the per-frame execution resources for the renderer.
+    ///
+    /// ### Important
+    /// This function must be run **once per thread** that will be recording commands.
+    fn initialize_frames(&mut self) -> RendererResult<()>;
+    /// Frees and destroys all per-frame execution resources allocated during `initialize_frames`.
+    fn uninitialize_frames(&mut self) -> RendererResult<()>;
+
     /// Compiles the shader from the provided source.
     fn create_shader(&self, source: &ShaderSource) -> RendererResult<Self::ShaderHandle>;
     /// Destroys the shader and frees the resources.

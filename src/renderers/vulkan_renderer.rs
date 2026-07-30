@@ -7,7 +7,7 @@ use ash::vk::{
     CommandPool, CommandPoolCreateFlags, CommandPoolCreateInfo, ComputePipelineCreateInfo,
     DescriptorPool, DescriptorPoolCreateInfo, DescriptorPoolResetFlags, DescriptorPoolSize,
     DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
-    DescriptorType, DeviceCreateInfo, DeviceQueueCreateInfo, Fence, InstanceCreateInfo,
+    DescriptorType, DeviceCreateInfo, DeviceQueueCreateInfo, Fence, Handle, InstanceCreateInfo,
     MemoryHeapFlags, PhysicalDeviceFeatures2, PhysicalDeviceMemoryProperties2,
     PhysicalDeviceProperties2, PhysicalDeviceType, Pipeline, PipelineBindPoint, PipelineCache,
     PipelineLayout, PipelineLayoutCreateInfo, PipelineShaderStageCreateInfo, Queue,
@@ -54,6 +54,8 @@ struct Frame {
 struct QueueContext {
     /// The Vulkan queue instance.
     queue: Queue,
+    /// The index of the queue family.
+    queue_family_index: u32,
     /// The command pool allocated for this queue family.
     command_pool: CommandPool,
     /// Length of this must always be equal to `settings.frames_in_flight`.
@@ -642,33 +644,6 @@ impl Renderer for VulkanRenderer {
                 .map_err(|e| RendererError::Fail(format!("Failed to initialize VMA: {}", e)))?
         };
 
-        // Create command pools.
-
-        let create_command_pool = |family_index: u32| {
-            let pool_info = CommandPoolCreateInfo::default()
-                .flags(CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-                .queue_family_index(family_index);
-            unsafe {
-                let command_pool = logical_device
-                    .create_command_pool(&pool_info, None)
-                    .map_err(|e| {
-                        RendererError::Fail(format!("Failed to create command pool: {}", e))
-                    })?;
-                Ok(command_pool)
-            }
-        };
-        let graphics_command_pool = create_command_pool(graphics_family.index)?;
-        let transfer_command_pool = if let Some(transfer_family) = transfer_family {
-            Some(create_command_pool(transfer_family.index)?)
-        } else {
-            None
-        };
-        let compute_command_pool = if let Some(compute_family) = compute_family {
-            Some(create_command_pool(compute_family.index)?)
-        } else {
-            None
-        };
-
         self.device_context = Some(DeviceContext {
             graphics_device: device.clone(),
 
@@ -676,29 +651,116 @@ impl Renderer for VulkanRenderer {
 
             graphics_queue_context: QueueContext {
                 queue: graphics_queue,
-                command_pool: graphics_command_pool,
+                queue_family_index: graphics_family.index,
+                command_pool: CommandPool::default(),
                 frames: Vec::default(),
             },
-
-            transfer_queue_context: transfer_queue_handle.and_then(|queue| {
-                transfer_command_pool.map(|command_pool| QueueContext {
-                    queue,
-                    command_pool,
-                    frames: Vec::default(),
-                })
+            transfer_queue_context: transfer_queue_handle.map(|queue| QueueContext {
+                queue,
+                queue_family_index: transfer_family.unwrap().index,
+                command_pool: CommandPool::default(),
+                frames: Vec::default(),
             }),
-
-            compute_queue_context: compute_queue_handle.and_then(|queue| {
-                compute_command_pool.map(|command_pool| QueueContext {
-                    queue,
-                    command_pool,
-                    frames: Vec::default(),
-                })
+            compute_queue_context: compute_queue_handle.map(|queue| QueueContext {
+                queue,
+                queue_family_index: compute_family.unwrap().index,
+                command_pool: CommandPool::default(),
+                frames: Vec::default(),
             }),
 
             logical_device,
         });
+
+        Ok(())
+    }
+
+    fn initialize_frames(&mut self) -> RendererResult<()> {
+        self.uninitialize_frames()?;
+
+        let device_context =
+            self.device_context
+                .as_mut()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
+
+        let create_command_pool = |family_index: u32| {
+            let pool_info = CommandPoolCreateInfo::default()
+                .flags(CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+                .queue_family_index(family_index);
+            unsafe {
+                let command_pool = device_context
+                    .logical_device
+                    .create_command_pool(&pool_info, None)
+                    .map_err(|e| {
+                        RendererError::Fail(format!("Failed to create command pool: {}", e))
+                    })?;
+                Ok(command_pool)
+            }
+        };
+        device_context.graphics_queue_context.command_pool =
+            create_command_pool(device_context.graphics_queue_context.queue_family_index)?;
+        if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
+            transfer_queue_context.command_pool =
+                create_command_pool(transfer_queue_context.queue_family_index)?;
+        }
+        if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
+            compute_queue_context.command_pool =
+                create_command_pool(compute_queue_context.queue_family_index)?;
+        }
+
         self.create_frames()?;
+
+        Ok(())
+    }
+
+    fn uninitialize_frames(&mut self) -> RendererResult<()> {
+        if self
+            .device_context
+            .as_ref()
+            .is_none_or(|ctx| ctx.graphics_queue_context.command_pool.is_null())
+        {
+            return Ok(());
+        }
+
+        self.destroy_fences()?;
+        self.destroy_descriptor_pools()?;
+        self.destroy_command_buffers()?;
+
+        let device_context =
+            self.device_context
+                .as_mut()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
+
+        device_context.graphics_queue_context.frames.clear();
+        if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
+            transfer_queue_context.frames.clear();
+        }
+        if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
+            compute_queue_context.frames.clear();
+        }
+
+        unsafe {
+            // Destroy the command pools
+            device_context
+                .logical_device
+                .destroy_command_pool(device_context.graphics_queue_context.command_pool, None);
+            device_context.graphics_queue_context.command_pool = CommandPool::default();
+            if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
+                device_context
+                    .logical_device
+                    .destroy_command_pool(transfer_queue_context.command_pool, None);
+                transfer_queue_context.command_pool = CommandPool::default();
+            }
+            if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
+                device_context
+                    .logical_device
+                    .destroy_command_pool(compute_queue_context.command_pool, None);
+                compute_queue_context.command_pool = CommandPool::default();
+            }
+        }
 
         Ok(())
     }
@@ -1410,55 +1472,14 @@ impl VulkanRenderer {
     /// Frees the resources used by the graphics device, and sets the currently active device to `None`.
     fn uninitialize_device(&mut self) -> RendererResult<()> {
         if self.device_context.is_some() {
-            self.destroy_frames()?;
+            self.uninitialize_frames()?;
         }
 
-        if let Some(mut device_context) = self.device_context.take() {
+        if let Some(device_context) = self.device_context.take() {
             unsafe {
-                // Wait for the GPU to finish all pending operations before uninitializing to prevent segfaults.
-                let _ = device_context.logical_device.device_wait_idle();
-
-                // Destroy the command pools
-                device_context
-                    .logical_device
-                    .destroy_command_pool(device_context.graphics_queue_context.command_pool, None);
-                if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                    device_context
-                        .logical_device
-                        .destroy_command_pool(transfer_queue_context.command_pool, None);
-                }
-                if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-                    device_context
-                        .logical_device
-                        .destroy_command_pool(compute_queue_context.command_pool, None);
-                }
-
                 drop(device_context.vma_allocator);
                 device_context.logical_device.destroy_device(None);
             }
-        }
-
-        Ok(())
-    }
-
-    fn destroy_frames(&mut self) -> RendererResult<()> {
-        self.destroy_fences()?;
-        self.destroy_descriptor_pools()?;
-        self.destroy_command_buffers()?;
-
-        let device_context =
-            self.device_context
-                .as_mut()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
-
-        device_context.graphics_queue_context.frames.clear();
-        if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-            transfer_queue_context.frames.clear();
-        }
-        if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-            compute_queue_context.frames.clear();
         }
 
         Ok(())
@@ -1475,10 +1496,11 @@ impl VulkanRenderer {
         let fif = self.settings.frames_in_flight as usize;
 
         let destroy_command_buffer = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
-            let frame = &queue_context.frames[frame_index];
+            let frame = &mut queue_context.frames[frame_index];
             device_context
                 .logical_device
                 .free_command_buffers(queue_context.command_pool, &[frame.command_buffer]);
+            frame.command_buffer = CommandBuffer::default();
         };
 
         unsafe {
@@ -1511,7 +1533,7 @@ impl VulkanRenderer {
         let fif = self.settings.frames_in_flight as usize;
 
         let destroy_fence = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
-            let frame = &queue_context.frames[frame_index];
+            let frame = &mut queue_context.frames[frame_index];
             if frame.is_in_flight {
                 device_context
                     .logical_device
@@ -1522,6 +1544,7 @@ impl VulkanRenderer {
                 device_context
                     .logical_device
                     .destroy_fence(frame.fence, None);
+                frame.fence = Fence::default();
             }
             Ok(())
         };
@@ -1550,10 +1573,11 @@ impl VulkanRenderer {
         let fif = self.settings.frames_in_flight as usize;
 
         let destroy_desc_pool = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
-            let frame = &queue_context.frames[frame_index];
+            let frame = &mut queue_context.frames[frame_index];
             device_context
                 .logical_device
                 .destroy_descriptor_pool(frame.descriptor_pool, None);
+            frame.descriptor_pool = DescriptorPool::default();
         };
 
         for frame_index in 0..fif {

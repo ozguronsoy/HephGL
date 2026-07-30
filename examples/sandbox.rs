@@ -105,6 +105,8 @@ impl ApplicationHandler for App {
                                 .unwrap();
                         }
                         PhysicalKey::Code(KeyCode::KeyC) => {
+                            active_renderer.initialize_frames().unwrap();
+
                             let shader_path = "C:\\Users\\ozgur\\OneDrive\\Desktop\\Projects\\HephGL\\examples\\shaders\\addition.spv";
                             let shader_module = active_renderer
                                 .create_shader(&ShaderSource::from_file(shader_path).unwrap())
@@ -205,6 +207,8 @@ impl ApplicationHandler for App {
                             }
                             active_renderer.destroy_compute_pipeline(&pipeline).unwrap();
                             active_renderer.destroy_shader(&shader_module).unwrap();
+
+                            active_renderer.uninitialize_frames().unwrap();
                         }
                         PhysicalKey::Code(KeyCode::KeyU) => {
                             active_renderer.uninitialize().unwrap();
