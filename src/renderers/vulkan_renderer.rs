@@ -1277,6 +1277,14 @@ impl Renderer for VulkanRenderer {
     }
 }
 
+impl Drop for VulkanRenderer {
+    fn drop(&mut self) {
+        if let Err(e) = self.uninitialize() {
+            eprintln!("Failed to uninitialize renderer on drop: {}", e);
+        }
+    }
+}
+
 impl VulkanRenderer {
     /// The Vulkan API version used internally.
     // TODO: Get this from the user.
