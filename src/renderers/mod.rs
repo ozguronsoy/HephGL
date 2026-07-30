@@ -111,6 +111,8 @@ pub trait Renderer {
     type ComputePipelineHandle;
     /// Represents a resource set.
     type ResourceSetHandle;
+    /// Represents a recorded command.
+    type RecordedCommand;
 
     /// Creates an uninitialized instance of the renderer.
     fn new() -> Self;
@@ -176,23 +178,29 @@ pub trait Renderer {
         pipeline: &Self::ComputePipelineHandle,
     ) -> RendererResult<()>;
     /// Dispatches a compute workload to the GPU.
-    fn dispatch_compute(
+    fn record_compute_pass(
         &mut self,
         pipeline: &Self::ComputePipelineHandle,
         resource_sets: &[&Self::ResourceSetHandle],
         group_count: (u32, u32, u32),
+    ) -> RendererResult<Self::RecordedCommand>;
+
+    /// Submits the recorded commands to the GPU.
+    fn submit_commands(
+        &mut self,
+        recorded_commands: &[Self::RecordedCommand],
     ) -> RendererResult<()>;
+
+    /// Begins a new frame. `end_frame` must be called when the frame is done.
+    fn begin_frame(&mut self) -> RendererResult<()>;
+    /// Ends the frame. `begin_frame` must be called before calling this method.
+    fn end_frame(&mut self) -> RendererResult<()>;
 
     /// Blocks the current CPU thread until the GPU has finished executing all pending commands.
     fn wait_idle(&self) -> RendererResult<()>;
 
     /// Clears the current render target with the specified color.
     fn clear(&mut self, color: RGB<f32>) -> RendererResult<()>;
-
-    /// Begins a new frame. `end_frame` must be called when the frame is done.
-    fn begin_frame(&mut self) -> RendererResult<()>;
-    /// Ends the frame. `begin_frame` must be called before calling this method.
-    fn end_frame(&mut self) -> RendererResult<()>;
 }
 
 impl Default for Settings {

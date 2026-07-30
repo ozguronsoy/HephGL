@@ -62,6 +62,14 @@ struct QueueContext {
     frames: Vec<Frame>,
 }
 
+#[derive(Debug, Copy, Clone)]
+/// Defines the types of queues.
+enum QueueType {
+    Graphics,
+    Transfer,
+    Compute,
+}
+
 /// Encapsulates the Vulkan device state.
 ///
 /// ### Note
@@ -113,6 +121,14 @@ pub struct VulkanResourceSet {
     descriptor_set: DescriptorSet,
 }
 
+/// Represents a recorded Vulkan command.
+#[derive(Debug, Copy, Clone)]
+pub struct VulkanRecordedCommand {
+    queue: Queue,
+    queue_type: QueueType,
+    frame_index: u32,
+}
+
 /// The Vulkan implementation of the `Renderer` trait.
 pub struct VulkanRenderer {
     settings: Settings,
@@ -134,6 +150,7 @@ impl Renderer for VulkanRenderer {
     type GraphicsPipelineHandle = VulkanGraphicsPipeline;
     type ComputePipelineHandle = VulkanComputePipeline;
     type ResourceSetHandle = VulkanResourceSet;
+    type RecordedCommand = VulkanRecordedCommand;
 
     fn new() -> Self {
         Self {
@@ -157,6 +174,7 @@ impl Renderer for VulkanRenderer {
 
     fn set_settings(&mut self, settings: Settings) -> RendererResult<()> {
         self.settings = settings;
+        self.current_frame_index = 0;
 
         if self.device_context.is_some() {
             self.create_command_buffers()?;
@@ -1100,12 +1118,12 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn dispatch_compute(
+    fn record_compute_pass(
         &mut self,
         pipeline: &Self::ComputePipelineHandle,
         resource_sets: &[&Self::ResourceSetHandle],
         group_count: (u32, u32, u32),
-    ) -> RendererResult<()> {
+    ) -> RendererResult<Self::RecordedCommand> {
         let device_context =
             self.device_context
                 .as_mut()
@@ -1154,45 +1172,61 @@ impl Renderer for VulkanRenderer {
                 .map_err(|e| RendererError::Fail(e.to_string()))?;
         }
 
-        let submit_info = SubmitInfo::default()
-            .command_buffers(std::slice::from_ref(&current_frame.command_buffer));
-        unsafe {
-            device_context
-                .logical_device
-                .queue_submit(
-                    compute_queue_context.queue,
-                    &[submit_info],
-                    current_frame.fence,
-                )
-                .map_err(|e| {
-                    RendererError::Fail(format!("Failed to dispatch compute command: {}", e))
-                })?;
-            current_frame.is_in_flight = true;
-        }
-
-        Ok(())
+        Ok(Self::RecordedCommand {
+            queue: compute_queue_context.queue,
+            queue_type: QueueType::Compute,
+            frame_index: self.current_frame_index,
+        })
     }
 
-    fn wait_idle(&self) -> RendererResult<()> {
+    fn submit_commands(
+        &mut self,
+        recorded_commands: &[Self::RecordedCommand],
+    ) -> RendererResult<()> {
         let device_context =
             self.device_context
-                .as_ref()
+                .as_mut()
                 .ok_or(RendererError::InvalidOperation(
                     "Device is not set.".to_string(),
                 ))?;
-
-        unsafe {
-            device_context
-                .logical_device
-                .device_wait_idle()
-                .map_err(|e| RendererError::Fail(format!("Wait idle failed: {}", e)))?;
+        for recorded_command in recorded_commands {
+            let frame_index = recorded_command.frame_index as usize;
+            let frame = match recorded_command.queue_type {
+                QueueType::Graphics => {
+                    &mut device_context.graphics_queue_context.frames[frame_index]
+                }
+                QueueType::Transfer => {
+                    &mut device_context
+                        .transfer_queue_context
+                        .as_mut()
+                        .ok_or(RendererError::InvalidOperation(
+                            "Device is not initialized with `AsyncTransfer` feature.".to_string(),
+                        ))?
+                        .frames[frame_index]
+                }
+                QueueType::Compute => {
+                    &mut device_context
+                        .compute_queue_context
+                        .as_mut()
+                        .ok_or(RendererError::InvalidOperation(
+                            "Device is not initialized with `ComputeShaders` feature.".to_string(),
+                        ))?
+                        .frames[frame_index]
+                }
+            };
+            let submit_info =
+                SubmitInfo::default().command_buffers(std::slice::from_ref(&frame.command_buffer));
+            unsafe {
+                device_context
+                    .logical_device
+                    .queue_submit(recorded_command.queue, &[submit_info], frame.fence)
+                    .map_err(|e| {
+                        RendererError::Fail(format!("Failed to submit recorded commands: {}", e))
+                    })?;
+            }
+            frame.is_in_flight = true;
         }
         Ok(())
-    }
-
-    fn clear(&mut self, _color: RGB<f32>) -> RendererResult<()> {
-        // TODO
-        unimplemented!();
     }
 
     fn begin_frame(&mut self) -> RendererResult<()> {
@@ -1274,6 +1308,28 @@ impl Renderer for VulkanRenderer {
     fn end_frame(&mut self) -> RendererResult<()> {
         self.current_frame_index = (self.current_frame_index + 1) % self.settings.frames_in_flight;
         Ok(())
+    }
+
+    fn wait_idle(&self) -> RendererResult<()> {
+        let device_context =
+            self.device_context
+                .as_ref()
+                .ok_or(RendererError::InvalidOperation(
+                    "Device is not set.".to_string(),
+                ))?;
+
+        unsafe {
+            device_context
+                .logical_device
+                .device_wait_idle()
+                .map_err(|e| RendererError::Fail(format!("Wait idle failed: {}", e)))?;
+        }
+        Ok(())
+    }
+
+    fn clear(&mut self, _color: RGB<f32>) -> RendererResult<()> {
+        // TODO
+        unimplemented!();
     }
 }
 

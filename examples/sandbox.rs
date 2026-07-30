@@ -182,9 +182,14 @@ impl ApplicationHandler for App {
                                     )
                                     .unwrap();
 
-                                active_renderer
-                                    .dispatch_compute(&pipeline, &[&resource_set], (1, 1, 1))
+                                let recorded_command = active_renderer
+                                    .record_compute_pass(&pipeline, &[&resource_set], (1, 1, 1))
                                     .unwrap();
+                                active_renderer
+                                    .submit_commands(&[recorded_command])
+                                    .unwrap();
+
+                                active_renderer.wait_idle().unwrap();
 
                                 let mut c_data = vec![0.0f32; data_count];
                                 active_renderer

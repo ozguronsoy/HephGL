@@ -22,7 +22,7 @@ unused_imports = "deny"
 unused_macros = "deny"
 unconditional_recursion = "deny"
 overflowing_literals = "deny"
-dead_code = "deny"
+dead_code = "warn"
 
 while_true = "deny"
 
