@@ -89,6 +89,11 @@ struct DeviceContext {
     logical_device: ash::Device,
 }
 
+#[derive(Debug, Copy, Clone)]
+pub struct VulkanShader {
+    module: ShaderModule,
+}
+
 /// Represents a Vulkan buffer with additional information.
 #[derive(Debug, Copy, Clone)]
 pub struct VulkanBuffer {
@@ -145,7 +150,7 @@ pub struct VulkanRenderer {
 }
 
 impl Renderer for VulkanRenderer {
-    type ShaderHandle = ShaderModule;
+    type ShaderHandle = VulkanShader;
     type BufferHandle = VulkanBuffer;
     type GraphicsPipelineHandle = VulkanGraphicsPipeline;
     type ComputePipelineHandle = VulkanComputePipeline;
@@ -803,10 +808,15 @@ impl Renderer for VulkanRenderer {
 
         let create_info = ShaderModuleCreateInfo::default().code(code_u32);
         unsafe {
-            device_context
+            let shader_module = device_context
                 .logical_device
                 .create_shader_module(&create_info, None)
-                .map_err(|e| RendererError::Fail(format!("Failed to create shader module: {}", e)))
+                .map_err(|e| {
+                    RendererError::Fail(format!("Failed to create shader module: {}", e))
+                })?;
+            Ok(Self::ShaderHandle {
+                module: shader_module,
+            })
         }
     }
 
@@ -821,7 +831,7 @@ impl Renderer for VulkanRenderer {
         unsafe {
             device_context
                 .logical_device
-                .destroy_shader_module(*shader, None);
+                .destroy_shader_module(shader.module, None);
         }
         Ok(())
     }
@@ -1071,7 +1081,7 @@ impl Renderer for VulkanRenderer {
             std::ffi::CString::new("main").map_err(|e| RendererError::Fail(e.to_string()))?;
         let stage_info = PipelineShaderStageCreateInfo::default()
             .stage(ShaderStageFlags::COMPUTE)
-            .module(*shader)
+            .module(shader.module)
             .name(&entry_name);
 
         let compute_info = ComputePipelineCreateInfo::default()
