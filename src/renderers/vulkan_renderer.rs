@@ -31,6 +31,8 @@ use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
 
 /// Indicates that the thread context index is invalid.
 const INVALID_THREAD_CONTEXT_INDEX: usize = usize::MAX;
+/// The index reserved for the main thread.
+const MAIN_THREAD_CONTEXT_INDEX: usize = 0;
 thread_local! {
     /// Index of the current `thread_context`. We use the same index for graphics, transfer, and compute.
     static THREAD_CONTEXT_INDEX: UnsafeCell<usize> = const { UnsafeCell::new(INVALID_THREAD_CONTEXT_INDEX) };
@@ -86,14 +88,6 @@ struct QueueContext {
     /// ### Note
     /// Replace this with an array of `AtomicU64`s if more than 64 concurrent threads are required.
     thread_mask: AtomicU64,
-}
-
-#[derive(Debug, Copy, Clone)]
-/// Defines the types of queues.
-enum QueueType {
-    Graphics,
-    Transfer,
-    Compute,
 }
 
 /// Encapsulates the Vulkan device state.
@@ -156,7 +150,6 @@ pub struct VulkanResourceSet {
 #[derive(Debug, Copy, Clone)]
 pub struct VulkanRecordedCommand {
     queue: Queue,
-    queue_type: QueueType,
     frame_index: u32,
     thread_context_index: usize,
 }
@@ -748,11 +741,11 @@ impl Renderer for VulkanRenderer {
             let mut current = mask.load(Ordering::Relaxed);
             *index = loop {
                 let new_index = if self.main_thread_id == std::thread::current().id() {
-                    0
+                    MAIN_THREAD_CONTEXT_INDEX
                 } else {
                     // Index `0` is reserved for the main thread, which might not be initialized yet.
                     // Force the LSB to 1 to prevent assigning index `0` to a worker thread.
-                    (current | 1).trailing_ones() as usize
+                    (current | (1 << MAIN_THREAD_CONTEXT_INDEX)).trailing_ones() as usize
                 };
 
                 if new_index >= 64 {
@@ -1285,7 +1278,6 @@ impl Renderer for VulkanRenderer {
 
         Ok(Self::RecordedCommand {
             queue: compute_queue_context.queue,
-            queue_type: QueueType::Compute,
             frame_index: self.current_frame_index,
             thread_context_index,
         })
@@ -1304,47 +1296,61 @@ impl Renderer for VulkanRenderer {
                     "Device is not set.".to_string(),
                 ))?;
 
-        for recorded_command in recorded_commands {
-            let frame_index = recorded_command.frame_index as usize;
-            let frame = match recorded_command.queue_type {
-                QueueType::Graphics => {
-                    &mut device_context.graphics_queue_context.thread_contexts
-                        [recorded_command.thread_context_index]
-                        .frames[frame_index]
+        let submit_queue = |queue_context: &mut QueueContext| {
+            const INVALID_FRAME_INDEX: usize = usize::MAX;
+            let mut command_buffers = Vec::with_capacity(recorded_commands.len());
+            let mut frame_index = INVALID_FRAME_INDEX;
+            for recorded_command in recorded_commands {
+                if recorded_command.queue != queue_context.queue {
+                    continue;
                 }
-                QueueType::Transfer => {
-                    &mut device_context
-                        .transfer_queue_context
-                        .as_mut()
-                        .ok_or(RendererError::InvalidOperation(
-                            "Device is not initialized with `AsyncTransfer` feature.".to_string(),
-                        ))?
-                        .thread_contexts[recorded_command.thread_context_index]
-                        .frames[frame_index]
+
+                if frame_index == INVALID_FRAME_INDEX {
+                    frame_index = recorded_command.frame_index as usize;
+                } else if frame_index != recorded_command.frame_index as usize {
+                    return Err(RendererError::InvalidArgument(
+                        "All recorded commands for a queue must belong to the same frame."
+                            .to_string(),
+                    ));
                 }
-                QueueType::Compute => {
-                    &mut device_context
-                        .compute_queue_context
-                        .as_mut()
-                        .ok_or(RendererError::InvalidOperation(
-                            "Device is not initialized with `ComputeShaders` feature.".to_string(),
-                        ))?
-                        .thread_contexts[recorded_command.thread_context_index]
-                        .frames[frame_index]
-                }
-            };
-            let submit_info =
-                SubmitInfo::default().command_buffers(std::slice::from_ref(&frame.command_buffer));
-            unsafe {
-                device_context
-                    .logical_device
-                    .queue_submit(recorded_command.queue, &[submit_info], frame.fence)
-                    .map_err(|e| {
-                        RendererError::Fail(format!("Failed to submit recorded commands: {}", e))
-                    })?;
+
+                command_buffers.push(
+                    queue_context.thread_contexts[recorded_command.thread_context_index].frames
+                        [frame_index]
+                        .command_buffer,
+                );
             }
-            frame.is_in_flight = true;
+
+            if !command_buffers.is_empty() {
+                let submit_info = SubmitInfo::default().command_buffers(&command_buffers);
+                let main_thread_frame = &mut queue_context.thread_contexts
+                    [MAIN_THREAD_CONTEXT_INDEX]
+                    .frames[frame_index];
+                unsafe {
+                    device_context
+                        .logical_device
+                        .queue_submit(queue_context.queue, &[submit_info], main_thread_frame.fence)
+                        .map_err(|e| {
+                            RendererError::Fail(format!(
+                                "Failed to submit recorded commands: {}",
+                                e
+                            ))
+                        })?;
+                }
+                main_thread_frame.is_in_flight = true;
+            }
+
+            Ok(())
+        };
+
+        submit_queue(&mut device_context.graphics_queue_context)?;
+        if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
+            submit_queue(transfer_queue_context)?;
         }
+        if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
+            submit_queue(compute_queue_context)?;
+        }
+
         Ok(())
     }
 
