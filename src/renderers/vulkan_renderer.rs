@@ -776,7 +776,7 @@ impl Renderer for VulkanRenderer {
             }
         })?;
 
-        let thread_context_index = Self::thread_context_index();
+        let thread_context_index = Self::thread_context_index()?;
 
         let create_command_pool = |family_index: u32| {
             let pool_info = CommandPoolCreateInfo::default()
@@ -809,15 +809,17 @@ impl Renderer for VulkanRenderer {
     }
 
     fn uninitialize_frames(&mut self) -> RendererResult<()> {
-        let thread_context_index = Self::thread_context_index();
+        let Ok(thread_context_index) = Self::thread_context_index() else {
+            // Err means the index is set to `INVALID_THREAD_CONTEXT_INDEX`, which means the thread is already uninitialized.
+            return Ok(());
+        };
 
-        if thread_context_index == INVALID_THREAD_CONTEXT_INDEX
-            || self.device_context.as_ref().is_none_or(|ctx| {
-                ctx.graphics_queue_context.thread_contexts[thread_context_index]
-                    .command_pool
-                    .is_null()
-            })
-        {
+        if self.device_context.as_ref().is_none_or(|ctx| {
+            ctx.graphics_queue_context.thread_contexts[thread_context_index]
+                .command_pool
+                .is_null()
+        }) {
+            // Already uninitialized.
             return Ok(());
         }
 
@@ -967,7 +969,7 @@ impl Renderer for VulkanRenderer {
                         "Device is not initialized with `ComputeShaders` feature.".to_string(),
                     ),
                 )?;
-                let thread_context_index = Self::thread_context_index();
+                let thread_context_index = Self::thread_context_index()?;
                 let current_frame = &compute_queue_context.thread_contexts[thread_context_index]
                     .frames[self.current_frame_index as usize];
                 let descriptor_pool = current_frame.descriptor_pool;
@@ -1242,7 +1244,7 @@ impl Renderer for VulkanRenderer {
                 "Device is not initialized with `ComputeShaders` feature.".to_string(),
             ),
         )?;
-        let thread_context_index = Self::thread_context_index();
+        let thread_context_index = Self::thread_context_index()?;
         let current_frame = &mut compute_queue_context.thread_contexts[thread_context_index].frames
             [self.current_frame_index as usize];
 
@@ -1353,7 +1355,7 @@ impl Renderer for VulkanRenderer {
                 .ok_or(RendererError::InvalidOperation(
                     "Device is not set.".to_string(),
                 ))?;
-        let thread_context_index = Self::thread_context_index();
+        let thread_context_index = Self::thread_context_index()?;
         let current_frame_index = self.current_frame_index as usize;
 
         // Wait for fences.
@@ -1496,8 +1498,17 @@ impl VulkanRenderer {
             })
     }
 
-    fn thread_context_index() -> usize {
-        THREAD_CONTEXT_INDEX.with(|cell| unsafe { *cell.get() })
+    fn thread_context_index() -> RendererResult<usize> {
+        let index = THREAD_CONTEXT_INDEX.with(|cell| unsafe { *cell.get() });
+        if index == INVALID_THREAD_CONTEXT_INDEX {
+            Err(RendererError::InvalidOperation(
+                "Frames are uninitialized. `initialize_frames` must \
+                be called on this thread before access."
+                    .to_string(),
+            ))
+        } else {
+            Ok(index)
+        }
     }
 
     /// Converts the Vulkan API version to `crate::Version`.
@@ -1543,7 +1554,7 @@ impl VulkanRenderer {
                     "Device is not set.".to_string(),
                 ))?;
         let fif = self.settings.frames_in_flight as usize;
-        let thread_context_index = Self::thread_context_index();
+        let thread_context_index = Self::thread_context_index()?;
         let create_frames = |queue_context: &mut QueueContext| {
             queue_context.thread_contexts[thread_context_index]
                 .frames
@@ -1573,7 +1584,7 @@ impl VulkanRenderer {
                     "Device is not set.".to_string(),
                 ))?;
         let fif = self.settings.frames_in_flight as usize;
-        let thread_context_index = Self::thread_context_index();
+        let thread_context_index = Self::thread_context_index()?;
 
         let allocate_buffers = |queue_context: &mut QueueContext| {
             let alloc_info = CommandBufferAllocateInfo::default()
@@ -1617,7 +1628,7 @@ impl VulkanRenderer {
                     "Device is not set.".to_string(),
                 ))?;
         let fif = self.settings.frames_in_flight as usize;
-        let thread_context_index = Self::thread_context_index();
+        let thread_context_index = Self::thread_context_index()?;
 
         let fence_info =
             ash::vk::FenceCreateInfo::default().flags(ash::vk::FenceCreateFlags::SIGNALED);
@@ -1657,7 +1668,7 @@ impl VulkanRenderer {
                     "Device is not set.".to_string(),
                 ))?;
         let fif = self.settings.frames_in_flight as usize;
-        let thread_context_index = Self::thread_context_index();
+        let thread_context_index = Self::thread_context_index()?;
 
         let pool_sizes = [
             DescriptorPoolSize::default()
@@ -1721,7 +1732,7 @@ impl VulkanRenderer {
                     "Device is not set.".to_string(),
                 ))?;
         let fif = self.settings.frames_in_flight as usize;
-        let thread_context_index = Self::thread_context_index();
+        let thread_context_index = Self::thread_context_index()?;
 
         let destroy_command_buffer = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
             let frame =
@@ -1761,7 +1772,7 @@ impl VulkanRenderer {
                     "Device is not set.".to_string(),
                 ))?;
         let fif = self.settings.frames_in_flight as usize;
-        let thread_context_index = Self::thread_context_index();
+        let thread_context_index = Self::thread_context_index()?;
 
         let destroy_fence = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
             let frame =
@@ -1803,7 +1814,7 @@ impl VulkanRenderer {
                     "Device is not set.".to_string(),
                 ))?;
         let fif = self.settings.frames_in_flight as usize;
-        let thread_context_index = Self::thread_context_index();
+        let thread_context_index = Self::thread_context_index()?;
 
         let destroy_desc_pool = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
             let frame =
