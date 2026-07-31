@@ -344,7 +344,7 @@ impl ApplicationHandler for App {
                                     });
                                 }
 
-                                for _ in 1..11 {
+                                for i in 1..11 {
                                     active_renderer.begin_frame().unwrap();
 
                                     barrier.wait();
@@ -390,11 +390,13 @@ impl ApplicationHandler for App {
                                             )
                                             .unwrap();
 
-                                        let j = 10;
-                                        println!(
-                                            "Thread {} Result[{}] {}: {} + {} = {}",
-                                            t_id, frame_idx, j, a_data[j], b_data[j], c_data[j]
-                                        );
+                                        if i == 1 {
+                                            let j = 10;
+                                            println!(
+                                                "Thread {} Result[{}] {}: {} + {} = {}",
+                                                t_id, frame_idx, j, a_data[j], b_data[j], c_data[j]
+                                            );
+                                        }
 
                                         active_renderer.destroy_buffer(&mut buf_a).unwrap();
                                         active_renderer.destroy_buffer(&mut buf_b).unwrap();

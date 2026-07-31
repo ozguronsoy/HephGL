@@ -742,33 +742,32 @@ impl Renderer for VulkanRenderer {
                 ))?;
 
         THREAD_CONTEXT_INDEX.with(|cell| unsafe {
-            let v = cell.get();
+            let index = cell.get();
 
-            *v = if self.main_thread_id == std::thread::current().id() {
-                0
-            } else {
-                let mask = &device_context.graphics_queue_context.thread_mask;
-                let mut current = mask.load(Ordering::Relaxed);
-                loop {
-                    let index = current.trailing_ones();
-                    if index >= 64 {
-                        break INVALID_THREAD_CONTEXT_INDEX;
-                    }
+            let mask = &device_context.graphics_queue_context.thread_mask;
+            let mut current = mask.load(Ordering::Relaxed);
+            *index = loop {
+                let new_index = if self.main_thread_id == std::thread::current().id() {
+                    0
+                } else {
+                    // Index `0` is reserved for the main thread, which might not be initialized yet.
+                    // Force the LSB to 1 to prevent assigning index `0` to a worker thread.
+                    (current | 1).trailing_ones() as usize
+                };
 
-                    let new = current | (1 << index);
-                    match mask.compare_exchange_weak(
-                        current,
-                        new,
-                        Ordering::AcqRel,
-                        Ordering::Acquire,
-                    ) {
-                        Ok(_) => break index as usize,
-                        Err(actual) => current = actual,
-                    }
+                if new_index >= 64 {
+                    break INVALID_THREAD_CONTEXT_INDEX;
+                }
+
+                let new = current | (1 << new_index);
+                match mask.compare_exchange_weak(current, new, Ordering::AcqRel, Ordering::Acquire)
+                {
+                    Ok(_) => break new_index as usize,
+                    Err(actual) => current = actual,
                 }
             };
 
-            if *v == INVALID_THREAD_CONTEXT_INDEX {
+            if *index == INVALID_THREAD_CONTEXT_INDEX {
                 Err(RendererError::Fail(
                     "Failed to initialize frames: maximum threads reached".to_string(),
                 ))
@@ -832,6 +831,14 @@ impl Renderer for VulkanRenderer {
                 .ok_or(RendererError::InvalidOperation(
                     "Device is not set.".to_string(),
                 ))?;
+
+        THREAD_CONTEXT_INDEX.with(|cell| unsafe {
+            let index = cell.get();
+
+            let mask = &device_context.graphics_queue_context.thread_mask;
+            mask.fetch_and(!(1 << *index), Ordering::Release);
+            *index = INVALID_THREAD_CONTEXT_INDEX;
+        });
 
         device_context.graphics_queue_context.thread_contexts[thread_context_index]
             .frames
