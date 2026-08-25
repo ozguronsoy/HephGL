@@ -1,0 +1,33 @@
+name: Pre Commit
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+jobs:
+  prek:
+    name: Run prek
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust (Stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Install Rust (Nightly)
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - name: Cache Rust environment
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install prek
+        run: cargo install --locked prek
+
+      - name: Run prek
+        run: prek run --all-files

@@ -6,16 +6,19 @@ use crate::{graphics_device::GraphicsDevice, shader::ShaderSource};
 /// Represents the settings used throughout the lifetime of the renderer.
 #[derive(Debug, Clone, Copy)]
 pub struct Settings {
-    /// The maximum number of frames that can be processed concurrently by the CPU and GPU.
+    /// The maximum number of frames that can be processed concurrently by the
+    /// CPU and GPU.
     pub frames_in_flight: u32,
 }
 
-/// Represents a request for a specific graphics feature, indicating whether it is strictly required.
+/// Represents a request for a specific graphics feature, indicating whether it
+/// is strictly required.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FeatureRequest {
     /// The feature that is being requested.
     pub feature: crate::graphics_device::Feature,
-    /// Indicates whether the graphics device must support the requested feature.
+    /// Indicates whether the graphics device must support the requested
+    /// feature.
     pub required: bool,
 }
 
@@ -32,7 +35,8 @@ pub struct InitializeOptions<'a> {
 /// Represents a resource binding.
 #[derive(Debug, Clone, Copy)]
 pub struct ResourceBinding<B> {
-    /// The binding number specified in the shader (e.g., `layout(binding = 0)`).
+    /// The binding number specified in the shader (e.g., `layout(binding =
+    /// 0)`).
     pub binding: u32,
 
     /// The actual resource this slot binds to.
@@ -44,7 +48,8 @@ pub struct ResourceBinding<B> {
 pub enum BufferUsage {
     /// The buffer is used to store general purpose data.
     Storage,
-    /// The buffer is used to pass read-only data, such as transformation matrices or material properties, to shaders.
+    /// The buffer is used to pass read-only data, such as transformation
+    /// matrices or material properties, to shaders.
     Uniform,
     /// The buffer is used to store vertex data for 3D geometry.
     Vertex,
@@ -92,7 +97,8 @@ pub enum RendererError {
     FailedToEnumerateDevices(String),
     /// Failed to enumerate the features supported by the graphics device.
     FailedToEnumerateSupportedFeatures(String),
-    /// A requested feature marked as required is not supported by the physical device.
+    /// A requested feature marked as required is not supported by the physical
+    /// device.
     UnsupportedRequiredFeature(crate::graphics_device::Feature),
 }
 
@@ -129,9 +135,11 @@ pub trait Renderer {
 
     /// Enumerates all available graphics devices on the system.
     fn enumerate_devices(&mut self) -> RendererResult<Vec<GraphicsDevice>>;
-    /// Returns the currently active device, or `None` if there is no active device.
+    /// Returns the currently active device, or `None` if there is no active
+    /// device.
     fn get_device(&self) -> Option<&GraphicsDevice>;
-    /// Sets the active graphics device and initializes it with the requested features.
+    /// Sets the active graphics device and initializes it with the requested
+    /// features.
     fn set_device(
         &mut self,
         device: &GraphicsDevice,
@@ -141,9 +149,11 @@ pub trait Renderer {
     /// Initializes the per-thread execution resources for the renderer.
     ///
     /// ### Important
-    /// This function must be run **once per thread** that will be recording commands.
+    /// This function must be run **once per thread** that will be recording
+    /// commands.
     fn initialize_thread(&mut self) -> RendererResult<()>;
-    /// Frees and destroys all per-frame execution resources allocated during `initialize_frames`.
+    /// Frees and destroys all per-frame execution resources allocated during
+    /// `initialize_frames`.
     fn uninitialize_thread(&mut self) -> RendererResult<()>;
 
     /// Compiles the shader from the provided source.
@@ -196,7 +206,8 @@ pub trait Renderer {
     /// Ends the frame. `begin_frame` must be called before calling this method.
     fn end_frame(&mut self) -> RendererResult<()>;
 
-    /// Blocks the current CPU thread until the GPU has finished executing all pending commands.
+    /// Blocks the current CPU thread until the GPU has finished executing all
+    /// pending commands.
     fn wait_idle(&self) -> RendererResult<()>;
 
     /// Clears the current render target with the specified color.

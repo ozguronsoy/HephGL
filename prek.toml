@@ -1,0 +1,18 @@
+[[repos]]
+repo = "local"
+
+  [[repos.hooks]]
+  id = "cargo-fmt-nightly"
+  name = "Cargo Format (Nightly)"
+  entry = "cargo +nightly fmt --all"
+  language = "system"
+  types = ["rust"]
+  pass_filenames = false
+
+  [[repos.hooks]]
+  id = "cargo-clippy"
+  name = "Cargo Clippy"
+  entry = "cargo clippy --all-targets --all-features -- -D warnings"
+  language = "system"
+  types = ["rust"]
+  pass_filenames = false
