@@ -51,11 +51,13 @@ struct QueueFamily {
 
 /// Represents the resources and synchronization state for a single frame.
 struct Frame {
-    /// Contains the resources used for recording commands per thread for this frame.
+    /// Contains the resources used for recording commands per thread for this
+    /// frame.
     thread_contexts: [ThreadContext; 64],
     /// The fence used to synchronize CPU and GPU execution for this frame.
     fence: Fence,
-    /// Indicates whether the frame is currently executing on the GPU and has an active fence in flight.
+    /// Indicates whether the frame is currently executing on the GPU and has an
+    /// active fence in flight.
     is_in_flight: bool,
 }
 
@@ -82,10 +84,12 @@ struct QueueContext {
     /// Length of this must always be equal to `settings.frames_in_flight`.
     frames: Vec<Frame>,
     /// A bitmask indicating the availability of thread contexts.
-    /// `0` means the context at that index is available, `1` means it is currently in use.
+    /// `0` means the context at that index is available, `1` means it is
+    /// currently in use.
     ///
     /// ### Note
-    /// Replace this with an array of `AtomicU64`s if more than 64 concurrent threads are required.
+    /// Replace this with an array of `AtomicU64`s if more than 64 concurrent
+    /// threads are required.
     thread_context_mask: AtomicU64,
 }
 
@@ -590,7 +594,8 @@ impl Renderer for VulkanRenderer {
             })?;
         request_queue(graphics_family.index, graphics_family.queue_count);
 
-        // Use DMA Transfer family if available. Otherwise, use the main graphics family.
+        // Use DMA Transfer family if available. Otherwise, use the main graphics
+        // family.
         let mut transfer_family = None;
         if available_features.contains(&Feature::AsyncTransfer) {
             let transfer_family = transfer_family.insert(
@@ -612,7 +617,8 @@ impl Renderer for VulkanRenderer {
             request_queue(transfer_family.index, transfer_family.queue_count);
         }
 
-        // Use the pure compute family if available. Otherwise, use the main graphics family.
+        // Use the pure compute family if available. Otherwise, use the main graphics
+        // family.
         let mut compute_family = None;
         if available_features.contains(&Feature::ComputeShaders) {
             let compute_family = compute_family.insert(
@@ -782,8 +788,9 @@ impl Renderer for VulkanRenderer {
                 let new_index = if self.main_thread_id == std::thread::current().id() {
                     MAIN_THREAD_CONTEXT_INDEX
                 } else {
-                    // Index `0` is reserved for the main thread, which might not be initialized yet.
-                    // Force the LSB to 1 to prevent assigning index `0` to a worker thread.
+                    // Index `0` is reserved for the main thread, which might not be initialized
+                    // yet. Force the LSB to 1 to prevent assigning index `0` to
+                    // a worker thread.
                     (current | (1 << MAIN_THREAD_CONTEXT_INDEX)).trailing_ones() as usize
                 };
 
@@ -817,7 +824,8 @@ impl Renderer for VulkanRenderer {
 
     fn uninitialize_thread(&mut self) -> RendererResult<()> {
         if Self::thread_context_index().is_err() {
-            // Err means the index is set to `INVALID_THREAD_CONTEXT_INDEX`, which means the thread is already uninitialized.
+            // Err means the index is set to `INVALID_THREAD_CONTEXT_INDEX`, which means the
+            // thread is already uninitialized.
             return Ok(());
         };
 
@@ -1261,8 +1269,8 @@ impl Renderer for VulkanRenderer {
         let mut submitted_queues = Vec::new();
         let mut submit_queue = |queue_context: &mut QueueContext| {
             const INVALID_FRAME_INDEX: usize = usize::MAX;
-            // TODO: Use a HashMap<Queue, Vec<CommandBuffer>> so we can get all commands in one loop
-            // instead of looping over for each queue type.
+            // TODO: Use a HashMap<Queue, Vec<CommandBuffer>> so we can get all commands in
+            // one loop instead of looping over for each queue type.
             let mut command_buffers = Vec::with_capacity(recorded_commands.len());
             let mut frame_index = INVALID_FRAME_INDEX;
             for recorded_command in recorded_commands {
@@ -1455,7 +1463,8 @@ impl VulkanRenderer {
     const VK_API_VERSION: u32 = ash::vk::make_api_version(0, 1, 4, 0);
     const MAX_TIMEOUT_NS: u64 = 1.0e9 as u64;
 
-    /// Checks whether the call is being made from the main thread. If not, returns an error.
+    /// Checks whether the call is being made from the main thread. If not,
+    /// returns an error.
     fn main_thread_only(&self) -> RendererResult<()> {
         (self.main_thread_id == std::thread::current().id())
             .then_some(())
@@ -1686,7 +1695,8 @@ impl VulkanRenderer {
         Ok(())
     }
 
-    /// Frees the resources used by the graphics device, and sets the currently active device to `None`.
+    /// Frees the resources used by the graphics device, and sets the currently
+    /// active device to `None`.
     fn uninitialize_device(&mut self) -> RendererResult<()> {
         if self.device_context.is_some() {
             self.uninitialize_thread()?;

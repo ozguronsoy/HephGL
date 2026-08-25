@@ -13,7 +13,8 @@ pub enum Type {
     VirtualGpu,
     /// A software-based rendering implementation running on the CPU.
     Cpu,
-    /// A hardware device that does not cleanly fit into any of the standard categories.
+    /// A hardware device that does not cleanly fit into any of the standard
+    /// categories.
     Other,
     /// An unrecognized GPU type.
     Invalid,
