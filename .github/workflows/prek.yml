@@ -2,6 +2,7 @@ name: Pre Commit
 
 on:
   push:
+    branches: ["main"]
   pull_request:
 
 jobs:
@@ -10,20 +11,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v7
 
-      - name: Install Rust (Nightly)
+      - name: Install Nightly
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
 
-      - name: Install Rust (Stable)
+      - name: Install Clippy
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
 
-      - name: Cache Rust environment
+      - name: Cache Rust env
         uses: Swatinem/rust-cache@v2
 
       - name: Install prek
@@ -31,4 +32,3 @@ jobs:
 
       - name: Run prek 
         run: prek run --all-files
-        
