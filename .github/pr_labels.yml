@@ -26,6 +26,6 @@ infrastructure:
   - changed-files:
       - any-glob-to-any-file: ['.github/**', '**/*.toml']
 
-docs:
+documentation:
   - changed-files:
       - any-glob-to-any-file: ['**/*.md']
