@@ -22,6 +22,18 @@ opengl:
   - changed-files:
     - any-glob-to-any-file: ['src/renderers/*opengl*.rs', 'src/renderers/opengl/**/*.rs']
 
+shader:
+  - changed-files:
+    - any-glob-to-any-file: ['**/*.glsl', '**/*.hlsl', '**/*.vert', '**/*.frag', '**/*.comp', '**/*.spv']
+
+test:
+  - changed-files:
+    - any-glob-to-any-file: ['tests/**/*.rs', '**/*.glsl', '**/*.hlsl', '**/*.vert', '**/*.frag', '**/*.comp', '**/*.spv']
+
+example:
+  - changed-files:
+    - any-glob-to-any-file: ['examples/**/*.rs', '**/*.glsl', '**/*.hlsl', '**/*.vert', '**/*.frag', '**/*.comp', '**/*.spv']
+
 infrastructure:
   - changed-files:
       - any-glob-to-any-file: ['.github/**', '**/*.toml']
