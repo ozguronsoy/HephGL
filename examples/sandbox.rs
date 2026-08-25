@@ -1,3 +1,4 @@
+use heph_gl::graphics_device;
 use heph_gl::renderers::vulkan_renderer::VulkanRenderer;
 use heph_gl::renderers::{
     BufferUsage, FeatureRequest, InitializeOptions, PipelineHandle, Renderer, ResourceBinding,
@@ -11,6 +12,8 @@ use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
+
+const SHADER_DIR: &str = "examples/shaders";
 
 #[derive(Default)]
 pub struct App {
@@ -62,6 +65,11 @@ impl ApplicationHandler for App {
                             for dev in &graphics_devices {
                                 println!("{}", dev);
                             }
+                            let target_device = graphics_devices
+                                .iter()
+                                .find(|d| d.device_type == graphics_device::Type::DiscreteGpu)
+                                .or_else(|| graphics_devices.first())
+                                .unwrap();
                             active_renderer
                                 .set_settings(heph_gl::renderers::Settings {
                                     frames_in_flight: 1,
@@ -69,7 +77,7 @@ impl ApplicationHandler for App {
                                 .unwrap();
                             active_renderer
                                 .set_device(
-                                    &graphics_devices[0],
+                                    target_device,
                                     &[FeatureRequest {
                                         feature: heph_gl::graphics_device::Feature::ComputeShaders,
                                         required: true,
@@ -107,7 +115,7 @@ impl ApplicationHandler for App {
                         PhysicalKey::Code(KeyCode::KeyC) => {
                             active_renderer.initialize_thread().unwrap();
 
-                            let shader_path = "C:\\Users\\ozgur\\OneDrive\\Desktop\\Projects\\HephGL\\examples\\shaders\\addition.spv";
+                            let shader_path = SHADER_DIR.to_owned() + "/addition.spv";
                             let shader_module = active_renderer
                                 .create_shader(&ShaderSource::from_file(shader_path).unwrap())
                                 .unwrap();
@@ -218,7 +226,7 @@ impl ApplicationHandler for App {
                         PhysicalKey::Code(KeyCode::KeyM) => {
                             active_renderer.initialize_thread().unwrap();
 
-                            let shader_path = "C:\\Users\\ozgur\\OneDrive\\Desktop\\Projects\\HephGL\\examples\\shaders\\addition.spv";
+                            let shader_path = SHADER_DIR.to_owned() + "/addition.spv";
                             let shader_module = active_renderer
                                 .create_shader(&ShaderSource::from_file(shader_path).unwrap())
                                 .unwrap();
