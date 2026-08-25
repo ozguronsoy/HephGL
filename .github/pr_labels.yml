@@ -1,0 +1,31 @@
+core:
+  - changed-files:
+      - any-glob-to-any-file: ['src/*.rs']
+
+renderer:
+  - changed-files:
+      - any-glob-to-any-file: ['src/renderers/**/*.rs']
+
+vulkan:
+  - changed-files:
+    - any-glob-to-any-file: ['src/renderers/*vulkan*.rs', 'src/renderers/vulkan/**/*.rs']
+
+directx:
+  - changed-files:
+    - any-glob-to-any-file: ['src/renderers/*directx*.rs', 'src/renderers/directx/**/*.rs']
+
+metal:
+  - changed-files:
+    - any-glob-to-any-file: ['src/renderers/*metal*.rs', 'src/renderers/metal/**/*.rs']
+
+opengl:
+  - changed-files:
+    - any-glob-to-any-file: ['src/renderers/*opengl*.rs', 'src/renderers/opengl/**/*.rs']
+
+infrastructure:
+  - changed-files:
+      - any-glob-to-any-file: ['.github/**', '**/*.toml']
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file: ['**/*.md']
