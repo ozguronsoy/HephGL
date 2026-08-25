@@ -253,6 +253,7 @@ impl ApplicationHandler for App {
                                         let renderer =
                                             unsafe { &mut *(renderer_ptr as *mut VulkanRenderer) };
 
+                                        b.wait();
                                         renderer.initialize_thread().unwrap();
 
                                         for i in 1..11 {

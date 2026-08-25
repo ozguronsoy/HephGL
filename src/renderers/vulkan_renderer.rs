@@ -170,6 +170,8 @@ pub struct VulkanRenderer {
     main_thread_id: std::thread::ThreadId,
 }
 
+unsafe impl Sync for VulkanRenderer {}
+
 impl Renderer for VulkanRenderer {
     type ShaderHandle = VulkanShader;
     type BufferHandle = VulkanBuffer;
@@ -414,7 +416,7 @@ impl Renderer for VulkanRenderer {
 
             let device_vendor_id = properties2.properties.vendor_id;
             let device_id = properties2.properties.device_id;
-            self.device_queue_families.insert(device_id, Vec::default());
+            self.device_queue_families.insert(device_id, Vec::new());
 
             let device_api_version =
                 VulkanRenderer::vk_api_version_to_heph_version(properties2.properties.api_version);
@@ -1256,12 +1258,17 @@ impl Renderer for VulkanRenderer {
                     "Device is not set.".to_string(),
                 ))?;
 
-        let submit_queue = |queue_context: &mut QueueContext| {
+        let mut submitted_queues = Vec::new();
+        let mut submit_queue = |queue_context: &mut QueueContext| {
             const INVALID_FRAME_INDEX: usize = usize::MAX;
+            // TODO: Use a HashMap<Queue, Vec<CommandBuffer>> so we can get all commands in one loop
+            // instead of looping over for each queue type.
             let mut command_buffers = Vec::with_capacity(recorded_commands.len());
             let mut frame_index = INVALID_FRAME_INDEX;
             for recorded_command in recorded_commands {
-                if recorded_command.queue != queue_context.queue {
+                if submitted_queues.contains(&queue_context.queue)
+                    || recorded_command.queue != queue_context.queue
+                {
                     continue;
                 }
 
@@ -1296,6 +1303,7 @@ impl Renderer for VulkanRenderer {
                         })?;
                 }
                 frame.is_in_flight = true;
+                submitted_queues.push(queue_context.queue);
             }
 
             Ok(())
@@ -1348,7 +1356,7 @@ impl Renderer for VulkanRenderer {
         unsafe {
             device_context
                 .logical_device
-                .wait_for_fences(&fences, true, u64::MAX)
+                .wait_for_fences(&fences, true, VulkanRenderer::MAX_TIMEOUT_NS)
                 .map_err(|e| RendererError::Fail(e.to_string()))?;
             device_context
                 .logical_device
@@ -1445,6 +1453,7 @@ impl VulkanRenderer {
     /// The Vulkan API version used internally.
     // TODO: Get this from the user.
     const VK_API_VERSION: u32 = ash::vk::make_api_version(0, 1, 4, 0);
+    const MAX_TIMEOUT_NS: u64 = 1.0e9 as u64;
 
     /// Checks whether the call is being made from the main thread. If not, returns an error.
     fn main_thread_only(&self) -> RendererResult<()> {
@@ -1602,8 +1611,7 @@ impl VulkanRenderer {
                 ))?;
         let fif = self.settings.frames_in_flight as usize;
 
-        let fence_info =
-            ash::vk::FenceCreateInfo::default().flags(ash::vk::FenceCreateFlags::SIGNALED);
+        let fence_info = ash::vk::FenceCreateInfo::default();
         let create_fence = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
             queue_context.frames[frame_index].fence = device_context
                 .logical_device
@@ -1781,7 +1789,7 @@ impl VulkanRenderer {
             if frame.is_in_flight {
                 device_context
                     .logical_device
-                    .wait_for_fences(&[frame.fence], true, u64::MAX)
+                    .wait_for_fences(&[frame.fence], true, VulkanRenderer::MAX_TIMEOUT_NS)
                     .map_err(|e| {
                         RendererError::Fail(format!("Failed to wait for fences: {}", e))
                     })?;
