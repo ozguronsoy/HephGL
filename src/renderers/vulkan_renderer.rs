@@ -963,21 +963,17 @@ impl Renderer for VulkanRenderer {
                         ash::vk::WriteDescriptorSet::default()
                             .dst_set(descriptor_set)
                             .dst_binding(i as u32)
-                            // Note: You can dynamically map this by checking `binding.usage`
-                            // if you need UNIFORM_BUFFER support later.
                             .descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER)
                             .buffer_info(std::slice::from_ref(info))
                     })
                     .collect();
 
-                // 5. Submit the Update
                 unsafe {
                     device_context
                         .logical_device
                         .update_descriptor_sets(&writes, &[]);
                 }
 
-                // 6. Return the Handle wrapper
                 Ok(Self::ResourceSetHandle { descriptor_set })
             }
             _ => unimplemented!(),
@@ -1101,7 +1097,8 @@ impl Renderer for VulkanRenderer {
                     "Device is not set.".to_string(),
                 ))?;
 
-        let bindings = (0..4)
+        // TODO: Pass number of bindings as a parameter.
+        let bindings = (0..3)
             .map(|i| {
                 DescriptorSetLayoutBinding::default()
                     .binding(i)
