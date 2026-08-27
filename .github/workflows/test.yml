@@ -29,11 +29,16 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
 
+      - name: Install Vulkan SDK
+        uses: jakoch/install-vulkan-sdk-action@v1.6
+        with:
+          cache: true
+
       - name: Install Linux Dependencies
         if: runner.os == 'Linux'
         run: |
-          sudo apt update
-          sudo apt install -y xvfb libvulkan1 mesa-vulkan-drivers vulkan-tools libxkbcommon-x11-0
+          sudo apt-get update
+          sudo apt-get install -y xvfb libxkbcommon-x11-0 mesa-vulkan-drivers
 
       - name: Run Nextest (Linux)
         if: runner.os == 'Linux'
