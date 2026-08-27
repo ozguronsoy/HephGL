@@ -86,6 +86,11 @@ fn test_enumerate_devices() {
         !devices.is_empty(),
         "Invalid Test Env: No graphics device found to run remaining tests."
     );
+
+    // For debugging CI.
+    for device in &devices {
+        println!("{}", device);
+    }
 }
 
 fn test_set_device() {
