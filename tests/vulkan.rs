@@ -12,6 +12,7 @@ use heph_gl::{
     },
     shader::ShaderSource,
 };
+use libtest_mimic::{Arguments, Trial};
 
 use crate::utils::{SHADERS_DIR, TestEnv};
 
@@ -73,13 +74,11 @@ fn create_renderer_with_any_device(requested_features: &[FeatureRequest]) -> Vul
     )
 }
 
-#[test]
 fn test_initialize_renderer() {
     let mut renderer = create_renderer();
     heph_expect_success!(renderer.uninitialize());
 }
 
-#[test]
 fn test_enumerate_devices() {
     let mut renderer = create_renderer();
     let devices = heph_expect_success!(renderer.enumerate_devices());
@@ -89,12 +88,10 @@ fn test_enumerate_devices() {
     );
 }
 
-#[test]
 fn test_set_device() {
     create_renderer_with_any_device(&[]);
 }
 
-#[test]
 fn test_set_settings() {
     let mut renderer = create_renderer_with_any_device(&[]);
     let settings = Settings {
@@ -127,7 +124,6 @@ where
     assert_eq!(buffer.size(), 0);
 }
 
-#[test]
 fn test_uniform_buffer() {
     const BUFFER_SIZE: u64 = 1024;
 
@@ -139,7 +135,6 @@ fn test_uniform_buffer() {
     test_buffer(&data, heph_gl::renderers::BufferUsage::Uniform);
 }
 
-#[test]
 fn test_storage_buffer() {
     const BUFFER_SIZE: u64 = 1024;
 
@@ -153,7 +148,6 @@ fn test_storage_buffer() {
 
 // TODO: Add tests for other types of buffers.
 
-#[test]
 fn test_shader() {
     let renderer = create_renderer_with_any_device(&[]);
 
@@ -295,7 +289,6 @@ fn test_single_threaded_compute(
     heph_expect_success!(renderer.uninitialize_thread());
 }
 
-#[test]
 fn test_single_threaded_compute_discrete_gpu() {
     const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type =
         heph_gl::graphics_device::Type::DiscreteGpu;
@@ -306,3 +299,51 @@ fn test_single_threaded_compute_discrete_gpu() {
 
 // TODO: Add integrated GPU compute test.
 // TODO: Add multithreaded compute test.
+
+// We use nextest and libtest-mimic to run each test on the main thread of its
+// own process. This allows us to avoid "event loop creation in a worker thread"
+// errors.
+fn main() {
+    let args = Arguments::from_args();
+
+    let tests = vec![
+        Trial::test("test_initialize_renderer", move || {
+            test_initialize_renderer();
+            Ok(())
+        }),
+        Trial::test("test_enumerate_devices", move || {
+            test_enumerate_devices();
+            Ok(())
+        }),
+        Trial::test("test_enumerate_devices", move || {
+            test_enumerate_devices();
+            Ok(())
+        }),
+        Trial::test("test_set_device", move || {
+            test_set_device();
+            Ok(())
+        }),
+        Trial::test("test_set_settings", move || {
+            test_set_settings();
+            Ok(())
+        }),
+        Trial::test("test_uniform_buffer", move || {
+            test_uniform_buffer();
+            Ok(())
+        }),
+        Trial::test("test_storage_buffer", move || {
+            test_storage_buffer();
+            Ok(())
+        }),
+        Trial::test("test_shader", move || {
+            test_shader();
+            Ok(())
+        }),
+        Trial::test("test_single_threaded_compute_discrete_gpu", move || {
+            test_single_threaded_compute_discrete_gpu();
+            Ok(())
+        }),
+    ];
+
+    libtest_mimic::run(&args, tests).exit();
+}

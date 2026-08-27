@@ -26,16 +26,19 @@ jobs:
         with:
           key: ${{ matrix.os }}
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
       - name: Install Linux Dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb libvulkan1 mesa-vulkan-drivers vulkan-tools
 
-      - name: Run Cargo Tests (Linux)
+      - name: Run Nextest (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run cargo test -- --nocapture
+        run: xvfb-run cargo nextest run
 
-      - name: Run Cargo Tests (Windows & macOS)
+      - name: Run Nextest (Windows & macOS)
         if: runner.os != 'Linux'
-        run: cargo test -- --nocapture
+        run: cargo nextest run

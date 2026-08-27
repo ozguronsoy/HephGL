@@ -1,8 +1,4 @@
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
-#[cfg(target_os = "linux")]
-use winit::platform::wayland::EventLoopBuilderExtWayland;
-#[cfg(target_os = "linux")]
-use winit::platform::x11::EventLoopBuilderExtX11;
 use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::Window,
@@ -31,13 +27,7 @@ impl Default for TestEnv {
             .with_title("Test Window")
             .with_inner_size(winit::dpi::LogicalSize::new(1920.0, 1080.0));
 
-        let mut builder = EventLoop::builder();
-        #[cfg(target_os = "linux")]
-        {
-            EventLoopBuilderExtX11::with_any_thread(&mut builder, true);
-            EventLoopBuilderExtWayland::with_any_thread(&mut builder, true);
-        }
-        let event_loop = heph_expect_success!(builder.build());
+        let event_loop = heph_expect_success!(EventLoop::new());
         event_loop.set_control_flow(ControlFlow::Wait);
 
         #[allow(deprecated)]
