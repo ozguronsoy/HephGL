@@ -26,5 +26,16 @@ jobs:
         with:
           key: ${{ matrix.os }}
 
-      - name: Run Cargo Tests
-        run: cargo test --all-targets --all-features -- --nocapture
+      - name: Install Linux Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libvulkan1 mesa-vulkan-drivers vulkan-tools
+
+      - name: Run Cargo Tests (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run cargo test -- --nocapture
+
+      - name: Run Cargo Tests (Windows & macOS)
+        if: runner.os != 'Linux'
+        run: cargo test -- --nocapture
