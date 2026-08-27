@@ -32,8 +32,8 @@ jobs:
       - name: Install Linux Dependencies
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libvulkan1 mesa-vulkan-drivers vulkan-tools
+          sudo apt update
+          sudo apt install -y xvfb libvulkan1 mesa-vulkan-drivers vulkan-tools libxkbcommon-x11-0
 
       - name: Run Nextest (Linux)
         if: runner.os == 'Linux'
