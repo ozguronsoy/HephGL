@@ -27,4 +27,4 @@ jobs:
           key: ${{ matrix.os }}
 
       - name: Run Cargo Tests
-        run: cargo test --all-targets --all-features
+        run: cargo test --all-targets --all-features -- --nocapture

@@ -13,7 +13,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
-const SHADER_DIR: &str = "examples/shaders";
+const SHADERS_DIR: &str = "shaders";
 
 #[derive(Default)]
 pub struct App {
@@ -115,7 +115,7 @@ impl ApplicationHandler for App {
                         PhysicalKey::Code(KeyCode::KeyC) => {
                             active_renderer.initialize_thread().unwrap();
 
-                            let shader_path = SHADER_DIR.to_owned() + "/addition.spv";
+                            let shader_path = SHADERS_DIR.to_owned() + "/addition.spv";
                             let shader_module = active_renderer
                                 .create_shader(&ShaderSource::from_file(shader_path).unwrap())
                                 .unwrap();
@@ -226,7 +226,7 @@ impl ApplicationHandler for App {
                         PhysicalKey::Code(KeyCode::KeyM) => {
                             active_renderer.initialize_thread().unwrap();
 
-                            let shader_path = SHADER_DIR.to_owned() + "/addition.spv";
+                            let shader_path = SHADERS_DIR.to_owned() + "/addition.spv";
                             let shader_module = active_renderer
                                 .create_shader(&ShaderSource::from_file(shader_path).unwrap())
                                 .unwrap();

@@ -209,14 +209,14 @@ impl Renderer for VulkanRenderer {
     fn set_settings(&mut self, settings: Settings) -> RendererResult<()> {
         self.main_thread_only()?;
 
-        self.settings = settings;
-        self.current_frame_index = 0;
-
         if self.device_context.is_some() {
             let reinit_thread = Self::thread_context_index().is_ok();
 
             self.uninitialize_thread()?;
             self.destroy_fences()?;
+
+            self.settings = settings;
+            self.current_frame_index = 0;
 
             let resize_frames = |queue_context: &mut QueueContext| {
                 if queue_context.thread_context_mask.load(Ordering::Relaxed) != 0 {
@@ -240,10 +240,14 @@ impl Renderer for VulkanRenderer {
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 resize_frames(compute_queue_context)?;
             }
+            self.create_fences()?;
 
             if reinit_thread {
                 self.initialize_thread()?;
             }
+        } else {
+            self.settings = settings;
+            self.current_frame_index = 0;
         }
 
         Ok(())
@@ -1092,6 +1096,7 @@ impl Renderer for VulkanRenderer {
             device_context
                 .vma_allocator
                 .destroy_buffer(buffer.buffer, &mut buffer.vma_allocation);
+            buffer.size = 0;
         }
         Ok(())
     }
@@ -1361,17 +1366,19 @@ impl Renderer for VulkanRenderer {
             fences.push(compute_queue_context.frames[current_frame_index].fence);
             fence_guards.push(&mut compute_queue_context.frames[current_frame_index].is_in_flight);
         }
-        unsafe {
-            device_context
-                .logical_device
-                .wait_for_fences(&fences, true, VulkanRenderer::MAX_TIMEOUT_NS)
-                .map_err(|e| RendererError::Fail(e.to_string()))?;
-            device_context
-                .logical_device
-                .reset_fences(&fences)
-                .map_err(|e| RendererError::Fail(e.to_string()))?;
-            for is_in_flight in fence_guards {
-                *is_in_flight = false;
+        if !fences.is_empty() {
+            unsafe {
+                device_context
+                    .logical_device
+                    .wait_for_fences(&fences, true, VulkanRenderer::MAX_TIMEOUT_NS)
+                    .map_err(|e| RendererError::Fail(e.to_string()))?;
+                device_context
+                    .logical_device
+                    .reset_fences(&fences)
+                    .map_err(|e| RendererError::Fail(e.to_string()))?;
+                for is_in_flight in fence_guards {
+                    *is_in_flight = false;
+                }
             }
         }
 
