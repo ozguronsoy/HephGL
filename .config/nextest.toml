@@ -1,2 +1,3 @@
 [profile.default]
+fail-fast = false
 run-extra-args = ["--test-threads=1"]
