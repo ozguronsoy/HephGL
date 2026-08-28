@@ -46,6 +46,13 @@ jobs:
         if: runner.os == 'Linux'
         run: xvfb-run cargo nextest run
 
-      - name: Run Nextest (Windows & macOS)
-        if: runner.os != 'Linux'
-        run: cargo nextest run
+      - name: Run Nextest (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cargo nextest run
+
+      - name: Run Nextest (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          export VK_ICD_FILENAMES="$VULKAN_SDK/share/vulkan/icd.d/MoltenVK_icd.json"
+          cargo nextest run
