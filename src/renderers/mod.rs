@@ -154,8 +154,8 @@ pub trait Renderer {
     /// Initializes the per-thread execution resources for the renderer.
     ///
     /// ### Important
-    /// This function must be run **once per thread** that will be recording
-    /// commands.
+    /// This function must be run **once per worker thread** that will be
+    /// recording commands.
     fn initialize_thread(&mut self) -> RendererResult<()>;
     /// Frees and destroys all per-frame execution resources allocated during
     /// `initialize_frames`.

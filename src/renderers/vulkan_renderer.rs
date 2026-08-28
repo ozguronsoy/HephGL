@@ -819,6 +819,7 @@ impl Renderer for VulkanRenderer {
         });
 
         self.create_fences()?;
+        self.initialize_thread()?;
 
         Ok(())
     }
