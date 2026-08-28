@@ -1,8 +1,8 @@
 use heph_gl::graphics_device;
 use heph_gl::renderers::vulkan_renderer::VulkanRenderer;
 use heph_gl::renderers::{
-    BufferUsage, FeatureRequest, InitializeOptions, PipelineHandle, Renderer, ResourceBinding,
-    ResourceBindingType,
+    BufferUsage, FeatureRequest, GpuBuffer, InitializeOptions, PipelineHandle, Renderer,
+    ResourceBinding, ResourceBindingType,
 };
 use heph_gl::shader::ShaderSource;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
@@ -127,7 +127,7 @@ impl ApplicationHandler for App {
                                 active_renderer.begin_frame().unwrap();
 
                                 let data_count = 256;
-                                let byte_size = (data_count * std::mem::size_of::<f32>()) as u64;
+                                let byte_size = data_count * std::mem::size_of::<f32>();
 
                                 let mut a_data = vec![0.0f32; data_count];
                                 let mut b_data = vec![0.0f32; data_count];
@@ -236,7 +236,7 @@ impl ApplicationHandler for App {
 
                             let thread_count = 5;
                             let data_count = 256;
-                            let byte_size = (data_count * std::mem::size_of::<f32>()) as u64;
+                            let byte_size = data_count * std::mem::size_of::<f32>();
 
                             let renderer_ptr = active_renderer as *mut VulkanRenderer as usize;
 

@@ -67,9 +67,9 @@ pub enum ResourceBindingType<BufferHandle> {
         /// Specifies how the shader intends to use this buffer.
         usage: BufferUsage,
         /// The starting byte offset within the buffer where the binding begins.
-        offset: u64,
+        offset: usize,
         /// The size in bytes of the buffer region being bound.
-        size: u64,
+        size: usize,
     },
 }
 
@@ -105,12 +105,17 @@ pub enum RendererError {
 // Represents the result of a renderer operation.
 type RendererResult<T> = Result<T, RendererError>;
 
+/// Stores data in a GPU.
+pub trait GpuBuffer: std::fmt::Debug + Copy + Clone {
+    fn size(&self) -> usize;
+}
+
 /// The core interface for a graphics renderer.
 pub trait Renderer {
     /// Represents a compiled shader module on the GPU.
     type ShaderHandle;
     /// Represents a block of memory on the GPU.
-    type BufferHandle;
+    type BufferHandle: GpuBuffer;
     /// Represents a compiled graphics pipeline.
     type GraphicsPipelineHandle;
     /// Represents a compiled compute pipeline.
@@ -169,7 +174,7 @@ pub trait Renderer {
     ) -> RendererResult<Self::ResourceSetHandle>;
 
     /// Allocates a new buffer on the GPU with the specified size and usage.
-    fn create_buffer(&self, size: u64, usage: BufferUsage) -> RendererResult<Self::BufferHandle>;
+    fn create_buffer(&self, size: usize, usage: BufferUsage) -> RendererResult<Self::BufferHandle>;
     /// Writes data to the buffer on the GPU.
     fn write_buffer(&self, buffer: &Self::BufferHandle, data: &[u8]) -> RendererResult<()>;
     /// Reads data from the buffer on the GPU.
