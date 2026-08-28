@@ -202,8 +202,8 @@ fn test_single_threaded_compute(
         let mut a_data = vec![0.0f32; DATA_COUNT];
         let mut b_data = vec![0.0f32; DATA_COUNT];
         for j in 0..DATA_COUNT {
-            a_data[j] = (j * i) as f32;
-            b_data[j] = ((j * 2) * i) as f32;
+            a_data[j] = (j * (i + 1)) as f32;
+            b_data[j] = ((j * 2) * (i + 1)) as f32;
         }
 
         let buffer_a =
@@ -280,8 +280,8 @@ fn test_single_threaded_compute(
             renderer.read_buffer(&buffer.2, bytemuck::cast_slice_mut(&mut data_c))
         );
 
-        for j in 0..DATA_COUNT {
-            assert_eq!(data_a[j] + data_b[j], data_c[j]);
+        for i in 0..DATA_COUNT {
+            assert_eq!(data_a[i] + data_b[i], data_c[i]);
         }
 
         heph_expect_success!(renderer.destroy_buffer(&mut buffer.0));
@@ -302,6 +302,13 @@ fn test_single_threaded_compute_discrete_gpu() {
     test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
 }
 
+fn test_single_threaded_compute_cpu() {
+    const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = heph_gl::graphics_device::Type::Cpu;
+    test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
+    test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
+    test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
+}
+
 // TODO: Add integrated GPU compute test.
 // TODO: Add multithreaded compute test.
 
@@ -310,6 +317,7 @@ fn test_single_threaded_compute_discrete_gpu() {
 // errors.
 fn main() {
     let args = Arguments::from_args();
+    let is_ci = std::env::var("CI").is_ok();
 
     let tests = vec![
         Trial::test("test_initialize_renderer", move || {
@@ -346,6 +354,11 @@ fn main() {
         }),
         Trial::test("test_single_threaded_compute_discrete_gpu", move || {
             test_single_threaded_compute_discrete_gpu();
+            Ok(())
+        })
+        .with_ignored_flag(is_ci),
+        Trial::test("test_single_threaded_compute_cpu", move || {
+            test_single_threaded_compute_cpu();
             Ok(())
         }),
     ];
