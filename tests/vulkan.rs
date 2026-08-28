@@ -302,6 +302,14 @@ fn test_single_threaded_compute_discrete_gpu() {
     test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
 }
 
+fn test_single_threaded_compute_integrated_gpu() {
+    const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type =
+        heph_gl::graphics_device::Type::IntegratedGpu;
+    test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
+    test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
+    test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
+}
+
 fn test_single_threaded_compute_cpu() {
     const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = heph_gl::graphics_device::Type::Cpu;
     test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
@@ -354,6 +362,11 @@ fn main() {
         }),
         Trial::test("test_single_threaded_compute_discrete_gpu", move || {
             test_single_threaded_compute_discrete_gpu();
+            Ok(())
+        })
+        .with_ignored_flag(is_ci),
+        Trial::test("test_single_threaded_compute_integrated_gpu", move || {
+            test_single_threaded_compute_integrated_gpu();
             Ok(())
         })
         .with_ignored_flag(is_ci),

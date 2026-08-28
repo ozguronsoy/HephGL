@@ -38,6 +38,13 @@ thread_local! {
     static THREAD_CONTEXT_INDEX: UnsafeCell<usize> = const { UnsafeCell::new(INVALID_THREAD_CONTEXT_INDEX) };
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum QueueType {
+    Graphics,
+    Transfer,
+    Compute,
+}
+
 /// Represents a Vulkan queue family.
 struct QueueFamily {
     /// The index of the graphics family.
@@ -76,6 +83,8 @@ struct ThreadContext {
 struct QueueContext {
     /// The Vulkan queue instance.
     queue: Queue,
+    /// The Vulkan queue type.
+    queue_type: QueueType,
     /// The index of the queue family.
     queue_family_index: u32,
     /// Contains the resources per frame.
@@ -152,7 +161,7 @@ pub struct VulkanResourceSet {
 /// Represents a recorded Vulkan command.
 #[derive(Debug, Copy, Clone)]
 pub struct VulkanRecordedCommand {
-    queue: Queue,
+    queue_type: QueueType,
     frame_index: u32,
     thread_context_index: usize,
 }
@@ -282,26 +291,50 @@ impl Renderer for VulkanRenderer {
             api_version: VulkanRenderer::VK_API_VERSION,
             ..Default::default()
         };
+
+        let entry = unsafe {
+            Entry::load().map_err(|e| {
+                RendererError::FailedToInitialize(format!(
+                    "Failed to load Vulkan graphics driver library: {}",
+                    e
+                ))
+            })?
+        };
+
+        let available_layers: Vec<_> = unsafe {
+            entry
+                .enumerate_instance_layer_properties()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|properties| {
+                    std::ffi::CStr::from_ptr(properties.layer_name.as_ptr()).to_owned()
+                })
+                .collect()
+        };
+        let validation_layer_name = std::ffi::CString::new("VK_LAYER_KHRONOS_validation").unwrap();
+        let mut enabled_layer_names = Vec::new();
+        if available_layers.contains(&validation_layer_name) {
+            enabled_layer_names.push(validation_layer_name.as_ptr());
+        }
+
         let instance_create_info = InstanceCreateInfo {
             s_type: StructureType::INSTANCE_CREATE_INFO,
             p_application_info: &app_info,
             enabled_extension_count: required_extension_names.len() as u32,
             pp_enabled_extension_names: required_extension_names.as_ptr(),
+            enabled_layer_count: enabled_layer_names.len() as u32,
+            pp_enabled_layer_names: enabled_layer_names.as_ptr(),
             ..Default::default()
         };
 
-        let entry = unsafe {
-            Entry::load().map_err(|_| {
-                RendererError::FailedToInitialize(
-                    "Failed to load Vulkan graphics driver library".to_owned(),
-                )
-            })?
-        };
         let instance = unsafe {
             entry
                 .create_instance(&instance_create_info, None)
-                .map_err(|_| {
-                    RendererError::FailedToInitialize("Failed to create Vulkan Instance".to_owned())
+                .map_err(|e| {
+                    RendererError::FailedToInitialize(format!(
+                        "Failed to create Vulkan Instance: {}",
+                        e
+                    ))
                 })?
         };
 
@@ -742,6 +775,7 @@ impl Renderer for VulkanRenderer {
 
             graphics_queue_context: QueueContext {
                 queue: graphics_queue,
+                queue_type: QueueType::Graphics,
                 queue_family_index: graphics_family.index,
                 frames: (0..self.settings.frames_in_flight)
                     .map(|_| Frame::default())
@@ -750,6 +784,7 @@ impl Renderer for VulkanRenderer {
             },
             transfer_queue_context: transfer_queue_handle.map(|queue| QueueContext {
                 queue,
+                queue_type: QueueType::Transfer,
                 queue_family_index: transfer_family.unwrap().index,
                 frames: (0..self.settings.frames_in_flight)
                     .map(|_| Frame::default())
@@ -758,6 +793,7 @@ impl Renderer for VulkanRenderer {
             }),
             compute_queue_context: compute_queue_handle.map(|queue| QueueContext {
                 queue,
+                queue_type: QueueType::Compute,
                 queue_family_index: compute_family.unwrap().index,
                 frames: (0..self.settings.frames_in_flight)
                     .map(|_| Frame::default())
@@ -1252,7 +1288,7 @@ impl Renderer for VulkanRenderer {
         }
 
         Ok(Self::RecordedCommand {
-            queue: compute_queue_context.queue,
+            queue_type: QueueType::Compute,
             frame_index: self.current_frame_index,
             thread_context_index,
         })
@@ -1280,7 +1316,7 @@ impl Renderer for VulkanRenderer {
             let mut frame_index = INVALID_FRAME_INDEX;
             for recorded_command in recorded_commands {
                 if submitted_queues.contains(&queue_context.queue)
-                    || recorded_command.queue != queue_context.queue
+                    || recorded_command.queue_type != queue_context.queue_type
                 {
                     continue;
                 }
