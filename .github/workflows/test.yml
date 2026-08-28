@@ -26,5 +26,33 @@ jobs:
         with:
           key: ${{ matrix.os }}
 
-      - name: Run Cargo Tests
-        run: cargo test --all-targets --all-features
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Install Vulkan SDK
+        uses: jakoch/install-vulkan-sdk-action@v1.6.0
+        with:
+          cache: true
+          install_swiftshader: true
+          install_lavapipe: true
+
+      - name: Install Linux Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libxkbcommon-x11-0
+
+      - name: Run Nextest (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run cargo nextest run
+
+      - name: Run Nextest (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cargo nextest run
+
+      - name: Run Nextest (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          export VK_ICD_FILENAMES="$VULKAN_SDK/share/vulkan/icd.d/MoltenVK_icd.json"
+          cargo nextest run

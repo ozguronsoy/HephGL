@@ -38,6 +38,13 @@ thread_local! {
     static THREAD_CONTEXT_INDEX: UnsafeCell<usize> = const { UnsafeCell::new(INVALID_THREAD_CONTEXT_INDEX) };
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum QueueType {
+    Graphics,
+    Transfer,
+    Compute,
+}
+
 /// Represents a Vulkan queue family.
 struct QueueFamily {
     /// The index of the graphics family.
@@ -76,6 +83,8 @@ struct ThreadContext {
 struct QueueContext {
     /// The Vulkan queue instance.
     queue: Queue,
+    /// The Vulkan queue type.
+    queue_type: QueueType,
     /// The index of the queue family.
     queue_family_index: u32,
     /// Contains the resources per frame.
@@ -152,7 +161,7 @@ pub struct VulkanResourceSet {
 /// Represents a recorded Vulkan command.
 #[derive(Debug, Copy, Clone)]
 pub struct VulkanRecordedCommand {
-    queue: Queue,
+    queue_type: QueueType,
     frame_index: u32,
     thread_context_index: usize,
 }
@@ -209,14 +218,14 @@ impl Renderer for VulkanRenderer {
     fn set_settings(&mut self, settings: Settings) -> RendererResult<()> {
         self.main_thread_only()?;
 
-        self.settings = settings;
-        self.current_frame_index = 0;
-
         if self.device_context.is_some() {
             let reinit_thread = Self::thread_context_index().is_ok();
 
             self.uninitialize_thread()?;
             self.destroy_fences()?;
+
+            self.settings = settings;
+            self.current_frame_index = 0;
 
             let resize_frames = |queue_context: &mut QueueContext| {
                 if queue_context.thread_context_mask.load(Ordering::Relaxed) != 0 {
@@ -240,10 +249,14 @@ impl Renderer for VulkanRenderer {
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 resize_frames(compute_queue_context)?;
             }
+            self.create_fences()?;
 
             if reinit_thread {
                 self.initialize_thread()?;
             }
+        } else {
+            self.settings = settings;
+            self.current_frame_index = 0;
         }
 
         Ok(())
@@ -259,12 +272,6 @@ impl Renderer for VulkanRenderer {
 
         let c_app_name =
             CString::new(options.app_name).map_err(|_| RendererError::InvalidAppName)?;
-        let required_extension_names =
-            ash_window::enumerate_required_extensions(options.display_handle).map_err(|_| {
-                RendererError::FailedToCreateSurface(
-                    "Failed to enumerate WSI extensions".to_owned(),
-                )
-            })?;
         let app_info = ApplicationInfo {
             s_type: StructureType::APPLICATION_INFO,
             p_engine_name: HEPHGL_ENGINE_NAME.as_ptr(),
@@ -278,26 +285,69 @@ impl Renderer for VulkanRenderer {
             api_version: VulkanRenderer::VK_API_VERSION,
             ..Default::default()
         };
+
+        let entry = unsafe {
+            Entry::load().map_err(|e| {
+                RendererError::FailedToInitialize(format!(
+                    "Failed to load Vulkan graphics driver library: {}",
+                    e
+                ))
+            })?
+        };
+
+        let create_flags = if cfg!(target_os = "macos") {
+            ash::vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR
+        } else {
+            ash::vk::InstanceCreateFlags::empty()
+        };
+
+        let mut required_extension_names =
+            ash_window::enumerate_required_extensions(options.display_handle)
+                .map_err(|_| {
+                    RendererError::FailedToCreateSurface(
+                        "Failed to enumerate WSI extensions".to_owned(),
+                    )
+                })?
+                .to_vec();
+        if cfg!(target_os = "macos") {
+            required_extension_names.push(c"VK_KHR_portability_enumeration".as_ptr());
+        }
+
+        let available_layers: Vec<_> = unsafe {
+            entry
+                .enumerate_instance_layer_properties()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|properties| {
+                    std::ffi::CStr::from_ptr(properties.layer_name.as_ptr()).to_owned()
+                })
+                .collect()
+        };
+        let validation_layer_name = std::ffi::CString::new("VK_LAYER_KHRONOS_validation").unwrap();
+        let mut enabled_layer_names = Vec::new();
+        if available_layers.contains(&validation_layer_name) {
+            enabled_layer_names.push(validation_layer_name.as_ptr());
+        }
+
         let instance_create_info = InstanceCreateInfo {
             s_type: StructureType::INSTANCE_CREATE_INFO,
             p_application_info: &app_info,
+            flags: create_flags,
             enabled_extension_count: required_extension_names.len() as u32,
             pp_enabled_extension_names: required_extension_names.as_ptr(),
+            enabled_layer_count: enabled_layer_names.len() as u32,
+            pp_enabled_layer_names: enabled_layer_names.as_ptr(),
             ..Default::default()
         };
 
-        let entry = unsafe {
-            Entry::load().map_err(|_| {
-                RendererError::FailedToInitialize(
-                    "Failed to load Vulkan graphics driver library".to_owned(),
-                )
-            })?
-        };
         let instance = unsafe {
             entry
                 .create_instance(&instance_create_info, None)
-                .map_err(|_| {
-                    RendererError::FailedToInitialize("Failed to create Vulkan Instance".to_owned())
+                .map_err(|e| {
+                    RendererError::FailedToInitialize(format!(
+                        "Failed to create Vulkan Instance: {}",
+                        e
+                    ))
                 })?
         };
 
@@ -738,6 +788,7 @@ impl Renderer for VulkanRenderer {
 
             graphics_queue_context: QueueContext {
                 queue: graphics_queue,
+                queue_type: QueueType::Graphics,
                 queue_family_index: graphics_family.index,
                 frames: (0..self.settings.frames_in_flight)
                     .map(|_| Frame::default())
@@ -746,6 +797,7 @@ impl Renderer for VulkanRenderer {
             },
             transfer_queue_context: transfer_queue_handle.map(|queue| QueueContext {
                 queue,
+                queue_type: QueueType::Transfer,
                 queue_family_index: transfer_family.unwrap().index,
                 frames: (0..self.settings.frames_in_flight)
                     .map(|_| Frame::default())
@@ -754,6 +806,7 @@ impl Renderer for VulkanRenderer {
             }),
             compute_queue_context: compute_queue_handle.map(|queue| QueueContext {
                 queue,
+                queue_type: QueueType::Compute,
                 queue_family_index: compute_family.unwrap().index,
                 frames: (0..self.settings.frames_in_flight)
                     .map(|_| Frame::default())
@@ -1092,6 +1145,7 @@ impl Renderer for VulkanRenderer {
             device_context
                 .vma_allocator
                 .destroy_buffer(buffer.buffer, &mut buffer.vma_allocation);
+            buffer.size = 0;
         }
         Ok(())
     }
@@ -1247,7 +1301,7 @@ impl Renderer for VulkanRenderer {
         }
 
         Ok(Self::RecordedCommand {
-            queue: compute_queue_context.queue,
+            queue_type: QueueType::Compute,
             frame_index: self.current_frame_index,
             thread_context_index,
         })
@@ -1275,7 +1329,7 @@ impl Renderer for VulkanRenderer {
             let mut frame_index = INVALID_FRAME_INDEX;
             for recorded_command in recorded_commands {
                 if submitted_queues.contains(&queue_context.queue)
-                    || recorded_command.queue != queue_context.queue
+                    || recorded_command.queue_type != queue_context.queue_type
                 {
                     continue;
                 }
@@ -1361,17 +1415,19 @@ impl Renderer for VulkanRenderer {
             fences.push(compute_queue_context.frames[current_frame_index].fence);
             fence_guards.push(&mut compute_queue_context.frames[current_frame_index].is_in_flight);
         }
-        unsafe {
-            device_context
-                .logical_device
-                .wait_for_fences(&fences, true, VulkanRenderer::MAX_TIMEOUT_NS)
-                .map_err(|e| RendererError::Fail(e.to_string()))?;
-            device_context
-                .logical_device
-                .reset_fences(&fences)
-                .map_err(|e| RendererError::Fail(e.to_string()))?;
-            for is_in_flight in fence_guards {
-                *is_in_flight = false;
+        if !fences.is_empty() {
+            unsafe {
+                device_context
+                    .logical_device
+                    .wait_for_fences(&fences, true, VulkanRenderer::MAX_TIMEOUT_NS)
+                    .map_err(|e| RendererError::Fail(e.to_string()))?;
+                device_context
+                    .logical_device
+                    .reset_fences(&fences)
+                    .map_err(|e| RendererError::Fail(e.to_string()))?;
+                for is_in_flight in fence_guards {
+                    *is_in_flight = false;
+                }
             }
         }
 

@@ -1,0 +1,5 @@
+[profile.default]
+fail-fast = false
+success-output = "immediate"
+failure-output = "immediate"
+run-extra-args = ["--test-threads=1"]
