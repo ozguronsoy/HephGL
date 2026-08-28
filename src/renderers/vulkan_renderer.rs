@@ -272,12 +272,6 @@ impl Renderer for VulkanRenderer {
 
         let c_app_name =
             CString::new(options.app_name).map_err(|_| RendererError::InvalidAppName)?;
-        let required_extension_names =
-            ash_window::enumerate_required_extensions(options.display_handle).map_err(|_| {
-                RendererError::FailedToCreateSurface(
-                    "Failed to enumerate WSI extensions".to_owned(),
-                )
-            })?;
         let app_info = ApplicationInfo {
             s_type: StructureType::APPLICATION_INFO,
             p_engine_name: HEPHGL_ENGINE_NAME.as_ptr(),
@@ -301,6 +295,24 @@ impl Renderer for VulkanRenderer {
             })?
         };
 
+        let create_flags = if cfg!(target_os = "macos") {
+            ash::vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR
+        } else {
+            ash::vk::InstanceCreateFlags::empty()
+        };
+
+        let mut required_extension_names =
+            ash_window::enumerate_required_extensions(options.display_handle)
+                .map_err(|_| {
+                    RendererError::FailedToCreateSurface(
+                        "Failed to enumerate WSI extensions".to_owned(),
+                    )
+                })?
+                .to_vec();
+        if cfg!(target_os = "macos") {
+            required_extension_names.push(c"VK_KHR_portability_enumeration".as_ptr());
+        }
+
         let available_layers: Vec<_> = unsafe {
             entry
                 .enumerate_instance_layer_properties()
@@ -320,6 +332,7 @@ impl Renderer for VulkanRenderer {
         let instance_create_info = InstanceCreateInfo {
             s_type: StructureType::INSTANCE_CREATE_INFO,
             p_application_info: &app_info,
+            flags: create_flags,
             enabled_extension_count: required_extension_names.len() as u32,
             pp_enabled_extension_names: required_extension_names.as_ptr(),
             enabled_layer_count: enabled_layer_names.len() as u32,
