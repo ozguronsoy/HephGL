@@ -10,8 +10,8 @@ use heph_gl::{
         Type::{Cpu, DiscreteGpu, IntegratedGpu},
     },
     renderers::{
-        BufferUsage, FeatureRequest, InitializeOptions, PipelineHandle, Renderer, ResourceBinding,
-        ResourceBindingType, Settings, vulkan_renderer::VulkanRenderer,
+        BufferUsage, FeatureRequest, GpuBuffer, InitializeOptions, PipelineHandle, Renderer,
+        ResourceBinding, ResourceBindingType, Settings, vulkan_renderer::VulkanRenderer,
     },
     shader::ShaderSource,
 };
@@ -128,8 +128,8 @@ where
     let renderer = create_renderer_with_any_device(&[]);
 
     let buffer_size = data.len() * size_of::<T>();
-    let mut buffer = heph_expect_success!(renderer.create_buffer(buffer_size as u64, usage));
-    assert_eq!(buffer.size(), buffer_size as u64);
+    let mut buffer = heph_expect_success!(renderer.create_buffer(buffer_size, usage));
+    assert_eq!(buffer.size(), buffer_size);
 
     heph_expect_success!(renderer.write_buffer(&buffer, bytemuck::cast_slice(data)));
 
@@ -143,9 +143,9 @@ where
 }
 
 fn test_uniform_buffer() {
-    const BUFFER_SIZE: u64 = 1024;
+    const BUFFER_SIZE: usize = 1024;
 
-    let mut data = Vec::with_capacity(BUFFER_SIZE as usize);
+    let mut data = Vec::with_capacity(BUFFER_SIZE);
     for i in 0..BUFFER_SIZE {
         data.push(i + 1);
     }
@@ -154,9 +154,9 @@ fn test_uniform_buffer() {
 }
 
 fn test_storage_buffer() {
-    const BUFFER_SIZE: u64 = 1024;
+    const BUFFER_SIZE: usize = 1024;
 
-    let mut data = Vec::with_capacity(BUFFER_SIZE as usize);
+    let mut data = Vec::with_capacity(BUFFER_SIZE);
     for i in 0..BUFFER_SIZE {
         data.push(i + 1);
     }
@@ -215,7 +215,7 @@ fn test_single_threaded_compute(
     for i in 0..n_frames {
         heph_expect_success!(renderer.begin_frame());
 
-        let byte_size = (DATA_COUNT * std::mem::size_of::<f32>()) as u64;
+        let byte_size = DATA_COUNT * std::mem::size_of::<f32>();
 
         let mut a_data = vec![0.0f32; DATA_COUNT];
         let mut b_data = vec![0.0f32; DATA_COUNT];

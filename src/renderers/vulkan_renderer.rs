@@ -23,8 +23,8 @@ use vk_mem::Alloc;
 
 use crate::graphics_device::{Feature, GraphicsDevice};
 use crate::renderers::{
-    BufferUsage, FeatureRequest, InitializeOptions, PipelineHandle, Renderer, RendererError,
-    RendererResult, ResourceBinding, ResourceBindingType, Settings,
+    BufferUsage, FeatureRequest, GpuBuffer, InitializeOptions, PipelineHandle, Renderer,
+    RendererError, RendererResult, ResourceBinding, ResourceBindingType, Settings,
 };
 use crate::shader::ShaderSource;
 use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
@@ -135,7 +135,7 @@ pub struct VulkanBuffer {
     /// The memory allocation.
     vma_allocation: vk_mem::Allocation,
     /// The size of the buffer in bytes.
-    size: u64,
+    size: usize,
 }
 
 /// Represents a Vulkan graphics pipeline.
@@ -855,7 +855,7 @@ impl Renderer for VulkanRenderer {
                 let new = current | (1 << new_index);
                 match mask.compare_exchange_weak(current, new, Ordering::AcqRel, Ordering::Acquire)
                 {
-                    Ok(_) => break new_index as usize,
+                    Ok(_) => break new_index,
                     Err(actual) => current = actual,
                 }
             };
@@ -1015,8 +1015,8 @@ impl Renderer for VulkanRenderer {
                             ..
                         } => ash::vk::DescriptorBufferInfo::default()
                             .buffer(handle.buffer)
-                            .offset(*offset)
-                            .range(*size),
+                            .offset(*offset as u64)
+                            .range(*size as u64),
                     })
                     .collect();
 
@@ -1044,7 +1044,7 @@ impl Renderer for VulkanRenderer {
         }
     }
 
-    fn create_buffer(&self, size: u64, usage: BufferUsage) -> RendererResult<Self::BufferHandle> {
+    fn create_buffer(&self, size: usize, usage: BufferUsage) -> RendererResult<Self::BufferHandle> {
         let device_context =
             self.device_context
                 .as_ref()
@@ -1059,7 +1059,9 @@ impl Renderer for VulkanRenderer {
             BufferUsage::Index => BufferUsageFlags::INDEX_BUFFER,
         };
 
-        let buffer_info = BufferCreateInfo::default().size(size).usage(vk_usage);
+        let buffer_info = BufferCreateInfo::default()
+            .size(size as u64)
+            .usage(vk_usage);
         let alloc_info = vk_mem::AllocationCreateInfo {
             usage: vk_mem::MemoryUsage::Auto,
             flags: vk_mem::AllocationCreateFlags::MAPPED
@@ -1081,7 +1083,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn write_buffer(&self, buffer: &Self::BufferHandle, data: &[u8]) -> RendererResult<()> {
-        if data.len() as u64 > buffer.size {
+        if data.len() > buffer.size {
             return Err(RendererError::Fail("Data exceeds buffer size!".to_string()));
         }
 
@@ -1107,7 +1109,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn read_buffer(&self, buffer: &Self::BufferHandle, dest: &mut [u8]) -> RendererResult<()> {
-        if dest.len() as u64 > buffer.size {
+        if dest.len() > buffer.size {
             return Err(RendererError::Fail(
                 "Destination slice is larger than buffer!".to_string(),
             ));
@@ -1919,8 +1921,8 @@ impl Default for Frame {
     }
 }
 
-impl VulkanBuffer {
-    pub fn size(&self) -> u64 {
+impl GpuBuffer for VulkanBuffer {
+    fn size(&self) -> usize {
         self.size
     }
 }
