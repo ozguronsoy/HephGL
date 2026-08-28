@@ -5,7 +5,10 @@ use std::{
 };
 
 use heph_gl::{
-    graphics_device::Feature,
+    graphics_device::{
+        Feature,
+        Type::{Cpu, DiscreteGpu, IntegratedGpu},
+    },
     renderers::{
         BufferUsage, FeatureRequest, InitializeOptions, PipelineHandle, Renderer, ResourceBinding,
         ResourceBindingType, Settings, vulkan_renderer::VulkanRenderer,
@@ -45,14 +48,12 @@ fn create_renderer_with_target_device(
     let mut renderer = create_renderer();
     let devices = heph_expect_success!(renderer.enumerate_devices());
     let target_device = devices.iter().find(|d| d.device_type == target_device_type);
-    if target_device_type_required {
-        assert!(
-            target_device.is_some(),
-            "Invalid Test Env: No {} found.",
-            target_device_type
-        );
-    } else {
-        return None;
+    if target_device.is_none() {
+        if target_device_type_required {
+            panic!("Invalid Test Env: No {} found.", target_device_type);
+        } else {
+            return None;
+        }
     }
     heph_expect_success!(renderer.set_device(target_device.as_ref().unwrap(), requested_features));
 
@@ -190,9 +191,10 @@ fn test_single_threaded_compute(
         }],
         false,
     );
-    if create_renderer_result.is_none() {
-        return;
-    }
+    assert!(
+        create_renderer_result.is_some(),
+        "The test should be skipped if device of the target type does not exist."
+    );
     let mut renderer = create_renderer_result.unwrap();
 
     // This also tests changing settings after initializing everything doesn't break
@@ -311,23 +313,21 @@ fn test_single_threaded_compute(
 }
 
 fn test_single_threaded_compute_discrete_gpu() {
-    const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type =
-        heph_gl::graphics_device::Type::DiscreteGpu;
+    const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = DiscreteGpu;
     test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
     test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
     test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
 }
 
 fn test_single_threaded_compute_integrated_gpu() {
-    const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type =
-        heph_gl::graphics_device::Type::IntegratedGpu;
+    const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = IntegratedGpu;
     test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
     test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
     test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
 }
 
 fn test_single_threaded_compute_cpu() {
-    const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = heph_gl::graphics_device::Type::Cpu;
+    const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = Cpu;
     test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
     test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
     test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
@@ -341,6 +341,15 @@ fn test_single_threaded_compute_cpu() {
 // errors.
 fn main() {
     let args = Arguments::from_args();
+
+    let device_type_exists = |device_type: heph_gl::graphics_device::Type| -> bool {
+        let mut renderer = create_renderer();
+        let devices = heph_expect_success!(renderer.enumerate_devices());
+        devices
+            .iter()
+            .find(|d| d.device_type == device_type)
+            .is_some()
+    };
 
     let tests = vec![
         Trial::test("test_initialize_renderer", move || {
@@ -378,15 +387,18 @@ fn main() {
         Trial::test("test_single_threaded_compute_discrete_gpu", move || {
             test_single_threaded_compute_discrete_gpu();
             Ok(())
-        }),
+        })
+        .with_ignored_flag(!device_type_exists(DiscreteGpu)),
         Trial::test("test_single_threaded_compute_integrated_gpu", move || {
             test_single_threaded_compute_integrated_gpu();
             Ok(())
-        }),
+        })
+        .with_ignored_flag(!device_type_exists(IntegratedGpu)),
         Trial::test("test_single_threaded_compute_cpu", move || {
             test_single_threaded_compute_cpu();
             Ok(())
-        }),
+        })
+        .with_ignored_flag(!device_type_exists(Cpu)),
     ];
 
     libtest_mimic::run(&args, tests).exit();
