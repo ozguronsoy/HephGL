@@ -38,6 +38,7 @@ thread_local! {
     static THREAD_CONTEXT_INDEX: UnsafeCell<usize> = const { UnsafeCell::new(INVALID_THREAD_CONTEXT_INDEX) };
 }
 
+/// Represents the Vulkan queue type.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum QueueType {
     Graphics,
@@ -1320,17 +1321,12 @@ impl Renderer for VulkanRenderer {
                     "Device is not set.".to_string(),
                 ))?;
 
-        let mut submitted_queues = Vec::new();
-        let mut submit_queue = |queue_context: &mut QueueContext| {
+        let submit_queue = |queue_context: &mut QueueContext| {
             const INVALID_FRAME_INDEX: usize = usize::MAX;
-            // TODO: Use a HashMap<Queue, Vec<CommandBuffer>> so we can get all commands in
-            // one loop instead of looping over for each queue type.
             let mut command_buffers = Vec::with_capacity(recorded_commands.len());
             let mut frame_index = INVALID_FRAME_INDEX;
             for recorded_command in recorded_commands {
-                if submitted_queues.contains(&queue_context.queue)
-                    || recorded_command.queue_type != queue_context.queue_type
-                {
+                if recorded_command.queue_type != queue_context.queue_type {
                     continue;
                 }
 
@@ -1365,7 +1361,6 @@ impl Renderer for VulkanRenderer {
                         })?;
                 }
                 frame.is_in_flight = true;
-                submitted_queues.push(queue_context.queue);
             }
 
             Ok(())
