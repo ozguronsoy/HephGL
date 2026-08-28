@@ -34,12 +34,13 @@ jobs:
         with:
           cache: true
           install_swiftshader: true
+          install_lavapipe: true
 
       - name: Install Linux Dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb libxkbcommon-x11-0 mesa-vulkan-drivers
+          sudo apt-get install -y xvfb libxkbcommon-x11-0
 
       - name: Run Nextest (Linux)
         if: runner.os == 'Linux'
