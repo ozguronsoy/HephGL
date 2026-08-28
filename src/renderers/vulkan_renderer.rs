@@ -884,6 +884,8 @@ impl Renderer for VulkanRenderer {
             return Ok(());
         };
 
+        // TODO: Wait for fences to avoid destroying resources before commands
+        // dispatched to GPU finishes.
         self.destroy_descriptor_pools()?;
         self.destroy_command_buffers()?;
         self.destroy_command_pools()?;
@@ -1819,12 +1821,6 @@ impl VulkanRenderer {
             frame.thread_contexts[thread_context_index].command_buffer = CommandBuffer::default();
         };
 
-        unsafe {
-            device_context
-                .logical_device
-                .device_wait_idle()
-                .map_err(|e| RendererError::Fail(e.to_string()))?
-        };
         for frame_index in 0..fif {
             destroy_command_buffer(&mut device_context.graphics_queue_context, frame_index);
             if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
