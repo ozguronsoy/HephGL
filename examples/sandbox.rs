@@ -228,7 +228,7 @@ impl ApplicationHandler for App {
                                 .create_compute_pipeline(&shader_module)
                                 .unwrap();
 
-                            let thread_count = 5;
+                            let thread_count = 10;
                             let data_count = 256;
                             let byte_size = data_count * std::mem::size_of::<f32>();
 
@@ -236,182 +236,185 @@ impl ApplicationHandler for App {
 
                             std::thread::scope(|s| {
                                 let (tx, rx) = std::sync::mpsc::channel();
+
                                 let barrier =
                                     std::sync::Arc::new(std::sync::Barrier::new(thread_count + 1));
 
                                 for thread_id in 0..thread_count {
                                     let tx = tx.clone();
-                                    let b = barrier.clone();
+                                    let barrier = barrier.clone();
 
                                     s.spawn(move || {
                                         let renderer =
                                             unsafe { &mut *(renderer_ptr as *mut VulkanRenderer) };
 
-                                        b.wait();
                                         renderer.initialize_thread().unwrap();
 
-                                        for i in 1..11 {
-                                            b.wait();
+                                        barrier.wait();
 
-                                            let mut a_data = vec![0.0f32; data_count];
-                                            let mut b_data = vec![0.0f32; data_count];
-                                            for j in 0..data_count {
-                                                a_data[j] = (j * i) as f32 + thread_id as f32;
-                                                b_data[j] = ((j * 2) * i) as f32;
-                                            }
+                                        let i = thread_id + 1;
 
-                                            let buffer_a = renderer
-                                                .create_buffer(byte_size, BufferUsage::Storage)
-                                                .unwrap();
-                                            let buffer_b = renderer
-                                                .create_buffer(byte_size, BufferUsage::Storage)
-                                                .unwrap();
-                                            let buffer_c = renderer
-                                                .create_buffer(byte_size, BufferUsage::Storage)
-                                                .unwrap();
+                                        let mut a_data = vec![0.0f32; data_count];
+                                        let mut b_data = vec![0.0f32; data_count];
 
-                                            renderer
-                                                .write_buffer(
-                                                    &buffer_a,
-                                                    bytemuck::cast_slice(&a_data),
-                                                )
-                                                .unwrap();
-                                            renderer
-                                                .write_buffer(
-                                                    &buffer_b,
-                                                    bytemuck::cast_slice(&b_data),
-                                                )
-                                                .unwrap();
+                                        for j in 0..data_count {
+                                            a_data[j] = (j * i) as f32;
+                                            b_data[j] = ((j * 2) * i) as f32;
+                                        }
 
-                                            let bindings = [
-                                                ResourceBinding {
-                                                    binding: 0,
-                                                    resource: ResourceBindingType::Buffer {
-                                                        handle: buffer_a,
-                                                        usage: BufferUsage::Storage,
-                                                        offset: 0,
-                                                        size: buffer_a.size(),
-                                                    },
-                                                },
-                                                ResourceBinding {
-                                                    binding: 1,
-                                                    resource: ResourceBindingType::Buffer {
-                                                        handle: buffer_b,
-                                                        usage: BufferUsage::Storage,
-                                                        offset: 0,
-                                                        size: buffer_b.size(),
-                                                    },
-                                                },
-                                                ResourceBinding {
-                                                    binding: 2,
-                                                    resource: ResourceBindingType::Buffer {
-                                                        handle: buffer_c,
-                                                        usage: BufferUsage::Storage,
-                                                        offset: 0,
-                                                        size: buffer_c.size(),
-                                                    },
-                                                },
-                                            ];
-
-                                            let resource_set = renderer
-                                                .create_resource_set(
-                                                    &PipelineHandle::Compute(pipeline),
-                                                    &bindings,
-                                                )
-                                                .unwrap();
-
-                                            let recorded_command = renderer
-                                                .record_compute_pass(
-                                                    &pipeline,
-                                                    &[&resource_set],
-                                                    (1, 1, 1),
-                                                )
-                                                .unwrap();
-
-                                            tx.send((
-                                                thread_id,
-                                                recorded_command,
-                                                buffer_a,
-                                                buffer_b,
-                                                buffer_c,
-                                                a_data,
-                                                b_data,
-                                                i,
-                                            ))
+                                        let buffer_a = renderer
+                                            .create_buffer(byte_size, BufferUsage::Storage)
                                             .unwrap();
 
-                                            b.wait();
-                                        }
+                                        let buffer_b = renderer
+                                            .create_buffer(byte_size, BufferUsage::Storage)
+                                            .unwrap();
+
+                                        let buffer_c = renderer
+                                            .create_buffer(byte_size, BufferUsage::Storage)
+                                            .unwrap();
+
+                                        renderer
+                                            .write_buffer(&buffer_a, bytemuck::cast_slice(&a_data))
+                                            .unwrap();
+
+                                        renderer
+                                            .write_buffer(&buffer_b, bytemuck::cast_slice(&b_data))
+                                            .unwrap();
+
+                                        let bindings = [
+                                            ResourceBinding {
+                                                binding: 0,
+                                                resource: ResourceBindingType::Buffer {
+                                                    handle: buffer_a,
+                                                    usage: BufferUsage::Storage,
+                                                    offset: 0,
+                                                    size: buffer_a.size(),
+                                                },
+                                            },
+                                            ResourceBinding {
+                                                binding: 1,
+                                                resource: ResourceBindingType::Buffer {
+                                                    handle: buffer_b,
+                                                    usage: BufferUsage::Storage,
+                                                    offset: 0,
+                                                    size: buffer_b.size(),
+                                                },
+                                            },
+                                            ResourceBinding {
+                                                binding: 2,
+                                                resource: ResourceBindingType::Buffer {
+                                                    handle: buffer_c,
+                                                    usage: BufferUsage::Storage,
+                                                    offset: 0,
+                                                    size: buffer_c.size(),
+                                                },
+                                            },
+                                        ];
+
+                                        let resource_set = renderer
+                                            .create_resource_set(
+                                                &PipelineHandle::Compute(pipeline),
+                                                &bindings,
+                                            )
+                                            .unwrap();
+
+                                        let recorded_command = renderer
+                                            .record_compute_pass(
+                                                &pipeline,
+                                                &[&resource_set],
+                                                (1, 1, 1),
+                                            )
+                                            .unwrap();
+
+                                        tx.send((
+                                            thread_id,
+                                            recorded_command,
+                                            buffer_a,
+                                            buffer_b,
+                                            buffer_c,
+                                            a_data,
+                                            b_data,
+                                            i,
+                                        ))
+                                        .unwrap();
+
+                                        barrier.wait();
 
                                         renderer.uninitialize_thread().unwrap();
                                     });
                                 }
 
-                                for i in 1..11 {
-                                    active_renderer.begin_frame().unwrap();
+                                active_renderer.begin_frame().unwrap();
 
-                                    barrier.wait();
+                                barrier.wait();
 
-                                    let mut commands = Vec::new();
-                                    let mut cleanup_data = Vec::new();
+                                let mut commands = Vec::with_capacity(thread_count);
+                                let mut cleanup_data = Vec::with_capacity(thread_count);
 
-                                    for _ in 0..thread_count {
-                                        let (
-                                            t_id,
-                                            cmd,
-                                            buf_a,
-                                            buf_b,
-                                            buf_c,
-                                            a_data,
-                                            b_data,
-                                            frame_idx,
-                                        ) = rx.recv().unwrap();
-                                        commands.push(cmd);
-                                        cleanup_data.push((
-                                            t_id, buf_a, buf_b, buf_c, a_data, b_data, frame_idx,
-                                        ));
-                                    }
-
-                                    active_renderer.submit_commands(&commands).unwrap();
-                                    active_renderer.wait_idle().unwrap();
-
-                                    for (
-                                        t_id,
-                                        mut buf_a,
-                                        mut buf_b,
-                                        mut buf_c,
+                                for _ in 0..thread_count {
+                                    let (
+                                        thread_id,
+                                        command,
+                                        buffer_a,
+                                        buffer_b,
+                                        buffer_c,
                                         a_data,
                                         b_data,
-                                        frame_idx,
-                                    ) in cleanup_data
-                                    {
-                                        let mut c_data = vec![0.0f32; data_count];
-                                        active_renderer
-                                            .read_buffer(
-                                                &buf_c,
-                                                bytemuck::cast_slice_mut(&mut c_data),
-                                            )
-                                            .unwrap();
+                                        job_id,
+                                    ) = rx.recv().unwrap();
 
-                                        if i == 1 {
-                                            let j = 10;
-                                            println!(
-                                                "Thread {} Result[{}] {}: {} + {} = {}",
-                                                t_id, frame_idx, j, a_data[j], b_data[j], c_data[j]
-                                            );
-                                        }
+                                    commands.push(command);
 
-                                        active_renderer.destroy_buffer(&mut buf_a).unwrap();
-                                        active_renderer.destroy_buffer(&mut buf_b).unwrap();
-                                        active_renderer.destroy_buffer(&mut buf_c).unwrap();
-                                    }
-
-                                    barrier.wait();
-                                    active_renderer.end_frame().unwrap();
+                                    cleanup_data.push((
+                                        thread_id, buffer_a, buffer_b, buffer_c, a_data, b_data,
+                                        job_id,
+                                    ));
                                 }
+
+                                active_renderer.submit_commands(&commands).unwrap();
+                                active_renderer.wait_idle().unwrap();
+
+                                for (
+                                    thread_id,
+                                    mut buffer_a,
+                                    mut buffer_b,
+                                    mut buffer_c,
+                                    a_data,
+                                    b_data,
+                                    job_id,
+                                ) in cleanup_data
+                                {
+                                    let mut c_data = vec![0.0f32; data_count];
+
+                                    active_renderer
+                                        .read_buffer(
+                                            &buffer_c,
+                                            bytemuck::cast_slice_mut(&mut c_data),
+                                        )
+                                        .unwrap();
+
+                                    let j = 10;
+
+                                    println!(
+                                        "Thread {} Job {} Result[{}]: {} + {} = {}",
+                                        thread_id, job_id, j, a_data[j], b_data[j], c_data[j]
+                                    );
+
+                                    active_renderer.destroy_buffer(&mut buffer_a).unwrap();
+
+                                    active_renderer.destroy_buffer(&mut buffer_b).unwrap();
+
+                                    active_renderer.destroy_buffer(&mut buffer_c).unwrap();
+                                }
+
+                                barrier.wait();
+
+                                active_renderer.end_frame().unwrap();
                             });
 
                             active_renderer.destroy_compute_pipeline(&pipeline).unwrap();
+
                             active_renderer.destroy_shader(&shader_module).unwrap();
                         }
                         PhysicalKey::Code(KeyCode::KeyU) => {
