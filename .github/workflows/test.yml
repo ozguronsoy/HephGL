@@ -33,6 +33,7 @@ jobs:
         uses: jakoch/install-vulkan-sdk-action@v1.6.0
         with:
           cache: true
+          install_swiftshader: true
 
       - name: Install Linux Dependencies
         if: runner.os == 'Linux'
