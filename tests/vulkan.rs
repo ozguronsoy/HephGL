@@ -41,10 +41,10 @@ fn create_renderer_with_target_device(
     target_device_type: heph_gl::graphics_device::Type,
     requested_features: &[FeatureRequest],
     target_device_type_required: bool,
-) -> VulkanRenderer {
+) -> Option<VulkanRenderer> {
     let mut renderer = create_renderer();
     let devices = heph_expect_success!(renderer.enumerate_devices());
-    let mut target_device = devices.iter().find(|d| d.device_type == target_device_type);
+    let target_device = devices.iter().find(|d| d.device_type == target_device_type);
     if target_device_type_required {
         assert!(
             target_device.is_some(),
@@ -52,7 +52,7 @@ fn create_renderer_with_target_device(
             target_device_type
         );
     } else {
-        target_device = devices.first();
+        return None;
     }
     heph_expect_success!(renderer.set_device(target_device.as_ref().unwrap(), requested_features));
 
@@ -63,15 +63,27 @@ fn create_renderer_with_target_device(
     );
     assert_eq!(target_device.unwrap(), result.unwrap());
 
-    renderer
+    Some(renderer)
 }
 
 fn create_renderer_with_any_device(requested_features: &[FeatureRequest]) -> VulkanRenderer {
-    create_renderer_with_target_device(
-        heph_gl::graphics_device::Type::DiscreteGpu,
-        requested_features,
-        false,
-    )
+    let mut renderer = create_renderer();
+    let devices = heph_expect_success!(renderer.enumerate_devices());
+    let target_device = devices.first();
+    assert!(
+        target_device.is_some(),
+        "Invalid Test Env: No device found.",
+    );
+    heph_expect_success!(renderer.set_device(target_device.as_ref().unwrap(), requested_features));
+
+    let result = renderer.get_device();
+    assert!(
+        result.is_some(),
+        "Renderer successfully set the graphics device, but `get_device()` returned `None`."
+    );
+    assert_eq!(target_device.unwrap(), result.unwrap());
+
+    renderer
 }
 
 fn test_initialize_renderer() {
@@ -170,14 +182,18 @@ fn test_single_threaded_compute(
 ) {
     const DATA_COUNT: usize = 256;
 
-    let mut renderer = create_renderer_with_target_device(
+    let create_renderer_result = create_renderer_with_target_device(
         target_device_type,
         &[FeatureRequest {
             feature: Feature::ComputeShaders,
             required: false,
         }],
-        true,
+        false,
     );
+    if create_renderer_result.is_none() {
+        return;
+    }
+    let mut renderer = create_renderer_result.unwrap();
 
     // This also tests changing settings after initializing everything doesn't break
     // anything.
@@ -325,7 +341,6 @@ fn test_single_threaded_compute_cpu() {
 // errors.
 fn main() {
     let args = Arguments::from_args();
-    let is_ci = std::env::var("CI").is_ok();
 
     let tests = vec![
         Trial::test("test_initialize_renderer", move || {
@@ -363,13 +378,11 @@ fn main() {
         Trial::test("test_single_threaded_compute_discrete_gpu", move || {
             test_single_threaded_compute_discrete_gpu();
             Ok(())
-        })
-        .with_ignored_flag(is_ci),
+        }),
         Trial::test("test_single_threaded_compute_integrated_gpu", move || {
             test_single_threaded_compute_integrated_gpu();
             Ok(())
-        })
-        .with_ignored_flag(is_ci),
+        }),
         Trial::test("test_single_threaded_compute_cpu", move || {
             test_single_threaded_compute_cpu();
             Ok(())
