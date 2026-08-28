@@ -884,7 +884,8 @@ impl Renderer for VulkanRenderer {
             return Ok(());
         };
 
-        // TODO: Wait for fences to avoid destroying resources before commands dispatched to GPU finishes.
+        // TODO: Wait for fences to avoid destroying resources before commands
+        // dispatched to GPU finishes.
         self.destroy_descriptor_pools()?;
         self.destroy_command_buffers()?;
         self.destroy_command_pools()?;
