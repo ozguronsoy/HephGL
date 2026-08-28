@@ -197,10 +197,6 @@ fn test_single_threaded_compute(
     );
     let mut renderer = create_renderer_result.unwrap();
 
-    // This also tests changing settings after initializing everything doesn't break
-    // anything.
-    heph_expect_success!(renderer.initialize_thread());
-
     let settings = Settings { frames_in_flight };
     heph_expect_success!(renderer.set_settings(settings));
 
@@ -309,7 +305,6 @@ fn test_single_threaded_compute(
 
     heph_expect_success!(renderer.destroy_compute_pipeline(&pipeline));
     heph_expect_success!(renderer.destroy_shader(&shader));
-    heph_expect_success!(renderer.uninitialize_thread());
 }
 
 fn test_single_threaded_compute_discrete_gpu() {
