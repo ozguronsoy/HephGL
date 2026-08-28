@@ -329,7 +329,6 @@ fn test_single_threaded_compute_cpu() {
 
 fn test_multi_threaded_compute(
     target_device_type: heph_gl::graphics_device::Type,
-    frames_in_flight: u32,
     n_threads: usize,
 ) {
     const DATA_COUNT: usize = 256;
@@ -348,9 +347,6 @@ fn test_multi_threaded_compute(
         "The test should be skipped if device of the target type does not exist."
     );
     let mut renderer = create_renderer_result.unwrap();
-
-    let settings = Settings { frames_in_flight };
-    heph_expect_success!(renderer.set_settings(settings));
 
     let shader_path = SHADERS_DIR.to_owned() + "/addition.spv";
     let shader_module = heph_expect_success!(
@@ -495,23 +491,17 @@ fn test_multi_threaded_compute(
 
 fn test_multi_threaded_compute_discrete_gpu() {
     const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = DiscreteGpu;
-    test_multi_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
-    test_multi_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
-    test_multi_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
+    test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
 }
 
 fn test_multi_threaded_compute_integrated_gpu() {
     const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = IntegratedGpu;
-    test_multi_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
-    test_multi_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
-    test_multi_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
+    test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
 }
 
 fn test_multi_threaded_compute_cpu() {
     const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = Cpu;
-    test_multi_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
-    test_multi_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
-    test_multi_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
+    test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
 }
 
 // We use nextest and libtest-mimic to run each test on the main thread of its

@@ -236,7 +236,6 @@ impl ApplicationHandler for App {
 
                             std::thread::scope(|s| {
                                 let (tx, rx) = std::sync::mpsc::channel();
-
                                 let barrier =
                                     std::sync::Arc::new(std::sync::Barrier::new(thread_count + 1));
 
@@ -249,7 +248,6 @@ impl ApplicationHandler for App {
                                             unsafe { &mut *(renderer_ptr as *mut VulkanRenderer) };
 
                                         renderer.initialize_thread().unwrap();
-
                                         barrier.wait();
 
                                         let i = thread_id + 1;
@@ -265,11 +263,9 @@ impl ApplicationHandler for App {
                                         let buffer_a = renderer
                                             .create_buffer(byte_size, BufferUsage::Storage)
                                             .unwrap();
-
                                         let buffer_b = renderer
                                             .create_buffer(byte_size, BufferUsage::Storage)
                                             .unwrap();
-
                                         let buffer_c = renderer
                                             .create_buffer(byte_size, BufferUsage::Storage)
                                             .unwrap();
@@ -277,7 +273,6 @@ impl ApplicationHandler for App {
                                         renderer
                                             .write_buffer(&buffer_a, bytemuck::cast_slice(&a_data))
                                             .unwrap();
-
                                         renderer
                                             .write_buffer(&buffer_b, bytemuck::cast_slice(&b_data))
                                             .unwrap();
@@ -318,7 +313,6 @@ impl ApplicationHandler for App {
                                                 &bindings,
                                             )
                                             .unwrap();
-
                                         let recorded_command = renderer
                                             .record_compute_pass(
                                                 &pipeline,
@@ -351,7 +345,6 @@ impl ApplicationHandler for App {
 
                                 let mut commands = Vec::with_capacity(thread_count);
                                 let mut cleanup_data = Vec::with_capacity(thread_count);
-
                                 for _ in 0..thread_count {
                                     let (
                                         thread_id,
@@ -395,16 +388,13 @@ impl ApplicationHandler for App {
                                         .unwrap();
 
                                     let j = 10;
-
                                     println!(
                                         "Thread {} Job {} Result[{}]: {} + {} = {}",
                                         thread_id, job_id, j, a_data[j], b_data[j], c_data[j]
                                     );
 
                                     active_renderer.destroy_buffer(&mut buffer_a).unwrap();
-
                                     active_renderer.destroy_buffer(&mut buffer_b).unwrap();
-
                                     active_renderer.destroy_buffer(&mut buffer_c).unwrap();
                                 }
 
@@ -414,7 +404,6 @@ impl ApplicationHandler for App {
                             });
 
                             active_renderer.destroy_compute_pipeline(&pipeline).unwrap();
-
                             active_renderer.destroy_shader(&shader_module).unwrap();
                         }
                         PhysicalKey::Code(KeyCode::KeyU) => {
