@@ -178,7 +178,6 @@ pub struct VulkanRenderer {
     window_surface: Option<SurfaceKHR>,
     window_surface_loader: Option<ash::khr::surface::Instance>,
 
-    device_queue_families: HashMap<u32, Vec<QueueFamily>>,
     device_context: Option<DeviceContext>,
 
     main_thread_id: std::thread::ThreadId,
@@ -205,7 +204,6 @@ impl Renderer for VulkanRenderer {
             window_surface: None,
             window_surface_loader: None,
 
-            device_queue_families: HashMap::default(),
             device_context: None,
 
             main_thread_id: std::thread::current().id(),
@@ -400,25 +398,13 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn enumerate_devices(&mut self) -> RendererResult<Vec<GraphicsDevice>> {
+    fn enumerate_devices(&self) -> RendererResult<Vec<GraphicsDevice>> {
         let instance = self
             .instance
             .as_ref()
             .ok_or(RendererError::InvalidOperation(
                 "Renderer is not initialized".to_string(),
             ))?;
-        let window_surface_loader =
-            self.window_surface_loader
-                .as_ref()
-                .ok_or(RendererError::InvalidOperation(
-                    "Renderer is not initialize.".to_string(),
-                ))?;
-        let window_surface =
-            self.window_surface
-                .as_ref()
-                .ok_or(RendererError::InvalidOperation(
-                    "Renderer is not initialize.".to_string(),
-                ))?;
 
         let mut devices = Vec::<GraphicsDevice>::new();
         let physical_devices = unsafe {
@@ -471,7 +457,6 @@ impl Renderer for VulkanRenderer {
 
             let device_vendor_id = properties2.properties.vendor_id;
             let device_id = properties2.properties.device_id;
-            self.device_queue_families.insert(device_id, Vec::new());
 
             let device_api_version =
                 VulkanRenderer::vk_api_version_to_heph_version(properties2.properties.api_version);
@@ -517,8 +502,7 @@ impl Renderer for VulkanRenderer {
                     supported_features.insert(crate::graphics_device::Feature::RayTracing);
                 }
             }
-            for (index, queue_family_properties2) in queue_family_properties2_vec.iter().enumerate()
-            {
+            for queue_family_properties2 in &queue_family_properties2_vec {
                 let queue_flags = queue_family_properties2.queue_family_properties.queue_flags;
                 if queue_flags.contains(QueueFlags::COMPUTE) {
                     supported_features.insert(crate::graphics_device::Feature::ComputeShaders);
@@ -540,29 +524,6 @@ impl Renderer for VulkanRenderer {
                 {
                     supported_features.insert(crate::graphics_device::Feature::AsyncTransfer);
                 }
-
-                let queue_family = QueueFamily {
-                    index: index as u32,
-                    queue_count: queue_family_properties2.queue_family_properties.queue_count,
-                    queue_flags,
-                    present_supported: unsafe {
-                        window_surface_loader
-                            .get_physical_device_surface_support(
-                                physical_device,
-                                index as u32,
-                                *window_surface,
-                            )
-                            .map_err(|_| {
-                                RendererError::FailedToEnumerateSupportedFeatures(
-                                    "Failed to query presentation support for queue family"
-                                        .to_owned(),
-                                )
-                            })?
-                    },
-                };
-                self.device_queue_families
-                    .entry(device_id)
-                    .and_modify(|queue_families| queue_families.push(queue_family));
             }
 
             devices.push(GraphicsDevice {
@@ -630,14 +591,7 @@ impl Renderer for VulkanRenderer {
             }
         }
 
-        let queue_families = self
-            .device_queue_families
-            .get(&device.device_id)
-            .ok_or_else(|| {
-                RendererError::InvalidOperation(
-                    "Provided device is not properly enumerated.".to_string(),
-                )
-            })?;
+        let queue_families = self.get_device_queue_families(device)?;
         let mut queue_family_queue_counts: HashMap<u32, u32> = HashMap::new();
         let mut request_queue = |family_index: u32, max_queues: u32| {
             let count = queue_family_queue_counts.entry(family_index).or_insert(0);
@@ -1587,6 +1541,93 @@ impl VulkanRenderer {
                 minor: ash::vk::api_version_minor(vk_driver_version),
                 patch: ash::vk::api_version_patch(vk_driver_version),
             },
+        }
+    }
+
+    /// Populates the internal queue family info for each available device.
+    fn get_device_queue_families(
+        &self,
+        device: &GraphicsDevice,
+    ) -> RendererResult<Vec<QueueFamily>> {
+        let instance = self
+            .instance
+            .as_ref()
+            .ok_or(RendererError::InvalidOperation(
+                "Renderer is not initialized".to_string(),
+            ))?;
+        let window_surface_loader =
+            self.window_surface_loader
+                .as_ref()
+                .ok_or(RendererError::InvalidOperation(
+                    "Renderer is not initialize.".to_string(),
+                ))?;
+        let window_surface =
+            self.window_surface
+                .as_ref()
+                .ok_or(RendererError::InvalidOperation(
+                    "Renderer is not initialize.".to_string(),
+                ))?;
+
+        let physical_devices = unsafe {
+            instance.enumerate_physical_devices().map_err(|_| {
+                RendererError::FailedToEnumerateDevices(
+                    "Failed to enumerate physical Vulkan devices.".to_owned(),
+                )
+            })?
+        };
+
+        let mut queue_families = Vec::default();
+        for physical_device in physical_devices {
+            let mut properties2 = PhysicalDeviceProperties2::default();
+            let mut queue_family_properties2_vec = Vec::<QueueFamilyProperties2>::default();
+            unsafe {
+                instance.get_physical_device_properties2(physical_device, &mut properties2);
+                if device.device_id != properties2.properties.device_id {
+                    continue;
+                }
+
+                let queue_family_properties2_vec_size =
+                    instance.get_physical_device_queue_family_properties2_len(physical_device);
+                queue_family_properties2_vec.resize(
+                    queue_family_properties2_vec_size,
+                    QueueFamilyProperties2::default(),
+                );
+                instance.get_physical_device_queue_family_properties2(
+                    physical_device,
+                    &mut queue_family_properties2_vec,
+                );
+            };
+
+            for (index, queue_family_properties2) in queue_family_properties2_vec.iter().enumerate()
+            {
+                queue_families.push(QueueFamily {
+                    index: index as u32,
+                    queue_count: queue_family_properties2.queue_family_properties.queue_count,
+                    queue_flags: queue_family_properties2.queue_family_properties.queue_flags,
+                    present_supported: unsafe {
+                        window_surface_loader
+                            .get_physical_device_surface_support(
+                                physical_device,
+                                index as u32,
+                                *window_surface,
+                            )
+                            .map_err(|_| {
+                                RendererError::FailedToEnumerateSupportedFeatures(
+                                    "Failed to query presentation support for queue family"
+                                        .to_owned(),
+                                )
+                            })?
+                    },
+                });
+            }
+        }
+
+        if queue_families.is_empty() {
+            Err(RendererError::Fail(
+                "Requested device is not available.".to_string(),
+            ))
+        } else {
+            Ok(queue_families)
         }
     }
 

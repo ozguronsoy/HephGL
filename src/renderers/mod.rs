@@ -142,7 +142,7 @@ pub trait Renderer {
     fn uninitialize(&mut self) -> RendererResult<()>;
 
     /// Enumerates all available graphics devices on the system.
-    fn enumerate_devices(&mut self) -> RendererResult<Vec<GraphicsDevice>>;
+    fn enumerate_devices(&self) -> RendererResult<Vec<GraphicsDevice>>;
     /// Returns the currently active device, or `None` if there is no active
     /// device.
     fn get_device(&self) -> Option<&GraphicsDevice>;
