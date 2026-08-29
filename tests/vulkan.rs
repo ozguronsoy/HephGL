@@ -93,7 +93,7 @@ fn test_initialize_renderer() {
 }
 
 fn test_enumerate_devices() {
-    let mut renderer = create_renderer();
+    let renderer = create_renderer();
     let devices = heph_expect_success!(renderer.enumerate_devices());
     assert!(
         !devices.is_empty(),
@@ -511,7 +511,7 @@ fn main() {
     let args = Arguments::from_args();
 
     let device_type_exists = |device_type: heph_gl::graphics_device::Type| -> bool {
-        let mut renderer = create_renderer();
+        let renderer = create_renderer();
         let devices = heph_expect_success!(renderer.enumerate_devices());
         devices
             .iter()
