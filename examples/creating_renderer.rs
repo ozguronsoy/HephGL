@@ -28,18 +28,20 @@ fn example(
     };
     renderer.initialize(&init_options).unwrap();
 
-    let devices = renderer.enumerate_devices().unwrap();
-
     // Initializes the graphics device with the requested features. You cannot
     // request or remove features after the device is set, you must call
     // `set_device` again with the new feature list. This will fail if a
     // required feature is not supported.
+    //
+    // Note: To use a specific GPU, you can call `renderer.enumerate_devices()`
+    // to fetch available hardware and pass your preferred device here
+    // instead of `DEFAULT_DEVICE`.
     let requested_features = [FeatureRequest {
         feature: heph_gl::graphics_device::Feature::ComputeShaders,
         required: false,
     }];
     renderer
-        .set_device(devices.first().as_ref().unwrap(), &requested_features)
+        .set_device(ExampleRenderer::DEFAULT_DEVICE, &requested_features)
         .unwrap();
 
     // Renderer is now ready to use!

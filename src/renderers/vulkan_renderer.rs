@@ -588,13 +588,24 @@ impl Renderer for VulkanRenderer {
 
     fn set_device(
         &mut self,
-        device: &GraphicsDevice,
+        device: Option<&GraphicsDevice>,
         requested_features: &[FeatureRequest],
     ) -> RendererResult<()> {
         self.main_thread_only()?;
         if self.device_context.is_some() {
             self.uninitialize_device()?;
         }
+
+        let devices;
+        let device = match device {
+            Some(device) => device,
+            None => {
+                devices = self.enumerate_devices()?;
+                devices.first().ok_or(RendererError::Fail(
+                    "No active graphics device found.".to_string(),
+                ))?
+            }
+        };
 
         let instance = self
             .instance
