@@ -2,6 +2,13 @@
 name = "heph-gl"
 version = "0.1.0"
 edition = "2024"
+authors = ["Özgür Toprak Önsoy <ozguronsoy@gmail.com>"]
+description = "An experimental cross-platform graphics library."
+license = "BSD-3-Clause" 
+repository = "https://github.com/ozguronsoy/HephGL"
+readme = "README.md"
+keywords = ["vulkan"]
+categories = ["graphics"]
 
 [dependencies]
 renkrs = "0.1.0"
