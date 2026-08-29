@@ -16,6 +16,13 @@ bytemuck = "1.25.0"
 winit = "0.30.13"
 libtest-mimic = "0.7"
 
+[features]
+default = ["vulkan"]
+vulkan = []
+directx = []
+metal = []
+opengl = []
+
 [[test]]
 name = "vulkan"
 harness = false
