@@ -16,3 +16,11 @@ repo = "local"
   language = "system"
   types = ["rust"]
   pass_filenames = false
+
+  [[repos.hooks]]
+  id = "md-formatter"
+  name = "Md Formatter"
+  entry = "python3 scripts/md_formatter.py"
+  language = "system"
+  types = ["markdown"]
+  pass_filenames = false
