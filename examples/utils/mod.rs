@@ -1,5 +1,5 @@
 use heph_gl::renderers::*;
-use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -19,20 +19,22 @@ pub type ExampleRenderer = vulkan_renderer::VulkanRenderer;
 )))]
 pub type ExampleRenderer = vulkan_renderer::VulkanRenderer;
 
-pub type ExampleFn = fn(&mut ExampleRenderer) -> ();
+pub type ExampleFn = fn(&mut ExampleRenderer, RawWindowHandle, RawDisplayHandle) -> ();
 
 struct App {
     name: String,
     example: ExampleFn,
+    init_renderer: bool,
     window: Option<Window>,
     renderer: Option<ExampleRenderer>,
 }
 
 impl App {
-    fn new(name: &str, example: ExampleFn) -> Self {
+    fn new(name: &str, init_renderer: bool, example: ExampleFn) -> Self {
         Self {
             name: name.to_owned(),
             example,
+            init_renderer,
             window: None,
             renderer: None,
         }
@@ -50,18 +52,21 @@ impl ApplicationHandler for App {
             .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0));
 
         let window = event_loop.create_window(window_attributes).unwrap();
-        println!("OS Window created successfully.");
+        let window_handle = window.window_handle().unwrap().as_raw();
+        let display_handle = window.display_handle().unwrap().as_raw();
+
         let mut renderer = ExampleRenderer::new();
-        println!("Renderer created successfully.");
 
-        let init_options = heph_gl::renderers::InitializeOptions {
-            app_name: &self.name,
-            window_handle: window.window_handle().unwrap().as_raw(),
-            display_handle: window.display_handle().unwrap().as_raw(),
-        };
-        renderer.initialize(&init_options).unwrap();
+        if self.init_renderer {
+            let init_options = heph_gl::renderers::InitializeOptions {
+                app_name: &self.name,
+                window_handle,
+                display_handle,
+            };
+            renderer.initialize(&init_options).unwrap();
+        }
 
-        (self.example)(&mut renderer);
+        (self.example)(&mut renderer, window_handle, display_handle);
 
         self.window = Some(window);
         self.renderer = Some(renderer);
@@ -87,10 +92,10 @@ impl ApplicationHandler for App {
     }
 }
 
-pub fn run_example(name: &str, example: ExampleFn) {
+pub fn run_example(name: &str, init_renderer: bool, example: ExampleFn) {
     let event_loop = EventLoop::new().expect("Failed to create event loop");
     event_loop.set_control_flow(ControlFlow::Wait);
 
-    let mut app = App::new(name, example);
+    let mut app = App::new(name, init_renderer, example);
     let _ = event_loop.run_app(&mut app);
 }
