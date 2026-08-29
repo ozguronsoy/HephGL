@@ -26,6 +26,10 @@ shader:
   - changed-files:
     - any-glob-to-any-file: ['**/*.glsl', '**/*.hlsl', '**/*.vert', '**/*.frag', '**/*.comp', '**/*.spv']
 
+script:
+  - changed-files:
+    - any-glob-to-any-file: ['**/*.py']
+
 test:
   - changed-files:
     - any-glob-to-any-file: ['tests/**/*.rs', '**/*.glsl', '**/*.hlsl', '**/*.vert', '**/*.frag', '**/*.comp', '**/*.spv']
