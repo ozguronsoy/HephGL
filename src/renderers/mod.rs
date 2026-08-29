@@ -125,6 +125,9 @@ pub trait Renderer {
     /// Represents a recorded command.
     type RecordedCommand;
 
+    /// Indicates the default graphics device used in current system.
+    const DEFAULT_DEVICE: Option<&GraphicsDevice> = None;
+
     /// Creates an uninitialized instance of the renderer.
     fn new() -> Self;
 
@@ -147,7 +150,7 @@ pub trait Renderer {
     /// features.
     fn set_device(
         &mut self,
-        device: &GraphicsDevice,
+        device: Option<&GraphicsDevice>,
         requested_features: &[FeatureRequest],
     ) -> RendererResult<()>;
 

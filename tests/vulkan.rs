@@ -55,7 +55,7 @@ fn create_renderer_with_target_device(
             return None;
         }
     }
-    heph_expect_success!(renderer.set_device(target_device.as_ref().unwrap(), requested_features));
+    heph_expect_success!(renderer.set_device(target_device, requested_features));
 
     let result = renderer.get_device();
     assert!(
@@ -75,7 +75,7 @@ fn create_renderer_with_any_device(requested_features: &[FeatureRequest]) -> Vul
         target_device.is_some(),
         "Invalid Test Env: No device found.",
     );
-    heph_expect_success!(renderer.set_device(target_device.as_ref().unwrap(), requested_features));
+    heph_expect_success!(renderer.set_device(target_device, requested_features));
 
     let result = renderer.get_device();
     assert!(
