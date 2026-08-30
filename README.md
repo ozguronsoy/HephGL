@@ -66,12 +66,12 @@ during build.
 
 ### Running Examples
 
-Running an example using Vulkan
+Running an example using the default backend (Vulkan)
 ```bash
 cargo run --example <example_name>
 ```
 
-Running an example using a different backend
+Running an example using a specific backend
 ```bash
 cargo run --example <example_name> --no-default-features --features <backend_name>
 ```
