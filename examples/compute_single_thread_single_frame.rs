@@ -29,7 +29,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     let device = get_best_device(renderer);
     let features = [FeatureRequest {
         feature: ComputeShaders,
-        required: false,
+        required: true,
     }];
     renderer.set_device(Some(&device), &features).unwrap();
 
@@ -127,7 +127,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 }
 
 fn main() {
-    const EXAMPLE_NAME: &str = "Compute (Single Thread)";
+    const EXAMPLE_NAME: &str = "Compute (Single Thread / Single Frame)";
     const INIT_RENDERER: bool = true;
     run_example(EXAMPLE_NAME, INIT_RENDERER, example);
 }
