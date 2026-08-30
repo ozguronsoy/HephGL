@@ -127,9 +127,11 @@ title: General Purpose Computing (Single Thread)
 ---
 graph LR;
     A(Load Shader) --> B(Create Compute Pipeline);
-    B --> C(Prepare Resources)
-    C --> D(Record Command)
-    D --> E(Submit Commands)
+    B --> C(Begin Frame)
+    C --> D(Prepare Resources)
+    D --> E(Record Command)
+    E --> F(Submit Commands)
+    F --> G(End Frame)
 ```
 
 ```mermaid
@@ -138,23 +140,27 @@ title: General Purpose Computing (Multi Thread)
 ---
 graph LR;
     A(Load Shader) --> B(Create Compute Pipeline);
-    B --> C1(Initialize Thread)
-    C1 --> D1(Prepare Resources)
-    D1 --> E1(Record Command)
-    E1 --> F1(Uninitialize Thread)
-    F1 --> G(Submit Commands)
-    
-    B --> C2(Initialize Thread)
-    C2 --> D2(Prepare Resources)
-    D2 --> E2(Record Command)
-    E2 --> F2(Uninitialize Thread)
-    F2 --> G
+    B --> C(Begin Frame)
 
-    B --> C3(Initialize Thread)
-    C3 --> D3(Prepare Resources)
-    D3 --> E3(Record Command)
-    E3 --> F3(Uninitialize Thread)
-    F3 --> G
+    C --> D1(Initialize Thread)
+    D1 --> E1(Prepare Resources)
+    E1 --> F1(Record Command)
+    F1 --> G1(Uninitialize Thread)
+    G1 --> H(Submit Commands)
+    
+    C --> D2(Initialize Thread)
+    D2 --> E2(Prepare Resources)
+    E2 --> F2(Record Command)
+    F2 --> G2(Uninitialize Thread)
+    G2 --> H(Submit Commands)
+
+    C --> D3(Initialize Thread)
+    D3 --> E3(Prepare Resources)
+    E3 --> F3(Record Command)
+    F3 --> G3(Uninitialize Thread)
+    G3 --> H(Submit Commands)
+
+    H --> I(End Frame)
 ```
 
 > [!NOTE]
