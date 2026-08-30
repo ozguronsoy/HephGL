@@ -7,7 +7,7 @@ on:
 
 jobs:
   examples:
-    name: ${{ matrix.os }}
+    name: Run Examples (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
