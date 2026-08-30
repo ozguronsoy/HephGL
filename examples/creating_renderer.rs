@@ -45,6 +45,8 @@ fn example(
         .unwrap();
 
     // Renderer is now ready to use!
+
+    std::process::exit(0);
 }
 
 fn main() {

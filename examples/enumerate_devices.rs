@@ -10,6 +10,8 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     for device in &devices {
         println!("{}", device);
     }
+
+    std::process::exit(0);
 }
 
 fn main() {

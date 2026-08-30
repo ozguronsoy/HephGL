@@ -1,4 +1,10 @@
-use heph_gl::renderers::*;
+use heph_gl::{
+    graphics_device::{
+        GraphicsDevice,
+        Type::{DiscreteGpu, IntegratedGpu},
+    },
+    renderers::*,
+};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use winit::{
     application::ApplicationHandler,
@@ -20,6 +26,9 @@ pub type ExampleRenderer = vulkan_renderer::VulkanRenderer;
 pub type ExampleRenderer = vulkan_renderer::VulkanRenderer;
 
 pub type ExampleFn = fn(&mut ExampleRenderer, RawWindowHandle, RawDisplayHandle) -> ();
+
+#[allow(dead_code)]
+pub const SHADERS_DIR: &str = "shaders";
 
 struct App {
     name: String,
@@ -90,6 +99,19 @@ impl ApplicationHandler for App {
             _ => (),
         }
     }
+}
+
+#[allow(dead_code)]
+pub fn get_best_device(renderer: &ExampleRenderer) -> GraphicsDevice {
+    let devices = renderer.enumerate_devices().unwrap();
+    let mut device = devices.iter().find(|d| d.device_type == DiscreteGpu);
+    if device.is_none() {
+        device = devices.iter().find(|d| d.device_type == IntegratedGpu);
+    }
+    if device.is_none() {
+        device = devices.first();
+    }
+    device.unwrap().clone()
 }
 
 pub fn run_example(name: &str, init_renderer: bool, example: ExampleFn) {
