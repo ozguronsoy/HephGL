@@ -52,8 +52,8 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     let shader = renderer.create_shader(&shader_source).unwrap();
     let pipeline = renderer.create_compute_pipeline(&shader).unwrap();
 
-    // Create resources for each frame. For this example, we only have general
-    // purpose storage buffers in GPU as resources.
+    // Create resources for each frame in flight. For this example, we only have
+    // general purpose storage buffers in GPU as resources.
     struct FrameResources<T> {
         buffer_a: T,
         buffer_b: T,
