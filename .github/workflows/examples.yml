@@ -1,4 +1,4 @@
-name: Tests
+name: Examples
 
 on:
   push:
@@ -6,8 +6,8 @@ on:
   pull_request:
 
 jobs:
-  test:
-    name: Run Tests (${{ matrix.os }})
+  examples:
+    name: Run Examples (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -26,9 +26,6 @@ jobs:
         with:
           key: ${{ matrix.os }}
 
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@nextest
-
       - name: Install Vulkan SDK
         uses: jakoch/install-vulkan-sdk-action@v1.6.0
         with:
@@ -42,17 +39,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb libxkbcommon-x11-0
 
-      - name: Run Nextest (Linux)
+      - name: Run Examples (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run cargo nextest run
-
-      - name: Run Nextest (Windows)
-        if: runner.os == 'Windows'
         run: |
-          cargo nextest run
+          for file in examples/*.rs; do
+            xvfb-run -a cargo run --example "$(basename "$file" .rs)"
+          done
 
-      - name: Run Nextest (macOS)
+      - name: Run Examples (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          for file in examples/*.rs; do
+            cargo run --example "$(basename "$file" .rs)"
+          done
+ 
+      - name: Run Examples (macOS)
         if: runner.os == 'macOS'
+        shell: bash
         run: |
           export VK_ICD_FILENAMES="$VULKAN_SDK/share/vulkan/icd.d/MoltenVK_icd.json"
-          cargo nextest run
+          for file in examples/*.rs; do
+            cargo run --example "$(basename "$file" .rs)"
+          done
