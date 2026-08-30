@@ -2,7 +2,7 @@ import textwrap
 from pathlib import Path
 
 IGNORE_DIRS = {'.git', 'target'}
-MAX_WIDTH = 100
+MAX_WIDTH = 99
 
 def wrap_markdown_file(filepath: Path):
     with open(filepath, 'r', encoding='utf-8') as f:
