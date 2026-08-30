@@ -7,7 +7,7 @@ on:
 
 jobs:
   examples:
-    name: Test (${{ matrix.os }})
+    name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -43,7 +43,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           for file in examples/*.rs; do
-            xvfb-run cargo run --example "$(basename "$file" .rs)"
+            xvfb-run -a cargo run --example "$(basename "$file" .rs)"
           done
 
       - name: Run Examples (Windows)
