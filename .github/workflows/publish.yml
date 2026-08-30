@@ -1,0 +1,32 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  run-prek:
+    name: Run prek
+    uses: ./.github/workflows/prek.yml
+  run-tests:
+    name: Run Tests
+    uses: ./.github/workflows/test.yml
+  run-examples:
+    name: Run Examples
+    uses: ./.github/workflows/examples.yml
+
+  publish:
+    name: Publish Crate
+    needs: [run-prek, run-tests, run-examples]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_API_TOKEN }}
+        run: cargo publish --token $CARGO_REGISTRY_TOKEN
