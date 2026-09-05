@@ -44,6 +44,7 @@ jobs:
           nextest: true
 
       - name: Run Tests
+        shell: bash
         run: $HEPHGL_NEXTEST_PREFIX cargo nextest run
 
   coverage:
@@ -65,6 +66,7 @@ jobs:
         run: cargo llvm-cov --lib
 
       - name: Run Integration Tests Coverage
+        shell: bash
         run: $HEPHGL_NEXTEST_PREFIX cargo llvm-cov nextest
 
       - name: Generate Report

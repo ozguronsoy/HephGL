@@ -25,6 +25,7 @@ jobs:
           nextest: true
 
       - name: Run Examples
+        shell: bash
         run: |
           for file in examples/*.rs; do
             $HEPHGL_NEXTEST_PREFIX cargo run --example "$(basename "$file" .rs)"
