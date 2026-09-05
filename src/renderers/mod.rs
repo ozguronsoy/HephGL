@@ -106,24 +106,24 @@ pub enum RendererError {
 type RendererResult<T> = Result<T, RendererError>;
 
 /// Stores data in a GPU.
-pub trait GpuBuffer: std::fmt::Debug + Copy + Clone {
+pub trait GpuBuffer: std::fmt::Debug + Copy + Clone + Send + Sync {
     fn size(&self) -> usize;
 }
 
 /// The core interface for a graphics renderer.
 pub trait Renderer {
     /// Represents a compiled shader module on the GPU.
-    type ShaderHandle;
+    type ShaderHandle: Copy + Clone + Send + Sync;
     /// Represents a block of memory on the GPU.
     type BufferHandle: GpuBuffer;
     /// Represents a compiled graphics pipeline.
-    type GraphicsPipelineHandle;
+    type GraphicsPipelineHandle: Copy + Clone + Send + Sync;
     /// Represents a compiled compute pipeline.
-    type ComputePipelineHandle;
+    type ComputePipelineHandle: Copy + Clone + Send + Sync;
     /// Represents a resource set.
-    type ResourceSetHandle;
+    type ResourceSetHandle: Copy + Clone + Send + Sync;
     /// Represents a recorded command.
-    type RecordedCommand;
+    type RecordedCommand: Copy + Clone + Send + Sync;
 
     /// Indicates the default graphics device used in current system.
     const DEFAULT_DEVICE: Option<&GraphicsDevice> = None;
