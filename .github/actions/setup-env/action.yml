@@ -54,6 +54,7 @@ runs:
       if: inputs.nextest == 'true'
       uses: jakoch/install-vulkan-sdk-action@v1.6.0
       with:
+        github_token: ${{ github.token }}
         cache: true
         install_swiftshader: true
         install_lavapipe: true
@@ -64,17 +65,17 @@ runs:
       run: |
         sudo apt-get update
         sudo apt-get install -y xvfb libxkbcommon-x11-0
-        echo "HEPHGL_NEXTEST_PREFIX=xvfb-run -a" >> "$GITHUB_ENV"
+        echo "HEPHGL_GUI_PREFIX=xvfb-run -a" >> "$GITHUB_ENV"
 
     - name: Install Windows Dependencies
       if: inputs.nextest == 'true' && runner.os == 'Windows'
       shell: bash
       run: |
-        echo "HEPHGL_NEXTEST_PREFIX=" >> "$GITHUB_ENV"
+        echo "HEPHGL_GUI_PREFIX=" >> "$GITHUB_ENV"
 
     - name: Install macOS Dependencies
       if: inputs.nextest == 'true' && runner.os == 'macOS'
       shell: bash
       run: |
         echo "VK_ICD_FILENAMES=$VULKAN_SDK/share/vulkan/icd.d/MoltenVK_icd.json" >> "$GITHUB_ENV"
-        echo "HEPHGL_NEXTEST_PREFIX=" >> "$GITHUB_ENV"
+        echo "HEPHGL_GUI_PREFIX=" >> "$GITHUB_ENV"

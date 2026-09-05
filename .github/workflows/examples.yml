@@ -28,5 +28,5 @@ jobs:
         shell: bash
         run: |
           for file in examples/*.rs; do
-            $HEPHGL_NEXTEST_PREFIX cargo run --example "$(basename "$file" .rs)"
+            $HEPHGL_GUI_PREFIX cargo run --example "$(basename "$file" .rs)"
           done

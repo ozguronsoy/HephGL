@@ -45,7 +45,7 @@ jobs:
 
       - name: Run Tests
         shell: bash
-        run: $HEPHGL_NEXTEST_PREFIX cargo nextest run
+        run: $HEPHGL_GUI_PREFIX cargo nextest run
 
   coverage:
     name: Code Coverage
@@ -67,7 +67,7 @@ jobs:
 
       - name: Run Integration Tests Coverage
         shell: bash
-        run: $HEPHGL_NEXTEST_PREFIX cargo llvm-cov nextest
+        run: $HEPHGL_GUI_PREFIX cargo llvm-cov nextest
 
       - name: Generate Report
         run: cargo llvm-cov report --fail-under-lines 80 --fail-under-regions 80
