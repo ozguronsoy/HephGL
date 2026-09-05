@@ -23,8 +23,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Environment
+        uses: ./.github/actions/setup-env
 
       - name: Publish
         env:
