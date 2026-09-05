@@ -8,7 +8,7 @@ use std::{
 use heph_gl::{
     graphics_device::{
         Feature,
-        Type::{Cpu, DiscreteGpu, IntegratedGpu},
+        Type::{Cpu, DiscreteGpu, IntegratedGpu, VirtualGpu},
     },
     renderers::{
         BufferUsage, FeatureRequest, GpuBuffer, InitializeOptions, PipelineHandle, Renderer,
@@ -55,6 +55,8 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let skip_discrete_gpu_device_tests = !device_type_exists(DiscreteGpu);
         let skip_integrated_gpu_device_tests = !device_type_exists(IntegratedGpu);
         let skip_cpu_device_tests = !device_type_exists(Cpu);
+        let skip_virtual_gpu_device_tests = !device_type_exists(VirtualGpu);
+        let skip_other_device_tests = !device_type_exists(heph_gl::graphics_device::Type::Other);
 
         let tests = vec![
             Trial::test("test_initialize_renderer", move || {
@@ -100,6 +102,16 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                 Ok(())
             })
             .with_ignored_flag(skip_cpu_device_tests),
+            Trial::test("test_single_threaded_compute_virtual_gpu", move || {
+                Self::test_single_threaded_compute_virtual_gpu();
+                Ok(())
+            })
+            .with_ignored_flag(skip_virtual_gpu_device_tests),
+            Trial::test("test_single_threaded_compute_other", move || {
+                Self::test_single_threaded_compute_other();
+                Ok(())
+            })
+            .with_ignored_flag(skip_other_device_tests),
             Trial::test("test_multi_threaded_compute_discrete_gpu", move || {
                 Self::test_multi_threaded_compute_discrete_gpu();
                 Ok(())
@@ -115,6 +127,16 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                 Ok(())
             })
             .with_ignored_flag(skip_cpu_device_tests),
+            Trial::test("test_multi_threaded_compute_virtual_gpu", move || {
+                Self::test_multi_threaded_compute_virtual_gpu();
+                Ok(())
+            })
+            .with_ignored_flag(skip_virtual_gpu_device_tests),
+            Trial::test("test_multi_threaded_compute_other", move || {
+                Self::test_multi_threaded_compute_other();
+                Ok(())
+            })
+            .with_ignored_flag(skip_other_device_tests),
         ];
 
         libtest_mimic::run(&args, tests).exit_code()
@@ -419,6 +441,21 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
     }
 
+    fn test_single_threaded_compute_virtual_gpu() {
+        const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = VirtualGpu;
+        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
+        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
+        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
+    }
+
+    fn test_single_threaded_compute_other() {
+        const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type =
+            heph_gl::graphics_device::Type::Other;
+        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
+        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
+        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
+    }
+
     fn test_multi_threaded_compute(
         target_device_type: heph_gl::graphics_device::Type,
         n_threads: usize,
@@ -596,6 +633,17 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
 
     fn test_multi_threaded_compute_cpu() {
         const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = Cpu;
+        Self::test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
+    }
+
+    fn test_multi_threaded_compute_virtual_gpu() {
+        const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = VirtualGpu;
+        Self::test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
+    }
+
+    fn test_multi_threaded_compute_other() {
+        const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type =
+            heph_gl::graphics_device::Type::Other;
         Self::test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
     }
 }
