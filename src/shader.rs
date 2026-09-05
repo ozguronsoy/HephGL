@@ -19,3 +19,23 @@ impl ShaderSource {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_from_file() {
+        {
+            const SHADER_PATH: &str = "shaders/addition.spv";
+            let result = ShaderSource::from_file(SHADER_PATH);
+            assert!(result.is_ok());
+            let shader = result.unwrap();
+            assert_eq!(shader.file_path, SHADER_PATH);
+            assert!(!shader.data.is_empty());
+        }
+        {
+            assert!(ShaderSource::from_file("").is_err());
+        }
+    }
+}

@@ -268,3 +268,54 @@ impl std::fmt::Display for RendererError {
 impl std::error::Error for RendererError {}
 
 pub mod vulkan_renderer;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graphics_device::*;
+
+    #[test]
+    fn test_renderer_error_display() {
+        let err = RendererError::InvalidAppName;
+        assert_eq!(err.to_string(), "Invalid application name provided.");
+
+        let err = RendererError::InvalidArgument("bad_ptr".into());
+        assert_eq!(err.to_string(), "Invalid argument: bad_ptr");
+
+        let err = RendererError::InvalidOperation("wrong state".into());
+        assert_eq!(err.to_string(), "Invalid operation: wrong state");
+
+        let err = RendererError::Fail("generic crash".into());
+        assert_eq!(err.to_string(), "generic crash");
+
+        let err = RendererError::FailedToInitialize("vulkan.so missing".into());
+        assert_eq!(
+            err.to_string(),
+            "Failed to load graphics backend: vulkan.so missing"
+        );
+
+        let err = RendererError::FailedToCreateSurface("x11 error".into());
+        assert_eq!(
+            err.to_string(),
+            "Failed to create window surface: x11 error"
+        );
+
+        let err = RendererError::FailedToEnumerateDevices("no gpu".into());
+        assert_eq!(
+            err.to_string(),
+            "Failed to enumerate physical devices: no gpu"
+        );
+
+        let err = RendererError::FailedToEnumerateSupportedFeatures("driver error".into());
+        assert_eq!(
+            err.to_string(),
+            "Failed to enumerate device features: driver error"
+        );
+
+        let err = RendererError::UnsupportedRequiredFeature(Feature::ComputeShaders);
+        assert_eq!(
+            err.to_string(),
+            "Required hardware feature is not supported: ComputeShaders"
+        );
+    }
+}
