@@ -63,7 +63,7 @@ runs:
       run: |
         sudo apt-get update
         sudo apt-get install -y xvfb libxkbcommon-x11-0
-        echo "HEPHGL_NEXTEST_PREFIX=xvfb-run" >> "$GITHUB_ENV"
+        echo "HEPHGL_NEXTEST_PREFIX=xvfb-run -a" >> "$GITHUB_ENV"
 
     - name: Install Windows Dependencies
       if: inputs.nextest == 'true' && runner.os == 'Windows'
