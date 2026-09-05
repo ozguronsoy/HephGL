@@ -60,6 +60,7 @@ runs:
 
     - name: Install Linux Dependencies
       if: inputs.nextest == 'true' && runner.os == 'Linux'
+      shell: bash
       run: |
         sudo apt-get update
         sudo apt-get install -y xvfb libxkbcommon-x11-0
@@ -67,11 +68,13 @@ runs:
 
     - name: Install Windows Dependencies
       if: inputs.nextest == 'true' && runner.os == 'Windows'
+      shell: bash
       run: |
         echo "HEPHGL_NEXTEST_PREFIX=" >> "$GITHUB_ENV"
 
     - name: Install macOS Dependencies
       if: inputs.nextest == 'true' && runner.os == 'macOS'
+      shell: bash
       run: |
         echo "VK_ICD_FILENAMES=$VULKAN_SDK/share/vulkan/icd.d/MoltenVK_icd.json" >> "$GITHUB_ENV"
         echo "HEPHGL_NEXTEST_PREFIX=" >> "$GITHUB_ENV"
