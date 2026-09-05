@@ -1,6 +1,7 @@
 use std::{
     fmt::Debug,
     marker::PhantomData,
+    process::ExitCode,
     sync::{LazyLock, Mutex},
 };
 
@@ -35,7 +36,12 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     // We use nextest and libtest-mimic to run each test on the main thread of its
     // own process. This allows us to avoid "event loop creation in a worker thread"
     // errors.
-    pub fn run() {
+    pub fn run() -> ExitCode {
+        if std::env::var("NEXTEST").is_err() {
+            println!("Skipping integration tests, run via `cargo nextest run` instead.");
+            return ExitCode::SUCCESS;
+        }
+
         let args = Arguments::from_args();
 
         let device_type_exists = |device_type: heph_gl::graphics_device::Type| -> bool {
@@ -111,7 +117,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             .with_ignored_flag(skip_cpu_device_tests),
         ];
 
-        libtest_mimic::run(&args, tests).exit();
+        libtest_mimic::run(&args, tests).exit_code()
     }
 
     fn create_renderer() -> TestRenderer {
