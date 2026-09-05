@@ -19,15 +19,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Environment
+        uses: ./.github/actions/setup-env
 
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.os }}
-
-      - name: Run
+      - name: Run Tests
         run: cargo test
 
   integration-tests:
@@ -43,103 +38,34 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
+      - name: Setup Environment
+        uses: ./.github/actions/setup-env
         with:
-          key: ${{ matrix.os }}
+          nextest: true
 
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@nextest
-
-      - name: Install Vulkan SDK
-        uses: jakoch/install-vulkan-sdk-action@v1.6.0
-        with:
-          cache: true
-          install_swiftshader: true
-          install_lavapipe: true
-
-      - name: Install Linux Dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libxkbcommon-x11-0
-
-      - name: Run (Linux)
-        if: runner.os == 'Linux'
-        run: xvfb-run cargo nextest run
-
-      - name: Run (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          cargo nextest run
-
-      - name: Run (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          export VK_ICD_FILENAMES="$VULKAN_SDK/share/vulkan/icd.d/MoltenVK_icd.json"
-          cargo nextest run
+      - name: Run Tests
+        run: $HEPHGL_NEXTEST_PREFIX cargo nextest run
 
   coverage:
-    name: Code Coverage (${{ matrix.os }})
+    name: Code Coverage
     needs: integration-tests
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Environment
+        uses: ./.github/actions/setup-env
         with:
-          components: llvm-tools-preview
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.os }}
-
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
-
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@nextest
-
-      - name: Install Vulkan SDK
-        uses: jakoch/install-vulkan-sdk-action@v1.6.0
-        with:
-          cache: true
-          install_swiftshader: true
-          install_lavapipe: true
-
-      - name: Install Linux Dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libxkbcommon-x11-0
+          nextest: true
+          llvm-cov: true
 
       - name: Run Unit Tests Coverage
         run: cargo llvm-cov --lib
 
-      - name: Run Integration Tests Coverage (Linux)
-        if: runner.os == 'Linux'
-        run: xvfb-run cargo llvm-cov nextest
-
-      - name: Run Integration Tests Coverage (Windows)
-        if: runner.os == 'Windows'
-        run: cargo llvm-cov nextest
-
-      - name: Run Integration Tests Coverage (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          export VK_ICD_FILENAMES="$VULKAN_SDK/share/vulkan/icd.d/MoltenVK_icd.json"
-          cargo llvm-cov nextest
+      - name: Run Integration Tests Coverage
+        run: $HEPHGL_NEXTEST_PREFIX cargo llvm-cov nextest
 
       - name: Generate Report
         run: cargo llvm-cov report --fail-under-lines 80 --fail-under-regions 80

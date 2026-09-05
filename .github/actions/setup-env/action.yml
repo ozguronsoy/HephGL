@@ -1,0 +1,77 @@
+name: 'Setup Environment'
+description: 'Installs Rust and other dependencies'
+
+inputs:
+  nightly:
+    description: 'Indicates whether to install nightly.'
+    required: false
+    default: 'false'
+  clippy:
+    description: 'Indicates whether to install clippy.'
+    required: false
+    default: 'false'
+  nextest:
+    description: 'Indicates whether to install nextest.'
+    required: false
+    default: 'false'
+  llvm-cov:
+    description: 'Indicates whether to install llvm-cov.'
+    required: false
+    default: 'false'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install Nightly
+      if: inputs.nightly == 'true'
+      uses: dtolnay/rust-toolchain@nightly
+      with:
+        components: rustfmt
+
+    - name: Install Clippy
+      if: inputs.clippy == 'true'
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy
+
+    - name: Install Nextest
+      if: inputs.nextest == 'true'
+      uses: taiki-e/install-action@nextest
+
+    - name: Install llvm-cov
+      if: inputs.llvm-cov == 'true'
+      uses: taiki-e/install-action@cargo-llvm-cov
+
+    - name: Cache Rust dependencies
+      uses: Swatinem/rust-cache@v2
+      with:
+        key: ${{ runner.os }}
+
+    - name: Install Vulkan SDK
+      if: inputs.nextest == 'true'
+      uses: jakoch/install-vulkan-sdk-action@v1.6.0
+      with:
+        cache: true
+        install_swiftshader: true
+        install_lavapipe: true
+
+    - name: Install Linux Dependencies
+      if: inputs.nextest == 'true' && runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xvfb libxkbcommon-x11-0
+        echo "HEPHGL_NEXTEST_PREFIX=xvfb-run" >> "$GITHUB_ENV"
+
+    - name: Install Windows Dependencies
+      if: inputs.nextest == 'true' && runner.os == 'Windows'
+      run: |
+        echo "HEPHGL_NEXTEST_PREFIX=" >> "$GITHUB_ENV"
+
+    - name: Install macOS Dependencies
+      if: inputs.nextest == 'true' && runner.os == 'macOS'
+      run: |
+        echo "VK_ICD_FILENAMES=$VULKAN_SDK/share/vulkan/icd.d/MoltenVK_icd.json" >> "$GITHUB_ENV"
+        echo "HEPHGL_NEXTEST_PREFIX=" >> "$GITHUB_ENV"
