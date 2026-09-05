@@ -19,47 +19,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
+      - name: Setup Environment
+        uses: ./.github/actions/setup-env
         with:
-          key: ${{ matrix.os }}
+          nextest: true
 
-      - name: Install Vulkan SDK
-        uses: jakoch/install-vulkan-sdk-action@v1.6.0
-        with:
-          cache: true
-          install_swiftshader: true
-          install_lavapipe: true
-
-      - name: Install Linux Dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libxkbcommon-x11-0
-
-      - name: Run Examples (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          for file in examples/*.rs; do
-            xvfb-run -a cargo run --example "$(basename "$file" .rs)"
-          done
-
-      - name: Run Examples (Windows)
-        if: runner.os == 'Windows'
+      - name: Run Examples
         shell: bash
         run: |
           for file in examples/*.rs; do
-            cargo run --example "$(basename "$file" .rs)"
-          done
- 
-      - name: Run Examples (macOS)
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          export VK_ICD_FILENAMES="$VULKAN_SDK/share/vulkan/icd.d/MoltenVK_icd.json"
-          for file in examples/*.rs; do
-            cargo run --example "$(basename "$file" .rs)"
+            $HEPHGL_GUI_PREFIX cargo run --example "$(basename "$file" .rs)"
           done

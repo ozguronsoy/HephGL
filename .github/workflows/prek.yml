@@ -15,18 +15,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install Nightly
-        uses: dtolnay/rust-toolchain@nightly
+      - name: Setup Environment
+        uses: ./.github/actions/setup-env
         with:
-          components: rustfmt
-
-      - name: Install Clippy
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-
-      - name: Cache Rust env
-        uses: Swatinem/rust-cache@v2
+          nightly: true
+          clippy: true
 
       - name: Install prek
         run: cargo install --locked prek
