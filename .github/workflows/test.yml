@@ -142,10 +142,4 @@ jobs:
           cargo llvm-cov nextest
 
       - name: Generate Report
-        run: cargo llvm-cov report --cobertura --output-path coverage-${{ matrix.os }}.xml --fail-under-lines 80 --fail-under-regions 80
-
-      - name: Archive code coverage results
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report-${{ matrix.os }}
-          path: coverage-${{ matrix.os }}.xml
+        run: cargo llvm-cov report --fail-under-lines 80 --fail-under-regions 80
