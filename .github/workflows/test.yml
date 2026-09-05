@@ -7,8 +7,32 @@ on:
   workflow_call:
 
 jobs:
-  test:
-    name: Run Tests (${{ matrix.os }})
+  unit-tests:
+    name: Run Unit Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
+
+      - name: Run
+        run: cargo test
+
+  integration-tests:
+    name: Run Integration Tests (${{ matrix.os }})
+    needs: unit-tests
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -43,16 +67,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb libxkbcommon-x11-0
 
-      - name: Run Nextest (Linux)
+      - name: Run (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run cargo nextest run
 
-      - name: Run Nextest (Windows)
+      - name: Run (Windows)
         if: runner.os == 'Windows'
         run: |
           cargo nextest run
 
-      - name: Run Nextest (macOS)
+      - name: Run (macOS)
         if: runner.os == 'macOS'
         run: |
           export VK_ICD_FILENAMES="$VULKAN_SDK/share/vulkan/icd.d/MoltenVK_icd.json"
