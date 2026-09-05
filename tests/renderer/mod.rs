@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fmt::Debug,
     marker::PhantomData,
     process::ExitCode,
@@ -7,19 +8,19 @@ use std::{
 
 use heph_gl::{
     graphics_device::{
-        Feature,
+        Feature, GraphicsDevice,
         Type::{Cpu, DiscreteGpu, IntegratedGpu, VirtualGpu},
     },
     renderers::{
         BufferUsage, FeatureRequest, GpuBuffer, InitializeOptions, PipelineHandle, Renderer,
-        ResourceBinding, ResourceBindingType, Settings,
+        RendererError, ResourceBinding, ResourceBindingType, Settings,
     },
     shader::ShaderSource,
 };
 use libtest_mimic::{Arguments, Trial};
 
-use crate::heph_expect_success;
 use crate::utils::{SHADERS_DIR, TestEnv};
+use crate::{heph_expect_err, heph_expect_success};
 
 pub static TEST_ENV: LazyLock<Mutex<TestEnv>> = LazyLock::new(|| Mutex::new(TestEnv::default()));
 macro_rules! test_env {
@@ -59,6 +60,10 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let skip_other_device_tests = !device_type_exists(heph_gl::graphics_device::Type::Other);
 
         let tests = vec![
+            Trial::test("test_invalid_app_name", move || {
+                Self::test_invalid_app_name();
+                Ok(())
+            }),
             Trial::test("test_initialize_renderer", move || {
                 Self::test_initialize_renderer();
                 Ok(())
@@ -83,10 +88,29 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                 Self::test_storage_buffer();
                 Ok(())
             }),
+            Trial::test("test_index_buffer", move || {
+                Self::test_index_buffer();
+                Ok(())
+            }),
+            Trial::test("test_vertex_buffer", move || {
+                Self::test_vertex_buffer();
+                Ok(())
+            }),
+            Trial::test("test_impossible_buffer_size", move || {
+                Self::test_impossible_buffer_size();
+                Ok(())
+            }),
             Trial::test("test_shader", move || {
                 Self::test_shader();
                 Ok(())
             }),
+            Trial::test(
+                "test_calling_main_thread_only_fn_from_worker_thread",
+                move || {
+                    Self::test_calling_main_thread_only_fn_from_worker_thread();
+                    Ok(())
+                },
+            ),
             Trial::test("test_single_threaded_compute_discrete_gpu", move || {
                 Self::test_single_threaded_compute_discrete_gpu();
                 Ok(())
@@ -184,25 +208,42 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     fn create_renderer_with_any_device(requested_features: &[FeatureRequest]) -> TestRenderer {
         let mut renderer = Self::create_renderer();
         let devices = heph_expect_success!(renderer.enumerate_devices());
-        let target_device = devices.first();
-        assert!(
-            target_device.is_some(),
-            "Invalid Test Env: No device found.",
-        );
-        heph_expect_success!(renderer.set_device(target_device, requested_features));
+        assert!(!devices.is_empty(), "Invalid Test Env: No device found.",);
+        heph_expect_success!(renderer.set_device(None, requested_features));
 
         let result = renderer.get_device();
         assert!(
             result.is_some(),
             "Renderer successfully set the graphics device, but `get_device()` returned `None`."
         );
-        assert_eq!(target_device.unwrap(), result.unwrap());
+        assert_eq!(result.unwrap(), devices.first().unwrap());
 
         renderer
     }
 
+    fn test_invalid_app_name() {
+        let test_env = test_env!();
+        let mut renderer = TestRenderer::new();
+        heph_expect_err!(renderer.initialize(&InitializeOptions {
+            app_name: "\0",
+            window_handle: test_env.raw_window_handle(),
+            display_handle: test_env.raw_display_handle(),
+        }));
+    }
+
     fn test_initialize_renderer() {
-        let mut renderer = Self::create_renderer();
+        let test_env = test_env!();
+        let mut renderer = TestRenderer::new();
+        let init_options = InitializeOptions {
+            app_name: "",
+            window_handle: test_env.raw_window_handle(),
+            display_handle: test_env.raw_display_handle(),
+        };
+        heph_expect_success!(renderer.initialize(&init_options));
+        heph_expect_err!(
+            renderer.initialize(&init_options),
+            RendererError::InvalidOperation("".to_string())
+        );
         heph_expect_success!(renderer.uninitialize());
     }
 
@@ -221,18 +262,102 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     }
 
     fn test_set_device() {
-        Self::create_renderer_with_any_device(&[]);
+        let mut features = [
+            FeatureRequest {
+                feature: Feature::RayTracing,
+                required: false,
+            },
+            FeatureRequest {
+                feature: Feature::OpticalFlow,
+                required: false,
+            },
+            FeatureRequest {
+                feature: Feature::VideoDecoding,
+                required: false,
+            },
+            FeatureRequest {
+                feature: Feature::VideoEncoding,
+                required: false,
+            },
+        ];
+        let mut renderer = Self::create_renderer_with_any_device(&features);
+        assert!(renderer.get_device().is_some());
+
+        // Test invalid device.
+        heph_expect_err!(
+            renderer.set_device(
+                Some(&GraphicsDevice {
+                    name: "".to_string(),
+                    device_type: heph_gl::graphics_device::Type::Other,
+                    vendor_id: 0,
+                    device_id: 0,
+                    api_version: heph_gl::Version {
+                        major: 0,
+                        minor: 0,
+                        patch: 0,
+                    },
+                    driver_version: heph_gl::Version {
+                        major: 0,
+                        minor: 0,
+                        patch: 0,
+                    },
+                    vram: 0,
+                    supported_features: HashSet::default(),
+                }),
+                &features
+            ),
+            RendererError::Fail("".to_string())
+        );
+
+        for feature in &mut features {
+            feature.required = true;
+        }
+        heph_expect_err!(
+            renderer.set_device(None, &features),
+            RendererError::UnsupportedRequiredFeature(Feature::RayTracing)
+        );
     }
 
     fn test_set_settings() {
-        let mut renderer = Self::create_renderer_with_any_device(&[]);
         let settings = Settings {
             frames_in_flight: 10,
         };
-        heph_expect_success!(renderer.set_settings(settings));
 
-        let result = renderer.get_settings();
-        assert_eq!(settings.frames_in_flight, result.frames_in_flight);
+        {
+            let mut renderer = Self::create_renderer();
+            heph_expect_success!(renderer.set_settings(settings));
+            let result = renderer.get_settings();
+            assert_eq!(settings.frames_in_flight, result.frames_in_flight);
+        }
+
+        {
+            let mut renderer = Self::create_renderer_with_any_device(&[]);
+            heph_expect_success!(renderer.set_settings(settings));
+            let result = renderer.get_settings();
+            assert_eq!(settings.frames_in_flight, result.frames_in_flight);
+        }
+
+        {
+            let mut renderer = Self::create_renderer_with_any_device(&[]);
+            std::thread::scope(|s| {
+                let p_renderer = &mut renderer as *mut TestRenderer as usize;
+                let b1 = std::sync::Arc::new(std::sync::Barrier::new(2));
+                let b2 = b1.clone();
+                s.spawn(move || {
+                    let renderer = unsafe { &mut *(p_renderer as *mut TestRenderer) };
+                    heph_expect_success!(renderer.initialize_thread());
+                    b2.wait();
+                    b2.wait();
+                    heph_expect_success!(renderer.uninitialize_thread());
+                });
+                b1.wait();
+                heph_expect_err!(
+                    renderer.set_settings(settings),
+                    RendererError::InvalidOperation("".to_string())
+                );
+                b1.wait();
+            });
+        }
     }
 
     fn test_buffer<T>(data: &Vec<T>, usage: heph_gl::renderers::BufferUsage)
@@ -264,7 +389,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             data.push(i + 1);
         }
 
-        Self::test_buffer(&data, heph_gl::renderers::BufferUsage::Uniform);
+        Self::test_buffer(&data, BufferUsage::Uniform);
     }
 
     fn test_storage_buffer() {
@@ -275,10 +400,36 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             data.push(i + 1);
         }
 
-        Self::test_buffer(&data, heph_gl::renderers::BufferUsage::Storage);
+        Self::test_buffer(&data, BufferUsage::Storage);
     }
 
-    // TODO: Add tests for other types of buffers.
+    fn test_index_buffer() {
+        const BUFFER_SIZE: usize = 1024;
+
+        let mut data = Vec::with_capacity(BUFFER_SIZE);
+        for i in 0..BUFFER_SIZE {
+            data.push(i + 1);
+        }
+
+        Self::test_buffer(&data, BufferUsage::Index);
+    }
+
+    fn test_vertex_buffer() {
+        const BUFFER_SIZE: usize = 1024;
+
+        let mut data = Vec::with_capacity(BUFFER_SIZE);
+        for i in 0..BUFFER_SIZE {
+            data.push(i + 1);
+        }
+
+        Self::test_buffer(&data, BufferUsage::Vertex);
+    }
+
+    fn test_impossible_buffer_size() {
+        let renderer = Self::create_renderer_with_any_device(&[]);
+        let buffer_size = 1024 * 1024 * 1024 * 1024; // 1 TB
+        heph_expect_err!(renderer.create_buffer(buffer_size, BufferUsage::Storage));
+    }
 
     fn test_shader() {
         let renderer = Self::create_renderer_with_any_device(&[]);
@@ -288,6 +439,20 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         ));
         let shader = heph_expect_success!(renderer.create_shader(&shader_source));
         heph_expect_success!(renderer.destroy_shader(&shader));
+    }
+
+    fn test_calling_main_thread_only_fn_from_worker_thread() {
+        let mut renderer = Self::create_renderer_with_any_device(&[]);
+        std::thread::scope(|s| {
+            let p_renderer = &mut renderer as *mut TestRenderer as usize;
+            s.spawn(move || {
+                let renderer = unsafe { &mut *(p_renderer as *mut TestRenderer) };
+                heph_expect_err!(
+                    renderer.set_device(None, &[]),
+                    RendererError::InvalidOperation("".to_string())
+                );
+            });
+        });
     }
 
     fn test_single_threaded_compute(
