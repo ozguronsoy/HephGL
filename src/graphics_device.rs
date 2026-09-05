@@ -85,6 +85,20 @@ impl GraphicsDevice {
         GraphicsDevice::vendor_from_id(self.vendor_id)
     }
 
+    /// Sets the `vendor_id` of the device.
+    pub fn set_vendor(&mut self, vendor: Vendor) {
+        self.vendor_id = match vendor {
+            Vendor::Nvidia => 0x10DE,
+            Vendor::Amd => 0x1002,
+            Vendor::Intel => 0x8086,
+            Vendor::Qualcomm => 0x5143,
+            Vendor::Arm => 0x13B5,
+            Vendor::Apple => 0x106B,
+            Vendor::Microsoft => 0x1414,
+            Vendor::Other => 0,
+        }
+    }
+
     /// Gets the vendor from vendor id.
     pub fn vendor_from_id(vendor_id: u32) -> Vendor {
         match vendor_id {
@@ -167,5 +181,123 @@ impl std::fmt::Display for GraphicsDevice {
             }
         }
         std::fmt::Result::Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_vendor() {
+        let mut dev = GraphicsDevice {
+            name: "".to_string(),
+            device_type: Type::Other,
+            vendor_id: 0,
+            device_id: 0,
+            api_version: Version {
+                major: 0,
+                minor: 0,
+                patch: 0,
+            },
+            driver_version: Version {
+                major: 0,
+                minor: 0,
+                patch: 0,
+            },
+            vram: 0,
+            supported_features: HashSet::default(),
+        };
+        assert_eq!(dev.vendor(), Vendor::Other);
+
+        dev.set_vendor(Vendor::Nvidia);
+        assert_eq!(dev.vendor(), Vendor::Nvidia);
+
+        dev.set_vendor(Vendor::Amd);
+        assert_eq!(dev.vendor(), Vendor::Amd);
+
+        dev.set_vendor(Vendor::Intel);
+        assert_eq!(dev.vendor(), Vendor::Intel);
+
+        dev.set_vendor(Vendor::Qualcomm);
+        assert_eq!(dev.vendor(), Vendor::Qualcomm);
+
+        dev.set_vendor(Vendor::Arm);
+        assert_eq!(dev.vendor(), Vendor::Arm);
+
+        dev.set_vendor(Vendor::Apple);
+        assert_eq!(dev.vendor(), Vendor::Apple);
+
+        dev.set_vendor(Vendor::Microsoft);
+        assert_eq!(dev.vendor(), Vendor::Microsoft);
+
+        dev.set_vendor(Vendor::Other);
+        assert_eq!(dev.vendor(), Vendor::Other);
+    }
+
+    #[test]
+    fn test_type_display() {
+        assert_eq!(Type::DiscreteGpu.to_string(), "Discrete GPU");
+        assert_eq!(Type::IntegratedGpu.to_string(), "Integrated GPU");
+        assert_eq!(Type::VirtualGpu.to_string(), "Virtual GPU");
+        assert_eq!(Type::Cpu.to_string(), "CPU");
+        assert_eq!(Type::Other.to_string(), "Other");
+        assert_eq!(Type::Invalid.to_string(), "Invalid graphics device type.");
+    }
+
+    #[test]
+    fn test_vendor_display() {
+        assert_eq!(Vendor::Nvidia.to_string(), "NVIDIA");
+        assert_eq!(Vendor::Amd.to_string(), "AMD");
+        assert_eq!(Vendor::Intel.to_string(), "Intel");
+        assert_eq!(Vendor::Qualcomm.to_string(), "Qualcomm");
+        assert_eq!(Vendor::Arm.to_string(), "ARM");
+        assert_eq!(Vendor::Apple.to_string(), "Apple");
+        assert_eq!(Vendor::Microsoft.to_string(), "Microsoft");
+        assert_eq!(Vendor::Other.to_string(), "Other");
+    }
+
+    #[test]
+    fn test_feature_display() {
+        assert_eq!(Feature::GeometryShaders.to_string(), "Geometry Shaders");
+        assert_eq!(Feature::ComputeShaders.to_string(), "Compute Shaders");
+        assert_eq!(Feature::WireframeMode.to_string(), "Wireframe Mode");
+        assert_eq!(Feature::WideLines.to_string(), "Wide Lines");
+        assert_eq!(
+            Feature::AnisotropicFiltering.to_string(),
+            "Anisotropic Filtering"
+        );
+        assert_eq!(Feature::RayTracing.to_string(), "Ray Tracing");
+        assert_eq!(Feature::VideoDecoding.to_string(), "Video Decoding");
+        assert_eq!(Feature::VideoEncoding.to_string(), "Video Encoding");
+        assert_eq!(Feature::OpticalFlow.to_string(), "Optical Flow");
+        assert_eq!(Feature::AsyncTransfer.to_string(), "Async Transfer");
+    }
+
+    #[test]
+    fn test_graphics_device_display() {
+        let mut device = GraphicsDevice {
+            name: "".to_string(),
+            device_type: Type::Other,
+            vendor_id: 0,
+            device_id: 0,
+            api_version: Version {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            driver_version: Version {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            vram: 1024 * 1024 * 1024,
+            supported_features: HashSet::default(),
+        };
+
+        assert!(!device.to_string().contains("Supported Features:"));
+
+        device.supported_features.insert(Feature::RayTracing);
+        assert!(device.to_string().contains("Supported Features:"));
     }
 }
