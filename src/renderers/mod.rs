@@ -89,14 +89,6 @@ pub enum RendererError {
     InvalidOperation(String),
     /// A general error or failure occurred during a renderer operation.
     Fail(String),
-    /// The renderer or one of its core subsystems failed to initialize.
-    FailedToInitialize(String),
-    /// Failed to create the window or presentation surface.
-    FailedToCreateSurface(String),
-    /// Failed to enumerate the available graphics devices.
-    FailedToEnumerateDevices(String),
-    /// Failed to enumerate the features supported by the graphics device.
-    FailedToEnumerateSupportedFeatures(String),
     /// A requested feature marked as required is not supported by the physical
     /// device.
     UnsupportedRequiredFeature(crate::graphics_device::Feature),
@@ -243,18 +235,6 @@ impl std::fmt::Display for RendererError {
                 write!(f, "Invalid operation: {}", err)
             }
             Self::Fail(err) => write!(f, "{}", err),
-            Self::FailedToInitialize(err) => {
-                write!(f, "Failed to load graphics backend: {}", err)
-            }
-            Self::FailedToCreateSurface(err) => {
-                write!(f, "Failed to create window surface: {}", err)
-            }
-            Self::FailedToEnumerateDevices(err) => {
-                write!(f, "Failed to enumerate physical devices: {}", err)
-            }
-            Self::FailedToEnumerateSupportedFeatures(err) => {
-                write!(f, "Failed to enumerate device features: {}", err)
-            }
             Self::UnsupportedRequiredFeature(feature) => {
                 write!(
                     f,
@@ -287,30 +267,6 @@ mod tests {
 
         let err = RendererError::Fail("generic crash".into());
         assert_eq!(err.to_string(), "generic crash");
-
-        let err = RendererError::FailedToInitialize("vulkan.so missing".into());
-        assert_eq!(
-            err.to_string(),
-            "Failed to load graphics backend: vulkan.so missing"
-        );
-
-        let err = RendererError::FailedToCreateSurface("x11 error".into());
-        assert_eq!(
-            err.to_string(),
-            "Failed to create window surface: x11 error"
-        );
-
-        let err = RendererError::FailedToEnumerateDevices("no gpu".into());
-        assert_eq!(
-            err.to_string(),
-            "Failed to enumerate physical devices: no gpu"
-        );
-
-        let err = RendererError::FailedToEnumerateSupportedFeatures("driver error".into());
-        assert_eq!(
-            err.to_string(),
-            "Failed to enumerate device features: driver error"
-        );
 
         let err = RendererError::UnsupportedRequiredFeature(Feature::ComputeShaders);
         assert_eq!(

@@ -269,8 +269,7 @@ impl Renderer for VulkanRenderer {
 
         // Create instance.
 
-        let c_app_name =
-            CString::new(options.app_name).map_err(|_| RendererError::InvalidAppName)?;
+        let c_app_name = CString::new(options.app_name)?;
         let app_info = ApplicationInfo {
             s_type: StructureType::APPLICATION_INFO,
             p_engine_name: HEPHGL_ENGINE_NAME.as_ptr(),
@@ -285,14 +284,7 @@ impl Renderer for VulkanRenderer {
             ..Default::default()
         };
 
-        let entry = unsafe {
-            Entry::load().map_err(|e| {
-                RendererError::FailedToInitialize(format!(
-                    "Failed to load Vulkan graphics driver library: {}",
-                    e
-                ))
-            })?
-        };
+        let entry = unsafe { Entry::load()? };
 
         let create_flags = if cfg!(target_os = "macos") {
             ash::vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR
@@ -301,13 +293,7 @@ impl Renderer for VulkanRenderer {
         };
 
         let mut required_extension_names =
-            ash_window::enumerate_required_extensions(options.display_handle)
-                .map_err(|_| {
-                    RendererError::FailedToCreateSurface(
-                        "Failed to enumerate WSI extensions".to_owned(),
-                    )
-                })?
-                .to_vec();
+            ash_window::enumerate_required_extensions(options.display_handle)?.to_vec();
         if cfg!(target_os = "macos") {
             required_extension_names.push(c"VK_KHR_portability_enumeration".as_ptr());
         }
@@ -339,16 +325,7 @@ impl Renderer for VulkanRenderer {
             ..Default::default()
         };
 
-        let instance = unsafe {
-            entry
-                .create_instance(&instance_create_info, None)
-                .map_err(|e| {
-                    RendererError::FailedToInitialize(format!(
-                        "Failed to create Vulkan Instance: {}",
-                        e
-                    ))
-                })?
-        };
+        let instance = unsafe { entry.create_instance(&instance_create_info, None)? };
 
         // WSI for rendering to the native window.
 
@@ -359,10 +336,7 @@ impl Renderer for VulkanRenderer {
                 options.display_handle,
                 options.window_handle,
                 None,
-            )
-            .map_err(|_| {
-                RendererError::FailedToCreateSurface("Failed to create WSI Surface".to_owned())
-            })?
+            )?
         });
         self.window_surface_loader = Some(ash::khr::surface::Instance::new(&entry, &instance));
 
@@ -407,13 +381,7 @@ impl Renderer for VulkanRenderer {
             ))?;
 
         let mut devices = Vec::<GraphicsDevice>::new();
-        let physical_devices = unsafe {
-            instance.enumerate_physical_devices().map_err(|_| {
-                RendererError::FailedToEnumerateDevices(
-                    "Failed to enumerate physical Vulkan devices.".to_owned(),
-                )
-            })?
-        };
+        let physical_devices = unsafe { instance.enumerate_physical_devices()? };
 
         for physical_device in physical_devices {
             let mut properties2 = PhysicalDeviceProperties2::default();
@@ -475,15 +443,8 @@ impl Renderer for VulkanRenderer {
             }
 
             let mut supported_features = HashSet::<crate::graphics_device::Feature>::default();
-            let extension_properties = unsafe {
-                instance
-                    .enumerate_device_extension_properties(physical_device)
-                    .map_err(|_| {
-                        RendererError::FailedToEnumerateSupportedFeatures(
-                            "Failed to enumerate the supported device features.".to_owned(),
-                        )
-                    })?
-            };
+            let extension_properties =
+                unsafe { instance.enumerate_device_extension_properties(physical_device)? };
             if physical_features2.features.geometry_shader == ash::vk::TRUE {
                 supported_features.insert(crate::graphics_device::Feature::GeometryShaders);
             }
@@ -661,11 +622,7 @@ impl Renderer for VulkanRenderer {
             queue_create_infos.push(create_info);
         }
 
-        let physical_devices = unsafe {
-            instance
-                .enumerate_physical_devices()
-                .map_err(|_| RendererError::Fail("Failed to create logical device.".to_owned()))?
-        };
+        let physical_devices = unsafe { instance.enumerate_physical_devices()? };
         let mut vk_physical_device = None;
         for pd in physical_devices {
             let mut properties2 = PhysicalDeviceProperties2::default();
@@ -703,13 +660,8 @@ impl Renderer for VulkanRenderer {
             .queue_create_infos(&queue_create_infos)
             .enabled_extension_names(&device_extension_names);
         device_create_info.p_next = &physical_features2 as *const _ as *const std::ffi::c_void;
-        let logical_device = unsafe {
-            instance
-                .create_device(vk_physical_device, &device_create_info, None)
-                .map_err(|e| {
-                    RendererError::Fail(format!("Failed to create Vulkan logical device: {}", e))
-                })?
-        };
+        let logical_device =
+            unsafe { instance.create_device(vk_physical_device, &device_create_info, None)? };
 
         let mut extracted_queue_counts: HashMap<u32, u32> = HashMap::new();
         let mut get_next_queue = |family_index: u32, max_queues: u32| {
@@ -742,10 +694,7 @@ impl Renderer for VulkanRenderer {
         let mut allocator_create_info =
             vk_mem::AllocatorCreateInfo::new(instance, &logical_device, vk_physical_device);
         allocator_create_info.vulkan_api_version = VulkanRenderer::VK_API_VERSION;
-        let vma_allocator = unsafe {
-            vk_mem::Allocator::new(allocator_create_info)
-                .map_err(|e| RendererError::Fail(format!("Failed to initialize VMA: {}", e)))?
-        };
+        let vma_allocator = unsafe { vk_mem::Allocator::new(allocator_create_info)? };
 
         self.device_context = Some(DeviceContext {
             graphics_device: device.clone(),
@@ -895,10 +844,7 @@ impl Renderer for VulkanRenderer {
         unsafe {
             let shader_module = device_context
                 .logical_device
-                .create_shader_module(&create_info, None)
-                .map_err(|e| {
-                    RendererError::Fail(format!("Failed to create shader module: {}", e))
-                })?;
+                .create_shader_module(&create_info, None)?;
             Ok(Self::ShaderHandle {
                 module: shader_module,
             })
@@ -969,8 +915,7 @@ impl Renderer for VulkanRenderer {
                 let descriptor_set = unsafe {
                     device_context
                         .logical_device
-                        .allocate_descriptor_sets(&alloc_info)
-                        .map_err(|e| RendererError::Fail(e.to_string()))?[0]
+                        .allocate_descriptor_sets(&alloc_info)?[0]
                 };
 
                 let buffer_infos: Vec<_> = bindings
@@ -1039,8 +984,7 @@ impl Renderer for VulkanRenderer {
         let (buffer, vma_allocation) = unsafe {
             device_context
                 .vma_allocator
-                .create_buffer(&buffer_info, &alloc_info)
-                .map_err(|e| RendererError::Fail(format!("VMA Allocation failed: {}", e)))?
+                .create_buffer(&buffer_info, &alloc_info)?
         };
 
         Ok(VulkanBuffer {
@@ -1147,10 +1091,7 @@ impl Renderer for VulkanRenderer {
         let descriptor_layout = unsafe {
             device_context
                 .logical_device
-                .create_descriptor_set_layout(&layout_info, None)
-                .map_err(|e| {
-                    RendererError::Fail(format!("Failed to create the descriptor layer: {}", e))
-                })?
+                .create_descriptor_set_layout(&layout_info, None)?
         };
 
         let pipeline_layout_info = PipelineLayoutCreateInfo::default()
@@ -1158,14 +1099,10 @@ impl Renderer for VulkanRenderer {
         let layout = unsafe {
             device_context
                 .logical_device
-                .create_pipeline_layout(&pipeline_layout_info, None)
-                .map_err(|e| {
-                    RendererError::Fail(format!("Failed to create the pipeline layout: {}", e))
-                })?
+                .create_pipeline_layout(&pipeline_layout_info, None)?
         };
 
-        let entry_name =
-            std::ffi::CString::new("main").map_err(|e| RendererError::Fail(e.to_string()))?;
+        let entry_name = std::ffi::CString::new("main")?;
         let stage_info = PipelineShaderStageCreateInfo::default()
             .stage(ShaderStageFlags::COMPUTE)
             .module(shader.module)
@@ -1175,12 +1112,11 @@ impl Renderer for VulkanRenderer {
             .layout(layout)
             .stage(stage_info);
         let pipeline = unsafe {
-            device_context
-                .logical_device
-                .create_compute_pipelines(PipelineCache::null(), &[compute_info], None)
-                .map_err(|e| {
-                    RendererError::Fail(format!("Failed to create the compute pipeline: {}", e.1))
-                })?[0]
+            device_context.logical_device.create_compute_pipelines(
+                PipelineCache::null(),
+                &[compute_info],
+                None,
+            )?[0]
         };
 
         Ok(VulkanComputePipeline {
@@ -1244,8 +1180,7 @@ impl Renderer for VulkanRenderer {
         unsafe {
             device_context
                 .logical_device
-                .begin_command_buffer(current_frame.command_buffer, &begin_info)
-                .map_err(|e| RendererError::Fail(e.to_string()))?;
+                .begin_command_buffer(current_frame.command_buffer, &begin_info)?;
             device_context.logical_device.cmd_bind_pipeline(
                 current_frame.command_buffer,
                 PipelineBindPoint::COMPUTE,
@@ -1267,8 +1202,7 @@ impl Renderer for VulkanRenderer {
             );
             device_context
                 .logical_device
-                .end_command_buffer(current_frame.command_buffer)
-                .map_err(|e| RendererError::Fail(e.to_string()))?;
+                .end_command_buffer(current_frame.command_buffer)?;
         }
 
         Ok(Self::RecordedCommand {
@@ -1320,15 +1254,11 @@ impl Renderer for VulkanRenderer {
                 let submit_info = SubmitInfo::default().command_buffers(&command_buffers);
                 let frame = &mut queue_context.frames[frame_index];
                 unsafe {
-                    device_context
-                        .logical_device
-                        .queue_submit(queue_context.queue, &[submit_info], frame.fence)
-                        .map_err(|e| {
-                            RendererError::Fail(format!(
-                                "Failed to submit recorded commands: {}",
-                                e
-                            ))
-                        })?;
+                    device_context.logical_device.queue_submit(
+                        queue_context.queue,
+                        &[submit_info],
+                        frame.fence,
+                    )?;
                 }
                 frame.is_in_flight = true;
             }
@@ -1382,14 +1312,12 @@ impl Renderer for VulkanRenderer {
         }
         if !fences.is_empty() {
             unsafe {
-                device_context
-                    .logical_device
-                    .wait_for_fences(&fences, true, VulkanRenderer::MAX_TIMEOUT_NS)
-                    .map_err(|e| RendererError::Fail(e.to_string()))?;
-                device_context
-                    .logical_device
-                    .reset_fences(&fences)
-                    .map_err(|e| RendererError::Fail(e.to_string()))?;
+                device_context.logical_device.wait_for_fences(
+                    &fences,
+                    true,
+                    VulkanRenderer::MAX_TIMEOUT_NS,
+                )?;
+                device_context.logical_device.reset_fences(&fences)?;
                 for is_in_flight in fence_guards {
                     *is_in_flight = false;
                 }
@@ -1397,16 +1325,15 @@ impl Renderer for VulkanRenderer {
         }
 
         // Reset the command pools.
-        let reset_command_pool = |queue_context: &QueueContext| unsafe {
-            device_context
-                .logical_device
-                .reset_command_pool(
+        let reset_command_pool = |queue_context: &QueueContext| -> RendererResult<()> {
+            unsafe {
+                device_context.logical_device.reset_command_pool(
                     queue_context.frames[current_frame_index].thread_contexts[thread_context_index]
                         .command_pool,
                     ash::vk::CommandPoolResetFlags::empty(),
-                )
-                .map_err(|e| RendererError::Fail(e.to_string()))?;
-            Ok(())
+                )?;
+                Ok(())
+            }
         };
         reset_command_pool(&device_context.graphics_queue_context)?;
         if let Some(transfer_queue_context) = &device_context.transfer_queue_context {
@@ -1417,16 +1344,15 @@ impl Renderer for VulkanRenderer {
         }
 
         // Reset the descriptor pools.
-        let reset_descriptor_pool = |queue_context: &QueueContext| unsafe {
-            device_context
-                .logical_device
-                .reset_descriptor_pool(
+        let reset_descriptor_pool = |queue_context: &QueueContext| -> RendererResult<()> {
+            unsafe {
+                device_context.logical_device.reset_descriptor_pool(
                     queue_context.frames[current_frame_index].thread_contexts[thread_context_index]
                         .descriptor_pool,
                     DescriptorPoolResetFlags::empty(),
-                )
-                .map_err(|e| RendererError::Fail(e.to_string()))?;
-            Ok(())
+                )?;
+                Ok(())
+            }
         };
         reset_descriptor_pool(&device_context.graphics_queue_context)?;
         if let Some(transfer_queue_context) = &device_context.transfer_queue_context {
@@ -1456,10 +1382,7 @@ impl Renderer for VulkanRenderer {
                 ))?;
 
         unsafe {
-            device_context
-                .logical_device
-                .device_wait_idle()
-                .map_err(|e| RendererError::Fail(format!("Wait idle failed: {}", e)))?;
+            device_context.logical_device.device_wait_idle()?;
         }
         Ok(())
     }
@@ -1568,13 +1491,7 @@ impl VulkanRenderer {
                     "Renderer is not initialize.".to_string(),
                 ))?;
 
-        let physical_devices = unsafe {
-            instance.enumerate_physical_devices().map_err(|_| {
-                RendererError::FailedToEnumerateDevices(
-                    "Failed to enumerate physical Vulkan devices.".to_owned(),
-                )
-            })?
-        };
+        let physical_devices = unsafe { instance.enumerate_physical_devices()? };
 
         let mut queue_families = Vec::default();
         for physical_device in physical_devices {
@@ -1605,18 +1522,11 @@ impl VulkanRenderer {
                     queue_count: queue_family_properties2.queue_family_properties.queue_count,
                     queue_flags: queue_family_properties2.queue_family_properties.queue_flags,
                     present_supported: unsafe {
-                        window_surface_loader
-                            .get_physical_device_surface_support(
-                                physical_device,
-                                index as u32,
-                                *window_surface,
-                            )
-                            .map_err(|_| {
-                                RendererError::FailedToEnumerateSupportedFeatures(
-                                    "Failed to query presentation support for queue family"
-                                        .to_owned(),
-                                )
-                            })?
+                        window_surface_loader.get_physical_device_surface_support(
+                            physical_device,
+                            index as u32,
+                            *window_surface,
+                        )?
                     },
                 });
             }
@@ -1644,21 +1554,19 @@ impl VulkanRenderer {
         let fif = self.settings.frames_in_flight as usize;
         let thread_context_index = Self::thread_context_index()?;
 
-        let create_command_pool = |queue_context: &mut QueueContext, frame_index: usize| {
-            let pool_info = CommandPoolCreateInfo::default()
-                .flags(CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-                .queue_family_index(queue_context.queue_family_index);
-            unsafe {
-                queue_context.frames[frame_index].thread_contexts[thread_context_index]
-                    .command_pool = device_context
-                    .logical_device
-                    .create_command_pool(&pool_info, None)
-                    .map_err(|e| {
-                        RendererError::Fail(format!("Failed to create command pool: {}", e))
-                    })?;
-            }
-            Ok(())
-        };
+        let create_command_pool =
+            |queue_context: &mut QueueContext, frame_index: usize| -> RendererResult<()> {
+                let pool_info = CommandPoolCreateInfo::default()
+                    .flags(CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+                    .queue_family_index(queue_context.queue_family_index);
+                unsafe {
+                    queue_context.frames[frame_index].thread_contexts[thread_context_index]
+                        .command_pool = device_context
+                        .logical_device
+                        .create_command_pool(&pool_info, None)?;
+                }
+                Ok(())
+            };
 
         for frame_index in 0..fif {
             create_command_pool(&mut device_context.graphics_queue_context, frame_index)?;
@@ -1686,22 +1594,20 @@ impl VulkanRenderer {
         let fif = self.settings.frames_in_flight as usize;
         let thread_context_index = Self::thread_context_index()?;
 
-        let allocate_buffers = |queue_context: &mut QueueContext, frame_index: usize| {
-            let frame = &mut queue_context.frames[frame_index];
-            let alloc_info = CommandBufferAllocateInfo::default()
-                .command_pool(frame.thread_contexts[thread_context_index].command_pool)
-                .level(CommandBufferLevel::PRIMARY)
-                .command_buffer_count(1);
-            unsafe {
-                frame.thread_contexts[thread_context_index].command_buffer = device_context
-                    .logical_device
-                    .allocate_command_buffers(&alloc_info)
-                    .map_err(|e| {
-                        RendererError::Fail(format!("Failed to allocate command buffers: {}", e))
-                    })?[0];
-            }
-            Ok(())
-        };
+        let allocate_buffers =
+            |queue_context: &mut QueueContext, frame_index: usize| -> RendererResult<()> {
+                let frame = &mut queue_context.frames[frame_index];
+                let alloc_info = CommandBufferAllocateInfo::default()
+                    .command_pool(frame.thread_contexts[thread_context_index].command_pool)
+                    .level(CommandBufferLevel::PRIMARY)
+                    .command_buffer_count(1);
+                unsafe {
+                    frame.thread_contexts[thread_context_index].command_buffer = device_context
+                        .logical_device
+                        .allocate_command_buffers(&alloc_info)?[0];
+                }
+                Ok(())
+            };
 
         for frame_index in 0..fif {
             allocate_buffers(&mut device_context.graphics_queue_context, frame_index)?;
@@ -1729,13 +1635,15 @@ impl VulkanRenderer {
         let fif = self.settings.frames_in_flight as usize;
 
         let fence_info = ash::vk::FenceCreateInfo::default();
-        let create_fence = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
-            queue_context.frames[frame_index].fence = device_context
-                .logical_device
-                .create_fence(&fence_info, None)
-                .map_err(|e| RendererError::Fail(format!("Failed to create fences: {}", e)))?;
-            Ok(())
-        };
+        let create_fence =
+            |queue_context: &mut QueueContext, frame_index: usize| -> RendererResult<()> {
+                unsafe {
+                    queue_context.frames[frame_index].fence = device_context
+                        .logical_device
+                        .create_fence(&fence_info, None)?;
+                    Ok(())
+                }
+            };
 
         for frame_index in 0..fif {
             create_fence(&mut device_context.graphics_queue_context, frame_index)?;
@@ -1779,16 +1687,16 @@ impl VulkanRenderer {
             .max_sets(DESCRIPTOR_MAX_SETS)
             .pool_sizes(&pool_sizes);
 
-        let allocate_pool = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
-            queue_context.frames[frame_index].thread_contexts[thread_context_index]
-                .descriptor_pool = device_context
-                .logical_device
-                .create_descriptor_pool(&pool_info, None)
-                .map_err(|e| {
-                    RendererError::Fail(format!("Failed to create descriptor pool: {}", e))
-                })?;
-            Ok(())
-        };
+        let allocate_pool =
+            |queue_context: &mut QueueContext, frame_index: usize| -> RendererResult<()> {
+                unsafe {
+                    queue_context.frames[frame_index].thread_contexts[thread_context_index]
+                        .descriptor_pool = device_context
+                        .logical_device
+                        .create_descriptor_pool(&pool_info, None)?;
+                    Ok(())
+                }
+            };
 
         for frame_index in 0..fif {
             allocate_pool(&mut device_context.graphics_queue_context, frame_index)?;
@@ -1896,22 +1804,24 @@ impl VulkanRenderer {
                 ))?;
         let fif = self.settings.frames_in_flight as usize;
 
-        let destroy_fence = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
-            let frame = &mut queue_context.frames[frame_index];
-            if frame.is_in_flight {
-                device_context
-                    .logical_device
-                    .wait_for_fences(&[frame.fence], true, VulkanRenderer::MAX_TIMEOUT_NS)
-                    .map_err(|e| {
-                        RendererError::Fail(format!("Failed to wait for fences: {}", e))
-                    })?;
-            }
-            device_context
-                .logical_device
-                .destroy_fence(frame.fence, None);
-            frame.fence = Fence::default();
-            Ok(())
-        };
+        let destroy_fence =
+            |queue_context: &mut QueueContext, frame_index: usize| -> RendererResult<()> {
+                unsafe {
+                    let frame = &mut queue_context.frames[frame_index];
+                    if frame.is_in_flight {
+                        device_context.logical_device.wait_for_fences(
+                            &[frame.fence],
+                            true,
+                            VulkanRenderer::MAX_TIMEOUT_NS,
+                        )?;
+                    }
+                    device_context
+                        .logical_device
+                        .destroy_fence(frame.fence, None);
+                    frame.fence = Fence::default();
+                    Ok(())
+                }
+            };
 
         for frame_index in 0..fif {
             destroy_fence(&mut device_context.graphics_queue_context, frame_index)?;
@@ -1973,5 +1883,29 @@ impl Default for Frame {
 impl GpuBuffer for VulkanBuffer {
     fn size(&self) -> usize {
         self.size
+    }
+}
+
+impl From<std::ffi::NulError> for RendererError {
+    fn from(_: std::ffi::NulError) -> Self {
+        RendererError::InvalidAppName
+    }
+}
+
+impl From<ash::LoadingError> for RendererError {
+    fn from(e: ash::LoadingError) -> Self {
+        RendererError::Fail(e.to_string())
+    }
+}
+
+impl From<ash::vk::Result> for RendererError {
+    fn from(e: ash::vk::Result) -> Self {
+        RendererError::Fail(e.to_string())
+    }
+}
+
+impl From<(Vec<ash::vk::Pipeline>, ash::vk::Result)> for RendererError {
+    fn from(e: (Vec<ash::vk::Pipeline>, ash::vk::Result)) -> Self {
+        RendererError::Fail(e.1.to_string())
     }
 }
