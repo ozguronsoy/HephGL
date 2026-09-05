@@ -82,7 +82,7 @@ jobs:
           export VK_ICD_FILENAMES="$VULKAN_SDK/share/vulkan/icd.d/MoltenVK_icd.json"
           cargo nextest run
 
-coverage:
+  coverage:
     name: Code Coverage (${{ matrix.os }})
     needs: integration-tests
     runs-on: ${{ matrix.os }}
