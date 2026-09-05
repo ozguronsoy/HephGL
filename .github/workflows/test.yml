@@ -70,4 +70,4 @@ jobs:
         run: $HEPHGL_GUI_PREFIX cargo llvm-cov nextest
 
       - name: Generate Report
-        run: cargo llvm-cov report --fail-under-lines 80 --fail-under-regions 80
+        run: cargo llvm-cov report --fail-under-functions 80 --fail-under-lines 80 --fail-under-regions 80
