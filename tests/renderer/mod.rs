@@ -289,8 +289,8 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                 Some(&GraphicsDevice {
                     name: "".to_string(),
                     device_type: heph_gl::graphics_device::Type::Other,
-                    vendor_id: 0,
-                    device_id: 0,
+                    vendor_id: u32::MAX,
+                    device_id: u32::MAX,
                     api_version: heph_gl::Version {
                         major: 0,
                         minor: 0,
