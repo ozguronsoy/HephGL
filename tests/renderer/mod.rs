@@ -30,6 +30,21 @@ macro_rules! test_env {
     };
 }
 
+#[derive(Default)]
+pub struct RendererTestSettings {
+    pub skip_all_tests: bool,
+    pub skip_invalid_app_name_test: bool,
+    pub skip_initialize_renderer_test: bool,
+    pub skip_enumerate_devices_test: bool,
+    pub skip_set_device_test: bool,
+    pub skip_set_settings_test: bool,
+    pub skip_buffer_test: bool,
+    pub skip_shader_test: bool,
+    pub skip_calling_main_thread_only_fn_from_worker_thread_test: bool,
+    pub skip_single_threaded_compute_test: bool,
+    pub skip_multi_threaded_compute_test: bool,
+}
+
 pub struct RendererTests<TestRenderer: Renderer> {
     _marker: PhantomData<TestRenderer>,
 }
@@ -41,7 +56,10 @@ where
     // We use nextest and libtest-mimic to run each test on the main thread of its
     // own process. This allows us to avoid "event loop creation in a worker thread"
     // errors.
-    pub fn run() -> ExitCode {
+    pub fn run(settings: RendererTestSettings) -> ExitCode {
+        if settings.skip_all_tests {
+            return ExitCode::SUCCESS;
+        }
         if std::env::var("NEXTEST").is_err() {
             println!("Skipping integration tests, run via `cargo nextest run` instead.");
             return ExitCode::SUCCESS;
@@ -67,104 +85,132 @@ where
             Trial::test("test_invalid_app_name", move || {
                 Self::test_invalid_app_name();
                 Ok(())
-            }),
+            })
+            .with_ignored_flag(settings.skip_invalid_app_name_test),
             Trial::test("test_initialize_renderer", move || {
                 Self::test_initialize_renderer();
                 Ok(())
-            }),
+            })
+            .with_ignored_flag(settings.skip_initialize_renderer_test),
             Trial::test("test_enumerate_devices", move || {
                 Self::test_enumerate_devices();
                 Ok(())
-            }),
+            })
+            .with_ignored_flag(settings.skip_enumerate_devices_test),
             Trial::test("test_set_device", move || {
                 Self::test_set_device();
                 Ok(())
-            }),
+            })
+            .with_ignored_flag(settings.skip_set_device_test),
             Trial::test("test_set_settings", move || {
                 Self::test_set_settings();
                 Ok(())
-            }),
+            })
+            .with_ignored_flag(settings.skip_set_settings_test),
             Trial::test("test_uniform_buffer", move || {
                 Self::test_uniform_buffer();
                 Ok(())
-            }),
+            })
+            .with_ignored_flag(settings.skip_buffer_test),
             Trial::test("test_storage_buffer", move || {
                 Self::test_storage_buffer();
                 Ok(())
-            }),
+            })
+            .with_ignored_flag(settings.skip_buffer_test),
             Trial::test("test_index_buffer", move || {
                 Self::test_index_buffer();
                 Ok(())
-            }),
+            })
+            .with_ignored_flag(settings.skip_buffer_test),
             Trial::test("test_vertex_buffer", move || {
                 Self::test_vertex_buffer();
                 Ok(())
-            }),
+            })
+            .with_ignored_flag(settings.skip_buffer_test),
             Trial::test("test_impossible_buffer_size", move || {
                 Self::test_impossible_buffer_size();
                 Ok(())
-            }),
+            })
+            .with_ignored_flag(settings.skip_buffer_test),
             Trial::test("test_shader", move || {
                 Self::test_shader();
                 Ok(())
-            }),
+            })
+            .with_ignored_flag(settings.skip_shader_test),
             Trial::test(
                 "test_calling_main_thread_only_fn_from_worker_thread",
                 move || {
                     Self::test_calling_main_thread_only_fn_from_worker_thread();
                     Ok(())
                 },
-            ),
+            )
+            .with_ignored_flag(settings.skip_calling_main_thread_only_fn_from_worker_thread_test),
             Trial::test("test_single_threaded_compute_discrete_gpu", move || {
                 Self::test_single_threaded_compute_discrete_gpu();
                 Ok(())
             })
-            .with_ignored_flag(skip_discrete_gpu_device_tests),
+            .with_ignored_flag(
+                skip_discrete_gpu_device_tests || settings.skip_single_threaded_compute_test,
+            ),
             Trial::test("test_single_threaded_compute_integrated_gpu", move || {
                 Self::test_single_threaded_compute_integrated_gpu();
                 Ok(())
             })
-            .with_ignored_flag(skip_integrated_gpu_device_tests),
+            .with_ignored_flag(
+                skip_integrated_gpu_device_tests || settings.skip_single_threaded_compute_test,
+            ),
             Trial::test("test_single_threaded_compute_cpu", move || {
                 Self::test_single_threaded_compute_cpu();
                 Ok(())
             })
-            .with_ignored_flag(skip_cpu_device_tests),
+            .with_ignored_flag(skip_cpu_device_tests || settings.skip_single_threaded_compute_test),
             Trial::test("test_single_threaded_compute_virtual_gpu", move || {
                 Self::test_single_threaded_compute_virtual_gpu();
                 Ok(())
             })
-            .with_ignored_flag(skip_virtual_gpu_device_tests),
+            .with_ignored_flag(
+                skip_virtual_gpu_device_tests || settings.skip_single_threaded_compute_test,
+            ),
             Trial::test("test_single_threaded_compute_other", move || {
                 Self::test_single_threaded_compute_other();
                 Ok(())
             })
-            .with_ignored_flag(skip_other_device_tests),
+            .with_ignored_flag(
+                skip_other_device_tests || settings.skip_single_threaded_compute_test,
+            ),
             Trial::test("test_multi_threaded_compute_discrete_gpu", move || {
                 Self::test_multi_threaded_compute_discrete_gpu();
                 Ok(())
             })
-            .with_ignored_flag(skip_discrete_gpu_device_tests),
+            .with_ignored_flag(
+                skip_discrete_gpu_device_tests || settings.skip_multi_threaded_compute_test,
+            ),
             Trial::test("test_multi_threaded_compute_integrated_gpu", move || {
                 Self::test_multi_threaded_compute_integrated_gpu();
                 Ok(())
             })
-            .with_ignored_flag(skip_integrated_gpu_device_tests),
+            .with_ignored_flag(
+                skip_integrated_gpu_device_tests || settings.skip_multi_threaded_compute_test,
+            ),
             Trial::test("test_multi_threaded_compute_cpu", move || {
                 Self::test_multi_threaded_compute_cpu();
                 Ok(())
             })
-            .with_ignored_flag(skip_cpu_device_tests),
+            .with_ignored_flag(skip_cpu_device_tests || settings.skip_multi_threaded_compute_test),
             Trial::test("test_multi_threaded_compute_virtual_gpu", move || {
                 Self::test_multi_threaded_compute_virtual_gpu();
                 Ok(())
             })
-            .with_ignored_flag(skip_virtual_gpu_device_tests),
+            .with_ignored_flag(
+                skip_virtual_gpu_device_tests || settings.skip_multi_threaded_compute_test,
+            ),
             Trial::test("test_multi_threaded_compute_other", move || {
                 Self::test_multi_threaded_compute_other();
                 Ok(())
             })
-            .with_ignored_flag(skip_other_device_tests),
+            .with_ignored_flag(
+                skip_other_device_tests || settings.skip_multi_threaded_compute_test,
+            ),
         ];
 
         libtest_mimic::run(&args, tests).exit_code()
