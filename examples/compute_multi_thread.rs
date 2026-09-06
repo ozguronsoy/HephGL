@@ -1,8 +1,8 @@
 use heph_gl::{
     graphics_device::Feature::ComputeShaders,
     renderers::{
-        BufferUsage, FeatureRequest, GpuBuffer, PipelineHandle, Renderer, ResourceBinding,
-        ResourceBindingType,
+        BufferUsage, FeatureRequest, GpuBuffer, PipelineHandle, Renderer, RendererHandle,
+        RendererWorkerFactory, ResourceBinding, ResourceBindingType,
     },
     shader::ShaderSource,
 };
@@ -48,18 +48,17 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         renderer.begin_frame().unwrap();
 
         // Share the renderer across threads.
-        let p_renderer = renderer as *mut ExampleRenderer as usize;
+        let renderer_handle = RendererHandle::<ExampleRenderer>::from(&mut *renderer);
         for thread_index in 0..N_THREADS {
             let tx = tx.clone();
             let barrier = barrier.clone();
 
             s.spawn(move || {
-                let renderer = unsafe { &mut *(p_renderer as *mut ExampleRenderer) };
+                let mut renderer = renderer_handle.spawn_worker().unwrap();
 
                 // Every thread have its own internal data which must be initialized. This is
                 // done internally for the main thread so we don't have to explicitly call
                 // these in the main thread.
-                renderer.initialize_thread().unwrap();
 
                 // Create buffers in GPU, and fill them.
                 let (data_a, data_b) = create_data(thread_index);
@@ -135,10 +134,6 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
                 // Wait until the main thread receives the recorded commands and resources from
                 // all threads, and GPU finishes processing them.
                 barrier.wait();
-
-                // We are finished with this thread. Free the resources so another thread can
-                // use them later.
-                renderer.uninitialize_thread().unwrap();
             });
         }
 
