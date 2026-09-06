@@ -1878,24 +1878,14 @@ impl VulkanRenderer {
     }
 }
 
-impl From<&mut VulkanRenderer> for RendererHandle<VulkanRenderer> {
-    fn from(value: &mut VulkanRenderer) -> Self {
-        #[allow(clippy::default_constructed_unit_structs)]
-        Self {
-            p_renderer: (value as *mut VulkanRenderer) as usize,
-            _marker: std::marker::PhantomData::default(),
-        }
-    }
-}
 impl RendererWorkerFactory<VulkanRenderer> for RendererHandle<VulkanRenderer> {
     fn spawn_worker(&self) -> RendererResult<RendererWorker<VulkanRenderer>> {
         let renderer = unsafe { &mut *(self.p_renderer as *mut VulkanRenderer) };
         renderer.initialize_thread()?;
-        #[allow(clippy::default_constructed_unit_structs)]
         Ok(RendererWorker::<VulkanRenderer> {
             p_renderer: self.p_renderer,
             uninitialize: |renderer| renderer.uninitialize_thread(),
-            _marker: std::marker::PhantomData::default(),
+            _marker: std::marker::PhantomData,
         })
     }
 }
