@@ -34,11 +34,9 @@ pub struct RendererTests<TestRenderer: Renderer> {
     _marker: PhantomData<TestRenderer>,
 }
 
-impl<TestRenderer> RendererTests<TestRenderer>
+impl<TestRenderer: Renderer> RendererTests<TestRenderer>
 where
-    TestRenderer: Renderer,
-    RendererHandle<TestRenderer>:
-        for<'a> From<&'a mut TestRenderer> + RendererWorkerFactory<TestRenderer>,
+    RendererHandle<TestRenderer>: RendererWorkerFactory<TestRenderer>,
 {
     // We use nextest and libtest-mimic to run each test on the main thread of its
     // own process. This allows us to avoid "event loop creation in a worker thread"

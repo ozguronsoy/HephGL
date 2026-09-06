@@ -43,7 +43,7 @@ pub struct ResourceBinding<B> {
     pub resource: ResourceBindingType<B>,
 }
 
-/// An opaque handle used for sharing [`Renderer`] safely across threads.
+/// An opaque handle used for sharing the [`Renderer`] instance safely across threads.
 pub struct RendererHandle<T: Renderer> {
     /// Raw pointer to the renderer instance.
     p_renderer: usize,
@@ -226,12 +226,20 @@ pub trait Renderer {
     fn clear(&mut self, color: RGB<f32>) -> RendererResult<()>;
 }
 
-unsafe impl<T: Renderer> Send for RendererHandle<T> {}
-unsafe impl<T: Renderer> Sync for RendererHandle<T> {}
 impl<T: Renderer> Copy for RendererHandle<T> {}
 impl<T: Renderer> Clone for RendererHandle<T> {
     fn clone(&self) -> Self {
         *self
+    }
+}
+unsafe impl<T: Renderer> Send for RendererHandle<T> {}
+unsafe impl<T: Renderer> Sync for RendererHandle<T> {}
+impl<T: Renderer> From<&mut T> for RendererHandle<T> {
+    fn from(value: &mut T) -> Self {
+        Self {
+            p_renderer: (value as *mut T) as usize,
+            _marker: std::marker::PhantomData,
+        }
     }
 }
 
