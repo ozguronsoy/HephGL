@@ -14,6 +14,29 @@ macro_rules! heph_expect_success {
     };
 }
 
+#[macro_export]
+macro_rules! heph_expect_err {
+    ($expr: expr, $expected_err: expr) => {
+        let expected = $expected_err;
+        match $expr {
+            Ok(_) => panic!("Expected error, got success"),
+            Err(err) => {
+                if err == expected {
+                    err
+                } else {
+                    panic!("Expected `{}` but got `{}`", expected, err)
+                }
+            }
+        }
+    };
+    ($expr: expr) => {
+        match $expr {
+            Ok(_) => panic!("Expected error, got success"),
+            Err(err) => err,
+        }
+    };
+}
+
 pub const SHADERS_DIR: &str = "shaders";
 
 pub struct TestEnv {

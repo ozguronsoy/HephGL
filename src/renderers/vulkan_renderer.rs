@@ -1,4 +1,3 @@
-use core::panic;
 use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString};
@@ -218,7 +217,8 @@ impl Renderer for VulkanRenderer {
         self.main_thread_only()?;
 
         if self.device_context.is_some() {
-            let reinit_thread = Self::thread_context_index().is_ok();
+            let temp_settings = self.settings;
+            let temp_current_frame_index = self.current_frame_index;
 
             self.uninitialize_thread()?;
             self.destroy_fences()?;
@@ -226,8 +226,10 @@ impl Renderer for VulkanRenderer {
             self.settings = settings;
             self.current_frame_index = 0;
 
-            let resize_frames = |queue_context: &mut QueueContext| {
+            let mut resize_frames = |queue_context: &mut QueueContext| -> RendererResult<()> {
                 if queue_context.thread_context_mask.load(Ordering::Relaxed) != 0 {
+                    self.settings = temp_settings;
+                    self.current_frame_index = temp_current_frame_index;
                     return Err(RendererError::InvalidOperation(
                         "All worker threads must be uninitialized before changing the settings."
                             .to_string(),
@@ -250,9 +252,7 @@ impl Renderer for VulkanRenderer {
             }
             self.create_fences()?;
 
-            if reinit_thread {
-                self.initialize_thread()?;
-            }
+            self.initialize_thread()?;
         } else {
             self.settings = settings;
             self.current_frame_index = 0;
@@ -264,7 +264,9 @@ impl Renderer for VulkanRenderer {
     fn initialize(&mut self, options: &InitializeOptions) -> RendererResult<()> {
         self.main_thread_only()?;
         if self.entry.is_some() || self.instance.is_some() {
-            panic!("VulkanRenderer is already initialized.");
+            return Err(RendererError::InvalidOperation(
+                "VulkanRenderer is already initialized".to_string(),
+            ));
         }
 
         // Create instance.
