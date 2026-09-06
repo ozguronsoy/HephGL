@@ -13,7 +13,8 @@ use heph_gl::{
     },
     renderers::{
         BufferUsage, FeatureRequest, GpuBuffer, InitializeOptions, PipelineHandle, Renderer,
-        RendererError, ResourceBinding, ResourceBindingType, Settings,
+        RendererError, RendererHandle, RendererWorkerFactory, ResourceBinding, ResourceBindingType,
+        Settings,
     },
     shader::ShaderSource,
 };
@@ -33,7 +34,12 @@ pub struct RendererTests<TestRenderer: Renderer> {
     _marker: PhantomData<TestRenderer>,
 }
 
-impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
+impl<TestRenderer> RendererTests<TestRenderer>
+where
+    TestRenderer: Renderer,
+    RendererHandle<TestRenderer>:
+        for<'a> From<&'a mut TestRenderer> + RendererWorkerFactory<TestRenderer>,
+{
     // We use nextest and libtest-mimic to run each test on the main thread of its
     // own process. This allows us to avoid "event loop creation in a worker thread"
     // errors.
@@ -340,15 +346,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         {
             let mut renderer = Self::create_renderer_with_any_device(&[]);
             std::thread::scope(|s| {
-                let p_renderer = &mut renderer as *mut TestRenderer as usize;
                 let b1 = std::sync::Arc::new(std::sync::Barrier::new(2));
                 let b2 = b1.clone();
+                let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);
                 s.spawn(move || {
-                    let renderer = unsafe { &mut *(p_renderer as *mut TestRenderer) };
-                    heph_expect_success!(renderer.initialize_thread());
+                    let _renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
                     b2.wait();
                     b2.wait();
-                    heph_expect_success!(renderer.uninitialize_thread());
                 });
                 b1.wait();
                 heph_expect_err!(
@@ -648,20 +652,17 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         );
         let pipeline = heph_expect_success!(renderer.create_compute_pipeline(&shader_module));
 
-        let renderer_ptr = &mut renderer as *mut TestRenderer as usize;
-
         std::thread::scope(|s| {
             let (tx, rx) = std::sync::mpsc::channel();
             let barrier = std::sync::Arc::new(std::sync::Barrier::new(n_threads + 1));
+            let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);
 
             for thread_id in 0..n_threads {
                 let tx = tx.clone();
                 let barrier = barrier.clone();
 
                 s.spawn(move || {
-                    let renderer = unsafe { &mut *(renderer_ptr as *mut TestRenderer) };
-
-                    heph_expect_success!(renderer.initialize_thread());
+                    let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
 
                     barrier.wait();
 
@@ -675,20 +676,20 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                     }
 
                     let buffer_a = heph_expect_success!(
-                        renderer.create_buffer(BYTE_SIZE, BufferUsage::Storage)
+                        renderer_worker.create_buffer(BYTE_SIZE, BufferUsage::Storage)
                     );
                     let buffer_b = heph_expect_success!(
-                        renderer.create_buffer(BYTE_SIZE, BufferUsage::Storage)
+                        renderer_worker.create_buffer(BYTE_SIZE, BufferUsage::Storage)
                     );
                     let buffer_c = heph_expect_success!(
-                        renderer.create_buffer(BYTE_SIZE, BufferUsage::Storage)
+                        renderer_worker.create_buffer(BYTE_SIZE, BufferUsage::Storage)
                     );
 
                     heph_expect_success!(
-                        renderer.write_buffer(&buffer_a, bytemuck::cast_slice(&a_data))
+                        renderer_worker.write_buffer(&buffer_a, bytemuck::cast_slice(&a_data))
                     );
                     heph_expect_success!(
-                        renderer.write_buffer(&buffer_b, bytemuck::cast_slice(&b_data))
+                        renderer_worker.write_buffer(&buffer_b, bytemuck::cast_slice(&b_data))
                     );
 
                     let bindings = [
@@ -722,13 +723,12 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                     ];
 
                     let resource_set = heph_expect_success!(
-                        renderer.create_resource_set(&PipelineHandle::Compute(pipeline), &bindings)
+                        renderer_worker
+                            .create_resource_set(&PipelineHandle::Compute(pipeline), &bindings)
                     );
-                    let recorded_command = heph_expect_success!(renderer.record_compute_pass(
-                        &pipeline,
-                        &[&resource_set],
-                        (1, 1, 1)
-                    ));
+                    let recorded_command = heph_expect_success!(
+                        renderer_worker.record_compute_pass(&pipeline, &[&resource_set], (1, 1, 1))
+                    );
 
                     heph_expect_success!(tx.send((
                         recorded_command,
@@ -740,8 +740,6 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                     )));
 
                     barrier.wait();
-
-                    heph_expect_success!(renderer.uninitialize_thread());
                 });
             }
 

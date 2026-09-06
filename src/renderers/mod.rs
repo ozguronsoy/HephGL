@@ -43,6 +43,22 @@ pub struct ResourceBinding<B> {
     pub resource: ResourceBindingType<B>,
 }
 
+/// An opaque handle used for sharing [`Renderer`] safely across threads.
+pub struct RendererHandle<T: Renderer> {
+    /// Raw pointer to the renderer instance.
+    p_renderer: usize,
+    _marker: std::marker::PhantomData<T>,
+}
+
+/// A scoped wrapper that manages the thread-local resources of a [`Renderer`].
+pub struct RendererWorker<T: Renderer> {
+    /// Raw pointer to the renderer instance.
+    p_renderer: usize,
+    /// The function used to release the thread-local resources.
+    uninitialize: fn(&mut T) -> RendererResult<()>,
+    _marker: std::marker::PhantomData<T>,
+}
+
 /// Defines the possible usages of a buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BufferUsage {
@@ -102,6 +118,12 @@ pub trait GpuBuffer: std::fmt::Debug + Copy + Clone + Send + Sync {
     fn size(&self) -> usize;
 }
 
+/// A factory for generating thread-specific rendering workers.
+pub trait RendererWorkerFactory<T: Renderer> {
+    /// Creates a [`RendererWorker`] for the current thread.
+    fn spawn_worker(&self) -> RendererResult<RendererWorker<T>>;
+}
+
 /// The core interface for a graphics renderer.
 pub trait Renderer {
     /// Represents a compiled shader module on the GPU.
@@ -145,16 +167,6 @@ pub trait Renderer {
         device: Option<&GraphicsDevice>,
         requested_features: &[FeatureRequest],
     ) -> RendererResult<()>;
-
-    /// Initializes the per-thread execution resources for the renderer.
-    ///
-    /// ### Important
-    /// This function must be run **once per worker thread** that will be
-    /// recording commands.
-    fn initialize_thread(&mut self) -> RendererResult<()>;
-    /// Frees and destroys all per-frame execution resources allocated during
-    /// `initialize_frames`.
-    fn uninitialize_thread(&mut self) -> RendererResult<()>;
 
     /// Compiles the shader from the provided source.
     fn create_shader(&self, source: &ShaderSource) -> RendererResult<Self::ShaderHandle>;
@@ -212,6 +224,36 @@ pub trait Renderer {
 
     /// Clears the current render target with the specified color.
     fn clear(&mut self, color: RGB<f32>) -> RendererResult<()>;
+}
+
+unsafe impl<T: Renderer> Send for RendererHandle<T> {}
+unsafe impl<T: Renderer> Sync for RendererHandle<T> {}
+impl<T: Renderer> Copy for RendererHandle<T> {}
+impl<T: Renderer> Clone for RendererHandle<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T: Renderer> std::ops::Deref for RendererWorker<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        unsafe { &*(self.p_renderer as *const T) }
+    }
+}
+impl<T: Renderer> std::ops::DerefMut for RendererWorker<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe { &mut *(self.p_renderer as *mut T) }
+    }
+}
+impl<T: Renderer> Drop for RendererWorker<T> {
+    fn drop(&mut self) {
+        let result = (self.uninitialize)(unsafe { &mut *(self.p_renderer as *mut T) });
+        if let Err(e) = result {
+            eprintln!("Failed to uninitialze worker on drop: {}", e);
+        }
+    }
 }
 
 impl Default for Settings {
