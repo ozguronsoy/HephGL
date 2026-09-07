@@ -48,15 +48,20 @@ clippy
 rustup component add clippy
 ```
 
-HephGL uses `nightly` for formatting
+`nightly` is used for formatting
 ```bash
 rustup toolchain install nightly --component rustfmt
 ```
 
-HephGL uses `nextest` for integration tests since running them with standard `cargo test` results
-in failure due to window creation in worker threads.
+`nextest` is used for integration tests since running them with standard `cargo test` results in
+failure due to window creation in worker threads.
 ```bash
 cargo install cargo-nextest --locked
+```
+
+`llvm-cov` is used for generating code coverage reports
+```bash
+cargo install cargo-llvm-cov --locked
 ```
 
 All other dependencies are stated in the `Cargo.toml` file, and will be fetched automatically
@@ -87,9 +92,20 @@ Backends:
 
 ### Running Tests
 
+Running the unit tests
+```bash
+cargo test
+```
+
 Running the integration tests
 ```bash
 cargo nextest run
+```
+
+Generating code coverage reports
+```bash
+cargo llvm-cov --lib
+cargo llvm-cov nextest
 ```
 
 ### Renderer
