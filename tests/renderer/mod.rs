@@ -68,6 +68,7 @@ define_renderer_test_flags!(
     test_impossible_buffer_size,
     test_shader,
     test_calling_main_thread_only_fn_from_worker_thread,
+    test_multiple_workers_per_thread,
     test_single_threaded_compute_discrete_gpu,
     test_single_threaded_compute_integrated_gpu,
     test_single_threaded_compute_cpu,
@@ -180,6 +181,7 @@ where
             create_trial!(test_impossible_buffer_size),
             create_trial!(test_shader),
             create_trial!(test_calling_main_thread_only_fn_from_worker_thread),
+            create_trial!(test_multiple_workers_per_thread),
             create_trial!(
                 test_single_threaded_compute_discrete_gpu,
                 skip_discrete_gpu_device_tests
@@ -490,11 +492,34 @@ where
     fn test_calling_main_thread_only_fn_from_worker_thread() {
         let mut renderer = Self::create_renderer_with_any_device(&[]);
         std::thread::scope(|s| {
-            let p_renderer = &mut renderer as *mut TestRenderer as usize;
+            let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);
             s.spawn(move || {
-                let renderer = unsafe { &mut *(p_renderer as *mut TestRenderer) };
+                let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
                 heph_expect_err!(
-                    renderer.set_device(None, &[]),
+                    renderer_worker.set_device(None, &[]),
+                    RendererError::InvalidOperation("".to_string())
+                );
+            });
+        });
+    }
+
+    fn test_multiple_workers_per_thread() {
+        let mut renderer = Self::create_renderer_with_any_device(&[]);
+        let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);
+
+        std::thread::scope(|s| {
+            s.spawn(move || {
+                // We can spawn another worker after the first one is dropped.
+                heph_expect_success!(renderer_handle.spawn_worker());
+                heph_expect_success!(renderer_handle.spawn_worker());
+            });
+        });
+
+        std::thread::scope(|s| {
+            s.spawn(move || {
+                let _w1 = heph_expect_success!(renderer_handle.spawn_worker());
+                heph_expect_err!(
+                    renderer_handle.spawn_worker(),
                     RendererError::InvalidOperation("".to_string())
                 );
             });

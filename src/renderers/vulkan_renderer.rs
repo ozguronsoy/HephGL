@@ -250,7 +250,6 @@ impl Renderer for VulkanRenderer {
                 resize_frames(compute_queue_context)?;
             }
             self.create_fences()?;
-
             self.initialize_thread()?;
         } else {
             self.settings = settings;
@@ -1463,7 +1462,12 @@ impl VulkanRenderer {
     /// This function must be run **once per worker thread** that will be
     /// recording commands.
     fn initialize_thread(&mut self) -> RendererResult<()> {
-        self.uninitialize_thread()?;
+        if let Ok(current_thread_index) = Self::thread_context_index() {
+            return Err(RendererError::InvalidOperation(format!(
+                "Current thread ({}) already has a worker.",
+                current_thread_index
+            )));
+        }
 
         let device_context =
             self.device_context
