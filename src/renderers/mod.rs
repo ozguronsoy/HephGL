@@ -148,11 +148,20 @@ pub trait Renderer {
     /// Returns the current settings used by the renderer.
     fn get_settings(&self) -> &Settings;
     /// Updates the settings.
+    ///
+    /// ### Note
+    /// This function can only be called from the main thread.
     fn set_settings(&mut self, settings: Settings) -> RendererResult<()>;
 
     /// Initializes the renderer using the provided options.
+    ///
+    /// ### Note
+    /// This function can only be called from the main thread.
     fn initialize(&mut self, options: &InitializeOptions) -> RendererResult<()>;
     /// Frees all internal resources and shutdowns the internal API.
+    ///
+    /// ### Note
+    /// This function can only be called from the main thread.
     fn uninitialize(&mut self) -> RendererResult<()>;
 
     /// Enumerates all available graphics devices on the system.
@@ -162,6 +171,9 @@ pub trait Renderer {
     fn get_device(&self) -> Option<&GraphicsDevice>;
     /// Sets the active graphics device and initializes it with the requested
     /// features.
+    ///
+    /// ### Note
+    /// This function can only be called from the main thread.
     fn set_device(
         &mut self,
         device: Option<&GraphicsDevice>,
@@ -208,18 +220,30 @@ pub trait Renderer {
     ) -> RendererResult<Self::RecordedCommand>;
 
     /// Submits the recorded commands to the GPU.
+    ///
+    /// ### Note
+    /// This function can only be called from the main thread.
     fn submit_commands(
         &mut self,
         recorded_commands: &[Self::RecordedCommand],
     ) -> RendererResult<()>;
 
     /// Begins a new frame. `end_frame` must be called when the frame is done.
+    ///
+    /// ### Note
+    /// This function can only be called from the main thread.
     fn begin_frame(&mut self) -> RendererResult<()>;
     /// Ends the frame. `begin_frame` must be called before calling this method.
+    ///
+    /// ### Note
+    /// This function can only be called from the main thread.
     fn end_frame(&mut self) -> RendererResult<()>;
 
     /// Blocks the current CPU thread until the GPU has finished executing all
     /// pending commands.
+    ///
+    /// ### Note
+    /// This function can only be called from the main thread.
     fn wait_idle(&self) -> RendererResult<()>;
 
     /// Clears the current render target with the specified color.

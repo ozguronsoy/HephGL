@@ -574,6 +574,10 @@ where
                     renderer_worker.end_frame(),
                     RendererError::InvalidOperation("".to_string())
                 );
+                heph_expect_err!(
+                    renderer_worker.wait_idle(),
+                    RendererError::InvalidOperation("".to_string())
+                );
             });
         });
     }
