@@ -9,7 +9,7 @@ mod utils;
 
 fn main() -> ExitCode {
     RendererTests::<VulkanRenderer>::run(RendererTestSettings {
-        unimplemented_test_clear: true,
+        todo_test_clear: true,
         ..Default::default()
     })
 }

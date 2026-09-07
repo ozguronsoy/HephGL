@@ -30,59 +30,56 @@ macro_rules! test_env {
     };
 }
 
-#[derive(Default)]
-pub struct RendererTestSettings {
-    pub skip_all_tests: bool,
-    pub skip_test_invalid_app_name: bool,
-    pub skip_test_initialize_renderer: bool,
-    pub skip_test_enumerate_devices: bool,
-    pub skip_test_set_device: bool,
-    pub skip_test_set_settings: bool,
-    pub skip_test_uniform_buffer: bool,
-    pub skip_test_storage_buffer: bool,
-    pub skip_test_index_buffer: bool,
-    pub skip_test_vertex_buffer: bool,
-    pub skip_test_impossible_buffer_size: bool,
-    pub skip_test_shader: bool,
-    pub skip_test_calling_main_thread_only_fn_from_worker_thread: bool,
-    pub skip_test_single_threaded_compute_discrete_gpu: bool,
-    pub skip_test_single_threaded_compute_integrated_gpu: bool,
-    pub skip_test_single_threaded_compute_cpu: bool,
-    pub skip_test_single_threaded_compute_virtual_gpu: bool,
-    pub skip_test_single_threaded_compute_other: bool,
-    pub skip_test_multi_threaded_compute_discrete_gpu: bool,
-    pub skip_test_multi_threaded_compute_integrated_gpu: bool,
-    pub skip_test_multi_threaded_compute_cpu: bool,
-    pub skip_test_multi_threaded_compute_virtual_gpu: bool,
-    pub skip_test_multi_threaded_compute_other: bool,
-    pub skip_test_clear: bool,
+macro_rules! define_renderer_test_settings {
+    (
+        $($tfn:ident),* $(,)?
+    ) => {
+        paste::paste! {
+            #[derive(Default)]
+            pub struct RendererTestSettings {
+                /// Skips all tests.
+                pub skip_all_tests: bool,
 
-    // Indicates that these features are not implemented yet, and should fail with
-    // unimplemented!().
-    pub unimplemented_test_invalid_app_name: bool,
-    pub unimplemented_test_initialize_renderer: bool,
-    pub unimplemented_test_enumerate_devices: bool,
-    pub unimplemented_test_set_device: bool,
-    pub unimplemented_test_set_settings: bool,
-    pub unimplemented_test_uniform_buffer: bool,
-    pub unimplemented_test_storage_buffer: bool,
-    pub unimplemented_test_index_buffer: bool,
-    pub unimplemented_test_vertex_buffer: bool,
-    pub unimplemented_test_impossible_buffer_size: bool,
-    pub unimplemented_test_shader: bool,
-    pub unimplemented_test_calling_main_thread_only_fn_from_worker_thread: bool,
-    pub unimplemented_test_single_threaded_compute_discrete_gpu: bool,
-    pub unimplemented_test_single_threaded_compute_integrated_gpu: bool,
-    pub unimplemented_test_single_threaded_compute_cpu: bool,
-    pub unimplemented_test_single_threaded_compute_virtual_gpu: bool,
-    pub unimplemented_test_single_threaded_compute_other: bool,
-    pub unimplemented_test_multi_threaded_compute_discrete_gpu: bool,
-    pub unimplemented_test_multi_threaded_compute_integrated_gpu: bool,
-    pub unimplemented_test_multi_threaded_compute_cpu: bool,
-    pub unimplemented_test_multi_threaded_compute_virtual_gpu: bool,
-    pub unimplemented_test_multi_threaded_compute_other: bool,
-    pub unimplemented_test_clear: bool,
+                $(
+                    /// Skips testing this feature.
+                    pub [<skip_ $tfn>]: bool,
+                    /// Indicates whether the feature is not yet implemented, and tests should fail
+                    /// with a `todo!()`.
+                    pub [<todo_ $tfn>]: bool,
+                    /// Indicates whether the feature is not supported by this renderer, and tests
+                    /// should fail with an `unimplemented!()`.
+                    pub [<unimplemented_ $tfn>]: bool,
+                )*
+            }
+        }
+    };
 }
+
+define_renderer_test_settings!(
+    test_invalid_app_name,
+    test_initialize_renderer,
+    test_enumerate_devices,
+    test_set_device,
+    test_set_settings,
+    test_uniform_buffer,
+    test_storage_buffer,
+    test_index_buffer,
+    test_vertex_buffer,
+    test_impossible_buffer_size,
+    test_shader,
+    test_calling_main_thread_only_fn_from_worker_thread,
+    test_single_threaded_compute_discrete_gpu,
+    test_single_threaded_compute_integrated_gpu,
+    test_single_threaded_compute_cpu,
+    test_single_threaded_compute_virtual_gpu,
+    test_single_threaded_compute_other,
+    test_multi_threaded_compute_discrete_gpu,
+    test_multi_threaded_compute_integrated_gpu,
+    test_multi_threaded_compute_cpu,
+    test_multi_threaded_compute_virtual_gpu,
+    test_multi_threaded_compute_other,
+    test_clear
+);
 
 pub struct RendererTests<TestRenderer: Renderer> {
     _marker: PhantomData<TestRenderer>,
@@ -122,36 +119,7 @@ where
 
         macro_rules! create_trial {
             ($tfn:ident) => {
-                paste::paste! {
-                    Trial::test(stringify!($tfn), move || {
-                        let result = std::panic::catch_unwind(|| {
-                            (Self::$tfn)();
-                        });
-
-                        if settings.[<unimplemented_ $tfn>] {
-                            assert!(result.is_err(), "{} was expected to panic", stringify!($tfn));
-                            let panic = result.err().unwrap();
-                            let panic_msg = panic.downcast_ref::<&str>()
-                                                .copied()
-                                                .or_else(||
-                                                    panic
-                                                    .downcast_ref::<String>()
-                                                    .map(String::as_str)
-                                                ).unwrap_or("");
-                            assert!(
-                                panic_msg.contains("not implemented"),
-                                "unexpected panic: {panic_msg}"
-                            );
-                        } else {
-                            if let Err(err) = result {
-                                std::panic::resume_unwind(err);
-                            }
-                        }
-
-                        Ok(())
-                    })
-                    .with_ignored_flag(settings.[<skip_ $tfn>])
-                }
+                create_trial!($tfn, false)
             };
             ($tfn:ident, $skip:expr) => {
                 paste::paste! {
@@ -160,7 +128,9 @@ where
                             (Self::$tfn)();
                         });
 
-                        if settings.[<unimplemented_ $tfn>] {
+                        let todo = settings.[<todo_ $tfn>];
+                        let unimplemented = settings.[<unimplemented_ $tfn>];
+                        if todo || unimplemented {
                             assert!(result.is_err(), "{} was expected to panic", stringify!($tfn));
                             let panic = result.err().unwrap();
                             let panic_msg = panic.downcast_ref::<&str>()
@@ -170,10 +140,20 @@ where
                                                     .downcast_ref::<String>()
                                                     .map(String::as_str)
                                                 ).unwrap_or("");
-                            assert!(
-                                panic_msg.contains("not implemented"),
-                                "unexpected panic: {panic_msg}"
-                            );
+                            if todo {
+                                assert!(
+                                    panic_msg.contains("not yet implemented"),
+                                    "unexpected panic: {panic_msg}"
+                                );
+                            }
+                            else if unimplemented {
+                                assert!(
+                                    panic_msg.contains("not implemented"),
+                                    "unexpected panic: {panic_msg}"
+                                );
+                            } else {
+                                panic!("Unhandled renderer test setting flag");
+                            }
                         } else {
                             if let Err(err) = result {
                                 std::panic::resume_unwind(err);
