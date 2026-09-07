@@ -30,6 +30,19 @@ macro_rules! test_env {
     };
 }
 
+macro_rules! dummy_window_handle {
+    () => {
+        raw_window_handle::RawWindowHandle::Win32(raw_window_handle::Win32WindowHandle::new(
+            std::num::NonZeroIsize::new(1).unwrap(),
+        ))
+    };
+}
+macro_rules! dummy_display_handle {
+    () => {
+        raw_window_handle::RawDisplayHandle::Windows(raw_window_handle::WindowsDisplayHandle::new())
+    };
+}
+
 macro_rules! define_renderer_test_flags {
     (
         $($tfn:ident),* $(,)?
@@ -282,19 +295,31 @@ where
     }
 
     fn test_initialize_renderer() {
-        let test_env = test_env!();
-        let mut renderer = TestRenderer::new();
-        let init_options = InitializeOptions {
-            app_name: "",
-            window_handle: test_env.raw_window_handle(),
-            display_handle: test_env.raw_display_handle(),
-        };
-        heph_expect_success!(renderer.initialize(&init_options));
-        heph_expect_err!(
-            renderer.initialize(&init_options),
-            RendererError::InvalidOperation("".to_string())
-        );
-        heph_expect_success!(renderer.uninitialize());
+        {
+            let test_env = test_env!();
+            let mut renderer = TestRenderer::new();
+            let init_options = InitializeOptions {
+                app_name: "",
+                window_handle: test_env.raw_window_handle(),
+                display_handle: test_env.raw_display_handle(),
+            };
+            heph_expect_success!(renderer.initialize(&init_options));
+            heph_expect_err!(
+                renderer.initialize(&init_options),
+                RendererError::InvalidOperation("".to_string())
+            );
+            heph_expect_success!(renderer.uninitialize());
+        }
+
+        {
+            let mut renderer = TestRenderer::new();
+            let init_options = InitializeOptions {
+                app_name: "",
+                window_handle: dummy_window_handle!(),
+                display_handle: dummy_display_handle!(),
+            };
+            heph_expect_err!(renderer.initialize(&init_options));
+        }
     }
 
     fn test_enumerate_devices() {
@@ -499,20 +524,11 @@ where
                     renderer_worker.set_settings(Settings::default()),
                     RendererError::InvalidOperation("".to_string())
                 );
-
-                let dummy_window_handle = raw_window_handle::RawWindowHandle::Win32(
-                    raw_window_handle::Win32WindowHandle::new(
-                        std::num::NonZeroIsize::new(1).unwrap(),
-                    ),
-                );
-                let dummy_display_handle = raw_window_handle::RawDisplayHandle::Windows(
-                    raw_window_handle::WindowsDisplayHandle::new(),
-                );
                 heph_expect_err!(
                     renderer_worker.initialize(&InitializeOptions {
                         app_name: "",
-                        window_handle: dummy_window_handle,
-                        display_handle: dummy_display_handle
+                        window_handle: dummy_window_handle!(),
+                        display_handle: dummy_display_handle!(),
                     }),
                     RendererError::InvalidOperation("".to_string())
                 );
