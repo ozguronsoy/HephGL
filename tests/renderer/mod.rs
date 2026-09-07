@@ -32,14 +32,14 @@ macro_rules! test_env {
 
 macro_rules! dummy_window_handle {
     () => {
-        raw_window_handle::RawWindowHandle::Win32(raw_window_handle::Win32WindowHandle::new(
-            std::num::NonZeroIsize::new(1).unwrap(),
+        raw_window_handle::RawWindowHandle::Orbital(raw_window_handle::OrbitalWindowHandle::new(
+            std::ptr::NonNull::<std::ffi::c_void>::dangling(),
         ))
     };
 }
 macro_rules! dummy_display_handle {
     () => {
-        raw_window_handle::RawDisplayHandle::Windows(raw_window_handle::WindowsDisplayHandle::new())
+        raw_window_handle::RawDisplayHandle::Orbital(raw_window_handle::OrbitalDisplayHandle::new())
     };
 }
 
@@ -309,6 +309,28 @@ where
                 RendererError::InvalidOperation("".to_string())
             );
             heph_expect_success!(renderer.uninitialize());
+        }
+
+        {
+            let test_env = test_env!();
+            let mut renderer = TestRenderer::new();
+            let init_options = InitializeOptions {
+                app_name: "",
+                window_handle: test_env.raw_window_handle(),
+                display_handle: dummy_display_handle!(),
+            };
+            heph_expect_err!(renderer.initialize(&init_options));
+        }
+
+        {
+            let test_env = test_env!();
+            let mut renderer = TestRenderer::new();
+            let init_options = InitializeOptions {
+                app_name: "",
+                window_handle: dummy_window_handle!(),
+                display_handle: test_env.raw_display_handle(),
+            };
+            heph_expect_err!(renderer.initialize(&init_options));
         }
 
         {
