@@ -870,7 +870,7 @@ impl Renderer for VulkanRenderer {
 
                 Ok(Self::ResourceSetHandle { descriptor_set })
             }
-            _ => unimplemented!(),
+            _ => todo!(),
         }
     }
 
@@ -1305,8 +1305,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn clear(&mut self, _color: RGB<f32>) -> RendererResult<()> {
-        // TODO
-        unimplemented!();
+        todo!();
     }
 }
 
