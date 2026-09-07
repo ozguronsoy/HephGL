@@ -48,15 +48,20 @@ clippy
 rustup component add clippy
 ```
 
-HephGL uses `nightly` for formatting
+`nightly` is used for formatting
 ```bash
 rustup toolchain install nightly --component rustfmt
 ```
 
-HephGL uses `nextest` for integration tests since running them with standard `cargo test` results
-in failure due to window creation in worker threads.
+`nextest` is used for integration tests since running them with standard `cargo test` results in
+failure due to window creation in worker threads.
 ```bash
 cargo install cargo-nextest --locked
+```
+
+`llvm-cov` is used for generating code coverage reports
+```bash
+cargo install cargo-llvm-cov --locked
 ```
 
 All other dependencies are stated in the `Cargo.toml` file, and will be fetched automatically
@@ -87,9 +92,20 @@ Backends:
 
 ### Running Tests
 
+Running the unit tests
+```bash
+cargo test
+```
+
 Running the integration tests
 ```bash
 cargo nextest run
+```
+
+Generating code coverage reports
+```bash
+cargo llvm-cov --lib
+cargo llvm-cov nextest
 ```
 
 ### Renderer
@@ -141,23 +157,21 @@ title: General Purpose Computing (Multi Thread)
 graph LR;
     A(Load Shader) --> B(Create Compute Pipeline);
     B --> C(Begin Frame)
+    C --> D(Create Renderer Handle)
 
-    C --> D1(Initialize Thread)
-    D1 --> E1(Prepare Resources)
-    E1 --> F1(Record Command)
-    F1 --> G1(Uninitialize Thread)
+    D --> E1(Spawn Renderer Worker)
+    E1 --> F1(Prepare Resources)
+    F1 --> G1(Record Command)
     G1 --> H(Submit Commands)
     
-    C --> D2(Initialize Thread)
-    D2 --> E2(Prepare Resources)
-    E2 --> F2(Record Command)
-    F2 --> G2(Uninitialize Thread)
+    D --> E2(Spawn Renderer Worker)
+    E2 --> F2(Prepare Resources)
+    F2 --> G2(Record Command)
     G2 --> H(Submit Commands)
 
-    C --> D3(Initialize Thread)
-    D3 --> E3(Prepare Resources)
-    E3 --> F3(Record Command)
-    F3 --> G3(Uninitialize Thread)
+    D --> E3(Spawn Renderer Worker)
+    E3 --> F3(Prepare Resources)
+    F3 --> G3(Record Command)
     G3 --> H(Submit Commands)
 
     H --> I(End Frame)
