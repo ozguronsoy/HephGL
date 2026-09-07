@@ -1290,6 +1290,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn wait_idle(&self) -> RendererResult<()> {
+        self.main_thread_only()?;
         let device_context =
             self.device_context
                 .as_ref()

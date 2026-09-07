@@ -30,6 +30,19 @@ macro_rules! test_env {
     };
 }
 
+macro_rules! dummy_window_handle {
+    () => {
+        raw_window_handle::RawWindowHandle::Orbital(raw_window_handle::OrbitalWindowHandle::new(
+            std::ptr::NonNull::<std::ffi::c_void>::dangling(),
+        ))
+    };
+}
+macro_rules! dummy_display_handle {
+    () => {
+        raw_window_handle::RawDisplayHandle::Orbital(raw_window_handle::OrbitalDisplayHandle::new())
+    };
+}
+
 macro_rules! define_renderer_test_flags {
     (
         $($tfn:ident),* $(,)?
@@ -282,19 +295,53 @@ where
     }
 
     fn test_initialize_renderer() {
-        let test_env = test_env!();
-        let mut renderer = TestRenderer::new();
-        let init_options = InitializeOptions {
-            app_name: "",
-            window_handle: test_env.raw_window_handle(),
-            display_handle: test_env.raw_display_handle(),
-        };
-        heph_expect_success!(renderer.initialize(&init_options));
-        heph_expect_err!(
-            renderer.initialize(&init_options),
-            RendererError::InvalidOperation("".to_string())
-        );
-        heph_expect_success!(renderer.uninitialize());
+        {
+            let test_env = test_env!();
+            let mut renderer = TestRenderer::new();
+            let init_options = InitializeOptions {
+                app_name: "",
+                window_handle: test_env.raw_window_handle(),
+                display_handle: test_env.raw_display_handle(),
+            };
+            heph_expect_success!(renderer.initialize(&init_options));
+            heph_expect_err!(
+                renderer.initialize(&init_options),
+                RendererError::InvalidOperation("".to_string())
+            );
+            heph_expect_success!(renderer.uninitialize());
+        }
+
+        {
+            let test_env = test_env!();
+            let mut renderer = TestRenderer::new();
+            let init_options = InitializeOptions {
+                app_name: "",
+                window_handle: test_env.raw_window_handle(),
+                display_handle: dummy_display_handle!(),
+            };
+            heph_expect_err!(renderer.initialize(&init_options));
+        }
+
+        {
+            let test_env = test_env!();
+            let mut renderer = TestRenderer::new();
+            let init_options = InitializeOptions {
+                app_name: "",
+                window_handle: dummy_window_handle!(),
+                display_handle: test_env.raw_display_handle(),
+            };
+            heph_expect_err!(renderer.initialize(&init_options));
+        }
+
+        {
+            let mut renderer = TestRenderer::new();
+            let init_options = InitializeOptions {
+                app_name: "",
+                window_handle: dummy_window_handle!(),
+                display_handle: dummy_display_handle!(),
+            };
+            heph_expect_err!(renderer.initialize(&init_options));
+        }
     }
 
     fn test_enumerate_devices() {
@@ -491,12 +538,44 @@ where
 
     fn test_calling_main_thread_only_fn_from_worker_thread() {
         let mut renderer = Self::create_renderer_with_any_device(&[]);
+        let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);
         std::thread::scope(|s| {
-            let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);
             s.spawn(move || {
                 let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
                 heph_expect_err!(
+                    renderer_worker.set_settings(Settings::default()),
+                    RendererError::InvalidOperation("".to_string())
+                );
+                heph_expect_err!(
+                    renderer_worker.initialize(&InitializeOptions {
+                        app_name: "",
+                        window_handle: dummy_window_handle!(),
+                        display_handle: dummy_display_handle!(),
+                    }),
+                    RendererError::InvalidOperation("".to_string())
+                );
+                heph_expect_err!(
+                    renderer_worker.uninitialize(),
+                    RendererError::InvalidOperation("".to_string())
+                );
+                heph_expect_err!(
                     renderer_worker.set_device(None, &[]),
+                    RendererError::InvalidOperation("".to_string())
+                );
+                heph_expect_err!(
+                    renderer_worker.submit_commands(&[]),
+                    RendererError::InvalidOperation("".to_string())
+                );
+                heph_expect_err!(
+                    renderer_worker.begin_frame(),
+                    RendererError::InvalidOperation("".to_string())
+                );
+                heph_expect_err!(
+                    renderer_worker.end_frame(),
+                    RendererError::InvalidOperation("".to_string())
+                );
+                heph_expect_err!(
+                    renderer_worker.wait_idle(),
                     RendererError::InvalidOperation("".to_string())
                 );
             });

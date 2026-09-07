@@ -48,7 +48,7 @@ impl Default for TestEnv {
     fn default() -> Self {
         let window_attributes = Window::default_attributes()
             .with_title("Test Window")
-            .with_inner_size(winit::dpi::LogicalSize::new(1920.0, 1080.0));
+            .with_visible(false);
 
         let event_loop = heph_expect_success!(EventLoop::new());
         event_loop.set_control_flow(ControlFlow::Wait);
