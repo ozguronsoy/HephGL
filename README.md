@@ -157,23 +157,21 @@ title: General Purpose Computing (Multi Thread)
 graph LR;
     A(Load Shader) --> B(Create Compute Pipeline);
     B --> C(Begin Frame)
+    C --> D(Create Renderer Handle)
 
-    C --> D1(Initialize Thread)
-    D1 --> E1(Prepare Resources)
-    E1 --> F1(Record Command)
-    F1 --> G1(Uninitialize Thread)
+    D --> E1(Spawn Renderer Worker)
+    E1 --> F1(Prepare Resources)
+    F1 --> G1(Record Command)
     G1 --> H(Submit Commands)
     
-    C --> D2(Initialize Thread)
-    D2 --> E2(Prepare Resources)
-    E2 --> F2(Record Command)
-    F2 --> G2(Uninitialize Thread)
+    D --> E2(Spawn Renderer Worker)
+    E2 --> F2(Prepare Resources)
+    F2 --> G2(Record Command)
     G2 --> H(Submit Commands)
 
-    C --> D3(Initialize Thread)
-    D3 --> E3(Prepare Resources)
-    E3 --> F3(Record Command)
-    F3 --> G3(Uninitialize Thread)
+    D --> E3(Spawn Renderer Worker)
+    E3 --> F3(Prepare Resources)
+    F3 --> G3(Record Command)
     G3 --> H(Submit Commands)
 
     H --> I(End Frame)
