@@ -491,12 +491,49 @@ where
 
     fn test_calling_main_thread_only_fn_from_worker_thread() {
         let mut renderer = Self::create_renderer_with_any_device(&[]);
+        let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);
         std::thread::scope(|s| {
-            let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);
             s.spawn(move || {
                 let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
                 heph_expect_err!(
+                    renderer_worker.set_settings(Settings::default()),
+                    RendererError::InvalidOperation("".to_string())
+                );
+
+                let dummy_window_handle = raw_window_handle::RawWindowHandle::Win32(
+                    raw_window_handle::Win32WindowHandle::new(
+                        std::num::NonZeroIsize::new(1).unwrap(),
+                    ),
+                );
+                let dummy_display_handle = raw_window_handle::RawDisplayHandle::Windows(
+                    raw_window_handle::WindowsDisplayHandle::new(),
+                );
+                heph_expect_err!(
+                    renderer_worker.initialize(&InitializeOptions {
+                        app_name: "",
+                        window_handle: dummy_window_handle,
+                        display_handle: dummy_display_handle
+                    }),
+                    RendererError::InvalidOperation("".to_string())
+                );
+                heph_expect_err!(
+                    renderer_worker.uninitialize(),
+                    RendererError::InvalidOperation("".to_string())
+                );
+                heph_expect_err!(
                     renderer_worker.set_device(None, &[]),
+                    RendererError::InvalidOperation("".to_string())
+                );
+                heph_expect_err!(
+                    renderer_worker.submit_commands(&[]),
+                    RendererError::InvalidOperation("".to_string())
+                );
+                heph_expect_err!(
+                    renderer_worker.begin_frame(),
+                    RendererError::InvalidOperation("".to_string())
+                );
+                heph_expect_err!(
+                    renderer_worker.end_frame(),
                     RendererError::InvalidOperation("".to_string())
                 );
             });
