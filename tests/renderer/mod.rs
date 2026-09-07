@@ -30,13 +30,13 @@ macro_rules! test_env {
     };
 }
 
-macro_rules! define_renderer_test_settings {
+macro_rules! define_renderer_test_flags {
     (
         $($tfn:ident),* $(,)?
     ) => {
         paste::paste! {
             #[derive(Default)]
-            pub struct RendererTestSettings {
+            pub struct RendererTestFlags {
                 /// Skips all tests.
                 pub skip_all_tests: bool,
 
@@ -55,7 +55,7 @@ macro_rules! define_renderer_test_settings {
     };
 }
 
-define_renderer_test_settings!(
+define_renderer_test_flags!(
     test_invalid_app_name,
     test_initialize_renderer,
     test_enumerate_devices,
@@ -92,8 +92,8 @@ where
     // We use nextest and libtest-mimic to run each test on the main thread of its
     // own process. This allows us to avoid "event loop creation in a worker thread"
     // errors.
-    pub fn run(settings: RendererTestSettings) -> ExitCode {
-        if settings.skip_all_tests {
+    pub fn run(flags: RendererTestFlags) -> ExitCode {
+        if flags.skip_all_tests {
             return ExitCode::SUCCESS;
         }
         if std::env::var("NEXTEST").is_err() {
@@ -128,8 +128,8 @@ where
                             (Self::$tfn)();
                         });
 
-                        let todo = settings.[<todo_ $tfn>];
-                        let unimplemented = settings.[<unimplemented_ $tfn>];
+                        let todo = flags.[<todo_ $tfn>];
+                        let unimplemented = flags.[<unimplemented_ $tfn>];
                         if todo || unimplemented {
                             assert!(result.is_err(), "{} was expected to panic", stringify!($tfn));
                             let panic = result.err().unwrap();
@@ -162,7 +162,7 @@ where
 
                         Ok(())
                     })
-                    .with_ignored_flag(settings.[<skip_ $tfn>] || $skip)
+                    .with_ignored_flag(flags.[<skip_ $tfn>] || $skip)
                 }
             };
         }
