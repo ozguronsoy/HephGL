@@ -8,5 +8,8 @@ mod renderer;
 mod utils;
 
 fn main() -> ExitCode {
-    RendererTests::<VulkanRenderer>::run(RendererTestSettings::default())
+    RendererTests::<VulkanRenderer>::run(RendererTestSettings {
+        unimplemented_test_clear: true,
+        ..Default::default()
+    })
 }

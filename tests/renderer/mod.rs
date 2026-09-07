@@ -33,16 +33,55 @@ macro_rules! test_env {
 #[derive(Default)]
 pub struct RendererTestSettings {
     pub skip_all_tests: bool,
-    pub skip_invalid_app_name_test: bool,
-    pub skip_initialize_renderer_test: bool,
-    pub skip_enumerate_devices_test: bool,
-    pub skip_set_device_test: bool,
-    pub skip_set_settings_test: bool,
-    pub skip_buffer_test: bool,
-    pub skip_shader_test: bool,
-    pub skip_calling_main_thread_only_fn_from_worker_thread_test: bool,
-    pub skip_single_threaded_compute_test: bool,
-    pub skip_multi_threaded_compute_test: bool,
+    pub skip_test_invalid_app_name: bool,
+    pub skip_test_initialize_renderer: bool,
+    pub skip_test_enumerate_devices: bool,
+    pub skip_test_set_device: bool,
+    pub skip_test_set_settings: bool,
+    pub skip_test_uniform_buffer: bool,
+    pub skip_test_storage_buffer: bool,
+    pub skip_test_index_buffer: bool,
+    pub skip_test_vertex_buffer: bool,
+    pub skip_test_impossible_buffer_size: bool,
+    pub skip_test_shader: bool,
+    pub skip_test_calling_main_thread_only_fn_from_worker_thread: bool,
+    pub skip_test_single_threaded_compute_discrete_gpu: bool,
+    pub skip_test_single_threaded_compute_integrated_gpu: bool,
+    pub skip_test_single_threaded_compute_cpu: bool,
+    pub skip_test_single_threaded_compute_virtual_gpu: bool,
+    pub skip_test_single_threaded_compute_other: bool,
+    pub skip_test_multi_threaded_compute_discrete_gpu: bool,
+    pub skip_test_multi_threaded_compute_integrated_gpu: bool,
+    pub skip_test_multi_threaded_compute_cpu: bool,
+    pub skip_test_multi_threaded_compute_virtual_gpu: bool,
+    pub skip_test_multi_threaded_compute_other: bool,
+    pub skip_test_clear: bool,
+
+    // Indicates that these features are not implemented yet, and should fail with
+    // unimplemented!().
+    pub unimplemented_test_invalid_app_name: bool,
+    pub unimplemented_test_initialize_renderer: bool,
+    pub unimplemented_test_enumerate_devices: bool,
+    pub unimplemented_test_set_device: bool,
+    pub unimplemented_test_set_settings: bool,
+    pub unimplemented_test_uniform_buffer: bool,
+    pub unimplemented_test_storage_buffer: bool,
+    pub unimplemented_test_index_buffer: bool,
+    pub unimplemented_test_vertex_buffer: bool,
+    pub unimplemented_test_impossible_buffer_size: bool,
+    pub unimplemented_test_shader: bool,
+    pub unimplemented_test_calling_main_thread_only_fn_from_worker_thread: bool,
+    pub unimplemented_test_single_threaded_compute_discrete_gpu: bool,
+    pub unimplemented_test_single_threaded_compute_integrated_gpu: bool,
+    pub unimplemented_test_single_threaded_compute_cpu: bool,
+    pub unimplemented_test_single_threaded_compute_virtual_gpu: bool,
+    pub unimplemented_test_single_threaded_compute_other: bool,
+    pub unimplemented_test_multi_threaded_compute_discrete_gpu: bool,
+    pub unimplemented_test_multi_threaded_compute_integrated_gpu: bool,
+    pub unimplemented_test_multi_threaded_compute_cpu: bool,
+    pub unimplemented_test_multi_threaded_compute_virtual_gpu: bool,
+    pub unimplemented_test_multi_threaded_compute_other: bool,
+    pub unimplemented_test_clear: bool,
 }
 
 pub struct RendererTests<TestRenderer: Renderer> {
@@ -81,136 +120,115 @@ where
         let skip_virtual_gpu_device_tests = !device_type_exists(VirtualGpu);
         let skip_other_device_tests = !device_type_exists(heph_gl::graphics_device::Type::Other);
 
+        macro_rules! create_trial {
+            ($tfn:ident) => {
+                paste::paste! {
+                    Trial::test(stringify!($tfn), move || {
+                        let result = std::panic::catch_unwind(|| {
+                            (Self::$tfn)();
+                        });
+
+                        if settings.[<unimplemented_ $tfn>] {
+                            assert!(result.is_err(), "{} was expected to panic", stringify!($tfn));
+                            let panic = result.err().unwrap();
+                            let panic_msg = panic.downcast_ref::<&str>()
+                                                .copied()
+                                                .or_else(||
+                                                    panic
+                                                    .downcast_ref::<String>()
+                                                    .map(String::as_str)
+                                                ).unwrap_or("");
+                            assert!(
+                                panic_msg.contains("not implemented"),
+                                "unexpected panic: {panic_msg}"
+                            );
+                        } else {
+                            if let Err(err) = result {
+                                std::panic::resume_unwind(err);
+                            }
+                        }
+
+                        Ok(())
+                    })
+                    .with_ignored_flag(settings.[<skip_ $tfn>])
+                }
+            };
+            ($tfn:ident, $skip:expr) => {
+                paste::paste! {
+                    Trial::test(stringify!($tfn), move || {
+                        let result = std::panic::catch_unwind(|| {
+                            (Self::$tfn)();
+                        });
+
+                        if settings.[<unimplemented_ $tfn>] {
+                            assert!(result.is_err(), "{} was expected to panic", stringify!($tfn));
+                            let panic = result.err().unwrap();
+                            let panic_msg = panic.downcast_ref::<&str>()
+                                                .copied()
+                                                .or_else(||
+                                                    panic
+                                                    .downcast_ref::<String>()
+                                                    .map(String::as_str)
+                                                ).unwrap_or("");
+                            assert!(
+                                panic_msg.contains("not implemented"),
+                                "unexpected panic: {panic_msg}"
+                            );
+                        } else {
+                            if let Err(err) = result {
+                                std::panic::resume_unwind(err);
+                            }
+                        }
+
+                        Ok(())
+                    })
+                    .with_ignored_flag(settings.[<skip_ $tfn>] || $skip)
+                }
+            };
+        }
+
         let tests = vec![
-            Trial::test("test_invalid_app_name", move || {
-                Self::test_invalid_app_name();
-                Ok(())
-            })
-            .with_ignored_flag(settings.skip_invalid_app_name_test),
-            Trial::test("test_initialize_renderer", move || {
-                Self::test_initialize_renderer();
-                Ok(())
-            })
-            .with_ignored_flag(settings.skip_initialize_renderer_test),
-            Trial::test("test_enumerate_devices", move || {
-                Self::test_enumerate_devices();
-                Ok(())
-            })
-            .with_ignored_flag(settings.skip_enumerate_devices_test),
-            Trial::test("test_set_device", move || {
-                Self::test_set_device();
-                Ok(())
-            })
-            .with_ignored_flag(settings.skip_set_device_test),
-            Trial::test("test_set_settings", move || {
-                Self::test_set_settings();
-                Ok(())
-            })
-            .with_ignored_flag(settings.skip_set_settings_test),
-            Trial::test("test_uniform_buffer", move || {
-                Self::test_uniform_buffer();
-                Ok(())
-            })
-            .with_ignored_flag(settings.skip_buffer_test),
-            Trial::test("test_storage_buffer", move || {
-                Self::test_storage_buffer();
-                Ok(())
-            })
-            .with_ignored_flag(settings.skip_buffer_test),
-            Trial::test("test_index_buffer", move || {
-                Self::test_index_buffer();
-                Ok(())
-            })
-            .with_ignored_flag(settings.skip_buffer_test),
-            Trial::test("test_vertex_buffer", move || {
-                Self::test_vertex_buffer();
-                Ok(())
-            })
-            .with_ignored_flag(settings.skip_buffer_test),
-            Trial::test("test_impossible_buffer_size", move || {
-                Self::test_impossible_buffer_size();
-                Ok(())
-            })
-            .with_ignored_flag(settings.skip_buffer_test),
-            Trial::test("test_shader", move || {
-                Self::test_shader();
-                Ok(())
-            })
-            .with_ignored_flag(settings.skip_shader_test),
-            Trial::test(
-                "test_calling_main_thread_only_fn_from_worker_thread",
-                move || {
-                    Self::test_calling_main_thread_only_fn_from_worker_thread();
-                    Ok(())
-                },
-            )
-            .with_ignored_flag(settings.skip_calling_main_thread_only_fn_from_worker_thread_test),
-            Trial::test("test_single_threaded_compute_discrete_gpu", move || {
-                Self::test_single_threaded_compute_discrete_gpu();
-                Ok(())
-            })
-            .with_ignored_flag(
-                skip_discrete_gpu_device_tests || settings.skip_single_threaded_compute_test,
+            create_trial!(test_invalid_app_name),
+            create_trial!(test_initialize_renderer),
+            create_trial!(test_enumerate_devices),
+            create_trial!(test_set_device),
+            create_trial!(test_set_settings),
+            create_trial!(test_uniform_buffer),
+            create_trial!(test_storage_buffer),
+            create_trial!(test_index_buffer),
+            create_trial!(test_vertex_buffer),
+            create_trial!(test_impossible_buffer_size),
+            create_trial!(test_shader),
+            create_trial!(test_calling_main_thread_only_fn_from_worker_thread),
+            create_trial!(
+                test_single_threaded_compute_discrete_gpu,
+                skip_discrete_gpu_device_tests
             ),
-            Trial::test("test_single_threaded_compute_integrated_gpu", move || {
-                Self::test_single_threaded_compute_integrated_gpu();
-                Ok(())
-            })
-            .with_ignored_flag(
-                skip_integrated_gpu_device_tests || settings.skip_single_threaded_compute_test,
+            create_trial!(
+                test_single_threaded_compute_integrated_gpu,
+                skip_integrated_gpu_device_tests
             ),
-            Trial::test("test_single_threaded_compute_cpu", move || {
-                Self::test_single_threaded_compute_cpu();
-                Ok(())
-            })
-            .with_ignored_flag(skip_cpu_device_tests || settings.skip_single_threaded_compute_test),
-            Trial::test("test_single_threaded_compute_virtual_gpu", move || {
-                Self::test_single_threaded_compute_virtual_gpu();
-                Ok(())
-            })
-            .with_ignored_flag(
-                skip_virtual_gpu_device_tests || settings.skip_single_threaded_compute_test,
+            create_trial!(test_single_threaded_compute_cpu, skip_cpu_device_tests),
+            create_trial!(
+                test_single_threaded_compute_virtual_gpu,
+                skip_virtual_gpu_device_tests
             ),
-            Trial::test("test_single_threaded_compute_other", move || {
-                Self::test_single_threaded_compute_other();
-                Ok(())
-            })
-            .with_ignored_flag(
-                skip_other_device_tests || settings.skip_single_threaded_compute_test,
+            create_trial!(test_single_threaded_compute_other, skip_other_device_tests),
+            create_trial!(
+                test_multi_threaded_compute_discrete_gpu,
+                skip_discrete_gpu_device_tests
             ),
-            Trial::test("test_multi_threaded_compute_discrete_gpu", move || {
-                Self::test_multi_threaded_compute_discrete_gpu();
-                Ok(())
-            })
-            .with_ignored_flag(
-                skip_discrete_gpu_device_tests || settings.skip_multi_threaded_compute_test,
+            create_trial!(
+                test_multi_threaded_compute_integrated_gpu,
+                skip_integrated_gpu_device_tests
             ),
-            Trial::test("test_multi_threaded_compute_integrated_gpu", move || {
-                Self::test_multi_threaded_compute_integrated_gpu();
-                Ok(())
-            })
-            .with_ignored_flag(
-                skip_integrated_gpu_device_tests || settings.skip_multi_threaded_compute_test,
+            create_trial!(test_multi_threaded_compute_cpu, skip_cpu_device_tests),
+            create_trial!(
+                test_multi_threaded_compute_virtual_gpu,
+                skip_virtual_gpu_device_tests
             ),
-            Trial::test("test_multi_threaded_compute_cpu", move || {
-                Self::test_multi_threaded_compute_cpu();
-                Ok(())
-            })
-            .with_ignored_flag(skip_cpu_device_tests || settings.skip_multi_threaded_compute_test),
-            Trial::test("test_multi_threaded_compute_virtual_gpu", move || {
-                Self::test_multi_threaded_compute_virtual_gpu();
-                Ok(())
-            })
-            .with_ignored_flag(
-                skip_virtual_gpu_device_tests || settings.skip_multi_threaded_compute_test,
-            ),
-            Trial::test("test_multi_threaded_compute_other", move || {
-                Self::test_multi_threaded_compute_other();
-                Ok(())
-            })
-            .with_ignored_flag(
-                skip_other_device_tests || settings.skip_multi_threaded_compute_test,
-            ),
+            create_trial!(test_multi_threaded_compute_other, skip_other_device_tests),
+            create_trial!(test_clear),
         ];
 
         libtest_mimic::run(&args, tests).exit_code()
@@ -852,5 +870,14 @@ where
         const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type =
             heph_gl::graphics_device::Type::Other;
         Self::test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
+    }
+
+    fn test_clear() {
+        let mut renderer = Self::create_renderer_with_any_device(&[]);
+        heph_expect_success!(renderer.clear(renkrs::RGB {
+            r: 0.0,
+            g: 1.0,
+            b: 0.0
+        }));
     }
 }
