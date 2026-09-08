@@ -37,7 +37,13 @@ const THREAD_CONTEXT_MASK_BIT_SIZE: usize = std::mem::size_of::<ThreadContextMas
 /// Indicates that the thread context index is invalid.
 const INVALID_THREAD_CONTEXT_INDEX: usize = usize::MAX;
 /// The maximum number of threads that we can concurrently operate including the main thread.
-const THREAD_CONTEXT_COUNT: usize = 128;
+const THREAD_CONTEXT_COUNT: usize = {
+    if let Some(val) = option_env!("RENDERER_MAX_CONCURRENT_THREADS") {
+        const_str::parse!(val, usize)
+    } else {
+        128
+    }
+};
 /// The number of mask variables needed to track `THREAD_CONTEXT_COUNT` concurrent threads.
 const THREAD_CONTEXT_MASK_COUNT: usize =
     THREAD_CONTEXT_COUNT.div_ceil(THREAD_CONTEXT_MASK_BIT_SIZE);
@@ -47,7 +53,7 @@ const MAIN_THREAD_CONTEXT_INDEX: usize = THREAD_CONTEXT_COUNT - 1;
 const MAIN_THREAD_CONTEXT_MASK_INDEX: usize =
     MAIN_THREAD_CONTEXT_INDEX / THREAD_CONTEXT_MASK_BIT_SIZE;
 thread_local! {
-    /// Index of the current `thread_context`. We use the same index for graphics, transfer, and compute.
+    /// Index of the current `thread_context`.
     static THREAD_CONTEXT_INDEX: UnsafeCell<usize> = const { UnsafeCell::new(INVALID_THREAD_CONTEXT_INDEX) };
 }
 // static asserts
