@@ -74,7 +74,7 @@ const THREAD_CONTEXT_MASK_BIT_SIZE: usize = std::mem::size_of::<ThreadContextMas
 const INVALID_THREAD_CONTEXT_INDEX: usize = usize::MAX;
 /// The maximum number of threads that we can concurrently operate including the main thread.
 const THREAD_CONTEXT_COUNT: usize = {
-    if let Some(val) = option_env!("RENDERER_MAX_CONCURRENT_THREADS") {
+    if let Some(val) = option_env!("HEPHGL_RENDERER_MAX_CONCURRENT_THREADS") {
         const_str::parse!(val, usize)
     } else {
         128
