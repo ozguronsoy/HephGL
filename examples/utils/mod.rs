@@ -15,7 +15,7 @@ use winit::{
 };
 
 #[cfg(feature = "vulkan")]
-pub type ExampleRenderer = vulkan_renderer::VulkanRenderer;
+pub type ExampleRenderer = vulkan::VulkanRenderer;
 
 #[cfg(not(any(
     feature = "vulkan",

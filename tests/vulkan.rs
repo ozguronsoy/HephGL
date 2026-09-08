@@ -1,6 +1,6 @@
 use std::process::ExitCode;
 
-use heph_gl::renderers::vulkan_renderer::VulkanRenderer;
+use heph_gl::renderers::vulkan::VulkanRenderer;
 
 use crate::renderer::{RendererTestFlags, RendererTests};
 

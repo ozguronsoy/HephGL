@@ -1,3 +1,6 @@
+mod thread_context;
+pub mod vulkan;
+
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
 
@@ -330,9 +333,6 @@ impl std::error::Error for RendererError {}
 pub const fn max_concurrent_threads() -> usize {
     crate::renderers::thread_context::thread_context_count()
 }
-
-mod thread_context;
-pub mod vulkan_renderer;
 
 #[cfg(test)]
 mod tests {
