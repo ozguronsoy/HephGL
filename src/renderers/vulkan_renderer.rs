@@ -29,6 +29,7 @@ use crate::renderers::{
 use crate::shader::ShaderSource;
 use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
 
+/// The integer type used as a bitmask to track thread context allocation states.
 type ThreadContextMask = u64;
 
 /// The size of the `ThreadContextMask` in bits.
