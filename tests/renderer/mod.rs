@@ -3,7 +3,10 @@ use std::{
     fmt::Debug,
     marker::PhantomData,
     process::ExitCode,
-    sync::{LazyLock, Mutex},
+    sync::{
+        LazyLock, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 use heph_gl::{
@@ -82,6 +85,7 @@ define_renderer_test_flags!(
     test_shader,
     test_calling_main_thread_only_fn_from_worker_thread,
     test_multiple_workers_per_thread,
+    test_excess_threads,
     test_single_threaded_compute_discrete_gpu,
     test_single_threaded_compute_integrated_gpu,
     test_single_threaded_compute_cpu,
@@ -195,6 +199,7 @@ where
             create_trial!(test_shader),
             create_trial!(test_calling_main_thread_only_fn_from_worker_thread),
             create_trial!(test_multiple_workers_per_thread),
+            create_trial!(test_excess_threads),
             create_trial!(
                 test_single_threaded_compute_discrete_gpu,
                 skip_discrete_gpu_device_tests
@@ -602,6 +607,36 @@ where
                     RendererError::InvalidOperation("".to_string())
                 );
             });
+        });
+    }
+
+    fn test_excess_threads() {
+        // This should exceed `RENDERER_MAX_CONCURRENT_THREADS`.
+        const THREAD_COUNT: usize = 1000;
+
+        let mut renderer = Self::create_renderer_with_any_device(&[]);
+        let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);
+        let fail_count = AtomicUsize::new(0);
+        std::thread::scope(|s| {
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(THREAD_COUNT));
+            for _ in 1..THREAD_COUNT {
+                let barrier = barrier.clone();
+                let fail_count_ref = &fail_count;
+                s.spawn(move || {
+                    let result = renderer_handle.spawn_worker();
+                    if let Err(e) = result {
+                        if e == RendererError::Fail("".to_string()) {
+                            fail_count_ref.fetch_add(1, Ordering::Relaxed);
+                        }
+                        barrier.wait();
+                    } else {
+                        let _worker = result.unwrap();
+                        barrier.wait();
+                    }
+                });
+            }
+            barrier.wait();
+            assert_ne!(fail_count.load(Ordering::Relaxed), 0);
         });
     }
 
