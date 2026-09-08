@@ -118,7 +118,7 @@ pub fn register(
             let mask = &mut masks[i];
             let current_mask_index = if i == MAIN_THREAD_CONTEXT_MASK_INDEX {
                 // Always set the bit at `MAIN_THREAD_CONTEXT_INDEX` to prevent assigning it
-                // to a workead.
+                // to a worker.
                 (*mask | (1 << (MAIN_THREAD_CONTEXT_INDEX % THREAD_CONTEXT_MASK_BIT_SIZE)))
                     .trailing_ones() as usize
             } else {
