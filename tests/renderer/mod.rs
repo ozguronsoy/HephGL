@@ -612,7 +612,7 @@ where
 
     fn test_excess_threads() {
         // This should exceed `RENDERER_MAX_CONCURRENT_THREADS`.
-        const THREAD_COUNT: usize = 1000;
+        const THREAD_COUNT: usize = heph_gl::renderers::max_concurrent_threads() + 1;
 
         let mut renderer = Self::create_renderer_with_any_device(&[]);
         let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);

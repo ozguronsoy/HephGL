@@ -326,6 +326,12 @@ impl std::fmt::Display for RendererError {
 }
 impl std::error::Error for RendererError {}
 
+/// Gets the maximum number of threads that can execute concurrently.
+pub const fn max_concurrent_threads() -> usize {
+    crate::renderers::thread_context::thread_context_count()
+}
+
+mod thread_context;
 pub mod vulkan_renderer;
 
 #[cfg(test)]
