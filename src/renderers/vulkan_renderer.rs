@@ -1,4 +1,3 @@
-use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString};
 use std::sync::Mutex;
@@ -21,6 +20,9 @@ use renkrs::RGB;
 use vk_mem::Alloc;
 
 use crate::graphics_device::{Feature, GraphicsDevice};
+use crate::renderers::thread_context::{
+    ThreadContextArray, ThreadContextIndex, ThreadContextMask, ThreadContextMaskArray,
+};
 use crate::renderers::{
     BufferUsage, FeatureRequest, GpuBuffer, InitializeOptions, PipelineHandle, Renderer,
     RendererError, RendererHandle, RendererResult, RendererWorker, RendererWorkerFactory,
@@ -29,79 +31,10 @@ use crate::renderers::{
 use crate::shader::ShaderSource;
 use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
 
-/// Dummy trait for selecting the optimal ThreadContextMask type.
-trait MaskType {
-    type Type;
-}
-/// Dummy struct for selecting the optimal ThreadContextMask type.
-struct MaskSelector<const BITS: usize>;
-impl MaskType for MaskSelector<128> {
-    type Type = u128;
-}
-impl MaskType for MaskSelector<64> {
-    type Type = u64;
-}
-impl MaskType for MaskSelector<32> {
-    type Type = u32;
-}
-impl MaskType for MaskSelector<16> {
-    type Type = u16;
-}
-impl MaskType for MaskSelector<8> {
-    type Type = u8;
-}
-
-/// The integer type used as a bitmask to track thread context allocation states.
-type ThreadContextMask = <MaskSelector<
-    {
-        if THREAD_CONTEXT_COUNT > 64 {
-            128
-        } else if THREAD_CONTEXT_COUNT > 32 {
-            64
-        } else if THREAD_CONTEXT_COUNT > 16 {
-            32
-        } else if THREAD_CONTEXT_COUNT > 8 {
-            16
-        } else {
-            8
-        }
-    },
-> as MaskType>::Type;
-
-/// The size of the `ThreadContextMask` in bits.
-const THREAD_CONTEXT_MASK_BIT_SIZE: usize = std::mem::size_of::<ThreadContextMask>() * 8;
-/// Indicates that the thread context index is invalid.
-const INVALID_THREAD_CONTEXT_INDEX: usize = usize::MAX;
-/// The maximum number of threads that we can concurrently operate including the main thread.
-const THREAD_CONTEXT_COUNT: usize = {
-    if let Some(val) = option_env!("HEPHGL_RENDERER_MAX_CONCURRENT_THREADS") {
-        const_str::parse!(val, usize)
-    } else {
-        128
-    }
-};
-/// The number of mask variables needed to track `THREAD_CONTEXT_COUNT` concurrent threads.
-const THREAD_CONTEXT_MASK_COUNT: usize =
-    THREAD_CONTEXT_COUNT.div_ceil(THREAD_CONTEXT_MASK_BIT_SIZE);
-/// The index reserved for the main thread.
-const MAIN_THREAD_CONTEXT_INDEX: usize = THREAD_CONTEXT_COUNT - 1;
-/// The index of the mask that contains the index reserved for the main thread.
-const MAIN_THREAD_CONTEXT_MASK_INDEX: usize =
-    MAIN_THREAD_CONTEXT_INDEX / THREAD_CONTEXT_MASK_BIT_SIZE;
 thread_local! {
-    /// Index of the current `thread_context`.
-    static THREAD_CONTEXT_INDEX: UnsafeCell<usize> = const { UnsafeCell::new(INVALID_THREAD_CONTEXT_INDEX) };
+    /// Index of the current thread context.
+    static THREAD_CONTEXT_INDEX: ThreadContextIndex = const { ThreadContextIndex::new() };
 }
-// static asserts
-const _: () = assert!(
-    (THREAD_CONTEXT_COUNT > 64 && std::mem::size_of::<ThreadContextMask>() == 16)
-        || (THREAD_CONTEXT_COUNT > 32 && std::mem::size_of::<ThreadContextMask>() == 8)
-        || (THREAD_CONTEXT_COUNT > 16 && std::mem::size_of::<ThreadContextMask>() == 4)
-        || (THREAD_CONTEXT_COUNT > 8 && std::mem::size_of::<ThreadContextMask>() == 2)
-        || (THREAD_CONTEXT_COUNT <= 8 && std::mem::size_of::<ThreadContextMask>() == 1)
-);
-const _: () = assert!(THREAD_CONTEXT_COUNT > 0);
-const _: () = assert!(MAIN_THREAD_CONTEXT_INDEX < THREAD_CONTEXT_COUNT);
 
 /// Represents the Vulkan queue type.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -126,7 +59,7 @@ struct QueueFamily {
 struct Frame {
     /// Contains the resources used for recording commands per thread for this
     /// frame.
-    thread_contexts: [ThreadContext; THREAD_CONTEXT_COUNT],
+    thread_contexts: ThreadContextArray<ThreadContext>,
     /// The fence used to synchronize CPU and GPU execution for this frame.
     fence: Fence,
     /// Indicates whether the frame is currently executing on the GPU and has an
@@ -181,7 +114,7 @@ struct DeviceContext {
     /// The bitmasks indicating the availability of thread contexts.
     /// `0` means the context at that index is available, `1` means it is
     /// currently in use.
-    thread_context_masks: Mutex<[ThreadContextMask; THREAD_CONTEXT_MASK_COUNT]>,
+    thread_context_masks: Mutex<ThreadContextMaskArray>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -793,7 +726,7 @@ impl Renderer for VulkanRenderer {
 
             logical_device,
 
-            thread_context_masks: Mutex::new([0; THREAD_CONTEXT_MASK_COUNT]),
+            thread_context_masks: Mutex::new(std::array::from_fn(|_| ThreadContextMask::default())),
         });
 
         self.create_fences()?;
@@ -1401,16 +1334,7 @@ impl VulkanRenderer {
 
     /// Gets the current thread's context index.
     fn thread_context_index() -> RendererResult<usize> {
-        let index = THREAD_CONTEXT_INDEX.with(|cell| unsafe { *cell.get() });
-        if index == INVALID_THREAD_CONTEXT_INDEX {
-            Err(RendererError::InvalidOperation(
-                "Frames are uninitialized. `initialize_thread` must \
-                be called on this thread before access."
-                    .to_string(),
-            ))
-        } else {
-            Ok(index)
-        }
+        THREAD_CONTEXT_INDEX.with(|index| index.try_get())
     }
 
     /// Converts the Vulkan API version to `crate::Version`.
@@ -1542,53 +1466,11 @@ impl VulkanRenderer {
                     "Device is not set.".to_string(),
                 ))?;
 
-        THREAD_CONTEXT_INDEX.with(|cell| -> RendererResult<()> {
-            unsafe {
-                let index = cell.get();
-                let mut masks = device_context.thread_context_masks.lock()?;
-
-                if self.main_thread_id == std::thread::current().id() {
-                    masks[MAIN_THREAD_CONTEXT_MASK_INDEX] |=
-                        1 << (MAIN_THREAD_CONTEXT_INDEX % THREAD_CONTEXT_MASK_BIT_SIZE);
-                    *index = MAIN_THREAD_CONTEXT_INDEX;
-                    return Ok(());
-                }
-
-                *index = 0;
-                for i in 0..THREAD_CONTEXT_MASK_COUNT {
-                    let mask = &mut masks[i];
-                    let new_index = if i == MAIN_THREAD_CONTEXT_MASK_INDEX {
-                        // Always set the bit at `MAIN_THREAD_CONTEXT_INDEX` to prevent assigning it
-                        // to a workead.
-                        (*mask | (1 << (MAIN_THREAD_CONTEXT_INDEX % THREAD_CONTEXT_MASK_BIT_SIZE)))
-                            .trailing_ones() as usize
-                    } else {
-                        mask.trailing_ones() as usize
-                    };
-
-                    *index += new_index;
-                    if *index >= THREAD_CONTEXT_COUNT {
-                        *index = INVALID_THREAD_CONTEXT_INDEX;
-                        break;
-                    }
-                    if new_index >= THREAD_CONTEXT_MASK_BIT_SIZE {
-                        // This mask is full.
-                        continue;
-                    }
-
-                    *mask |= 1 << new_index;
-                    break;
-                }
-
-                if *index == INVALID_THREAD_CONTEXT_INDEX {
-                    Err(RendererError::Fail(
-                        "Failed to initialize frames: maximum threads reached".to_string(),
-                    ))
-                } else {
-                    Ok(())
-                }
-            }
-        })?;
+        crate::renderers::thread_context::register(
+            &THREAD_CONTEXT_INDEX,
+            &mut *device_context.thread_context_masks.lock()?,
+            self.main_thread_id == std::thread::current().id(),
+        )?;
 
         self.create_command_pools()?;
         self.create_command_buffers()?;
@@ -1807,17 +1689,10 @@ impl VulkanRenderer {
                     "Device is not set.".to_string(),
                 ))?;
 
-        THREAD_CONTEXT_INDEX.with(|cell| -> RendererResult<()> {
-            unsafe {
-                let index = cell.get();
-                let mut masks = device_context.thread_context_masks.lock()?;
-
-                let mask = &mut masks[*index / THREAD_CONTEXT_MASK_BIT_SIZE];
-                *mask &= !(1 << (*index % THREAD_CONTEXT_MASK_BIT_SIZE));
-                *index = INVALID_THREAD_CONTEXT_INDEX;
-                Ok(())
-            }
-        })?;
+        crate::renderers::thread_context::unregister(
+            &THREAD_CONTEXT_INDEX,
+            &mut *device_context.thread_context_masks.lock()?,
+        );
 
         Ok(())
     }
