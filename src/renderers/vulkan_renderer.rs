@@ -1,7 +1,7 @@
 use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 
 use ash::vk::{
     ApplicationInfo, Buffer, BufferCreateInfo, BufferUsageFlags, CommandBuffer,
@@ -29,14 +29,29 @@ use crate::renderers::{
 use crate::shader::ShaderSource;
 use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
 
+type ThreadContextMask = u64;
+
+/// The size of the `ThreadContextMask` in bits.
+const THREAD_CONTEXT_MASK_BIT_SIZE: usize = std::mem::size_of::<ThreadContextMask>() * 8;
 /// Indicates that the thread context index is invalid.
 const INVALID_THREAD_CONTEXT_INDEX: usize = usize::MAX;
+/// The maximum number of threads that we can concurrently operate including the main thread.
+const THREAD_CONTEXT_COUNT: usize = 128;
+/// The number of mask variables needed to track `THREAD_CONTEXT_COUNT` concurrent threads.
+const THREAD_CONTEXT_MASK_COUNT: usize =
+    THREAD_CONTEXT_COUNT.div_ceil(THREAD_CONTEXT_MASK_BIT_SIZE);
 /// The index reserved for the main thread.
-const MAIN_THREAD_CONTEXT_INDEX: usize = 0;
+const MAIN_THREAD_CONTEXT_INDEX: usize = THREAD_CONTEXT_COUNT - 1;
+/// The index of the mask that contains the index reserved for the main thread.
+const MAIN_THREAD_CONTEXT_MASK_INDEX: usize =
+    MAIN_THREAD_CONTEXT_INDEX / THREAD_CONTEXT_MASK_BIT_SIZE;
 thread_local! {
     /// Index of the current `thread_context`. We use the same index for graphics, transfer, and compute.
     static THREAD_CONTEXT_INDEX: UnsafeCell<usize> = const { UnsafeCell::new(INVALID_THREAD_CONTEXT_INDEX) };
 }
+// static asserts
+const _: () = assert!(THREAD_CONTEXT_COUNT > 0);
+const _: () = assert!(MAIN_THREAD_CONTEXT_INDEX < THREAD_CONTEXT_COUNT);
 
 /// Represents the Vulkan queue type.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -61,7 +76,7 @@ struct QueueFamily {
 struct Frame {
     /// Contains the resources used for recording commands per thread for this
     /// frame.
-    thread_contexts: [ThreadContext; 64],
+    thread_contexts: [ThreadContext; THREAD_CONTEXT_COUNT],
     /// The fence used to synchronize CPU and GPU execution for this frame.
     fence: Fence,
     /// Indicates whether the frame is currently executing on the GPU and has an
@@ -93,14 +108,6 @@ struct QueueContext {
     /// ### Note
     /// Length of this must always be equal to `settings.frames_in_flight`.
     frames: Vec<Frame>,
-    /// A bitmask indicating the availability of thread contexts.
-    /// `0` means the context at that index is available, `1` means it is
-    /// currently in use.
-    ///
-    /// ### Note
-    /// Replace this with an array of `AtomicU64`s if more than 64 concurrent
-    /// threads are required.
-    thread_context_mask: AtomicU64,
 }
 
 /// Encapsulates the Vulkan device state.
@@ -120,6 +127,11 @@ struct DeviceContext {
 
     /// The logical Vulkan device.
     logical_device: ash::Device,
+
+    /// The bitmasks indicating the availability of thread contexts.
+    /// `0` means the context at that index is available, `1` means it is
+    /// currently in use.
+    thread_context_masks: Mutex<[ThreadContextMask; THREAD_CONTEXT_MASK_COUNT]>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -225,22 +237,25 @@ impl Renderer for VulkanRenderer {
             self.settings = settings;
             self.current_frame_index = 0;
 
+            let device_context = self.device_context.as_mut().unwrap();
             let mut resize_frames = |queue_context: &mut QueueContext| -> RendererResult<()> {
-                if queue_context.thread_context_mask.load(Ordering::Relaxed) != 0 {
-                    self.settings = temp_settings;
-                    self.current_frame_index = temp_current_frame_index;
-                    return Err(RendererError::InvalidOperation(
+                let masks = device_context.thread_context_masks.lock()?;
+
+                for mask in masks.iter() {
+                    if *mask != 0 {
+                        self.settings = temp_settings;
+                        self.current_frame_index = temp_current_frame_index;
+                        return Err(RendererError::InvalidOperation(
                         "All worker threads must be uninitialized before changing the settings."
                             .to_string(),
                     ));
+                    }
                 }
                 queue_context
                     .frames
                     .resize_with(self.settings.frames_in_flight as usize, Frame::default);
                 Ok(())
             };
-
-            let device_context = self.device_context.as_mut().unwrap();
 
             resize_frames(&mut device_context.graphics_queue_context)?;
             if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
@@ -708,7 +723,6 @@ impl Renderer for VulkanRenderer {
                 frames: (0..self.settings.frames_in_flight)
                     .map(|_| Frame::default())
                     .collect::<Vec<Frame>>(),
-                thread_context_mask: AtomicU64::new(0),
             },
             transfer_queue_context: transfer_queue_handle.map(|queue| QueueContext {
                 queue,
@@ -717,7 +731,6 @@ impl Renderer for VulkanRenderer {
                 frames: (0..self.settings.frames_in_flight)
                     .map(|_| Frame::default())
                     .collect::<Vec<Frame>>(),
-                thread_context_mask: AtomicU64::new(0),
             }),
             compute_queue_context: compute_queue_handle.map(|queue| QueueContext {
                 queue,
@@ -726,10 +739,11 @@ impl Renderer for VulkanRenderer {
                 frames: (0..self.settings.frames_in_flight)
                     .map(|_| Frame::default())
                     .collect::<Vec<Frame>>(),
-                thread_context_mask: AtomicU64::new(0),
             }),
 
             logical_device,
+
+            thread_context_masks: Mutex::new([0; THREAD_CONTEXT_MASK_COUNT]),
         });
 
         self.create_fences()?;
@@ -1335,6 +1349,7 @@ impl VulkanRenderer {
             })
     }
 
+    /// Gets the current thread's context index.
     fn thread_context_index() -> RendererResult<usize> {
         let index = THREAD_CONTEXT_INDEX.with(|cell| unsafe { *cell.get() });
         if index == INVALID_THREAD_CONTEXT_INDEX {
@@ -1477,39 +1492,51 @@ impl VulkanRenderer {
                     "Device is not set.".to_string(),
                 ))?;
 
-        THREAD_CONTEXT_INDEX.with(|cell| unsafe {
-            let index = cell.get();
+        THREAD_CONTEXT_INDEX.with(|cell| -> RendererResult<()> {
+            unsafe {
+                let index = cell.get();
+                let mut masks = device_context.thread_context_masks.lock()?;
 
-            let mask = &device_context.graphics_queue_context.thread_context_mask;
-            let mut current = mask.load(Ordering::Relaxed);
-            *index = loop {
-                let new_index = if self.main_thread_id == std::thread::current().id() {
-                    MAIN_THREAD_CONTEXT_INDEX
+                if self.main_thread_id == std::thread::current().id() {
+                    masks[MAIN_THREAD_CONTEXT_MASK_INDEX] |=
+                        1 << (MAIN_THREAD_CONTEXT_INDEX % THREAD_CONTEXT_MASK_BIT_SIZE);
+                    *index = MAIN_THREAD_CONTEXT_INDEX;
+                    return Ok(());
+                }
+
+                *index = 0;
+                for i in 0..THREAD_CONTEXT_MASK_COUNT {
+                    let mask = &mut masks[i];
+                    let new_index = if i == MAIN_THREAD_CONTEXT_MASK_INDEX {
+                        // Always set the bit at `MAIN_THREAD_CONTEXT_INDEX` to prevent assigning it
+                        // to a workead.
+                        (*mask | (1 << (MAIN_THREAD_CONTEXT_INDEX % THREAD_CONTEXT_MASK_BIT_SIZE)))
+                            .trailing_ones() as usize
+                    } else {
+                        mask.trailing_ones() as usize
+                    };
+
+                    *index += new_index;
+                    if *index >= THREAD_CONTEXT_COUNT {
+                        *index = INVALID_THREAD_CONTEXT_INDEX;
+                        break;
+                    }
+                    if new_index >= THREAD_CONTEXT_MASK_BIT_SIZE {
+                        // This mask is full.
+                        continue;
+                    }
+
+                    *mask |= 1 << new_index;
+                    break;
+                }
+
+                if *index == INVALID_THREAD_CONTEXT_INDEX {
+                    Err(RendererError::Fail(
+                        "Failed to initialize frames: maximum threads reached".to_string(),
+                    ))
                 } else {
-                    // Index `0` is reserved for the main thread, which might not be initialized
-                    // yet. Force the LSB to 1 to prevent assigning index `0` to
-                    // a worker thread.
-                    (current | (1 << MAIN_THREAD_CONTEXT_INDEX)).trailing_ones() as usize
-                };
-
-                if new_index >= 64 {
-                    break INVALID_THREAD_CONTEXT_INDEX;
+                    Ok(())
                 }
-
-                let new = current | (1 << new_index);
-                match mask.compare_exchange_weak(current, new, Ordering::AcqRel, Ordering::Acquire)
-                {
-                    Ok(_) => break new_index,
-                    Err(actual) => current = actual,
-                }
-            };
-
-            if *index == INVALID_THREAD_CONTEXT_INDEX {
-                Err(RendererError::Fail(
-                    "Failed to initialize frames: maximum threads reached".to_string(),
-                ))
-            } else {
-                Ok(())
             }
         })?;
 
@@ -1730,13 +1757,17 @@ impl VulkanRenderer {
                     "Device is not set.".to_string(),
                 ))?;
 
-        THREAD_CONTEXT_INDEX.with(|cell| unsafe {
-            let index = cell.get();
+        THREAD_CONTEXT_INDEX.with(|cell| -> RendererResult<()> {
+            unsafe {
+                let index = cell.get();
+                let mut masks = device_context.thread_context_masks.lock()?;
 
-            let mask = &device_context.graphics_queue_context.thread_context_mask;
-            mask.fetch_and(!(1 << *index), Ordering::Release);
-            *index = INVALID_THREAD_CONTEXT_INDEX;
-        });
+                let mask = &mut masks[*index / THREAD_CONTEXT_MASK_BIT_SIZE];
+                *mask &= !(1 << (*index % THREAD_CONTEXT_MASK_BIT_SIZE));
+                *index = INVALID_THREAD_CONTEXT_INDEX;
+                Ok(())
+            }
+        })?;
 
         Ok(())
     }
@@ -1913,6 +1944,12 @@ impl GpuBuffer for VulkanBuffer {
 impl From<std::ffi::NulError> for RendererError {
     fn from(_: std::ffi::NulError) -> Self {
         RendererError::InvalidAppName
+    }
+}
+
+impl<T> From<std::sync::PoisonError<T>> for RendererError {
+    fn from(e: std::sync::PoisonError<T>) -> Self {
+        RendererError::Fail(e.to_string())
     }
 }
 
