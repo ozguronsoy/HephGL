@@ -1,165 +1,51 @@
-use std::collections::{HashMap, HashSet};
-use std::ffi::{CStr, CString};
-use std::sync::Mutex;
+mod device;
+mod error;
+mod frame;
+mod handle;
+mod queue;
+pub mod resources;
+
+use std::{
+    collections::{HashMap, HashSet},
+    ffi::CString,
+    sync::Mutex,
+};
 
 use ash::vk::{
-    ApplicationInfo, Buffer, BufferCreateInfo, BufferUsageFlags, CommandBuffer,
-    CommandBufferAllocateInfo, CommandBufferBeginInfo, CommandBufferLevel, CommandBufferUsageFlags,
-    CommandPool, CommandPoolCreateFlags, CommandPoolCreateInfo, ComputePipelineCreateInfo,
-    DescriptorPool, DescriptorPoolCreateInfo, DescriptorPoolResetFlags, DescriptorPoolSize,
-    DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
-    DescriptorType, DeviceCreateInfo, DeviceQueueCreateInfo, Fence, InstanceCreateInfo,
-    MemoryHeapFlags, PhysicalDeviceFeatures2, PhysicalDeviceMemoryProperties2,
-    PhysicalDeviceProperties2, PhysicalDeviceType, Pipeline, PipelineBindPoint, PipelineCache,
-    PipelineLayout, PipelineLayoutCreateInfo, PipelineShaderStageCreateInfo, Queue,
-    QueueFamilyProperties2, QueueFlags, ShaderModule, ShaderModuleCreateInfo, ShaderStageFlags,
-    StructureType, SubmitInfo, SurfaceKHR,
+    ApplicationInfo, BufferCreateInfo, BufferUsageFlags, CommandBuffer, CommandBufferAllocateInfo,
+    CommandBufferBeginInfo, CommandBufferLevel, CommandBufferUsageFlags, CommandPool,
+    CommandPoolCreateFlags, CommandPoolCreateInfo, ComputePipelineCreateInfo, DescriptorPool,
+    DescriptorPoolCreateInfo, DescriptorPoolResetFlags, DescriptorPoolSize,
+    DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType, DeviceCreateInfo,
+    DeviceQueueCreateInfo, Fence, InstanceCreateInfo, MemoryHeapFlags, PhysicalDeviceFeatures2,
+    PhysicalDeviceMemoryProperties2, PhysicalDeviceProperties2, PhysicalDeviceType,
+    PipelineBindPoint, PipelineCache, PipelineLayoutCreateInfo, PipelineShaderStageCreateInfo,
+    QueueFamilyProperties2, QueueFlags, ShaderModuleCreateInfo, ShaderStageFlags, StructureType,
+    SubmitInfo, SurfaceKHR,
 };
-use ash::{Entry, Instance};
 use renkrs::RGB;
 use vk_mem::Alloc;
 
-use crate::graphics_device::{Feature, GraphicsDevice};
-use crate::renderers::thread_context::{
-    ThreadContextArray, ThreadContextIndex, ThreadContextMask, ThreadContextMaskArray,
+use crate::{
+    HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version,
+    graphics_device::{Feature, GraphicsDevice},
+    renderers::{
+        BufferUsage, FeatureRequest, InitializeOptions, PipelineHandle, Renderer, RendererError,
+        RendererResult, ResourceBinding, ResourceBindingType, Settings,
+        thread_context::{ThreadContextIndex, ThreadContextMask},
+        vulkan::{
+            device::DeviceContext,
+            frame::Frame,
+            queue::{QueueContext, QueueFamily, QueueType},
+            resources::*,
+        },
+    },
+    shader::ShaderSource,
 };
-use crate::renderers::{
-    BufferUsage, FeatureRequest, GpuBuffer, InitializeOptions, PipelineHandle, Renderer,
-    RendererError, RendererHandle, RendererResult, RendererWorker, RendererWorkerFactory,
-    ResourceBinding, ResourceBindingType, Settings,
-};
-use crate::shader::ShaderSource;
-use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
 
 thread_local! {
     /// Index of the current thread context.
     static THREAD_CONTEXT_INDEX: ThreadContextIndex = const { ThreadContextIndex::new() };
-}
-
-/// Represents the Vulkan queue type.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum QueueType {
-    Graphics,
-    Transfer,
-    Compute,
-}
-
-/// Represents a Vulkan queue family.
-struct QueueFamily {
-    /// The index of the graphics family.
-    index: u32,
-    /// The number of queues available for this family.
-    queue_count: u32,
-    queue_flags: QueueFlags,
-    /// Indicates whether this family supports presenting to a device.
-    present_supported: bool,
-}
-
-/// Represents the resources and synchronization state for a single frame.
-struct Frame {
-    /// Contains the resources used for recording commands per thread for this
-    /// frame.
-    thread_contexts: ThreadContextArray<ThreadContext>,
-    /// The fence used to synchronize CPU and GPU execution for this frame.
-    fence: Fence,
-    /// Indicates whether the frame is currently executing on the GPU and has an
-    /// active fence in flight.
-    is_in_flight: bool,
-}
-
-/// Represents the per-thread resources used for recording commands.
-#[derive(Default)]
-struct ThreadContext {
-    /// The command pool allocated exclusively for this thread.
-    command_pool: CommandPool,
-    /// The primary command buffer used to record commands for this thread.
-    command_buffer: CommandBuffer,
-    /// The descriptor pool allocated for resources used during this thread.
-    descriptor_pool: DescriptorPool,
-}
-
-/// Represents context and state for a Vulkan queue.
-struct QueueContext {
-    /// The Vulkan queue instance.
-    queue: Queue,
-    /// The Vulkan queue type.
-    queue_type: QueueType,
-    /// The index of the queue family.
-    queue_family_index: u32,
-    /// Contains the resources per frame.
-    ///
-    /// ### Note
-    /// Length of this must always be equal to `settings.frames_in_flight`.
-    frames: Vec<Frame>,
-}
-
-/// Encapsulates the Vulkan device state.
-///
-/// ### Note
-/// Order of the fields matter as it determines the destruction order.
-struct DeviceContext {
-    /// The currently active graphics device.
-    graphics_device: GraphicsDevice,
-
-    /// The memory allocator.
-    vma_allocator: vk_mem::Allocator,
-
-    graphics_queue_context: QueueContext,
-    transfer_queue_context: Option<QueueContext>,
-    compute_queue_context: Option<QueueContext>,
-
-    /// The logical Vulkan device.
-    logical_device: ash::Device,
-
-    /// The bitmasks indicating the availability of thread contexts.
-    /// `0` means the context at that index is available, `1` means it is
-    /// currently in use.
-    thread_context_masks: Mutex<ThreadContextMaskArray>,
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct VulkanShader {
-    module: ShaderModule,
-}
-
-/// Represents a Vulkan buffer with additional information.
-#[derive(Debug, Copy, Clone)]
-pub struct VulkanBuffer {
-    /// The Vulkan buffer.
-    buffer: Buffer,
-    /// The memory allocation.
-    vma_allocation: vk_mem::Allocation,
-    /// The size of the buffer in bytes.
-    size: usize,
-}
-
-/// Represents a Vulkan graphics pipeline.
-#[derive(Debug, Copy, Clone)]
-pub struct VulkanGraphicsPipeline {
-    // TODO
-}
-
-/// Represents a Vulkan compute pipeline.
-#[derive(Debug, Copy, Clone)]
-pub struct VulkanComputePipeline {
-    pipeline: Pipeline,
-    layout: PipelineLayout,
-    descriptor_layout: DescriptorSetLayout,
-}
-
-/// Represents a resource set compatible to a specific shader.
-#[derive(Debug, Copy, Clone)]
-pub struct VulkanResourceSet {
-    /// The Vulkan descriptor set.
-    descriptor_set: DescriptorSet,
-}
-
-/// Represents a recorded Vulkan command.
-#[derive(Debug, Copy, Clone)]
-pub struct VulkanRecordedCommand {
-    queue_type: QueueType,
-    frame_index: u32,
-    thread_context_index: usize,
 }
 
 /// The Vulkan implementation of the `Renderer` trait.
@@ -167,8 +53,8 @@ pub struct VulkanRenderer {
     settings: Settings,
     current_frame_index: u32,
 
-    entry: Option<Entry>,
-    instance: Option<Instance>,
+    entry: Option<ash::Entry>,
+    instance: Option<ash::Instance>,
 
     window_surface: Option<SurfaceKHR>,
     window_surface_loader: Option<ash::khr::surface::Instance>,
@@ -282,7 +168,7 @@ impl Renderer for VulkanRenderer {
             ..Default::default()
         };
 
-        let entry = unsafe { Entry::load()? };
+        let entry = unsafe { ash::Entry::load()? };
 
         let create_flags = if cfg!(target_os = "macos") {
             ash::vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR
@@ -407,7 +293,7 @@ impl Renderer for VulkanRenderer {
             };
 
             let device_name = unsafe {
-                CStr::from_ptr(properties2.properties.device_name.as_ptr())
+                std::ffi::CStr::from_ptr(properties2.properties.device_name.as_ptr())
                     .to_string_lossy()
                     .into_owned()
             };
@@ -456,7 +342,7 @@ impl Renderer for VulkanRenderer {
                 supported_features.insert(crate::graphics_device::Feature::AnisotropicFiltering);
             }
             for ext in extension_properties {
-                let name = unsafe { CStr::from_ptr(ext.extension_name.as_ptr()) };
+                let name = unsafe { std::ffi::CStr::from_ptr(ext.extension_name.as_ptr()) };
                 if name.to_string_lossy() == "VK_KHR_ray_tracing_pipeline" {
                     supported_features.insert(crate::graphics_device::Feature::RayTracing);
                 }
@@ -1835,63 +1721,5 @@ impl VulkanRenderer {
         }
 
         Ok(())
-    }
-}
-
-impl RendererWorkerFactory<VulkanRenderer> for RendererHandle<VulkanRenderer> {
-    fn spawn_worker(&self) -> RendererResult<RendererWorker<VulkanRenderer>> {
-        let renderer = unsafe { &mut *(self.p_renderer as *mut VulkanRenderer) };
-        renderer.initialize_thread()?;
-        Ok(RendererWorker::<VulkanRenderer> {
-            p_renderer: self.p_renderer,
-            uninitialize: |renderer| renderer.uninitialize_thread(),
-            _marker: std::marker::PhantomData,
-        })
-    }
-}
-
-impl Default for Frame {
-    fn default() -> Self {
-        Self {
-            thread_contexts: std::array::from_fn(|_| ThreadContext::default()),
-            fence: Fence::default(),
-            is_in_flight: false,
-        }
-    }
-}
-
-impl GpuBuffer for VulkanBuffer {
-    fn size(&self) -> usize {
-        self.size
-    }
-}
-
-impl From<std::ffi::NulError> for RendererError {
-    fn from(_: std::ffi::NulError) -> Self {
-        RendererError::InvalidAppName
-    }
-}
-
-impl<T> From<std::sync::PoisonError<T>> for RendererError {
-    fn from(e: std::sync::PoisonError<T>) -> Self {
-        RendererError::Fail(e.to_string())
-    }
-}
-
-impl From<ash::LoadingError> for RendererError {
-    fn from(e: ash::LoadingError) -> Self {
-        RendererError::Fail(e.to_string())
-    }
-}
-
-impl From<ash::vk::Result> for RendererError {
-    fn from(e: ash::vk::Result) -> Self {
-        RendererError::Fail(e.to_string())
-    }
-}
-
-impl From<(Vec<ash::vk::Pipeline>, ash::vk::Result)> for RendererError {
-    fn from(e: (Vec<ash::vk::Pipeline>, ash::vk::Result)) -> Self {
-        RendererError::Fail(e.1.to_string())
     }
 }
