@@ -5,6 +5,7 @@
     - [Install](#install)
     - [Dependencies](#dependencies)
 - [Usage](#usage)
+    - [Environment Variables](#environment-variables)
     - [Running Examples](#running-examples)
     - [Running Tests](#running-tests)
     - [Renderer](#renderer)
@@ -68,6 +69,11 @@ All other dependencies are stated in the `Cargo.toml` file, and will be fetched 
 during build.
 
 ## Usage
+
+### Environment Variables
+
+HephGL supports compile-time configuration through optional environment variables:
+- `HEPHGL_RENDERER_MAX_CONCURRENT_THREADS=<usize>`: The maximum number of threads a renderer can concurrently run.
 
 ### Running Examples
 
