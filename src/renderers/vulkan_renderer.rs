@@ -29,8 +29,44 @@ use crate::renderers::{
 use crate::shader::ShaderSource;
 use crate::{HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version};
 
+/// Dummy trait for selecting the optimal ThreadContextMask type.
+trait MaskType {
+    type Type;
+}
+/// Dummy struct for selecting the optimal ThreadContextMask type.
+struct MaskSelector<const BITS: usize>;
+impl MaskType for MaskSelector<128> {
+    type Type = u128;
+}
+impl MaskType for MaskSelector<64> {
+    type Type = u64;
+}
+impl MaskType for MaskSelector<32> {
+    type Type = u32;
+}
+impl MaskType for MaskSelector<16> {
+    type Type = u16;
+}
+impl MaskType for MaskSelector<8> {
+    type Type = u8;
+}
+
 /// The integer type used as a bitmask to track thread context allocation states.
-type ThreadContextMask = u64;
+type ThreadContextMask = <MaskSelector<
+    {
+        if THREAD_CONTEXT_COUNT > 64 {
+            128
+        } else if THREAD_CONTEXT_COUNT > 32 {
+            64
+        } else if THREAD_CONTEXT_COUNT > 16 {
+            32
+        } else if THREAD_CONTEXT_COUNT > 8 {
+            16
+        } else {
+            8
+        }
+    },
+> as MaskType>::Type;
 
 /// The size of the `ThreadContextMask` in bits.
 const THREAD_CONTEXT_MASK_BIT_SIZE: usize = std::mem::size_of::<ThreadContextMask>() * 8;
@@ -57,6 +93,13 @@ thread_local! {
     static THREAD_CONTEXT_INDEX: UnsafeCell<usize> = const { UnsafeCell::new(INVALID_THREAD_CONTEXT_INDEX) };
 }
 // static asserts
+const _: () = assert!(
+    (THREAD_CONTEXT_COUNT > 64 && std::mem::size_of::<ThreadContextMask>() == 16)
+        || (THREAD_CONTEXT_COUNT > 32 && std::mem::size_of::<ThreadContextMask>() == 8)
+        || (THREAD_CONTEXT_COUNT > 16 && std::mem::size_of::<ThreadContextMask>() == 4)
+        || (THREAD_CONTEXT_COUNT > 8 && std::mem::size_of::<ThreadContextMask>() == 2)
+        || (THREAD_CONTEXT_COUNT <= 8 && std::mem::size_of::<ThreadContextMask>() == 1)
+);
 const _: () = assert!(THREAD_CONTEXT_COUNT > 0);
 const _: () = assert!(MAIN_THREAD_CONTEXT_INDEX < THREAD_CONTEXT_COUNT);
 
