@@ -1,8 +1,9 @@
 use heph_gl::{
     graphics_device::Feature::ComputeShaders,
     renderers::{
-        BufferUsage, FeatureRequest, GpuBuffer, PipelineHandle, Renderer, RendererHandle,
-        RendererWorkerFactory, ResourceBinding, ResourceBindingType,
+        Renderer, concurrency::RendererHandle, concurrency::RendererWorkerFactory,
+        resources::BufferUsage, resources::GpuBuffer, resources::PipelineHandle,
+        resources::ResourceBinding, resources::ResourceBindingType, settings::FeatureRequest,
     },
     shader::ShaderSource,
 };

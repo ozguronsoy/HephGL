@@ -1,4 +1,4 @@
-use heph_gl::renderers::{FeatureRequest, InitializeOptions, Renderer};
+use heph_gl::renderers::{Renderer, settings::FeatureRequest, settings::InitializeOptions};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
 use crate::utils::{ExampleRenderer, run_example};
