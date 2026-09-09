@@ -46,7 +46,7 @@ pub enum Feature {
     WideLines,
     /// The device supports anisotropic texture filtering.
     AnisotropicFiltering,
-    /// The device features hardware-accelerated ray tracing
+    /// The device features hardware-accelerated ray tracing.
     RayTracing,
     /// The device supports hardware-accelerated video decoding.
     VideoDecoding,

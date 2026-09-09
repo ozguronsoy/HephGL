@@ -328,6 +328,20 @@ impl std::fmt::Display for RendererError {
     }
 }
 impl std::error::Error for RendererError {}
+impl RendererError {
+    /// Creates a new `InvalidArgument` error from the provided message.
+    pub fn invalid_argument(msg: impl Into<String>) -> Self {
+        RendererError::InvalidArgument(msg.into())
+    }
+    /// Creates a new `InvalidOperation` error from the provided message.
+    pub fn invalid_operation(msg: impl Into<String>) -> Self {
+        RendererError::InvalidOperation(msg.into())
+    }
+    /// Creates a new `Fail` error from the provided message.
+    pub fn fail(msg: impl Into<String>) -> Self {
+        RendererError::Fail(msg.into())
+    }
+}
 
 /// Gets the maximum number of threads that can execute concurrently.
 pub const fn max_concurrent_threads() -> usize {

@@ -236,7 +236,7 @@ where
 
     fn create_renderer() -> TestRenderer {
         let test_env = test_env!();
-        let app_name = std::any::type_name::<TestRenderer>().to_string() + " Tests";
+        let app_name = format!("{} Tests", std::any::type_name::<TestRenderer>());
         let mut renderer = TestRenderer::new();
         heph_expect_success!(renderer.initialize(&InitializeOptions {
             app_name: app_name.as_str(),
@@ -311,7 +311,7 @@ where
             heph_expect_success!(renderer.initialize(&init_options));
             heph_expect_err!(
                 renderer.initialize(&init_options),
-                RendererError::InvalidOperation("".to_string())
+                RendererError::invalid_operation("")
             );
             heph_expect_success!(renderer.uninitialize());
         }
@@ -408,7 +408,7 @@ where
                 }),
                 &features
             ),
-            RendererError::Fail("".to_string())
+            RendererError::fail("")
         );
 
         for feature in &mut features {
@@ -453,7 +453,7 @@ where
                 b1.wait();
                 heph_expect_err!(
                     renderer.set_settings(settings),
-                    RendererError::InvalidOperation("".to_string())
+                    RendererError::invalid_operation("")
                 );
                 b1.wait();
             });
@@ -549,7 +549,7 @@ where
                 let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
                 heph_expect_err!(
                     renderer_worker.set_settings(Settings::default()),
-                    RendererError::InvalidOperation("".to_string())
+                    RendererError::invalid_operation("")
                 );
                 heph_expect_err!(
                     renderer_worker.initialize(&InitializeOptions {
@@ -557,31 +557,31 @@ where
                         window_handle: dummy_window_handle!(),
                         display_handle: dummy_display_handle!(),
                     }),
-                    RendererError::InvalidOperation("".to_string())
+                    RendererError::invalid_operation("")
                 );
                 heph_expect_err!(
                     renderer_worker.uninitialize(),
-                    RendererError::InvalidOperation("".to_string())
+                    RendererError::invalid_operation("")
                 );
                 heph_expect_err!(
                     renderer_worker.set_device(None, &[]),
-                    RendererError::InvalidOperation("".to_string())
+                    RendererError::invalid_operation("")
                 );
                 heph_expect_err!(
                     renderer_worker.submit_commands(&[]),
-                    RendererError::InvalidOperation("".to_string())
+                    RendererError::invalid_operation("")
                 );
                 heph_expect_err!(
                     renderer_worker.begin_frame(),
-                    RendererError::InvalidOperation("".to_string())
+                    RendererError::invalid_operation("")
                 );
                 heph_expect_err!(
                     renderer_worker.end_frame(),
-                    RendererError::InvalidOperation("".to_string())
+                    RendererError::invalid_operation("")
                 );
                 heph_expect_err!(
                     renderer_worker.wait_idle(),
-                    RendererError::InvalidOperation("".to_string())
+                    RendererError::invalid_operation("")
                 );
             });
         });
@@ -604,7 +604,7 @@ where
                 let _w1 = heph_expect_success!(renderer_handle.spawn_worker());
                 heph_expect_err!(
                     renderer_handle.spawn_worker(),
-                    RendererError::InvalidOperation("".to_string())
+                    RendererError::invalid_operation("")
                 );
             });
         });
@@ -625,7 +625,7 @@ where
                 s.spawn(move || {
                     let result = renderer_handle.spawn_worker();
                     if let Err(e) = result {
-                        if e == RendererError::Fail("".to_string()) {
+                        if e == RendererError::fail("") {
                             fail_count_ref.fetch_add(1, Ordering::Relaxed);
                         }
                         barrier.wait();

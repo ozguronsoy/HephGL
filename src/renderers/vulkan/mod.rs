@@ -114,10 +114,9 @@ impl Renderer for VulkanRenderer {
                     if *mask != 0 {
                         self.settings = temp_settings;
                         self.current_frame_index = temp_current_frame_index;
-                        return Err(RendererError::InvalidOperation(
-                        "All worker threads must be uninitialized before changing the settings."
-                            .to_string(),
-                    ));
+                        return Err(RendererError::invalid_operation(
+                            "All worker threads must be uninitialized before changing the settings.",
+                        ));
                     }
                 }
                 queue_context
@@ -146,8 +145,8 @@ impl Renderer for VulkanRenderer {
     fn initialize(&mut self, options: &InitializeOptions) -> RendererResult<()> {
         self.main_thread_only()?;
         if self.entry.is_some() || self.instance.is_some() {
-            return Err(RendererError::InvalidOperation(
-                "VulkanRenderer is already initialized".to_string(),
+            return Err(RendererError::invalid_operation(
+                "VulkanRenderer is already initialized",
             ));
         }
 
@@ -260,8 +259,8 @@ impl Renderer for VulkanRenderer {
         let instance = self
             .instance
             .as_ref()
-            .ok_or(RendererError::InvalidOperation(
-                "Renderer is not initialized".to_string(),
+            .ok_or(RendererError::invalid_operation(
+                "Renderer is not initialized",
             ))?;
 
         let mut devices = Vec::<GraphicsDevice>::new();
@@ -407,17 +406,17 @@ impl Renderer for VulkanRenderer {
             Some(device) => device,
             None => {
                 devices = self.enumerate_devices()?;
-                devices.first().ok_or(RendererError::Fail(
-                    "No active graphics device found.".to_string(),
-                ))?
+                devices
+                    .first()
+                    .ok_or(RendererError::fail("No active graphics device found."))?
             }
         };
 
         let instance = self
             .instance
             .as_ref()
-            .ok_or(RendererError::InvalidOperation(
-                "Renderer is not initialized".to_string(),
+            .ok_or(RendererError::invalid_operation(
+                "Renderer is not initialized",
             ))?;
 
         // Create logical device and queues.
@@ -449,8 +448,8 @@ impl Renderer for VulkanRenderer {
             .iter()
             .find(|f| f.queue_flags.contains(QueueFlags::GRAPHICS) && f.present_supported)
             .ok_or_else(|| {
-                RendererError::InvalidOperation(
-                    "No queue family supports both graphics and presentation.".to_string(),
+                RendererError::invalid_operation(
+                    "No queue family supports both graphics and presentation.",
                 )
             })?;
         request_queue(graphics_family.index, graphics_family.queue_count);
@@ -622,12 +621,10 @@ impl Renderer for VulkanRenderer {
     }
 
     fn create_shader(&self, source: &ShaderSource) -> RendererResult<Self::ShaderHandle> {
-        let device_context =
-            self.device_context
-                .as_ref()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
 
         let (prefix, code_u32, suffix) = unsafe { source.data.align_to::<u32>() };
 
@@ -651,12 +648,10 @@ impl Renderer for VulkanRenderer {
     }
 
     fn destroy_shader(&self, shader: &Self::ShaderHandle) -> RendererResult<()> {
-        let device_context =
-            self.device_context
-                .as_ref()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
 
         unsafe {
             device_context
@@ -682,23 +677,21 @@ impl Renderer for VulkanRenderer {
                             ..
                         } => {
                             if (offset + size) > handle.size {
-                                return Err(RendererError::InvalidArgument(
-                                    "Buffer overflow when binding resources.".to_string(),
+                                return Err(RendererError::invalid_argument(
+                                    "Buffer overflow when binding resources.",
                                 ));
                             }
                         }
                     }
                 }
 
-                let device_context =
-                    self.device_context
-                        .as_ref()
-                        .ok_or(RendererError::InvalidOperation(
-                            "Device is not set.".to_string(),
-                        ))?;
+                let device_context = self
+                    .device_context
+                    .as_ref()
+                    .ok_or(RendererError::invalid_operation("Device is not set."))?;
                 let compute_queue_context = device_context.compute_queue_context.as_ref().ok_or(
-                    RendererError::InvalidOperation(
-                        "Device is not initialized with `ComputeShaders` feature.".to_string(),
+                    RendererError::invalid_operation(
+                        "Device is not initialized with `ComputeShaders` feature.",
                     ),
                 )?;
                 let thread_context_index = Self::thread_context_index()?;
@@ -757,12 +750,10 @@ impl Renderer for VulkanRenderer {
     }
 
     fn create_buffer(&self, size: usize, usage: BufferUsage) -> RendererResult<Self::BufferHandle> {
-        let device_context =
-            self.device_context
-                .as_ref()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
 
         let vk_usage = match usage {
             BufferUsage::Storage => BufferUsageFlags::STORAGE_BUFFER,
@@ -795,15 +786,13 @@ impl Renderer for VulkanRenderer {
 
     fn write_buffer(&self, buffer: &Self::BufferHandle, data: &[u8]) -> RendererResult<()> {
         if data.len() > buffer.size {
-            return Err(RendererError::Fail("Data exceeds buffer size!".to_string()));
+            return Err(RendererError::fail("Data exceeds buffer size!"));
         }
 
-        let device_context =
-            self.device_context
-                .as_ref()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
 
         unsafe {
             let alloc_info = device_context
@@ -821,17 +810,15 @@ impl Renderer for VulkanRenderer {
 
     fn read_buffer(&self, buffer: &Self::BufferHandle, dest: &mut [u8]) -> RendererResult<()> {
         if dest.len() > buffer.size {
-            return Err(RendererError::Fail(
-                "Destination slice is larger than buffer!".to_string(),
+            return Err(RendererError::fail(
+                "Destination slice is larger than buffer!",
             ));
         }
 
-        let device_context =
-            self.device_context
-                .as_ref()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
 
         unsafe {
             let alloc_info = device_context
@@ -848,12 +835,10 @@ impl Renderer for VulkanRenderer {
     }
 
     fn destroy_buffer(&self, buffer: &mut Self::BufferHandle) -> RendererResult<()> {
-        let device_context =
-            self.device_context
-                .as_ref()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
 
         unsafe {
             device_context
@@ -868,12 +853,10 @@ impl Renderer for VulkanRenderer {
         &self,
         shader: &Self::ShaderHandle,
     ) -> RendererResult<Self::ComputePipelineHandle> {
-        let device_context =
-            self.device_context
-                .as_ref()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
 
         // TODO: Pass number of bindings as a parameter.
         let bindings = (0..3)
@@ -929,12 +912,10 @@ impl Renderer for VulkanRenderer {
         &self,
         pipeline: &Self::ComputePipelineHandle,
     ) -> RendererResult<()> {
-        let device_context =
-            self.device_context
-                .as_ref()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
 
         unsafe {
             device_context
@@ -956,15 +937,13 @@ impl Renderer for VulkanRenderer {
         resource_sets: &[&Self::ResourceSetHandle],
         group_count: (u32, u32, u32),
     ) -> RendererResult<Self::RecordedCommand> {
-        let device_context =
-            self.device_context
-                .as_mut()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
         let compute_queue_context = device_context.compute_queue_context.as_mut().ok_or(
-            RendererError::InvalidOperation(
-                "Device is not initialized with `ComputeShaders` feature.".to_string(),
+            RendererError::invalid_operation(
+                "Device is not initialized with `ComputeShaders` feature.",
             ),
         )?;
         let thread_context_index = Self::thread_context_index()?;
@@ -1017,12 +996,10 @@ impl Renderer for VulkanRenderer {
     ) -> RendererResult<()> {
         self.main_thread_only()?;
 
-        let device_context =
-            self.device_context
-                .as_mut()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
 
         let submit_queue = |queue_context: &mut QueueContext| {
             const INVALID_FRAME_INDEX: usize = usize::MAX;
@@ -1036,9 +1013,8 @@ impl Renderer for VulkanRenderer {
                 if frame_index == INVALID_FRAME_INDEX {
                     frame_index = recorded_command.frame_index as usize;
                 } else if frame_index != recorded_command.frame_index as usize {
-                    return Err(RendererError::InvalidArgument(
-                        "All recorded commands for a queue must belong to the same frame."
-                            .to_string(),
+                    return Err(RendererError::invalid_argument(
+                        "All recorded commands for a queue must belong to the same frame.",
                     ));
                 }
 
@@ -1079,12 +1055,10 @@ impl Renderer for VulkanRenderer {
     fn begin_frame(&mut self) -> RendererResult<()> {
         self.main_thread_only()?;
 
-        let device_context =
-            self.device_context
-                .as_mut()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
         let current_frame_index = self.current_frame_index as usize;
 
@@ -1174,12 +1148,10 @@ impl Renderer for VulkanRenderer {
 
     fn wait_idle(&self) -> RendererResult<()> {
         self.main_thread_only()?;
-        let device_context =
-            self.device_context
-                .as_ref()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
 
         unsafe {
             device_context.logical_device.device_wait_idle()?;
@@ -1212,8 +1184,8 @@ impl VulkanRenderer {
         (self.main_thread_id == std::thread::current().id())
             .then_some(())
             .ok_or_else(|| {
-                RendererError::InvalidOperation(
-                    "This action can only be performed in the main thread.".to_string(),
+                RendererError::invalid_operation(
+                    "This action can only be performed in the main thread.",
                 )
             })
     }
@@ -1266,20 +1238,20 @@ impl VulkanRenderer {
         let instance = self
             .instance
             .as_ref()
-            .ok_or(RendererError::InvalidOperation(
-                "Renderer is not initialized".to_string(),
+            .ok_or(RendererError::invalid_operation(
+                "Renderer is not initialized",
             ))?;
         let window_surface_loader =
             self.window_surface_loader
                 .as_ref()
-                .ok_or(RendererError::InvalidOperation(
-                    "Renderer is not initialize.".to_string(),
+                .ok_or(RendererError::invalid_operation(
+                    "Renderer is not initialize.",
                 ))?;
         let window_surface =
             self.window_surface
                 .as_ref()
-                .ok_or(RendererError::InvalidOperation(
-                    "Renderer is not initialize.".to_string(),
+                .ok_or(RendererError::invalid_operation(
+                    "Renderer is not initialize.",
                 ))?;
 
         let physical_devices = unsafe { instance.enumerate_physical_devices()? };
@@ -1324,9 +1296,7 @@ impl VulkanRenderer {
         }
 
         if queue_families.is_empty() {
-            Err(RendererError::Fail(
-                "Requested device is not available.".to_string(),
-            ))
+            Err(RendererError::fail("Requested device is not available."))
         } else {
             Ok(queue_families)
         }
@@ -1345,12 +1315,10 @@ impl VulkanRenderer {
             )));
         }
 
-        let device_context =
-            self.device_context
-                .as_mut()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
 
         crate::renderers::thread_context::register(
             &THREAD_CONTEXT_INDEX,
@@ -1369,12 +1337,10 @@ impl VulkanRenderer {
     fn create_fences(&mut self) -> RendererResult<()> {
         self.destroy_fences()?;
 
-        let device_context =
-            self.device_context
-                .as_mut()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
         let fif = self.settings.frames_in_flight as usize;
 
         let fence_info = ash::vk::FenceCreateInfo::default();
@@ -1405,12 +1371,10 @@ impl VulkanRenderer {
     fn create_command_pools(&mut self) -> RendererResult<()> {
         self.destroy_command_pools()?;
 
-        let device_context =
-            self.device_context
-                .as_mut()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
         let fif = self.settings.frames_in_flight as usize;
         let thread_context_index = Self::thread_context_index()?;
 
@@ -1445,12 +1409,10 @@ impl VulkanRenderer {
     fn create_command_buffers(&mut self) -> RendererResult<()> {
         self.destroy_command_buffers()?;
 
-        let device_context =
-            self.device_context
-                .as_mut()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
         let fif = self.settings.frames_in_flight as usize;
         let thread_context_index = Self::thread_context_index()?;
 
@@ -1489,12 +1451,10 @@ impl VulkanRenderer {
 
         self.destroy_descriptor_pools()?;
 
-        let device_context =
-            self.device_context
-                .as_mut()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
         let fif = self.settings.frames_in_flight as usize;
         let thread_context_index = Self::thread_context_index()?;
 
@@ -1568,12 +1528,10 @@ impl VulkanRenderer {
         self.destroy_command_buffers()?;
         self.destroy_command_pools()?;
 
-        let device_context =
-            self.device_context
-                .as_mut()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
 
         crate::renderers::thread_context::unregister(
             &THREAD_CONTEXT_INDEX,
@@ -1585,12 +1543,10 @@ impl VulkanRenderer {
 
     /// Destroys the fences of the current thread if there are any.
     fn destroy_fences(&mut self) -> RendererResult<()> {
-        let device_context =
-            self.device_context
-                .as_mut()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
         let fif = self.settings.frames_in_flight as usize;
 
         let destroy_fence =
@@ -1627,12 +1583,10 @@ impl VulkanRenderer {
 
     /// Destroys the command pools of the current thread if there are any.
     fn destroy_command_pools(&mut self) -> RendererResult<()> {
-        let device_context =
-            self.device_context
-                .as_mut()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
         let fif = self.settings.frames_in_flight as usize;
         let thread_context_index = Self::thread_context_index()?;
 
@@ -1659,12 +1613,10 @@ impl VulkanRenderer {
 
     /// Destroys the command buffers of the current thread if there are any.
     fn destroy_command_buffers(&mut self) -> RendererResult<()> {
-        let device_context =
-            self.device_context
-                .as_mut()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
         let fif = self.settings.frames_in_flight as usize;
         let thread_context_index = Self::thread_context_index()?;
 
@@ -1692,12 +1644,10 @@ impl VulkanRenderer {
 
     /// Destroys the descriptor pools of the current thread if there are any.
     fn destroy_descriptor_pools(&mut self) -> RendererResult<()> {
-        let device_context =
-            self.device_context
-                .as_mut()
-                .ok_or(RendererError::InvalidOperation(
-                    "Device is not set.".to_string(),
-                ))?;
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
         let fif = self.settings.frames_in_flight as usize;
         let thread_context_index = Self::thread_context_index()?;
 
