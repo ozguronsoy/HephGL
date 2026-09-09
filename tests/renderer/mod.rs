@@ -15,9 +15,10 @@ use heph_gl::{
         Type::{Cpu, DiscreteGpu, IntegratedGpu, VirtualGpu},
     },
     renderers::{
-        BufferUsage, FeatureRequest, GpuBuffer, InitializeOptions, PipelineHandle, Renderer,
-        RendererError, RendererHandle, RendererWorkerFactory, ResourceBinding, ResourceBindingType,
-        Settings,
+        Renderer, concurrency::RendererHandle, concurrency::RendererWorkerFactory,
+        error::RendererError, resources::BufferUsage, resources::GpuBuffer,
+        resources::PipelineHandle, resources::ResourceBinding, resources::ResourceBindingType,
+        settings::FeatureRequest, settings::InitializeOptions, settings::Settings,
     },
     shader::ShaderSource,
 };
@@ -460,7 +461,7 @@ where
         }
     }
 
-    fn test_buffer<T>(data: &Vec<T>, usage: heph_gl::renderers::BufferUsage)
+    fn test_buffer<T>(data: &Vec<T>, usage: BufferUsage)
     where
         T: bytemuck::Pod + PartialEq + Default + Debug,
     {

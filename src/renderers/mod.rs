@@ -1,131 +1,20 @@
+pub mod concurrency;
+pub mod error;
+pub mod resources;
+pub mod settings;
 mod thread_context;
+
 pub mod vulkan;
 
-use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
 
-use crate::{graphics_device::GraphicsDevice, shader::ShaderSource};
-
-/// Represents the settings used throughout the lifetime of the renderer.
-#[derive(Debug, Clone, Copy)]
-pub struct Settings {
-    /// The maximum number of frames that can be processed concurrently by the
-    /// CPU and GPU.
-    pub frames_in_flight: u32,
-}
-
-/// Represents a request for a specific graphics feature, indicating whether it
-/// is strictly required.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct FeatureRequest {
-    /// The feature that is being requested.
-    pub feature: crate::graphics_device::Feature,
-    /// Indicates whether the graphics device must support the requested
-    /// feature.
-    pub required: bool,
-}
-
-/// Represents the options used while initializing the renderer.
-pub struct InitializeOptions<'a> {
-    /// The name of the application using the renderer.
-    pub app_name: &'a str,
-    /// Handle to the native window.
-    pub window_handle: RawWindowHandle,
-    /// Handle to the display device.
-    pub display_handle: RawDisplayHandle,
-}
-
-/// Represents a resource binding.
-#[derive(Debug, Clone, Copy)]
-pub struct ResourceBinding<B> {
-    /// The binding number specified in the shader (e.g., `layout(binding =
-    /// 0)`).
-    pub binding: u32,
-
-    /// The actual resource this slot binds to.
-    pub resource: ResourceBindingType<B>,
-}
-
-/// An opaque handle used for sharing the [`Renderer`] instance safely across threads.
-pub struct RendererHandle<T: Renderer> {
-    /// Raw pointer to the renderer instance.
-    p_renderer: usize,
-    _marker: std::marker::PhantomData<T>,
-}
-
-/// A scoped wrapper that manages the thread-local resources of a [`Renderer`].
-pub struct RendererWorker<T: Renderer> {
-    /// Raw pointer to the renderer instance.
-    p_renderer: usize,
-    /// The function used to release the thread-local resources.
-    uninitialize: fn(&mut T) -> RendererResult<()>,
-    _marker: std::marker::PhantomData<T>,
-}
-
-/// Defines the possible usages of a buffer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum BufferUsage {
-    /// The buffer is used to store general purpose data.
-    Storage,
-    /// The buffer is used to pass read-only data, such as transformation
-    /// matrices or material properties, to shaders.
-    Uniform,
-    /// The buffer is used to store vertex data for 3D geometry.
-    Vertex,
-    /// The buffer is used to store index data for drawing geometry.
-    Index,
-}
-
-/// Defines the types of resources being bound to a shader slot.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ResourceBindingType<BufferHandle> {
-    /// A block of GPU memory.
-    Buffer {
-        /// The handle referencing the allocated buffer.
-        handle: BufferHandle,
-        /// Specifies how the shader intends to use this buffer.
-        usage: BufferUsage,
-        /// The starting byte offset within the buffer where the binding begins.
-        offset: usize,
-        /// The size in bytes of the buffer region being bound.
-        size: usize,
-    },
-}
-
-pub enum PipelineHandle<G, C> {
-    Graphics(G),
-    Compute(C),
-}
-
-/// Defines the errors that may occur while using the renderer.
-#[derive(Debug, Clone)]
-pub enum RendererError {
-    /// An invalid app name is entered when initializing the renderer.
-    InvalidAppName,
-    /// An invalid argument was provided to a renderer function.
-    InvalidArgument(String),
-    /// An invalid or unsupported operation was attempted.
-    InvalidOperation(String),
-    /// A general error or failure occurred during a renderer operation.
-    Fail(String),
-    /// A requested feature marked as required is not supported by the physical
-    /// device.
-    UnsupportedRequiredFeature(crate::graphics_device::Feature),
-}
+use crate::{
+    graphics_device::GraphicsDevice, renderers::error::*, renderers::resources::*,
+    renderers::settings::*, shader::ShaderSource,
+};
 
 // Represents the result of a renderer operation.
 type RendererResult<T> = Result<T, RendererError>;
-
-/// Stores data in a GPU.
-pub trait GpuBuffer: std::fmt::Debug + Copy + Clone + Send + Sync {
-    fn size(&self) -> usize;
-}
-
-/// A factory for generating thread-specific rendering workers.
-pub trait RendererWorkerFactory<T: Renderer> {
-    /// Creates a [`RendererWorker`] for the current thread.
-    fn spawn_worker(&self) -> RendererResult<RendererWorker<T>>;
-}
 
 /// The core interface for a graphics renderer.
 pub trait Renderer {
@@ -253,124 +142,7 @@ pub trait Renderer {
     fn clear(&mut self, color: RGB<f32>) -> RendererResult<()>;
 }
 
-impl<T: Renderer> Copy for RendererHandle<T> {}
-impl<T: Renderer> Clone for RendererHandle<T> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-unsafe impl<T: Renderer> Send for RendererHandle<T> {}
-unsafe impl<T: Renderer> Sync for RendererHandle<T> {}
-impl<T: Renderer> From<&mut T> for RendererHandle<T> {
-    fn from(value: &mut T) -> Self {
-        Self {
-            p_renderer: (value as *mut T) as usize,
-            _marker: std::marker::PhantomData,
-        }
-    }
-}
-
-impl<T: Renderer> std::ops::Deref for RendererWorker<T> {
-    type Target = T;
-
-    fn deref(&self) -> &T {
-        unsafe { &*(self.p_renderer as *const T) }
-    }
-}
-impl<T: Renderer> std::ops::DerefMut for RendererWorker<T> {
-    fn deref_mut(&mut self) -> &mut T {
-        unsafe { &mut *(self.p_renderer as *mut T) }
-    }
-}
-impl<T: Renderer> Drop for RendererWorker<T> {
-    fn drop(&mut self) {
-        let result = (self.uninitialize)(unsafe { &mut *(self.p_renderer as *mut T) });
-        if let Err(e) = result {
-            eprintln!("Failed to uninitialze worker on drop: {}", e);
-        }
-    }
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            frames_in_flight: 1,
-        }
-    }
-}
-
-impl PartialEq for RendererError {
-    fn eq(&self, other: &Self) -> bool {
-        std::mem::discriminant(self) == std::mem::discriminant(other)
-    }
-}
-impl std::fmt::Display for RendererError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidAppName => {
-                write!(f, "Invalid application name provided.")
-            }
-            Self::InvalidArgument(err) => {
-                write!(f, "Invalid argument: {}", err)
-            }
-            Self::InvalidOperation(err) => {
-                write!(f, "Invalid operation: {}", err)
-            }
-            Self::Fail(err) => write!(f, "{}", err),
-            Self::UnsupportedRequiredFeature(feature) => {
-                write!(
-                    f,
-                    "Required hardware feature is not supported: {:?}",
-                    feature
-                )
-            }
-        }
-    }
-}
-impl std::error::Error for RendererError {}
-impl RendererError {
-    /// Creates a new `InvalidArgument` error from the provided message.
-    pub fn invalid_argument(msg: impl Into<String>) -> Self {
-        RendererError::InvalidArgument(msg.into())
-    }
-    /// Creates a new `InvalidOperation` error from the provided message.
-    pub fn invalid_operation(msg: impl Into<String>) -> Self {
-        RendererError::InvalidOperation(msg.into())
-    }
-    /// Creates a new `Fail` error from the provided message.
-    pub fn fail(msg: impl Into<String>) -> Self {
-        RendererError::Fail(msg.into())
-    }
-}
-
 /// Gets the maximum number of threads that can execute concurrently.
 pub const fn max_concurrent_threads() -> usize {
     crate::renderers::thread_context::thread_context_count()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::graphics_device::*;
-
-    #[test]
-    fn test_renderer_error_display() {
-        let err = RendererError::InvalidAppName;
-        assert_eq!(err.to_string(), "Invalid application name provided.");
-
-        let err = RendererError::InvalidArgument("bad_ptr".into());
-        assert_eq!(err.to_string(), "Invalid argument: bad_ptr");
-
-        let err = RendererError::InvalidOperation("wrong state".into());
-        assert_eq!(err.to_string(), "Invalid operation: wrong state");
-
-        let err = RendererError::Fail("generic crash".into());
-        assert_eq!(err.to_string(), "generic crash");
-
-        let err = RendererError::UnsupportedRequiredFeature(Feature::ComputeShaders);
-        assert_eq!(
-            err.to_string(),
-            "Required hardware feature is not supported: ComputeShaders"
-        );
-    }
 }

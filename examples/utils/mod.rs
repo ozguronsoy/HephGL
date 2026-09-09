@@ -67,7 +67,7 @@ impl ApplicationHandler for App {
         let mut renderer = ExampleRenderer::new();
 
         if self.init_renderer {
-            let init_options = heph_gl::renderers::InitializeOptions {
+            let init_options = heph_gl::renderers::settings::InitializeOptions {
                 app_name: &self.name,
                 window_handle,
                 display_handle,

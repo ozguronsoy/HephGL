@@ -1,5 +1,6 @@
 use crate::renderers::{
-    RendererHandle, RendererResult, RendererWorker, RendererWorkerFactory, vulkan::VulkanRenderer,
+    RendererResult, concurrency::RendererHandle, concurrency::RendererWorker,
+    concurrency::RendererWorkerFactory, vulkan::VulkanRenderer,
 };
 
 impl RendererWorkerFactory<VulkanRenderer> for RendererHandle<VulkanRenderer> {
