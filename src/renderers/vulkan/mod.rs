@@ -1358,11 +1358,6 @@ impl VulkanRenderer {
     /// Creates the swapchain, images, image views, semaphores, and the depth buffer for the
     /// renderer.
     fn create_swapchain(&mut self) -> RendererResult<()> {
-        // TODO: Add the options below to settings.
-        const VSYNC: bool = false;
-        const STEREOSCOPIC_3D_RENDERING: bool = false;
-        const DEFAULT_EXTENT: (u32, u32) = (1920, 1080);
-
         self.destroy_swapchain()?;
 
         let window_surface_loader =
@@ -1406,11 +1401,11 @@ impl VulkanRenderer {
         device_context.swapchain_context.extent =
             if surface_capabilities.current_extent.width == u32::MAX {
                 ash::vk::Extent2D {
-                    width: DEFAULT_EXTENT.0.clamp(
+                    width: self.settings.default_size.0.clamp(
                         surface_capabilities.min_image_extent.width,
                         surface_capabilities.max_image_extent.width,
                     ),
-                    height: DEFAULT_EXTENT.1.clamp(
+                    height: self.settings.default_size.1.clamp(
                         surface_capabilities.min_image_extent.height,
                         surface_capabilities.max_image_extent.height,
                     ),
@@ -1430,14 +1425,12 @@ impl VulkanRenderer {
                 surface_capabilities.max_image_count,
             ),
         };
-        let array_layer_count = match STEREOSCOPIC_3D_RENDERING {
-            true => 2.min(surface_capabilities.max_image_array_layers),
-            false => 1,
-        };
-
-        let image_view_type = match STEREOSCOPIC_3D_RENDERING {
-            true => ash::vk::ImageViewType::TYPE_2D_ARRAY,
-            false => ash::vk::ImageViewType::TYPE_2D,
+        let (array_layer_count, image_view_type) = match self.settings.stereoscopic_3d_rendering {
+            true => (
+                2.min(surface_capabilities.max_image_array_layers),
+                ash::vk::ImageViewType::TYPE_2D_ARRAY,
+            ),
+            false => (1, ash::vk::ImageViewType::TYPE_2D),
         };
 
         // Create the swapchain, image views, and semaphores.
@@ -1454,7 +1447,7 @@ impl VulkanRenderer {
                 .pre_transform(surface_capabilities.current_transform)
                 .composite_alpha(CompositeAlphaFlagsKHR::OPAQUE)
                 .present_mode(
-                    if !VSYNC && present_modes.contains(&PresentModeKHR::IMMEDIATE) {
+                    if self.settings.vsync && present_modes.contains(&PresentModeKHR::IMMEDIATE) {
                         PresentModeKHR::IMMEDIATE
                     } else {
                         PresentModeKHR::FIFO

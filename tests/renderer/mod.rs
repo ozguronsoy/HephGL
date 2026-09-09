@@ -424,6 +424,7 @@ where
     fn test_set_settings() {
         let settings = Settings {
             frames_in_flight: 10,
+            ..Default::default()
         };
 
         {
@@ -663,7 +664,10 @@ where
         );
         let mut renderer = create_renderer_result.unwrap();
 
-        let settings = Settings { frames_in_flight };
+        let settings = Settings {
+            frames_in_flight,
+            ..Default::default()
+        };
         heph_expect_success!(renderer.set_settings(settings));
 
         let shader_source = heph_expect_success!(ShaderSource::from_file(
