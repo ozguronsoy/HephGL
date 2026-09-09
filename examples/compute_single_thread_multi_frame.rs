@@ -44,6 +44,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     renderer
         .set_settings(Settings {
             frames_in_flight: FRAMES_IN_FLIGHT as u32,
+            ..Default::default()
         })
         .unwrap();
 

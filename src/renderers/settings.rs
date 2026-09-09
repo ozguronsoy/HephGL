@@ -4,6 +4,13 @@ pub struct Settings {
     /// The maximum number of frames that can be processed concurrently by the
     /// CPU and GPU.
     pub frames_in_flight: u32,
+    /// Indicates whether the vsync is enabled.
+    pub vsync: bool,
+    /// Indicates whether stereoscopic 3D rendering is enabled.
+    pub stereoscopic_3d_rendering: bool,
+    /// The size that will be used as fallback when the renderer fails to fetch the target window's
+    /// size.
+    pub default_size: (u32, u32),
 }
 
 /// Represents the options used while initializing the renderer.
@@ -31,6 +38,9 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             frames_in_flight: 1,
+            vsync: false,
+            stereoscopic_3d_rendering: false,
+            default_size: (1920, 1080),
         }
     }
 }
