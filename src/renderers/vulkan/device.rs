@@ -1,8 +1,9 @@
-use std::sync::Mutex;
-
 use crate::{
     graphics_device::GraphicsDevice,
-    renderers::{thread_context::ThreadContextMaskArray, vulkan::queue::QueueContext},
+    renderers::{
+        thread_context::ThreadContextMaskArray,
+        vulkan::{queue::QueueContext, swapchain::SwapchainContext},
+    },
 };
 
 /// Encapsulates the Vulkan device state.
@@ -20,11 +21,14 @@ pub struct DeviceContext {
     pub transfer_queue_context: Option<QueueContext>,
     pub compute_queue_context: Option<QueueContext>,
 
+    pub swapchain_context: SwapchainContext,
+
+    pub physical_device: ash::vk::PhysicalDevice,
     /// The logical Vulkan device.
     pub logical_device: ash::Device,
 
     /// The bitmasks indicating the availability of thread contexts.
     /// `0` means the context at that index is available, `1` means it is
     /// currently in use.
-    pub thread_context_masks: Mutex<ThreadContextMaskArray>,
+    pub thread_context_masks: std::sync::Mutex<ThreadContextMaskArray>,
 }
