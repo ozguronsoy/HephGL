@@ -25,6 +25,7 @@ fn example(
         // library of your choice (e.g., Winit, SDL).
         window_handle,
         display_handle,
+        api_version: InitializeOptions::LATEST_API_VERSION,
     };
     renderer.initialize(&init_options).unwrap();
 
