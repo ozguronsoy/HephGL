@@ -614,14 +614,14 @@ where
 
     fn test_excess_threads() {
         // This should exceed `RENDERER_MAX_CONCURRENT_THREADS`.
-        const THREAD_COUNT: usize = heph_gl::renderers::max_concurrent_threads() + 1;
+        let thread_count = heph_gl::renderers::max_concurrent_threads() + 1;
 
         let mut renderer = Self::create_renderer_with_any_device(&[]);
         let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);
         let fail_count = AtomicUsize::new(0);
         std::thread::scope(|s| {
-            let barrier = std::sync::Arc::new(std::sync::Barrier::new(THREAD_COUNT));
-            for _ in 1..THREAD_COUNT {
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(thread_count));
+            for _ in 1..thread_count {
                 let barrier = barrier.clone();
                 let fail_count_ref = &fail_count;
                 s.spawn(move || {
