@@ -23,8 +23,34 @@ impl std::fmt::Display for Version {
 /// Name of the HephGL engine.
 pub const HEPHGL_ENGINE_NAME: &std::ffi::CStr = c"HephGL";
 /// Current version of the HephGL engine.
-pub const HEPHGL_ENGINE_VERSION: Version = Version {
-    major: 0,
-    minor: 1,
-    patch: 0,
-};
+pub const HEPHGL_ENGINE_VERSION: Version = Version::new(0, 1, 0);
+
+impl Version {
+    /// Creates a new instance.
+    pub const fn new(major: u32, minor: u32, patch: u32) -> Self {
+        Self {
+            major,
+            minor,
+            patch,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_version() {
+        let expected = Version {
+            major: 1,
+            minor: 2,
+            patch: 3,
+        };
+        assert_eq!(Version::new(1, 2, 3), expected);
+        assert_eq!(
+            expected.to_string(),
+            format!("v{}.{}.{}", expected.major, expected.minor, expected.patch)
+        );
+    }
+}

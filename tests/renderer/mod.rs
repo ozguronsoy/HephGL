@@ -10,15 +10,17 @@ use std::{
 };
 
 use heph_gl::{
+    Version,
     graphics_device::{
         Feature, GraphicsDevice,
         Type::{Cpu, DiscreteGpu, IntegratedGpu, VirtualGpu},
     },
     renderers::{
-        Renderer, concurrency::RendererHandle, concurrency::RendererWorkerFactory,
-        error::RendererError, resources::BufferUsage, resources::GpuBuffer,
-        resources::PipelineHandle, resources::ResourceBinding, resources::ResourceBindingType,
-        settings::FeatureRequest, settings::InitializeOptions, settings::Settings,
+        Renderer,
+        concurrency::{RendererHandle, RendererWorkerFactory},
+        error::RendererError,
+        resources::{BufferUsage, GpuBuffer, PipelineHandle, ResourceBinding, ResourceBindingType},
+        settings::{FeatureRequest, InitializeOptions, Settings},
     },
     shader::ShaderSource,
 };
@@ -243,6 +245,7 @@ where
             app_name: app_name.as_str(),
             window_handle: test_env.raw_window_handle(),
             display_handle: test_env.raw_display_handle(),
+            api_version: InitializeOptions::LATEST_API_VERSION,
         }));
         renderer
     }
@@ -297,6 +300,7 @@ where
             app_name: "\0",
             window_handle: test_env.raw_window_handle(),
             display_handle: test_env.raw_display_handle(),
+            api_version: InitializeOptions::LATEST_API_VERSION,
         }));
     }
 
@@ -308,6 +312,7 @@ where
                 app_name: "",
                 window_handle: test_env.raw_window_handle(),
                 display_handle: test_env.raw_display_handle(),
+                api_version: InitializeOptions::LATEST_API_VERSION,
             };
             heph_expect_success!(renderer.initialize(&init_options));
             heph_expect_err!(
@@ -323,7 +328,23 @@ where
             let init_options = InitializeOptions {
                 app_name: "",
                 window_handle: test_env.raw_window_handle(),
+                display_handle: test_env.raw_display_handle(),
+                api_version: Some(Version::new(u32::MAX, u32::MAX, u32::MAX)),
+            };
+            heph_expect_err!(
+                renderer.initialize(&init_options),
+                RendererError::invalid_argument("")
+            );
+        }
+
+        {
+            let test_env = test_env!();
+            let mut renderer = TestRenderer::new();
+            let init_options = InitializeOptions {
+                app_name: "",
+                window_handle: test_env.raw_window_handle(),
                 display_handle: dummy_display_handle!(),
+                api_version: InitializeOptions::LATEST_API_VERSION,
             };
             heph_expect_err!(renderer.initialize(&init_options));
         }
@@ -335,6 +356,7 @@ where
                 app_name: "",
                 window_handle: dummy_window_handle!(),
                 display_handle: test_env.raw_display_handle(),
+                api_version: InitializeOptions::LATEST_API_VERSION,
             };
             heph_expect_err!(renderer.initialize(&init_options));
         }
@@ -345,6 +367,7 @@ where
                 app_name: "",
                 window_handle: dummy_window_handle!(),
                 display_handle: dummy_display_handle!(),
+                api_version: InitializeOptions::LATEST_API_VERSION,
             };
             heph_expect_err!(renderer.initialize(&init_options));
         }
@@ -558,6 +581,7 @@ where
                         app_name: "",
                         window_handle: dummy_window_handle!(),
                         display_handle: dummy_display_handle!(),
+                        api_version: InitializeOptions::LATEST_API_VERSION,
                     }),
                     RendererError::invalid_operation("")
                 );

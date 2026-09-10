@@ -3,7 +3,7 @@ use heph_gl::{
         GraphicsDevice,
         Type::{DiscreteGpu, IntegratedGpu},
     },
-    renderers::*,
+    renderers::{settings::InitializeOptions, *},
 };
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use winit::{
@@ -67,10 +67,11 @@ impl ApplicationHandler for App {
         let mut renderer = ExampleRenderer::new();
 
         if self.init_renderer {
-            let init_options = heph_gl::renderers::settings::InitializeOptions {
+            let init_options = InitializeOptions {
                 app_name: &self.name,
                 window_handle,
                 display_handle,
+                api_version: InitializeOptions::LATEST_API_VERSION,
             };
             renderer.initialize(&init_options).unwrap();
         }

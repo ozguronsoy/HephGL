@@ -3,6 +3,7 @@ pub mod error;
 pub mod resources;
 pub mod settings;
 mod thread_context;
+pub mod version;
 
 pub mod vulkan;
 

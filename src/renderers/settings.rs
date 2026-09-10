@@ -21,6 +21,9 @@ pub struct InitializeOptions<'a> {
     pub window_handle: raw_window_handle::RawWindowHandle,
     /// Handle to the display device.
     pub display_handle: raw_window_handle::RawDisplayHandle,
+    /// The underlying backend's API version. Set this to `None` for using the latest available
+    /// version.
+    pub api_version: Option<crate::Version>,
 }
 
 /// Represents a request for a specific graphics feature, indicating whether it
@@ -43,4 +46,10 @@ impl Default for Settings {
             default_size: (1920, 1080),
         }
     }
+}
+
+impl<'a> InitializeOptions<'a> {
+    /// Represents an automatic version selection. When used, the renderer will initialize with the
+    /// latest API version supported by the current hardware.
+    pub const LATEST_API_VERSION: Option<crate::Version> = None;
 }

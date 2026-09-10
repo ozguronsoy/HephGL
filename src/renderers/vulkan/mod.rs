@@ -5,6 +5,7 @@ mod handle;
 mod queue;
 pub mod resources;
 mod swapchain;
+mod version;
 
 use std::{
     collections::{HashMap, HashSet},
@@ -37,12 +38,14 @@ use crate::{
         BufferUsage, FeatureRequest, InitializeOptions, PipelineHandle, Renderer, RendererError,
         RendererResult, ResourceBinding, ResourceBindingType, Settings,
         thread_context::{ThreadContextIndex, ThreadContextMask},
+        version::DriverVersion,
         vulkan::{
             device::DeviceContext,
             frame::Frame,
             queue::{QueueContext, QueueFamily, QueueType},
             resources::*,
             swapchain::SwapchainContext,
+            version::VulkanApiVersion,
         },
     },
     shader::ShaderSource,
@@ -60,6 +63,7 @@ pub struct VulkanRenderer {
 
     entry: Option<ash::Entry>,
     instance: Option<ash::Instance>,
+    api_version: u32,
 
     window_surface: Option<SurfaceKHR>,
     window_surface_loader: Option<ash::khr::surface::Instance>,
@@ -84,6 +88,7 @@ impl Renderer for VulkanRenderer {
 
             entry: None,
             instance: None,
+            api_version: ash::vk::make_api_version(0, 1, 0, 0),
 
             window_surface: None,
             window_surface_loader: None,
@@ -159,7 +164,28 @@ impl Renderer for VulkanRenderer {
 
         // Create instance.
 
+        let entry = unsafe { ash::Entry::load()? };
+        let supported_max_version = match unsafe { entry.try_enumerate_instance_version()? } {
+            Some(v) => VulkanApiVersion(v).into(),
+            None => Version {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+        };
+        let requested_api_version = match options.api_version {
+            Some(v) => v,
+            None => supported_max_version,
+        };
+        if requested_api_version > supported_max_version {
+            return Err(RendererError::InvalidArgument(format!(
+                "Requested Vulkan API version '{}' exceeds the maximum supported version ('{}').",
+                requested_api_version, supported_max_version
+            )));
+        }
+
         let c_app_name = CString::new(options.app_name)?;
+        self.api_version = VulkanApiVersion::from(requested_api_version).0;
         let app_info = ApplicationInfo {
             s_type: StructureType::APPLICATION_INFO,
             p_engine_name: HEPHGL_ENGINE_NAME.as_ptr(),
@@ -170,11 +196,9 @@ impl Renderer for VulkanRenderer {
                 HEPHGL_ENGINE_VERSION.minor,
                 HEPHGL_ENGINE_VERSION.patch,
             ),
-            api_version: VulkanRenderer::VK_API_VERSION,
+            api_version: self.api_version,
             ..Default::default()
         };
-
-        let entry = unsafe { ash::Entry::load()? };
 
         let create_flags = if cfg!(target_os = "macos") {
             ash::vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR
@@ -316,12 +340,12 @@ impl Renderer for VulkanRenderer {
             let device_vendor_id = properties2.properties.vendor_id;
             let device_id = properties2.properties.device_id;
 
-            let device_api_version =
-                VulkanRenderer::vk_api_version_to_heph_version(properties2.properties.api_version);
-            let device_driver_version = VulkanRenderer::vk_driver_version_to_heph_version(
-                GraphicsDevice::vendor_from_id(properties2.properties.vendor_id),
+            let device_api_version = VulkanApiVersion(properties2.properties.api_version).into();
+            let device_driver_version = DriverVersion::new(
                 properties2.properties.driver_version,
-            );
+                GraphicsDevice::vendor_from_id(properties2.properties.vendor_id),
+            )
+            .into();
 
             // VRAM is the sum of the sizes of all DEVICE_LOCAL heaps
             let mut device_vram: u64 = 0;
@@ -583,7 +607,7 @@ impl Renderer for VulkanRenderer {
 
         let mut allocator_create_info =
             vk_mem::AllocatorCreateInfo::new(instance, &logical_device, physical_device);
-        allocator_create_info.vulkan_api_version = VulkanRenderer::VK_API_VERSION;
+        allocator_create_info.vulkan_api_version = self.api_version;
         let vma_allocator = unsafe { vk_mem::Allocator::new(allocator_create_info)? };
 
         self.device_context = Some(DeviceContext {
@@ -1195,9 +1219,6 @@ impl Drop for VulkanRenderer {
 }
 
 impl VulkanRenderer {
-    /// The Vulkan API version used internally.
-    // TODO: Get this from the user.
-    const VK_API_VERSION: u32 = ash::vk::make_api_version(0, 1, 4, 0);
     const MAX_TIMEOUT_NS: u64 = 1.0e9 as u64;
 
     /// Checks whether the call is being made from the main thread. If not,
@@ -1215,41 +1236,6 @@ impl VulkanRenderer {
     /// Gets the current thread's context index.
     fn thread_context_index() -> RendererResult<usize> {
         THREAD_CONTEXT_INDEX.with(|index| index.try_get())
-    }
-
-    /// Converts the Vulkan API version to `crate::Version`.
-    fn vk_api_version_to_heph_version(vk_api_version: u32) -> Version {
-        Version {
-            major: ash::vk::api_version_major(vk_api_version),
-            minor: ash::vk::api_version_minor(vk_api_version),
-            patch: ash::vk::api_version_patch(vk_api_version),
-        }
-    }
-
-    /// Converts the Vulkan driver version to `crate::Version`.
-    fn vk_driver_version_to_heph_version(
-        vk_vendor: crate::graphics_device::Vendor,
-        vk_driver_version: u32,
-    ) -> Version {
-        match vk_vendor {
-            crate::graphics_device::Vendor::Nvidia => Version {
-                major: (vk_driver_version >> 22) & 0x3FF,
-                minor: (vk_driver_version >> 14) & 0x0FF,
-                patch: (vk_driver_version >> 6) & 0x0FF,
-            },
-
-            crate::graphics_device::Vendor::Intel => Version {
-                major: vk_driver_version >> 14,
-                minor: vk_driver_version & 0x3FFF,
-                patch: 0,
-            },
-
-            _ => Version {
-                major: ash::vk::api_version_major(vk_driver_version),
-                minor: ash::vk::api_version_minor(vk_driver_version),
-                patch: ash::vk::api_version_patch(vk_driver_version),
-            },
-        }
     }
 
     /// Populates the internal queue family info for each available device.
