@@ -71,13 +71,13 @@ mod tests {
         let err = RendererError::InvalidAppName;
         assert_eq!(err.to_string(), "Invalid application name provided.");
 
-        let err = RendererError::InvalidArgument("bad_ptr".into());
+        let err = RendererError::invalid_argument("bad_ptr");
         assert_eq!(err.to_string(), "Invalid argument: bad_ptr");
 
-        let err = RendererError::InvalidOperation("wrong state".into());
+        let err = RendererError::invalid_operation("wrong state");
         assert_eq!(err.to_string(), "Invalid operation: wrong state");
 
-        let err = RendererError::Fail("generic crash".into());
+        let err = RendererError::fail("generic crash");
         assert_eq!(err.to_string(), "generic crash");
 
         let err = RendererError::UnsupportedRequiredFeature(Feature::ComputeShaders);
