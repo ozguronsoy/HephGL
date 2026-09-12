@@ -38,7 +38,8 @@ pub trait Renderer {
     /// Represents an automatic version selection. When used, the renderer will initialize with the
     /// latest API version supported by the current hardware.
     const LATEST_API_VERSION: Option<crate::Version> = None;
-    /// Indicates the default graphics device used in the current system.
+    /// Represents an automatic device selection. When used, the renderer will set the default
+    /// graphics device used in the current system.
     const DEFAULT_DEVICE: Option<&GraphicsDevice> = None;
 
     /// Creates an uninitialized instance of the renderer.
