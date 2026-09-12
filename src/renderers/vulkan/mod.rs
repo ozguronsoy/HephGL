@@ -63,7 +63,7 @@ pub struct VulkanRenderer {
 
     entry: Option<ash::Entry>,
     instance: Option<ash::Instance>,
-    api_version: u32,
+    api_version: Version,
 
     window_surface: Option<SurfaceKHR>,
     window_surface_loader: Option<ash::khr::surface::Instance>,
@@ -81,6 +81,8 @@ impl Renderer for VulkanRenderer {
     type ResourceSetHandle = VulkanResourceSet;
     type RecordedCommand = VulkanRecordedCommand;
 
+    const MIN_SUPPORTED_API_VERSION: Version = Version::new(1, 0, 0);
+
     fn new() -> Self {
         Self {
             settings: Settings::default(),
@@ -88,7 +90,7 @@ impl Renderer for VulkanRenderer {
 
             entry: None,
             instance: None,
-            api_version: ash::vk::make_api_version(0, 1, 0, 0),
+            api_version: Self::MIN_SUPPORTED_API_VERSION,
 
             window_surface: None,
             window_surface_loader: None,
@@ -167,11 +169,7 @@ impl Renderer for VulkanRenderer {
         let entry = unsafe { ash::Entry::load()? };
         let supported_max_version = match unsafe { entry.try_enumerate_instance_version()? } {
             Some(v) => VulkanApiVersion(v).into(),
-            None => Version {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
+            None => Self::MIN_SUPPORTED_API_VERSION,
         };
         let requested_api_version = match options.api_version {
             Some(v) => v,
@@ -182,10 +180,16 @@ impl Renderer for VulkanRenderer {
                 "Requested Vulkan API version '{}' exceeds the maximum supported version ('{}').",
                 requested_api_version, supported_max_version
             )));
+        } else if requested_api_version < Self::MIN_SUPPORTED_API_VERSION {
+            return Err(RendererError::InvalidArgument(format!(
+                "Requested Vulkan API version '{}' falls below the minimum supported version ('{}').",
+                requested_api_version,
+                Self::MIN_SUPPORTED_API_VERSION
+            )));
         }
 
         let c_app_name = CString::new(options.app_name)?;
-        self.api_version = VulkanApiVersion::from(requested_api_version).0;
+        self.api_version = requested_api_version;
         let app_info = ApplicationInfo {
             s_type: StructureType::APPLICATION_INFO,
             p_engine_name: HEPHGL_ENGINE_NAME.as_ptr(),
@@ -196,7 +200,7 @@ impl Renderer for VulkanRenderer {
                 HEPHGL_ENGINE_VERSION.minor,
                 HEPHGL_ENGINE_VERSION.patch,
             ),
-            api_version: self.api_version,
+            api_version: VulkanApiVersion::from(self.api_version).0,
             ..Default::default()
         };
 
@@ -570,10 +574,20 @@ impl Renderer for VulkanRenderer {
             physical_features2.features.sampler_anisotropy = ash::vk::TRUE;
         }
 
+        let mut vulkan_12_features = ash::vk::PhysicalDeviceVulkan12Features::default();
+        let mut vulkan_13_features = ash::vk::PhysicalDeviceVulkan13Features::default();
         let mut device_create_info = DeviceCreateInfo::default()
             .queue_create_infos(&queue_create_infos)
             .enabled_extension_names(&device_extension_names);
-        device_create_info.p_next = &physical_features2 as *const _ as *const std::ffi::c_void;
+        if self.api_version >= Version::new(1, 2, 0) {
+            vulkan_12_features.timeline_semaphore = ash::vk::TRUE;
+            device_create_info = device_create_info.push_next(&mut vulkan_12_features);
+        }
+        if self.api_version >= Version::new(1, 3, 0) {
+            vulkan_13_features.dynamic_rendering = ash::vk::TRUE;
+            device_create_info = device_create_info.push_next(&mut vulkan_13_features);
+        }
+        device_create_info = device_create_info.push_next(&mut physical_features2);
         let logical_device =
             unsafe { instance.create_device(physical_device, &device_create_info, None)? };
 
@@ -607,7 +621,7 @@ impl Renderer for VulkanRenderer {
 
         let mut allocator_create_info =
             vk_mem::AllocatorCreateInfo::new(instance, &logical_device, physical_device);
-        allocator_create_info.vulkan_api_version = self.api_version;
+        allocator_create_info.vulkan_api_version = VulkanApiVersion::from(self.api_version).0;
         let vma_allocator = unsafe { vk_mem::Allocator::new(allocator_create_info)? };
 
         self.device_context = Some(DeviceContext {

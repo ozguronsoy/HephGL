@@ -32,7 +32,14 @@ pub trait Renderer {
     /// Represents a recorded command.
     type RecordedCommand: Copy + Clone + Send + Sync;
 
-    /// Indicates the default graphics device used in current system.
+    /// The minimum supported API version by the backend. Initializing a renderer with an earlier
+    /// API version will result in an error.
+    const MIN_SUPPORTED_API_VERSION: crate::Version;
+    /// Represents an automatic version selection. When used, the renderer will initialize with the
+    /// latest API version supported by the current hardware.
+    const LATEST_API_VERSION: Option<crate::Version> = None;
+    /// Represents an automatic device selection. When used, the renderer will set the default
+    /// graphics device used in the current system.
     const DEFAULT_DEVICE: Option<&GraphicsDevice> = None;
 
     /// Creates an uninitialized instance of the renderer.

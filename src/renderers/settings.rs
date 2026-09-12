@@ -47,9 +47,3 @@ impl Default for Settings {
         }
     }
 }
-
-impl<'a> InitializeOptions<'a> {
-    /// Represents an automatic version selection. When used, the renderer will initialize with the
-    /// latest API version supported by the current hardware.
-    pub const LATEST_API_VERSION: Option<crate::Version> = None;
-}

@@ -245,7 +245,7 @@ where
             app_name: app_name.as_str(),
             window_handle: test_env.raw_window_handle(),
             display_handle: test_env.raw_display_handle(),
-            api_version: InitializeOptions::LATEST_API_VERSION,
+            api_version: TestRenderer::LATEST_API_VERSION,
         }));
         renderer
     }
@@ -300,7 +300,7 @@ where
             app_name: "\0",
             window_handle: test_env.raw_window_handle(),
             display_handle: test_env.raw_display_handle(),
-            api_version: InitializeOptions::LATEST_API_VERSION,
+            api_version: TestRenderer::LATEST_API_VERSION,
         }));
     }
 
@@ -312,7 +312,7 @@ where
                 app_name: "",
                 window_handle: test_env.raw_window_handle(),
                 display_handle: test_env.raw_display_handle(),
-                api_version: InitializeOptions::LATEST_API_VERSION,
+                api_version: TestRenderer::LATEST_API_VERSION,
             };
             heph_expect_success!(renderer.initialize(&init_options));
             heph_expect_err!(
@@ -320,6 +320,21 @@ where
                 RendererError::invalid_operation("")
             );
             heph_expect_success!(renderer.uninitialize());
+        }
+
+        {
+            let test_env = test_env!();
+            let mut renderer = TestRenderer::new();
+            let init_options = InitializeOptions {
+                app_name: "",
+                window_handle: test_env.raw_window_handle(),
+                display_handle: test_env.raw_display_handle(),
+                api_version: Some(Version::new(u32::MIN, u32::MIN, u32::MIN)),
+            };
+            heph_expect_err!(
+                renderer.initialize(&init_options),
+                RendererError::invalid_argument("")
+            );
         }
 
         {
@@ -344,7 +359,7 @@ where
                 app_name: "",
                 window_handle: test_env.raw_window_handle(),
                 display_handle: dummy_display_handle!(),
-                api_version: InitializeOptions::LATEST_API_VERSION,
+                api_version: TestRenderer::LATEST_API_VERSION,
             };
             heph_expect_err!(renderer.initialize(&init_options));
         }
@@ -356,7 +371,7 @@ where
                 app_name: "",
                 window_handle: dummy_window_handle!(),
                 display_handle: test_env.raw_display_handle(),
-                api_version: InitializeOptions::LATEST_API_VERSION,
+                api_version: TestRenderer::LATEST_API_VERSION,
             };
             heph_expect_err!(renderer.initialize(&init_options));
         }
@@ -367,7 +382,7 @@ where
                 app_name: "",
                 window_handle: dummy_window_handle!(),
                 display_handle: dummy_display_handle!(),
-                api_version: InitializeOptions::LATEST_API_VERSION,
+                api_version: TestRenderer::LATEST_API_VERSION,
             };
             heph_expect_err!(renderer.initialize(&init_options));
         }
@@ -581,7 +596,7 @@ where
                         app_name: "",
                         window_handle: dummy_window_handle!(),
                         display_handle: dummy_display_handle!(),
-                        api_version: InitializeOptions::LATEST_API_VERSION,
+                        api_version: TestRenderer::LATEST_API_VERSION,
                     }),
                     RendererError::invalid_operation("")
                 );
