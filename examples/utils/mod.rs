@@ -71,7 +71,7 @@ impl ApplicationHandler for App {
                 app_name: &self.name,
                 window_handle,
                 display_handle,
-                api_version: InitializeOptions::LATEST_API_VERSION,
+                api_version: ExampleRenderer::LATEST_API_VERSION,
             };
             renderer.initialize(&init_options).unwrap();
         }
