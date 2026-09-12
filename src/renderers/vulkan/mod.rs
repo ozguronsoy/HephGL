@@ -101,6 +101,21 @@ impl Renderer for VulkanRenderer {
         }
     }
 
+    fn latest_api_version(&self) -> RendererResult<Version> {
+        let enumerate_instance_version = |entry: &ash::Entry| -> RendererResult<Version> {
+            Ok(match unsafe { entry.try_enumerate_instance_version()? } {
+                Some(v) => VulkanApiVersion(v).into(),
+                None => Self::MIN_SUPPORTED_API_VERSION,
+            })
+        };
+
+        if let Some(entry) = &self.entry {
+            enumerate_instance_version(entry)
+        } else {
+            unsafe { enumerate_instance_version(&ash::Entry::load()?) }
+        }
+    }
+
     fn get_settings(&self) -> &Settings {
         &self.settings
     }

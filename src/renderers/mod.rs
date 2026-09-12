@@ -45,6 +45,14 @@ pub trait Renderer {
     /// Creates an uninitialized instance of the renderer.
     fn new() -> Self;
 
+    /// Gets the latest API version supported by the current hardware.
+    fn latest_api_version(&self) -> RendererResult<crate::Version>;
+    /// Checks whether the `api_version` is supported by the current hardware.
+    fn is_api_version_supported(&self, api_version: crate::Version) -> RendererResult<bool> {
+        Ok(api_version > Self::MIN_SUPPORTED_API_VERSION
+            && api_version < self.latest_api_version()?)
+    }
+
     /// Returns the current settings used by the renderer.
     fn get_settings(&self) -> &Settings;
     /// Updates the settings.
