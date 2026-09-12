@@ -169,11 +169,7 @@ impl Renderer for VulkanRenderer {
         let entry = unsafe { ash::Entry::load()? };
         let supported_max_version = match unsafe { entry.try_enumerate_instance_version()? } {
             Some(v) => VulkanApiVersion(v).into(),
-            None => Version {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
+            None => Self::MIN_SUPPORTED_API_VERSION,
         };
         let requested_api_version = match options.api_version {
             Some(v) => v,
