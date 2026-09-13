@@ -110,7 +110,6 @@ cargo nextest run
 
 Generating code coverage reports
 ```bash
-cargo llvm-cov --lib
 cargo llvm-cov nextest
 ```
 
