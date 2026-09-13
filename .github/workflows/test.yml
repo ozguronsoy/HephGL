@@ -72,10 +72,7 @@ jobs:
           nextest: true
           llvm-cov: true
 
-      - name: Run Unit Tests Coverage
-        run: cargo llvm-cov --lib
-
-      - name: Run Integration Tests Coverage
+      - name: Run Code Coverage
         shell: bash
         run: $HEPHGL_GUI_PREFIX cargo llvm-cov nextest
 
