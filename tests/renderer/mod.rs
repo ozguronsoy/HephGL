@@ -54,7 +54,7 @@ macro_rules! define_renderer_test_flags {
         $($tfn:ident),* $(,)?
     ) => {
         paste::paste! {
-            #[derive(Default)]
+            #[derive(Default, Clone, Copy)]
             pub struct RendererTestFlags {
                 /// Skips all tests.
                 pub skip_all_tests: bool,
@@ -102,21 +102,44 @@ define_renderer_test_flags!(
     test_clear
 );
 
+#[derive(Clone, Copy)]
+pub struct RendererVersionedTestSuite {
+    /// The API version the renderer will use for the current test suite.
+    pub api_version: Option<Version>,
+    /// The flags of the current test suite.
+    pub flags: RendererTestFlags,
+}
+
 pub struct RendererTests<TestRenderer: Renderer> {
+    api_version: Option<Version>,
     _marker: PhantomData<TestRenderer>,
+}
+
+impl RendererVersionedTestSuite {
+    fn version_string(&self) -> String {
+        if let Some(api_version) = self.api_version {
+            api_version.to_string().to_uppercase()
+        } else {
+            "LATEST VERSION".to_string()
+        }
+    }
 }
 
 impl<TestRenderer: Renderer> RendererTests<TestRenderer>
 where
     RendererHandle<TestRenderer>: RendererWorkerFactory<TestRenderer>,
 {
+    fn new(api_version: Option<Version>) -> Self {
+        Self {
+            api_version,
+            _marker: PhantomData,
+        }
+    }
+
     // We use nextest and libtest-mimic to run each test on the main thread of its
     // own process. This allows us to avoid "event loop creation in a worker thread"
     // errors.
-    pub fn run(flags: RendererTestFlags) -> ExitCode {
-        if flags.skip_all_tests {
-            return ExitCode::SUCCESS;
-        }
+    pub fn run(versioned_test_suites: &[RendererVersionedTestSuite]) -> ExitCode {
         if std::env::var("NEXTEST").is_err() {
             println!("Skipping integration tests, run via `cargo nextest run` instead.");
             return ExitCode::SUCCESS;
@@ -125,7 +148,7 @@ where
         let args = Arguments::from_args();
 
         let device_type_exists = |device_type: heph_gl::graphics_device::Type| -> bool {
-            let renderer = Self::create_renderer();
+            let renderer = Self::new(TestRenderer::LATEST_API_VERSION).create_renderer();
             let devices = heph_expect_success!(renderer.enumerate_devices());
             devices
                 .iter()
@@ -139,105 +162,168 @@ where
         let skip_other_device_tests = !device_type_exists(heph_gl::graphics_device::Type::Other);
 
         macro_rules! create_trial {
-            ($tfn:ident) => {
-                create_trial!($tfn, false)
+            ($versioned_test_suite:ident, $tfn:ident) => {
+                create_trial!($versioned_test_suite, $tfn, false)
             };
-            ($tfn:ident, $skip:expr) => {
+            ($versioned_test_suite:ident, $tfn:ident, $skip:expr) => {
                 paste::paste! {
-                    Trial::test(stringify!($tfn), move || {
-                        let result = std::panic::catch_unwind(|| {
-                            (Self::$tfn)();
-                        });
+                    {
+                        let versioned_test_suite = $versioned_test_suite.clone();
+                        let test_name = format!(
+                            "[{}] {}",
+                            versioned_test_suite.version_string(),
+                            stringify!($tfn)
+                        );
+                        Trial::test(test_name, move || {
+                            let result = std::panic::catch_unwind(|| {
+                                Self::new(versioned_test_suite.api_version).$tfn();
+                            });
 
-                        let todo = flags.[<todo_ $tfn>];
-                        let unimplemented = flags.[<unimplemented_ $tfn>];
-                        if todo || unimplemented {
-                            assert!(result.is_err(), "{} was expected to panic", stringify!($tfn));
-                            let panic = result.err().unwrap();
-                            let panic_msg = panic.downcast_ref::<&str>()
-                                                .copied()
-                                                .or_else(||
-                                                    panic
-                                                    .downcast_ref::<String>()
-                                                    .map(String::as_str)
-                                                ).unwrap_or("");
-                            if todo {
+                            let todo = versioned_test_suite.flags.[<todo_ $tfn>];
+                            let unimplemented = versioned_test_suite.flags.[<unimplemented_ $tfn>];
+                            if todo || unimplemented {
                                 assert!(
-                                    panic_msg.contains("not yet implemented"),
-                                    "unexpected panic: {panic_msg}"
+                                    result.is_err(),
+                                    "{} was expected to panic",
+                                    stringify!($tfn)
                                 );
-                            }
-                            else if unimplemented {
-                                assert!(
-                                    panic_msg.contains("not implemented"),
-                                    "unexpected panic: {panic_msg}"
-                                );
+                                let panic = result.err().unwrap();
+                                let panic_msg = panic.downcast_ref::<&str>()
+                                                    .copied()
+                                                    .or_else(||
+                                                        panic
+                                                        .downcast_ref::<String>()
+                                                        .map(String::as_str)
+                                                    ).unwrap_or("");
+                                if todo {
+                                    assert!(
+                                        panic_msg.contains("not yet implemented"),
+                                        "unexpected panic: {panic_msg}"
+                                    );
+                                }
+                                else if unimplemented {
+                                    assert!(
+                                        panic_msg.contains("not implemented"),
+                                        "unexpected panic: {panic_msg}"
+                                    );
+                                } else {
+                                    panic!("Unhandled renderer test setting flag");
+                                }
                             } else {
-                                panic!("Unhandled renderer test setting flag");
+                                if let Err(err) = result {
+                                    std::panic::resume_unwind(err);
+                                }
                             }
-                        } else {
-                            if let Err(err) = result {
-                                std::panic::resume_unwind(err);
-                            }
-                        }
 
-                        Ok(())
-                    })
-                    .with_ignored_flag(flags.[<skip_ $tfn>] || $skip)
+                            Ok(())
+                        })
+                        .with_ignored_flag(
+                            versioned_test_suite.flags.skip_all_tests ||
+                            versioned_test_suite.flags.[<skip_ $tfn>] ||
+                            $skip
+                        )
+                    }
                 }
             };
         }
 
-        let tests = vec![
-            create_trial!(test_invalid_app_name),
-            create_trial!(test_initialize_renderer),
-            create_trial!(test_enumerate_devices),
-            create_trial!(test_set_device),
-            create_trial!(test_set_settings),
-            create_trial!(test_uniform_buffer),
-            create_trial!(test_storage_buffer),
-            create_trial!(test_index_buffer),
-            create_trial!(test_vertex_buffer),
-            create_trial!(test_impossible_buffer_size),
-            create_trial!(test_shader),
-            create_trial!(test_calling_main_thread_only_fn_from_worker_thread),
-            create_trial!(test_multiple_workers_per_thread),
-            create_trial!(test_excess_threads),
-            create_trial!(
-                test_single_threaded_compute_discrete_gpu,
-                skip_discrete_gpu_device_tests
-            ),
-            create_trial!(
-                test_single_threaded_compute_integrated_gpu,
-                skip_integrated_gpu_device_tests
-            ),
-            create_trial!(test_single_threaded_compute_cpu, skip_cpu_device_tests),
-            create_trial!(
-                test_single_threaded_compute_virtual_gpu,
-                skip_virtual_gpu_device_tests
-            ),
-            create_trial!(test_single_threaded_compute_other, skip_other_device_tests),
-            create_trial!(
-                test_multi_threaded_compute_discrete_gpu,
-                skip_discrete_gpu_device_tests
-            ),
-            create_trial!(
-                test_multi_threaded_compute_integrated_gpu,
-                skip_integrated_gpu_device_tests
-            ),
-            create_trial!(test_multi_threaded_compute_cpu, skip_cpu_device_tests),
-            create_trial!(
-                test_multi_threaded_compute_virtual_gpu,
-                skip_virtual_gpu_device_tests
-            ),
-            create_trial!(test_multi_threaded_compute_other, skip_other_device_tests),
-            create_trial!(test_clear),
-        ];
+        let renderer = TestRenderer::new();
+        let latest_api_version = renderer
+            .latest_api_version()
+            .unwrap_or(TestRenderer::MIN_SUPPORTED_API_VERSION);
+        let mut tests = Vec::new();
+        let mut api_versions = Vec::new();
+        for mut versioned_test_suite in versioned_test_suites.iter().copied() {
+            let api_version = match versioned_test_suite.api_version {
+                Some(api_version) => Version::new(api_version.major, api_version.minor, 0),
+                None => Version::new(latest_api_version.major, latest_api_version.minor, 0),
+            };
+            if api_versions.contains(&api_version) {
+                continue;
+            }
+            api_versions.push(api_version);
+            versioned_test_suite.flags.skip_all_tests = !renderer
+                .is_api_version_supported(api_version)
+                .unwrap_or(false);
+
+            let mut test_suite = vec![
+                create_trial!(versioned_test_suite, test_invalid_app_name),
+                create_trial!(versioned_test_suite, test_initialize_renderer),
+                create_trial!(versioned_test_suite, test_enumerate_devices),
+                create_trial!(versioned_test_suite, test_set_device),
+                create_trial!(versioned_test_suite, test_set_settings),
+                create_trial!(versioned_test_suite, test_uniform_buffer),
+                create_trial!(versioned_test_suite, test_storage_buffer),
+                create_trial!(versioned_test_suite, test_index_buffer),
+                create_trial!(versioned_test_suite, test_vertex_buffer),
+                create_trial!(versioned_test_suite, test_impossible_buffer_size),
+                create_trial!(versioned_test_suite, test_shader),
+                create_trial!(
+                    versioned_test_suite,
+                    test_calling_main_thread_only_fn_from_worker_thread
+                ),
+                create_trial!(versioned_test_suite, test_multiple_workers_per_thread),
+                create_trial!(versioned_test_suite, test_excess_threads),
+                create_trial!(
+                    versioned_test_suite,
+                    test_single_threaded_compute_discrete_gpu,
+                    skip_discrete_gpu_device_tests
+                ),
+                create_trial!(
+                    versioned_test_suite,
+                    test_single_threaded_compute_integrated_gpu,
+                    skip_integrated_gpu_device_tests
+                ),
+                create_trial!(
+                    versioned_test_suite,
+                    test_single_threaded_compute_cpu,
+                    skip_cpu_device_tests
+                ),
+                create_trial!(
+                    versioned_test_suite,
+                    test_single_threaded_compute_virtual_gpu,
+                    skip_virtual_gpu_device_tests
+                ),
+                create_trial!(
+                    versioned_test_suite,
+                    test_single_threaded_compute_other,
+                    skip_other_device_tests
+                ),
+                create_trial!(
+                    versioned_test_suite,
+                    test_multi_threaded_compute_discrete_gpu,
+                    skip_discrete_gpu_device_tests
+                ),
+                create_trial!(
+                    versioned_test_suite,
+                    test_multi_threaded_compute_integrated_gpu,
+                    skip_integrated_gpu_device_tests
+                ),
+                create_trial!(
+                    versioned_test_suite,
+                    test_multi_threaded_compute_cpu,
+                    skip_cpu_device_tests
+                ),
+                create_trial!(
+                    versioned_test_suite,
+                    test_multi_threaded_compute_virtual_gpu,
+                    skip_virtual_gpu_device_tests
+                ),
+                create_trial!(
+                    versioned_test_suite,
+                    test_multi_threaded_compute_other,
+                    skip_other_device_tests
+                ),
+                create_trial!(versioned_test_suite, test_clear),
+            ];
+            tests.append(&mut test_suite);
+        }
+        drop(renderer);
 
         libtest_mimic::run(&args, tests).exit_code()
     }
 
-    fn create_renderer() -> TestRenderer {
+    fn create_renderer(&self) -> TestRenderer {
         let test_env = test_env!();
         let app_name = format!("{} Tests", std::any::type_name::<TestRenderer>());
         let mut renderer = TestRenderer::new();
@@ -245,17 +331,18 @@ where
             app_name: app_name.as_str(),
             window_handle: test_env.raw_window_handle(),
             display_handle: test_env.raw_display_handle(),
-            api_version: TestRenderer::LATEST_API_VERSION,
+            api_version: self.api_version,
         }));
         renderer
     }
 
     fn create_renderer_with_target_device(
+        &self,
         target_device_type: heph_gl::graphics_device::Type,
         requested_features: &[FeatureRequest],
         target_device_type_required: bool,
     ) -> Option<TestRenderer> {
-        let mut renderer = Self::create_renderer();
+        let mut renderer = self.create_renderer();
         let devices = heph_expect_success!(renderer.enumerate_devices());
         let target_device = devices.iter().find(|d| d.device_type == target_device_type);
         if target_device.is_none() {
@@ -277,8 +364,11 @@ where
         Some(renderer)
     }
 
-    fn create_renderer_with_any_device(requested_features: &[FeatureRequest]) -> TestRenderer {
-        let mut renderer = Self::create_renderer();
+    fn create_renderer_with_any_device(
+        &self,
+        requested_features: &[FeatureRequest],
+    ) -> TestRenderer {
+        let mut renderer = self.create_renderer();
         let devices = heph_expect_success!(renderer.enumerate_devices());
         assert!(!devices.is_empty(), "Invalid Test Env: No device found.",);
         heph_expect_success!(renderer.set_device(None, requested_features));
@@ -293,18 +383,18 @@ where
         renderer
     }
 
-    fn test_invalid_app_name() {
+    fn test_invalid_app_name(&self) {
         let test_env = test_env!();
         let mut renderer = TestRenderer::new();
         heph_expect_err!(renderer.initialize(&InitializeOptions {
             app_name: "\0",
             window_handle: test_env.raw_window_handle(),
             display_handle: test_env.raw_display_handle(),
-            api_version: TestRenderer::LATEST_API_VERSION,
+            api_version: self.api_version,
         }));
     }
 
-    fn test_initialize_renderer() {
+    fn test_initialize_renderer(&self) {
         {
             let test_env = test_env!();
             let mut renderer = TestRenderer::new();
@@ -312,7 +402,7 @@ where
                 app_name: "",
                 window_handle: test_env.raw_window_handle(),
                 display_handle: test_env.raw_display_handle(),
-                api_version: TestRenderer::LATEST_API_VERSION,
+                api_version: self.api_version,
             };
             heph_expect_success!(renderer.initialize(&init_options));
             heph_expect_err!(
@@ -359,7 +449,7 @@ where
                 app_name: "",
                 window_handle: test_env.raw_window_handle(),
                 display_handle: dummy_display_handle!(),
-                api_version: TestRenderer::LATEST_API_VERSION,
+                api_version: self.api_version,
             };
             heph_expect_err!(renderer.initialize(&init_options));
         }
@@ -371,7 +461,7 @@ where
                 app_name: "",
                 window_handle: dummy_window_handle!(),
                 display_handle: test_env.raw_display_handle(),
-                api_version: TestRenderer::LATEST_API_VERSION,
+                api_version: self.api_version,
             };
             heph_expect_err!(renderer.initialize(&init_options));
         }
@@ -382,14 +472,14 @@ where
                 app_name: "",
                 window_handle: dummy_window_handle!(),
                 display_handle: dummy_display_handle!(),
-                api_version: TestRenderer::LATEST_API_VERSION,
+                api_version: self.api_version,
             };
             heph_expect_err!(renderer.initialize(&init_options));
         }
     }
 
-    fn test_enumerate_devices() {
-        let renderer = Self::create_renderer();
+    fn test_enumerate_devices(&self) {
+        let renderer = self.create_renderer();
         let devices = heph_expect_success!(renderer.enumerate_devices());
         assert!(
             !devices.is_empty(),
@@ -402,7 +492,7 @@ where
         }
     }
 
-    fn test_set_device() {
+    fn test_set_device(&self) {
         let mut features = [
             FeatureRequest {
                 feature: Feature::RayTracing,
@@ -421,7 +511,7 @@ where
                 required: false,
             },
         ];
-        let mut renderer = Self::create_renderer_with_any_device(&features);
+        let mut renderer = self.create_renderer_with_any_device(&features);
         assert!(renderer.get_device().is_some());
 
         // Test invalid device.
@@ -459,28 +549,28 @@ where
         );
     }
 
-    fn test_set_settings() {
+    fn test_set_settings(&self) {
         let settings = Settings {
             frames_in_flight: 10,
             ..Default::default()
         };
 
         {
-            let mut renderer = Self::create_renderer();
+            let mut renderer = self.create_renderer();
             heph_expect_success!(renderer.set_settings(settings));
             let result = renderer.get_settings();
             assert_eq!(settings.frames_in_flight, result.frames_in_flight);
         }
 
         {
-            let mut renderer = Self::create_renderer_with_any_device(&[]);
+            let mut renderer = self.create_renderer_with_any_device(&[]);
             heph_expect_success!(renderer.set_settings(settings));
             let result = renderer.get_settings();
             assert_eq!(settings.frames_in_flight, result.frames_in_flight);
         }
 
         {
-            let mut renderer = Self::create_renderer_with_any_device(&[]);
+            let mut renderer = self.create_renderer_with_any_device(&[]);
             std::thread::scope(|s| {
                 let b1 = std::sync::Arc::new(std::sync::Barrier::new(2));
                 let b2 = b1.clone();
@@ -500,11 +590,11 @@ where
         }
     }
 
-    fn test_buffer<T>(data: &Vec<T>, usage: BufferUsage)
+    fn test_buffer<T>(&self, data: &Vec<T>, usage: BufferUsage)
     where
         T: bytemuck::Pod + PartialEq + Default + Debug,
     {
-        let renderer = Self::create_renderer_with_any_device(&[]);
+        let renderer = self.create_renderer_with_any_device(&[]);
 
         let buffer_size = data.len() * size_of::<T>();
         let mut buffer = heph_expect_success!(renderer.create_buffer(buffer_size, usage));
@@ -521,7 +611,7 @@ where
         assert_eq!(buffer.size(), 0);
     }
 
-    fn test_uniform_buffer() {
+    fn test_uniform_buffer(&self) {
         const BUFFER_SIZE: usize = 1024;
 
         let mut data = Vec::with_capacity(BUFFER_SIZE);
@@ -529,10 +619,10 @@ where
             data.push(i + 1);
         }
 
-        Self::test_buffer(&data, BufferUsage::Uniform);
+        self.test_buffer(&data, BufferUsage::Uniform);
     }
 
-    fn test_storage_buffer() {
+    fn test_storage_buffer(&self) {
         const BUFFER_SIZE: usize = 1024;
 
         let mut data = Vec::with_capacity(BUFFER_SIZE);
@@ -540,10 +630,10 @@ where
             data.push(i + 1);
         }
 
-        Self::test_buffer(&data, BufferUsage::Storage);
+        self.test_buffer(&data, BufferUsage::Storage);
     }
 
-    fn test_index_buffer() {
+    fn test_index_buffer(&self) {
         const BUFFER_SIZE: usize = 1024;
 
         let mut data = Vec::with_capacity(BUFFER_SIZE);
@@ -551,10 +641,10 @@ where
             data.push(i + 1);
         }
 
-        Self::test_buffer(&data, BufferUsage::Index);
+        self.test_buffer(&data, BufferUsage::Index);
     }
 
-    fn test_vertex_buffer() {
+    fn test_vertex_buffer(&self) {
         const BUFFER_SIZE: usize = 1024;
 
         let mut data = Vec::with_capacity(BUFFER_SIZE);
@@ -562,17 +652,17 @@ where
             data.push(i + 1);
         }
 
-        Self::test_buffer(&data, BufferUsage::Vertex);
+        self.test_buffer(&data, BufferUsage::Vertex);
     }
 
-    fn test_impossible_buffer_size() {
-        let renderer = Self::create_renderer_with_any_device(&[]);
+    fn test_impossible_buffer_size(&self) {
+        let renderer = self.create_renderer_with_any_device(&[]);
         let buffer_size = 1024 * 1024 * 1024 * 1024; // 1 TB
         heph_expect_err!(renderer.create_buffer(buffer_size, BufferUsage::Storage));
     }
 
-    fn test_shader() {
-        let renderer = Self::create_renderer_with_any_device(&[]);
+    fn test_shader(&self) {
+        let renderer = self.create_renderer_with_any_device(&[]);
 
         let shader_source = heph_expect_success!(ShaderSource::from_file(
             SHADERS_DIR.to_owned() + "/addition.spv"
@@ -581,8 +671,8 @@ where
         heph_expect_success!(renderer.destroy_shader(&shader));
     }
 
-    fn test_calling_main_thread_only_fn_from_worker_thread() {
-        let mut renderer = Self::create_renderer_with_any_device(&[]);
+    fn test_calling_main_thread_only_fn_from_worker_thread(&self) {
+        let mut renderer = self.create_renderer_with_any_device(&[]);
         let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);
         std::thread::scope(|s| {
             s.spawn(move || {
@@ -628,8 +718,8 @@ where
         });
     }
 
-    fn test_multiple_workers_per_thread() {
-        let mut renderer = Self::create_renderer_with_any_device(&[]);
+    fn test_multiple_workers_per_thread(&self) {
+        let mut renderer = self.create_renderer_with_any_device(&[]);
         let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);
 
         std::thread::scope(|s| {
@@ -651,11 +741,11 @@ where
         });
     }
 
-    fn test_excess_threads() {
+    fn test_excess_threads(&self) {
         // This should exceed `RENDERER_MAX_CONCURRENT_THREADS`.
         let thread_count = heph_gl::renderers::max_concurrent_threads() + 1;
 
-        let mut renderer = Self::create_renderer_with_any_device(&[]);
+        let mut renderer = self.create_renderer_with_any_device(&[]);
         let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);
         let fail_count = AtomicUsize::new(0);
         std::thread::scope(|s| {
@@ -682,6 +772,7 @@ where
     }
 
     fn test_single_threaded_compute(
+        &self,
         target_device_type: heph_gl::graphics_device::Type,
         frames_in_flight: u32,
         n_frames: usize,
@@ -689,7 +780,7 @@ where
         const DATA_COUNT: usize = 256;
         const BYTE_SIZE: usize = DATA_COUNT * std::mem::size_of::<f32>();
 
-        let create_renderer_result = Self::create_renderer_with_target_device(
+        let create_renderer_result = self.create_renderer_with_target_device(
             target_device_type,
             &[FeatureRequest {
                 feature: Feature::ComputeShaders,
@@ -814,50 +905,51 @@ where
         heph_expect_success!(renderer.destroy_shader(&shader));
     }
 
-    fn test_single_threaded_compute_discrete_gpu() {
+    fn test_single_threaded_compute_discrete_gpu(&self) {
         const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = DiscreteGpu;
-        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
-        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
-        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
+        self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
+        self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
+        self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
     }
 
-    fn test_single_threaded_compute_integrated_gpu() {
+    fn test_single_threaded_compute_integrated_gpu(&self) {
         const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = IntegratedGpu;
-        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
-        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
-        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
+        self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
+        self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
+        self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
     }
 
-    fn test_single_threaded_compute_cpu() {
+    fn test_single_threaded_compute_cpu(&self) {
         const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = Cpu;
-        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
-        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
-        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
+        self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
+        self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
+        self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
     }
 
-    fn test_single_threaded_compute_virtual_gpu() {
+    fn test_single_threaded_compute_virtual_gpu(&self) {
         const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = VirtualGpu;
-        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
-        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
-        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
+        self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
+        self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
+        self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
     }
 
-    fn test_single_threaded_compute_other() {
+    fn test_single_threaded_compute_other(&self) {
         const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type =
             heph_gl::graphics_device::Type::Other;
-        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
-        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
-        Self::test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
+        self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
+        self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
+        self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
     }
 
     fn test_multi_threaded_compute(
+        &self,
         target_device_type: heph_gl::graphics_device::Type,
         n_threads: usize,
     ) {
         const DATA_COUNT: usize = 256;
         const BYTE_SIZE: usize = DATA_COUNT * std::mem::size_of::<f32>();
 
-        let create_renderer_result = Self::create_renderer_with_target_device(
+        let create_renderer_result = self.create_renderer_with_target_device(
             target_device_type,
             &[FeatureRequest {
                 feature: Feature::ComputeShaders,
@@ -1009,34 +1101,34 @@ where
         heph_expect_success!(renderer.destroy_shader(&shader_module));
     }
 
-    fn test_multi_threaded_compute_discrete_gpu() {
+    fn test_multi_threaded_compute_discrete_gpu(&self) {
         const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = DiscreteGpu;
-        Self::test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
+        self.test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
     }
 
-    fn test_multi_threaded_compute_integrated_gpu() {
+    fn test_multi_threaded_compute_integrated_gpu(&self) {
         const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = IntegratedGpu;
-        Self::test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
+        self.test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
     }
 
-    fn test_multi_threaded_compute_cpu() {
+    fn test_multi_threaded_compute_cpu(&self) {
         const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = Cpu;
-        Self::test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
+        self.test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
     }
 
-    fn test_multi_threaded_compute_virtual_gpu() {
+    fn test_multi_threaded_compute_virtual_gpu(&self) {
         const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = VirtualGpu;
-        Self::test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
+        self.test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
     }
 
-    fn test_multi_threaded_compute_other() {
+    fn test_multi_threaded_compute_other(&self) {
         const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type =
             heph_gl::graphics_device::Type::Other;
-        Self::test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
+        self.test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
     }
 
-    fn test_clear() {
-        let mut renderer = Self::create_renderer_with_any_device(&[]);
+    fn test_clear(&self) {
+        let mut renderer = self.create_renderer_with_any_device(&[]);
         heph_expect_success!(renderer.clear(renkrs::RGB {
             r: 0.0,
             g: 1.0,
