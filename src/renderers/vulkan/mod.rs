@@ -196,8 +196,10 @@ impl Renderer for VulkanRenderer {
         };
         if !self.is_api_version_supported(requested_api_version)? {
             return Err(RendererError::InvalidArgument(format!(
-                "Requested Vulkan API version is not supported '{}'.",
-                requested_api_version
+                "Requested Vulkan API version is not supported (requested: `{}`, min: `{}`, max: `{}`).",
+                requested_api_version,
+                Self::MIN_SUPPORTED_API_VERSION,
+                self.latest_api_version()?
             )));
         }
 
@@ -570,8 +572,10 @@ impl Renderer for VulkanRenderer {
         }
         if !self.is_api_version_supported(physical_device_api_version)? {
             return Err(RendererError::InvalidArgument(format!(
-                "Device Vulkan API version is not supported '{}'.",
-                physical_device_api_version
+                "Device Vulkan API version is not supported (device: `{}`, min: `{}`, max: `{}`).",
+                physical_device_api_version,
+                Self::MIN_SUPPORTED_API_VERSION,
+                self.latest_api_version()?
             )));
         }
         let physical_device = physical_device.ok_or_else(|| {
