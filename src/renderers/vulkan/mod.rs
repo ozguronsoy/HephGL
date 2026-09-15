@@ -10,6 +10,7 @@ mod thread;
 mod version;
 
 use std::{
+    cell::Cell,
     collections::{HashMap, HashSet},
     ffi::CString,
     sync::Mutex,
@@ -60,6 +61,7 @@ pub struct VulkanRenderer {
 
     entry: Option<ash::Entry>,
     instance: Option<ash::Instance>,
+    latest_api_version: Cell<Option<Version>>,
     api_version: Version,
 
     window_surface: Option<SurfaceKHR>,
@@ -87,6 +89,7 @@ impl Renderer for VulkanRenderer {
 
             entry: None,
             instance: None,
+            latest_api_version: Cell::new(None),
             api_version: Self::MIN_SUPPORTED_API_VERSION,
 
             window_surface: None,
@@ -99,6 +102,11 @@ impl Renderer for VulkanRenderer {
     }
 
     fn latest_api_version(&self) -> RendererResult<Version> {
+        if let Some(latest_api_version) = self.latest_api_version.get() {
+            // Use the cached version.
+            return Ok(latest_api_version);
+        }
+
         let enumerate_instance_version = |entry: &ash::Entry| -> RendererResult<Version> {
             Ok(match unsafe { entry.try_enumerate_instance_version()? } {
                 Some(v) => VulkanApiVersion(v).into(),
@@ -106,11 +114,14 @@ impl Renderer for VulkanRenderer {
             })
         };
 
-        if let Some(entry) = &self.entry {
-            enumerate_instance_version(entry)
+        // Cache the latest api version.
+        let latest_api_version = if let Some(entry) = &self.entry {
+            enumerate_instance_version(entry)?
         } else {
-            unsafe { enumerate_instance_version(&ash::Entry::load()?) }
-        }
+            unsafe { enumerate_instance_version(&ash::Entry::load()?)? }
+        };
+        self.latest_api_version.set(Some(latest_api_version));
+        Ok(latest_api_version)
     }
 
     fn get_settings(&self) -> &Settings {
@@ -179,24 +190,14 @@ impl Renderer for VulkanRenderer {
         // Create instance.
 
         let entry = unsafe { ash::Entry::load()? };
-        let supported_max_version = match unsafe { entry.try_enumerate_instance_version()? } {
-            Some(v) => VulkanApiVersion(v).into(),
-            None => Self::MIN_SUPPORTED_API_VERSION,
-        };
         let requested_api_version = match options.api_version {
             Some(v) => v,
-            None => supported_max_version,
+            None => self.latest_api_version()?,
         };
-        if requested_api_version > supported_max_version {
+        if !self.is_api_version_supported(requested_api_version)? {
             return Err(RendererError::InvalidArgument(format!(
-                "Requested Vulkan API version '{}' exceeds the maximum supported version ('{}').",
-                requested_api_version, supported_max_version
-            )));
-        } else if requested_api_version < Self::MIN_SUPPORTED_API_VERSION {
-            return Err(RendererError::InvalidArgument(format!(
-                "Requested Vulkan API version '{}' falls below the minimum supported version ('{}').",
-                requested_api_version,
-                Self::MIN_SUPPORTED_API_VERSION
+                "Requested Vulkan API version is not supported '{}'.",
+                requested_api_version
             )));
         }
 
@@ -566,6 +567,12 @@ impl Renderer for VulkanRenderer {
                     VulkanApiVersion(properties2.properties.api_version).into();
                 break;
             }
+        }
+        if !self.is_api_version_supported(physical_device_api_version)? {
+            return Err(RendererError::InvalidArgument(format!(
+                "Device Vulkan API version is not supported '{}'.",
+                physical_device_api_version
+            )));
         }
         let physical_device = physical_device.ok_or_else(|| {
             RendererError::InvalidArgument(format!(
