@@ -1,4 +1,5 @@
 pub mod fence;
+pub mod timeline_semaphore;
 
 use ash::vk::{Queue, SubmitInfo};
 

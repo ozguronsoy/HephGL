@@ -554,6 +554,7 @@ impl Renderer for VulkanRenderer {
 
         let physical_devices = unsafe { instance.enumerate_physical_devices()? };
         let mut physical_device = None;
+        let mut physical_device_api_version = Self::MIN_SUPPORTED_API_VERSION;
         for pd in physical_devices {
             let mut properties2 = PhysicalDeviceProperties2::default();
             unsafe {
@@ -561,6 +562,8 @@ impl Renderer for VulkanRenderer {
             }
             if properties2.properties.device_id == device.device_id {
                 physical_device = Some(pd);
+                physical_device_api_version =
+                    VulkanApiVersion(properties2.properties.api_version).into();
                 break;
             }
         }
@@ -586,17 +589,39 @@ impl Renderer for VulkanRenderer {
             physical_features2.features.sampler_anisotropy = ash::vk::TRUE;
         }
 
+        let mut supports_timeline_semaphore = false;
+
         let mut vulkan_12_features = ash::vk::PhysicalDeviceVulkan12Features::default();
         let mut vulkan_13_features = ash::vk::PhysicalDeviceVulkan13Features::default();
         let mut device_create_info = DeviceCreateInfo::default()
             .queue_create_infos(&queue_create_infos)
             .enabled_extension_names(&device_extension_names);
-        if self.api_version >= Version::new(1, 2, 0) {
-            vulkan_12_features.timeline_semaphore = ash::vk::TRUE;
+        const V12: Version = Version::new(1, 2, 0);
+        if self.api_version >= V12 && physical_device_api_version >= V12 {
+            let mut features =
+                ash::vk::PhysicalDeviceFeatures2::default().push_next(&mut vulkan_12_features);
+            unsafe {
+                instance.get_physical_device_features2(physical_device, &mut features);
+            }
+            supports_timeline_semaphore = vulkan_12_features.timeline_semaphore == ash::vk::TRUE;
+
+            vulkan_12_features = ash::vk::PhysicalDeviceVulkan12Features::default();
+            vulkan_12_features.timeline_semaphore = if supports_timeline_semaphore {
+                ash::vk::TRUE
+            } else {
+                ash::vk::FALSE
+            };
             device_create_info = device_create_info.push_next(&mut vulkan_12_features);
         }
         if self.api_version >= Version::new(1, 3, 0) {
-            vulkan_13_features.dynamic_rendering = ash::vk::TRUE;
+            let mut features =
+                ash::vk::PhysicalDeviceFeatures2::default().push_next(&mut vulkan_13_features);
+            unsafe {
+                instance.get_physical_device_features2(physical_device, &mut features);
+            }
+            // TODO: Set `supports_dynamic_rendering_semaphore`.
+
+            vulkan_13_features = ash::vk::PhysicalDeviceVulkan13Features::default();
             device_create_info = device_create_info.push_next(&mut vulkan_13_features);
         }
         device_create_info = device_create_info.push_next(&mut physical_features2);
@@ -684,6 +709,7 @@ impl Renderer for VulkanRenderer {
 
             physical_device,
             logical_device,
+            supports_timeline_semaphore,
 
             thread_context_masks: Mutex::new(std::array::from_fn(|_| ThreadContextMask::default())),
         });

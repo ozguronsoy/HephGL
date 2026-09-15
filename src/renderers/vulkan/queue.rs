@@ -6,7 +6,9 @@ use crate::renderers::{
     vulkan::{
         VulkanRenderer,
         frame::Frame,
-        sync::{VulkanFrameSync, fence::FenceFrameSync},
+        sync::{
+            VulkanFrameSync, fence::FenceFrameSync, timeline_semaphore::TimelineSemaphoreFrameSync,
+        },
     },
 };
 
@@ -57,10 +59,17 @@ impl VulkanRenderer {
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
 
         let create_queue_frame_sync = |queue_context: &mut QueueContext| -> RendererResult<()> {
-            queue_context.frame_sync = Some(Box::new(FenceFrameSync::new(
-                &device_context.logical_device,
-                self.settings.frames_in_flight,
-            )?));
+            if device_context.supports_timeline_semaphore {
+                queue_context.frame_sync = Some(Box::new(TimelineSemaphoreFrameSync::new(
+                    &device_context.logical_device,
+                    self.settings.frames_in_flight,
+                )?));
+            } else {
+                queue_context.frame_sync = Some(Box::new(FenceFrameSync::new(
+                    &device_context.logical_device,
+                    self.settings.frames_in_flight,
+                )?));
+            }
             Ok(())
         };
 

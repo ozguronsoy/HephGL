@@ -34,6 +34,7 @@ impl VulkanFrameSync for FenceFrameSync {
         queue: ash::vk::Queue,
         submits: &[SubmitInfo],
     ) -> RendererResult<()> {
+        // No need to check if `frame_index` is out of bounds, `VulkanRenderer` should guarantee it.
         let (fence, in_flight) = &mut self.fences[frame_index as usize];
         unsafe {
             device.queue_submit(queue, submits, *fence)?;
