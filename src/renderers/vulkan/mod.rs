@@ -5,6 +5,7 @@ mod handle;
 mod queue;
 pub mod resources;
 mod swapchain;
+mod sync;
 mod thread;
 mod version;
 
@@ -125,7 +126,7 @@ impl Renderer for VulkanRenderer {
 
             self.destroy_swapchain()?;
             self.uninitialize_thread()?;
-            self.destroy_fences()?;
+            self.destroy_frame_sync()?;
 
             self.settings = settings;
             self.current_frame_index = 0;
@@ -156,7 +157,7 @@ impl Renderer for VulkanRenderer {
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 resize_frames(compute_queue_context)?;
             }
-            self.create_fences()?;
+            self.create_frame_sync()?;
             self.initialize_thread()?;
             self.create_swapchain()?;
         } else {
@@ -647,6 +648,7 @@ impl Renderer for VulkanRenderer {
                 frames: (0..self.settings.frames_in_flight)
                     .map(|_| Frame::default())
                     .collect::<Vec<Frame>>(),
+                frame_sync: None,
             },
             transfer_queue_context: transfer_queue_handle.map(|queue| QueueContext {
                 queue,
@@ -655,6 +657,7 @@ impl Renderer for VulkanRenderer {
                 frames: (0..self.settings.frames_in_flight)
                     .map(|_| Frame::default())
                     .collect::<Vec<Frame>>(),
+                frame_sync: None,
             }),
             compute_queue_context: compute_queue_handle.map(|queue| QueueContext {
                 queue,
@@ -663,6 +666,7 @@ impl Renderer for VulkanRenderer {
                 frames: (0..self.settings.frames_in_flight)
                     .map(|_| Frame::default())
                     .collect::<Vec<Frame>>(),
+                frame_sync: None,
             }),
 
             swapchain_context: SwapchainContext {
@@ -684,7 +688,7 @@ impl Renderer for VulkanRenderer {
             thread_context_masks: Mutex::new(std::array::from_fn(|_| ThreadContextMask::default())),
         });
 
-        self.create_fences()?;
+        self.create_frame_sync()?;
         self.initialize_thread()?;
         self.create_swapchain()?;
 
@@ -1098,15 +1102,16 @@ impl Renderer for VulkanRenderer {
 
             if !command_buffers.is_empty() {
                 let submit_info = SubmitInfo::default().command_buffers(&command_buffers);
-                let frame = &mut queue_context.frames[frame_index];
-                unsafe {
-                    device_context.logical_device.queue_submit(
-                        queue_context.queue,
-                        &[submit_info],
-                        frame.fence,
-                    )?;
-                }
-                frame.is_in_flight = true;
+                let frame_sync = queue_context
+                    .frame_sync
+                    .as_mut()
+                    .ok_or(RendererError::invalid_operation("Device is not set."))?;
+                frame_sync.submit(
+                    &device_context.logical_device,
+                    frame_index as u32,
+                    queue_context.queue,
+                    &[submit_info],
+                )?;
             }
 
             Ok(())
@@ -1133,39 +1138,20 @@ impl Renderer for VulkanRenderer {
         let thread_context_index = Self::thread_context_index()?;
         let current_frame_index = self.current_frame_index as usize;
 
-        // Wait for fences.
-        let mut fences = Vec::with_capacity(3);
-        let mut fence_guards = Vec::with_capacity(3);
-        if device_context.graphics_queue_context.frames[current_frame_index].is_in_flight {
-            fences.push(device_context.graphics_queue_context.frames[current_frame_index].fence);
-            fence_guards.push(
-                &mut device_context.graphics_queue_context.frames[current_frame_index].is_in_flight,
-            );
+        // Wait for current frame to finish.
+        let wait_frame_sync = |queue_context: &mut QueueContext| -> RendererResult<()> {
+            let frame_sync = queue_context
+                .frame_sync
+                .as_mut()
+                .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            frame_sync.wait(&device_context.logical_device, self.current_frame_index)
+        };
+        wait_frame_sync(&mut device_context.graphics_queue_context)?;
+        if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
+            wait_frame_sync(transfer_queue_context)?;
         }
-        if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context
-            && transfer_queue_context.frames[current_frame_index].is_in_flight
-        {
-            fences.push(transfer_queue_context.frames[current_frame_index].fence);
-            fence_guards.push(&mut transfer_queue_context.frames[current_frame_index].is_in_flight);
-        }
-        if let Some(compute_queue_context) = &mut device_context.compute_queue_context
-            && compute_queue_context.frames[current_frame_index].is_in_flight
-        {
-            fences.push(compute_queue_context.frames[current_frame_index].fence);
-            fence_guards.push(&mut compute_queue_context.frames[current_frame_index].is_in_flight);
-        }
-        if !fences.is_empty() {
-            unsafe {
-                device_context.logical_device.wait_for_fences(
-                    &fences,
-                    true,
-                    VulkanRenderer::MAX_TIMEOUT_NS,
-                )?;
-                device_context.logical_device.reset_fences(&fences)?;
-                for is_in_flight in fence_guards {
-                    *is_in_flight = false;
-                }
-            }
+        if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
+            wait_frame_sync(compute_queue_context)?;
         }
 
         // Reset the command pools.
@@ -1241,8 +1227,4 @@ impl Drop for VulkanRenderer {
             eprintln!("Failed to uninitialize renderer on drop: {}", e);
         }
     }
-}
-
-impl VulkanRenderer {
-    const MAX_TIMEOUT_NS: u64 = 1.0e9 as u64;
 }

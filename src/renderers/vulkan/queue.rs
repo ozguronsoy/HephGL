@@ -1,6 +1,14 @@
 use ash::vk::{Queue, QueueFlags};
 
-use crate::renderers::vulkan::frame::Frame;
+use crate::renderers::{
+    RendererResult,
+    error::RendererError,
+    vulkan::{
+        VulkanRenderer,
+        frame::Frame,
+        sync::{VulkanFrameSync, fence::FenceFrameSync},
+    },
+};
 
 /// Represents the Vulkan queue type.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -34,4 +42,59 @@ pub struct QueueContext {
     /// ### Note
     /// Length of this must always be equal to `settings.frames_in_flight`.
     pub frames: Vec<Frame>,
+    /// Provides frame synchronization.
+    pub frame_sync: Option<Box<dyn VulkanFrameSync>>,
+}
+
+impl VulkanRenderer {
+    /// Creates frame synchronization resources for each queue.
+    pub(super) fn create_frame_sync(&mut self) -> RendererResult<()> {
+        self.destroy_frame_sync()?;
+
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+
+        let create_queue_frame_sync = |queue_context: &mut QueueContext| -> RendererResult<()> {
+            queue_context.frame_sync = Some(Box::new(FenceFrameSync::new(
+                &device_context.logical_device,
+                self.settings.frames_in_flight,
+            )?));
+            Ok(())
+        };
+
+        create_queue_frame_sync(&mut device_context.graphics_queue_context)?;
+        if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
+            create_queue_frame_sync(transfer_queue_context)?;
+        }
+        if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
+            create_queue_frame_sync(compute_queue_context)?;
+        }
+        Ok(())
+    }
+
+    /// Destroys the frame synchronization resources of each queue.
+    pub(super) fn destroy_frame_sync(&mut self) -> RendererResult<()> {
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+
+        let destroy_queue_frame_sync = |queue_context: &mut QueueContext| -> RendererResult<()> {
+            if let Some(mut frame_sync) = queue_context.frame_sync.take() {
+                frame_sync.destroy(&device_context.logical_device)?;
+            }
+            Ok(())
+        };
+
+        destroy_queue_frame_sync(&mut device_context.graphics_queue_context)?;
+        if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
+            destroy_queue_frame_sync(transfer_queue_context)?;
+        }
+        if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
+            destroy_queue_frame_sync(compute_queue_context)?;
+        }
+        Ok(())
+    }
 }

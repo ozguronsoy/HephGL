@@ -120,7 +120,7 @@ impl VulkanRenderer {
         if self.device_context.is_some() {
             self.destroy_swapchain()?;
             self.uninitialize_thread()?;
-            self.destroy_fences()?;
+            self.destroy_frame_sync()?;
         }
 
         if let Some(device_context) = self.device_context.take() {
