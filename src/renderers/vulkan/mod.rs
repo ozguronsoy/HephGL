@@ -570,12 +570,11 @@ impl Renderer for VulkanRenderer {
                 break;
             }
         }
-        if !self.is_api_version_supported(physical_device_api_version)? {
+        if physical_device_api_version < Self::MIN_SUPPORTED_API_VERSION {
             return Err(RendererError::InvalidArgument(format!(
-                "Device Vulkan API version is not supported (device: `{}`, min: `{}`, max: `{}`).",
+                "Device Vulkan API version is not supported (device: `{}`, min: `{}`).",
                 physical_device_api_version,
-                Self::MIN_SUPPORTED_API_VERSION,
-                self.latest_api_version()?
+                Self::MIN_SUPPORTED_API_VERSION
             )));
         }
         let physical_device = physical_device.ok_or_else(|| {
