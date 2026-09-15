@@ -16,7 +16,7 @@ pub struct TimelineSemaphoreFrameSync {
 }
 
 impl VulkanFrameSync for TimelineSemaphoreFrameSync {
-    fn new(device: &ash::Device, frames_in_flight: u32) -> RendererResult<Self>
+    fn new(device: &ash::Device, frames_in_flight: usize) -> RendererResult<Self>
     where
         Self: Sized,
     {
@@ -27,14 +27,14 @@ impl VulkanFrameSync for TimelineSemaphoreFrameSync {
         let semaphore = unsafe { device.create_semaphore(&create_info, None)? };
         Ok(Self {
             semaphore,
-            frame_values: vec![0; frames_in_flight as usize],
+            frame_values: vec![0; frames_in_flight],
             new_value: 1,
         })
     }
     fn submit(
         &mut self,
         device: &ash::Device,
-        frame_index: u32,
+        frame_index: usize,
         queue: Queue,
         submits: &[SubmitInfo],
     ) -> RendererResult<()> {
@@ -58,13 +58,13 @@ impl VulkanFrameSync for TimelineSemaphoreFrameSync {
             device.queue_submit(queue, &queue_submits, Fence::null())?;
         }
 
-        self.frame_values[frame_index as usize] = self.new_value;
+        self.frame_values[frame_index] = self.new_value;
         self.new_value = next_value;
 
         Ok(())
     }
-    fn wait(&mut self, device: &ash::Device, frame_index: u32) -> RendererResult<()> {
-        let value = self.frame_values[frame_index as usize];
+    fn wait(&mut self, device: &ash::Device, frame_index: usize) -> RendererResult<()> {
+        let value = self.frame_values[frame_index];
         if value == 0 {
             // Frame is not submitted.
             return Ok(());
@@ -81,7 +81,7 @@ impl VulkanFrameSync for TimelineSemaphoreFrameSync {
         Ok(())
     }
     fn destroy(&mut self, device: &ash::Device) -> RendererResult<()> {
-        for frame_index in 0..self.frame_values.len() as u32 {
+        for frame_index in 0..self.frame_values.len() {
             self.wait(device, frame_index)?;
         }
         unsafe {

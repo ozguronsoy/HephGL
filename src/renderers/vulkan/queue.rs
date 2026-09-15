@@ -57,17 +57,18 @@ impl VulkanRenderer {
             .device_context
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
+        let fif = self.settings.frames_in_flight as usize;
 
         let create_queue_frame_sync = |queue_context: &mut QueueContext| -> RendererResult<()> {
             if device_context.supports_timeline_semaphore {
                 queue_context.frame_sync = Some(Box::new(TimelineSemaphoreFrameSync::new(
                     &device_context.logical_device,
-                    self.settings.frames_in_flight,
+                    fif,
                 )?));
             } else {
                 queue_context.frame_sync = Some(Box::new(FenceFrameSync::new(
                     &device_context.logical_device,
-                    self.settings.frames_in_flight,
+                    fif,
                 )?));
             }
             Ok(())

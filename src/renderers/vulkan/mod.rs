@@ -1134,7 +1134,7 @@ impl Renderer for VulkanRenderer {
                     .ok_or(RendererError::invalid_operation("Device is not set."))?;
                 frame_sync.submit(
                     &device_context.logical_device,
-                    frame_index as u32,
+                    frame_index,
                     queue_context.queue,
                     &[submit_info],
                 )?;
@@ -1170,7 +1170,7 @@ impl Renderer for VulkanRenderer {
                 .frame_sync
                 .as_mut()
                 .ok_or(RendererError::invalid_operation("Device is not set."))?;
-            frame_sync.wait(&device_context.logical_device, self.current_frame_index)
+            frame_sync.wait(&device_context.logical_device, current_frame_index)
         };
         wait_frame_sync(&mut device_context.graphics_queue_context)?;
         if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {

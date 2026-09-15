@@ -13,11 +13,10 @@ pub struct FenceFrameSync {
 }
 
 impl VulkanFrameSync for FenceFrameSync {
-    fn new(device: &ash::Device, frames_in_flight: u32) -> RendererResult<Self>
+    fn new(device: &ash::Device, frames_in_flight: usize) -> RendererResult<Self>
     where
         Self: Sized,
     {
-        let frames_in_flight = frames_in_flight as usize;
         let mut instance = FenceFrameSync {
             fences: vec![(Fence::default(), false); frames_in_flight],
         };
@@ -30,21 +29,21 @@ impl VulkanFrameSync for FenceFrameSync {
     fn submit(
         &mut self,
         device: &ash::Device,
-        frame_index: u32,
+        frame_index: usize,
         queue: ash::vk::Queue,
         submits: &[SubmitInfo],
     ) -> RendererResult<()> {
         // No need to check if `frame_index` is out of bounds, `VulkanRenderer` should guarantee it.
-        let (fence, in_flight) = &mut self.fences[frame_index as usize];
+        let (fence, in_flight) = &mut self.fences[frame_index];
         unsafe {
             device.queue_submit(queue, submits, *fence)?;
             *in_flight = true;
         }
         Ok(())
     }
-    fn wait(&mut self, device: &ash::Device, frame_index: u32) -> RendererResult<()> {
+    fn wait(&mut self, device: &ash::Device, frame_index: usize) -> RendererResult<()> {
         // No need to check if `frame_index` is out of bounds, `VulkanRenderer` should guarantee it.
-        let (fence, in_flight) = self.fences[frame_index as usize];
+        let (fence, in_flight) = self.fences[frame_index];
         if in_flight {
             unsafe {
                 device.wait_for_fences(&[fence], true, Self::TIMEOUT_NS)?;
