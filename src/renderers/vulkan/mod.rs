@@ -5,10 +5,12 @@ mod handle;
 mod queue;
 pub mod resources;
 mod swapchain;
+mod sync;
 mod thread;
 mod version;
 
 use std::{
+    cell::Cell,
     collections::{HashMap, HashSet},
     ffi::CString,
     sync::Mutex,
@@ -59,6 +61,7 @@ pub struct VulkanRenderer {
 
     entry: Option<ash::Entry>,
     instance: Option<ash::Instance>,
+    latest_api_version: Cell<Option<Version>>,
     api_version: Version,
 
     window_surface: Option<SurfaceKHR>,
@@ -86,6 +89,7 @@ impl Renderer for VulkanRenderer {
 
             entry: None,
             instance: None,
+            latest_api_version: Cell::new(None),
             api_version: Self::MIN_SUPPORTED_API_VERSION,
 
             window_surface: None,
@@ -98,6 +102,11 @@ impl Renderer for VulkanRenderer {
     }
 
     fn latest_api_version(&self) -> RendererResult<Version> {
+        if let Some(latest_api_version) = self.latest_api_version.get() {
+            // Use the cached version.
+            return Ok(latest_api_version);
+        }
+
         let enumerate_instance_version = |entry: &ash::Entry| -> RendererResult<Version> {
             Ok(match unsafe { entry.try_enumerate_instance_version()? } {
                 Some(v) => VulkanApiVersion(v).into(),
@@ -105,11 +114,14 @@ impl Renderer for VulkanRenderer {
             })
         };
 
-        if let Some(entry) = &self.entry {
-            enumerate_instance_version(entry)
+        // Cache the latest api version.
+        let latest_api_version = if let Some(entry) = &self.entry {
+            enumerate_instance_version(entry)?
         } else {
-            unsafe { enumerate_instance_version(&ash::Entry::load()?) }
-        }
+            unsafe { enumerate_instance_version(&ash::Entry::load()?)? }
+        };
+        self.latest_api_version.set(Some(latest_api_version));
+        Ok(latest_api_version)
     }
 
     fn get_settings(&self) -> &Settings {
@@ -125,7 +137,7 @@ impl Renderer for VulkanRenderer {
 
             self.destroy_swapchain()?;
             self.uninitialize_thread()?;
-            self.destroy_fences()?;
+            self.destroy_frame_sync()?;
 
             self.settings = settings;
             self.current_frame_index = 0;
@@ -156,7 +168,7 @@ impl Renderer for VulkanRenderer {
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 resize_frames(compute_queue_context)?;
             }
-            self.create_fences()?;
+            self.create_frame_sync()?;
             self.initialize_thread()?;
             self.create_swapchain()?;
         } else {
@@ -178,24 +190,16 @@ impl Renderer for VulkanRenderer {
         // Create instance.
 
         let entry = unsafe { ash::Entry::load()? };
-        let supported_max_version = match unsafe { entry.try_enumerate_instance_version()? } {
-            Some(v) => VulkanApiVersion(v).into(),
-            None => Self::MIN_SUPPORTED_API_VERSION,
-        };
         let requested_api_version = match options.api_version {
             Some(v) => v,
-            None => supported_max_version,
+            None => self.latest_api_version()?,
         };
-        if requested_api_version > supported_max_version {
+        if !self.is_api_version_supported(requested_api_version)? {
             return Err(RendererError::InvalidArgument(format!(
-                "Requested Vulkan API version '{}' exceeds the maximum supported version ('{}').",
-                requested_api_version, supported_max_version
-            )));
-        } else if requested_api_version < Self::MIN_SUPPORTED_API_VERSION {
-            return Err(RendererError::InvalidArgument(format!(
-                "Requested Vulkan API version '{}' falls below the minimum supported version ('{}').",
+                "Requested Vulkan API version is not supported (requested: `{}`, min: `{}`, max: `{}`).",
                 requested_api_version,
-                Self::MIN_SUPPORTED_API_VERSION
+                Self::MIN_SUPPORTED_API_VERSION,
+                self.latest_api_version()?
             )));
         }
 
@@ -553,6 +557,7 @@ impl Renderer for VulkanRenderer {
 
         let physical_devices = unsafe { instance.enumerate_physical_devices()? };
         let mut physical_device = None;
+        let mut physical_device_api_version = Self::MIN_SUPPORTED_API_VERSION;
         for pd in physical_devices {
             let mut properties2 = PhysicalDeviceProperties2::default();
             unsafe {
@@ -560,8 +565,17 @@ impl Renderer for VulkanRenderer {
             }
             if properties2.properties.device_id == device.device_id {
                 physical_device = Some(pd);
+                physical_device_api_version =
+                    VulkanApiVersion(properties2.properties.api_version).into();
                 break;
             }
+        }
+        if physical_device_api_version < Self::MIN_SUPPORTED_API_VERSION {
+            return Err(RendererError::InvalidArgument(format!(
+                "Device Vulkan API version is not supported (device: `{}`, min: `{}`).",
+                physical_device_api_version,
+                Self::MIN_SUPPORTED_API_VERSION
+            )));
         }
         let physical_device = physical_device.ok_or_else(|| {
             RendererError::InvalidArgument(format!(
@@ -585,17 +599,39 @@ impl Renderer for VulkanRenderer {
             physical_features2.features.sampler_anisotropy = ash::vk::TRUE;
         }
 
+        let mut supports_timeline_semaphore = false;
+
         let mut vulkan_12_features = ash::vk::PhysicalDeviceVulkan12Features::default();
         let mut vulkan_13_features = ash::vk::PhysicalDeviceVulkan13Features::default();
         let mut device_create_info = DeviceCreateInfo::default()
             .queue_create_infos(&queue_create_infos)
             .enabled_extension_names(&device_extension_names);
-        if self.api_version >= Version::new(1, 2, 0) {
-            vulkan_12_features.timeline_semaphore = ash::vk::TRUE;
+        const V12: Version = Version::new(1, 2, 0);
+        if self.api_version >= V12 && physical_device_api_version >= V12 {
+            let mut features =
+                ash::vk::PhysicalDeviceFeatures2::default().push_next(&mut vulkan_12_features);
+            unsafe {
+                instance.get_physical_device_features2(physical_device, &mut features);
+            }
+            supports_timeline_semaphore = vulkan_12_features.timeline_semaphore == ash::vk::TRUE;
+
+            vulkan_12_features = ash::vk::PhysicalDeviceVulkan12Features::default();
+            vulkan_12_features.timeline_semaphore = if supports_timeline_semaphore {
+                ash::vk::TRUE
+            } else {
+                ash::vk::FALSE
+            };
             device_create_info = device_create_info.push_next(&mut vulkan_12_features);
         }
         if self.api_version >= Version::new(1, 3, 0) {
-            vulkan_13_features.dynamic_rendering = ash::vk::TRUE;
+            let mut features =
+                ash::vk::PhysicalDeviceFeatures2::default().push_next(&mut vulkan_13_features);
+            unsafe {
+                instance.get_physical_device_features2(physical_device, &mut features);
+            }
+            // TODO: Set `supports_dynamic_rendering_semaphore`.
+
+            vulkan_13_features = ash::vk::PhysicalDeviceVulkan13Features::default();
             device_create_info = device_create_info.push_next(&mut vulkan_13_features);
         }
         device_create_info = device_create_info.push_next(&mut physical_features2);
@@ -647,6 +683,7 @@ impl Renderer for VulkanRenderer {
                 frames: (0..self.settings.frames_in_flight)
                     .map(|_| Frame::default())
                     .collect::<Vec<Frame>>(),
+                frame_sync: None,
             },
             transfer_queue_context: transfer_queue_handle.map(|queue| QueueContext {
                 queue,
@@ -655,6 +692,7 @@ impl Renderer for VulkanRenderer {
                 frames: (0..self.settings.frames_in_flight)
                     .map(|_| Frame::default())
                     .collect::<Vec<Frame>>(),
+                frame_sync: None,
             }),
             compute_queue_context: compute_queue_handle.map(|queue| QueueContext {
                 queue,
@@ -663,6 +701,7 @@ impl Renderer for VulkanRenderer {
                 frames: (0..self.settings.frames_in_flight)
                     .map(|_| Frame::default())
                     .collect::<Vec<Frame>>(),
+                frame_sync: None,
             }),
 
             swapchain_context: SwapchainContext {
@@ -680,11 +719,12 @@ impl Renderer for VulkanRenderer {
 
             physical_device,
             logical_device,
+            supports_timeline_semaphore,
 
             thread_context_masks: Mutex::new(std::array::from_fn(|_| ThreadContextMask::default())),
         });
 
-        self.create_fences()?;
+        self.create_frame_sync()?;
         self.initialize_thread()?;
         self.create_swapchain()?;
 
@@ -1098,15 +1138,16 @@ impl Renderer for VulkanRenderer {
 
             if !command_buffers.is_empty() {
                 let submit_info = SubmitInfo::default().command_buffers(&command_buffers);
-                let frame = &mut queue_context.frames[frame_index];
-                unsafe {
-                    device_context.logical_device.queue_submit(
-                        queue_context.queue,
-                        &[submit_info],
-                        frame.fence,
-                    )?;
-                }
-                frame.is_in_flight = true;
+                let frame_sync = queue_context
+                    .frame_sync
+                    .as_mut()
+                    .ok_or(RendererError::invalid_operation("Device is not set."))?;
+                frame_sync.submit(
+                    &device_context.logical_device,
+                    frame_index,
+                    queue_context.queue,
+                    &[submit_info],
+                )?;
             }
 
             Ok(())
@@ -1133,39 +1174,20 @@ impl Renderer for VulkanRenderer {
         let thread_context_index = Self::thread_context_index()?;
         let current_frame_index = self.current_frame_index as usize;
 
-        // Wait for fences.
-        let mut fences = Vec::with_capacity(3);
-        let mut fence_guards = Vec::with_capacity(3);
-        if device_context.graphics_queue_context.frames[current_frame_index].is_in_flight {
-            fences.push(device_context.graphics_queue_context.frames[current_frame_index].fence);
-            fence_guards.push(
-                &mut device_context.graphics_queue_context.frames[current_frame_index].is_in_flight,
-            );
+        // Wait for current frame to finish.
+        let wait_frame_sync = |queue_context: &mut QueueContext| -> RendererResult<()> {
+            let frame_sync = queue_context
+                .frame_sync
+                .as_mut()
+                .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            frame_sync.wait(&device_context.logical_device, current_frame_index)
+        };
+        wait_frame_sync(&mut device_context.graphics_queue_context)?;
+        if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
+            wait_frame_sync(transfer_queue_context)?;
         }
-        if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context
-            && transfer_queue_context.frames[current_frame_index].is_in_flight
-        {
-            fences.push(transfer_queue_context.frames[current_frame_index].fence);
-            fence_guards.push(&mut transfer_queue_context.frames[current_frame_index].is_in_flight);
-        }
-        if let Some(compute_queue_context) = &mut device_context.compute_queue_context
-            && compute_queue_context.frames[current_frame_index].is_in_flight
-        {
-            fences.push(compute_queue_context.frames[current_frame_index].fence);
-            fence_guards.push(&mut compute_queue_context.frames[current_frame_index].is_in_flight);
-        }
-        if !fences.is_empty() {
-            unsafe {
-                device_context.logical_device.wait_for_fences(
-                    &fences,
-                    true,
-                    VulkanRenderer::MAX_TIMEOUT_NS,
-                )?;
-                device_context.logical_device.reset_fences(&fences)?;
-                for is_in_flight in fence_guards {
-                    *is_in_flight = false;
-                }
-            }
+        if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
+            wait_frame_sync(compute_queue_context)?;
         }
 
         // Reset the command pools.
@@ -1241,8 +1263,4 @@ impl Drop for VulkanRenderer {
             eprintln!("Failed to uninitialize renderer on drop: {}", e);
         }
     }
-}
-
-impl VulkanRenderer {
-    const MAX_TIMEOUT_NS: u64 = 1.0e9 as u64;
 }

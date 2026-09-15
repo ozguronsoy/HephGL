@@ -1,7 +1,7 @@
 use ash::vk::{
     CommandBuffer, CommandBufferAllocateInfo, CommandBufferLevel, CommandPool,
     CommandPoolCreateFlags, CommandPoolCreateInfo, DescriptorPool, DescriptorPoolCreateInfo,
-    DescriptorPoolSize, DescriptorType, Fence,
+    DescriptorPoolSize, DescriptorType,
 };
 
 use crate::renderers::{
@@ -27,58 +27,17 @@ pub struct Frame {
     /// Contains the resources used for recording commands per thread for this
     /// frame.
     pub thread_contexts: ThreadContextArray<ThreadContext>,
-    /// The fence used to synchronize CPU and GPU execution for this frame.
-    pub fence: Fence,
-    /// Indicates whether the frame is currently executing on the GPU and has an
-    /// active fence in flight.
-    pub is_in_flight: bool,
 }
 
 impl Default for Frame {
     fn default() -> Self {
         Self {
             thread_contexts: std::array::from_fn(|_| ThreadContext::default()),
-            fence: Fence::default(),
-            is_in_flight: false,
         }
     }
 }
 
 impl VulkanRenderer {
-    /// Creates a fence for the current thread of each frame.
-    pub(super) fn create_fences(&mut self) -> RendererResult<()> {
-        self.destroy_fences()?;
-
-        let device_context = self
-            .device_context
-            .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
-        let fif = self.settings.frames_in_flight as usize;
-
-        let fence_info = ash::vk::FenceCreateInfo::default();
-        let create_fence =
-            |queue_context: &mut QueueContext, frame_index: usize| -> RendererResult<()> {
-                unsafe {
-                    queue_context.frames[frame_index].fence = device_context
-                        .logical_device
-                        .create_fence(&fence_info, None)?;
-                    Ok(())
-                }
-            };
-
-        for frame_index in 0..fif {
-            create_fence(&mut device_context.graphics_queue_context, frame_index)?;
-            if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                create_fence(transfer_queue_context, frame_index)?;
-            }
-            if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-                create_fence(compute_queue_context, frame_index)?;
-            }
-        }
-
-        Ok(())
-    }
-
     /// Creates a command pool for the current thread of each frame.
     pub(super) fn create_command_pools(&mut self) -> RendererResult<()> {
         self.destroy_command_pools()?;
@@ -201,46 +160,6 @@ impl VulkanRenderer {
             }
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 allocate_pool(compute_queue_context, frame_index)?;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Destroys the fences of the current thread if there are any.
-    pub(super) fn destroy_fences(&mut self) -> RendererResult<()> {
-        let device_context = self
-            .device_context
-            .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
-        let fif = self.settings.frames_in_flight as usize;
-
-        let destroy_fence =
-            |queue_context: &mut QueueContext, frame_index: usize| -> RendererResult<()> {
-                unsafe {
-                    let frame = &mut queue_context.frames[frame_index];
-                    if frame.is_in_flight {
-                        device_context.logical_device.wait_for_fences(
-                            &[frame.fence],
-                            true,
-                            VulkanRenderer::MAX_TIMEOUT_NS,
-                        )?;
-                    }
-                    device_context
-                        .logical_device
-                        .destroy_fence(frame.fence, None);
-                    frame.fence = Fence::default();
-                    Ok(())
-                }
-            };
-
-        for frame_index in 0..fif {
-            destroy_fence(&mut device_context.graphics_queue_context, frame_index)?;
-            if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                destroy_fence(transfer_queue_context, frame_index)?;
-            }
-            if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-                destroy_fence(compute_queue_context, frame_index)?;
             }
         }
 

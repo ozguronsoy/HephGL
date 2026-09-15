@@ -22,7 +22,6 @@ pub struct DeviceContext {
     /// The currently active graphics device.
     pub graphics_device: GraphicsDevice,
 
-    /// The memory allocator.
     pub vma_allocator: vk_mem::Allocator,
 
     pub graphics_queue_context: QueueContext,
@@ -32,8 +31,8 @@ pub struct DeviceContext {
     pub swapchain_context: SwapchainContext,
 
     pub physical_device: ash::vk::PhysicalDevice,
-    /// The logical Vulkan device.
     pub logical_device: ash::Device,
+    pub supports_timeline_semaphore: bool,
 
     /// The bitmasks indicating the availability of thread contexts.
     /// `0` means the context at that index is available, `1` means it is
@@ -120,7 +119,7 @@ impl VulkanRenderer {
         if self.device_context.is_some() {
             self.destroy_swapchain()?;
             self.uninitialize_thread()?;
-            self.destroy_fences()?;
+            self.destroy_frame_sync()?;
         }
 
         if let Some(device_context) = self.device_context.take() {
