@@ -19,12 +19,12 @@ use std::{
 use ash::vk::{
     ApplicationInfo, BufferCreateInfo, BufferUsageFlags, CommandBufferBeginInfo,
     CommandBufferUsageFlags, ComputePipelineCreateInfo, DescriptorPoolResetFlags,
-    DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType, DeviceCreateInfo,
+    DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DeviceCreateInfo,
     DeviceQueueCreateInfo, InstanceCreateInfo, MemoryHeapFlags, PhysicalDeviceFeatures2,
     PhysicalDeviceMemoryProperties2, PhysicalDeviceProperties2, PhysicalDeviceType,
     PipelineBindPoint, PipelineCache, PipelineLayoutCreateInfo, PipelineShaderStageCreateInfo,
-    QueueFamilyProperties2, QueueFlags, ShaderModuleCreateInfo, ShaderStageFlags, StructureType,
-    SubmitInfo, SurfaceKHR, SwapchainKHR,
+    QueueFamilyProperties2, QueueFlags, ShaderModuleCreateInfo, StructureType, SubmitInfo,
+    SurfaceKHR, SwapchainKHR,
 };
 use renkrs::RGB;
 use vk_mem::Alloc;
@@ -33,8 +33,8 @@ use crate::{
     HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version,
     graphics_device::{Feature, GraphicsDevice},
     renderers::{
-        BufferUsage, FeatureRequest, InitializeOptions, PipelineHandle, Renderer, RendererError,
-        RendererResult, ResourceBinding, ResourceBindingType, Settings,
+        BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererError, RendererResult,
+        ResourceBinding, Settings,
         thread_context::{ThreadContextIndex, ThreadContextMask},
         version::DriverVersion,
         vulkan::{
@@ -46,7 +46,7 @@ use crate::{
             version::VulkanApiVersion,
         },
     },
-    shader::ShaderSource,
+    shader::Shader,
 };
 
 thread_local! {
@@ -73,11 +73,9 @@ pub struct VulkanRenderer {
 }
 
 impl Renderer for VulkanRenderer {
-    type ShaderHandle = VulkanShader;
     type BufferHandle = VulkanBuffer;
     type GraphicsPipelineHandle = VulkanGraphicsPipeline;
     type ComputePipelineHandle = VulkanComputePipeline;
-    type ResourceSetHandle = VulkanResourceSet;
     type RecordedCommand = VulkanRecordedCommand;
 
     const MIN_SUPPORTED_API_VERSION: Version = Version::new(1, 0, 0);
@@ -731,135 +729,6 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn create_shader(&self, source: &ShaderSource) -> RendererResult<Self::ShaderHandle> {
-        let device_context = self
-            .device_context
-            .as_ref()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
-
-        let (prefix, code_u32, suffix) = unsafe { source.data.align_to::<u32>() };
-
-        // Data is not aligned properly.
-        if !prefix.is_empty() || !suffix.is_empty() {
-            return Err(RendererError::Fail(format!(
-                "Shader data from '{}' is not valid SPIR-V (not 4-byte aligned).",
-                source.file_path
-            )));
-        }
-
-        let create_info = ShaderModuleCreateInfo::default().code(code_u32);
-        unsafe {
-            let shader_module = device_context
-                .logical_device
-                .create_shader_module(&create_info, None)?;
-            Ok(Self::ShaderHandle {
-                module: shader_module,
-            })
-        }
-    }
-
-    fn destroy_shader(&self, shader: &Self::ShaderHandle) -> RendererResult<()> {
-        let device_context = self
-            .device_context
-            .as_ref()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
-
-        unsafe {
-            device_context
-                .logical_device
-                .destroy_shader_module(shader.module, None);
-        }
-        Ok(())
-    }
-
-    fn create_resource_set(
-        &self,
-        pipeline_handle: &PipelineHandle<Self::GraphicsPipelineHandle, Self::ComputePipelineHandle>,
-        bindings: &[ResourceBinding<Self::BufferHandle>],
-    ) -> RendererResult<Self::ResourceSetHandle> {
-        match pipeline_handle {
-            PipelineHandle::Compute(pipeline) => {
-                for binding in bindings {
-                    match binding.resource {
-                        ResourceBindingType::Buffer {
-                            handle,
-                            offset,
-                            size,
-                            ..
-                        } => {
-                            if (offset + size) > handle.size {
-                                return Err(RendererError::invalid_argument(
-                                    "Buffer overflow when binding resources.",
-                                ));
-                            }
-                        }
-                    }
-                }
-
-                let device_context = self
-                    .device_context
-                    .as_ref()
-                    .ok_or(RendererError::invalid_operation("Device is not set."))?;
-                let compute_queue_context = device_context.compute_queue_context.as_ref().ok_or(
-                    RendererError::invalid_operation(
-                        "Device is not initialized with `ComputeShaders` feature.",
-                    ),
-                )?;
-                let thread_context_index = Self::thread_context_index()?;
-                let current_frame = &compute_queue_context.frames
-                    [self.current_frame_index as usize]
-                    .thread_contexts[thread_context_index];
-                let descriptor_pool = current_frame.descriptor_pool;
-
-                let alloc_info = ash::vk::DescriptorSetAllocateInfo::default()
-                    .descriptor_pool(descriptor_pool)
-                    .set_layouts(std::slice::from_ref(&pipeline.descriptor_layout));
-
-                let descriptor_set = unsafe {
-                    device_context
-                        .logical_device
-                        .allocate_descriptor_sets(&alloc_info)?[0]
-                };
-
-                let buffer_infos: Vec<_> = bindings
-                    .iter()
-                    .map(|binding| match &binding.resource {
-                        ResourceBindingType::Buffer {
-                            handle,
-                            offset,
-                            size,
-                            ..
-                        } => ash::vk::DescriptorBufferInfo::default()
-                            .buffer(handle.buffer)
-                            .offset(*offset as u64)
-                            .range(*size as u64),
-                    })
-                    .collect();
-
-                let writes: Vec<_> = buffer_infos
-                    .iter()
-                    .enumerate()
-                    .map(|(i, info)| {
-                        ash::vk::WriteDescriptorSet::default()
-                            .dst_set(descriptor_set)
-                            .dst_binding(i as u32)
-                            .descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER)
-                            .buffer_info(std::slice::from_ref(info))
-                    })
-                    .collect();
-
-                unsafe {
-                    device_context
-                        .logical_device
-                        .update_descriptor_sets(&writes, &[]);
-                }
-
-                Ok(Self::ResourceSetHandle { descriptor_set })
-            }
-            _ => todo!(),
-        }
-    }
-
     fn create_buffer(&self, size: usize, usage: BufferUsage) -> RendererResult<Self::BufferHandle> {
         let device_context = self
             .device_context
@@ -962,44 +831,79 @@ impl Renderer for VulkanRenderer {
 
     fn create_compute_pipeline(
         &self,
-        shader: &Self::ShaderHandle,
+        shader: &Shader,
     ) -> RendererResult<Self::ComputePipelineHandle> {
+        struct ShaderModuleGuard<'a> {
+            module: ash::vk::ShaderModule,
+            device_context: &'a DeviceContext,
+        }
+        impl<'a> Drop for ShaderModuleGuard<'a> {
+            fn drop(&mut self) {
+                unsafe {
+                    self.device_context
+                        .logical_device
+                        .destroy_shader_module(self.module, None);
+                }
+            }
+        }
+
         let device_context = self
             .device_context
             .as_ref()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
 
-        // TODO: Pass number of bindings as a parameter.
-        let bindings = (0..3)
-            .map(|i| {
-                DescriptorSetLayoutBinding::default()
-                    .binding(i)
-                    .descriptor_type(DescriptorType::STORAGE_BUFFER)
-                    .descriptor_count(1)
-                    .stage_flags(ShaderStageFlags::COMPUTE)
-            })
-            .collect::<Vec<_>>();
-
-        let layout_info = DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
-        let descriptor_layout = unsafe {
-            device_context
-                .logical_device
-                .create_descriptor_set_layout(&layout_info, None)?
+        let (prefix, code_u32, suffix) = unsafe { shader.data.align_to::<u32>() };
+        if !prefix.is_empty() || !suffix.is_empty() {
+            return Err(RendererError::Fail(format!(
+                "Shader data from '{}' is not valid SPIR-V (not 4-byte aligned).",
+                shader.file_path
+            )));
+        }
+        let shader_module_guard = ShaderModuleGuard {
+            module: unsafe {
+                device_context
+                    .logical_device
+                    .create_shader_module(&ShaderModuleCreateInfo::default().code(code_u32), None)?
+            },
+            device_context,
         };
+        let shader_stage = Self::convert_shader_stage(shader.metadata.stage)?;
 
-        let pipeline_layout_info = PipelineLayoutCreateInfo::default()
-            .set_layouts(std::slice::from_ref(&descriptor_layout));
+        let mut binding_sets =
+            vec![Vec::with_capacity(shader.metadata.bindings.len()); shader.group_count() as usize];
+        for binding in &shader.metadata.bindings {
+            binding_sets[binding.group as usize].push(
+                DescriptorSetLayoutBinding::default()
+                    .binding(binding.binding)
+                    .descriptor_type(binding.binding_type.into())
+                    .descriptor_count(1)
+                    .stage_flags(shader_stage),
+            );
+        }
+
+        let mut descriptor_layouts = Vec::with_capacity(binding_sets.len());
+        for binding_set in &binding_sets {
+            let layout_info = DescriptorSetLayoutCreateInfo::default().bindings(binding_set);
+            descriptor_layouts.push(unsafe {
+                device_context
+                    .logical_device
+                    .create_descriptor_set_layout(&layout_info, None)?
+            });
+        }
+
+        let pipeline_layout_info =
+            PipelineLayoutCreateInfo::default().set_layouts(&descriptor_layouts);
         let layout = unsafe {
             device_context
                 .logical_device
                 .create_pipeline_layout(&pipeline_layout_info, None)?
         };
 
-        let entry_name = std::ffi::CString::new("main")?;
+        let shader_entry_name = CString::new(shader.metadata.entry_name.clone())?;
         let stage_info = PipelineShaderStageCreateInfo::default()
-            .stage(ShaderStageFlags::COMPUTE)
-            .module(shader.module)
-            .name(&entry_name);
+            .stage(shader_stage)
+            .module(shader_module_guard.module)
+            .name(&shader_entry_name);
 
         let compute_info = ComputePipelineCreateInfo::default()
             .layout(layout)
@@ -1015,7 +919,7 @@ impl Renderer for VulkanRenderer {
         Ok(VulkanComputePipeline {
             pipeline,
             layout,
-            descriptor_layout,
+            descriptor_layouts,
         })
     }
 
@@ -1035,9 +939,11 @@ impl Renderer for VulkanRenderer {
             device_context
                 .logical_device
                 .destroy_pipeline_layout(pipeline.layout, None);
-            device_context
-                .logical_device
-                .destroy_descriptor_set_layout(pipeline.descriptor_layout, None);
+            for descriptor_layout in &pipeline.descriptor_layouts {
+                device_context
+                    .logical_device
+                    .destroy_descriptor_set_layout(*descriptor_layout, None);
+            }
         }
         Ok(())
     }
@@ -1045,16 +951,17 @@ impl Renderer for VulkanRenderer {
     fn record_compute_pass(
         &mut self,
         pipeline: &Self::ComputePipelineHandle,
-        resource_sets: &[&Self::ResourceSetHandle],
+        binding_sets: &[&[ResourceBinding<Self::BufferHandle>]],
         group_count: (u32, u32, u32),
     ) -> RendererResult<Self::RecordedCommand> {
+        let mapped_sets = self.create_resource_sets(pipeline, binding_sets)?;
         let device_context = self
             .device_context
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
         let compute_queue_context = device_context.compute_queue_context.as_mut().ok_or(
             RendererError::invalid_operation(
-                "Device is not initialized with `ComputeShaders` feature.",
+                "Device is not initialized with the `ComputeShaders` feature.",
             ),
         )?;
         let thread_context_index = Self::thread_context_index()?;
@@ -1063,9 +970,6 @@ impl Renderer for VulkanRenderer {
 
         let begin_info =
             CommandBufferBeginInfo::default().flags(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-
-        let mapped_sets: Vec<ash::vk::DescriptorSet> =
-            resource_sets.iter().map(|set| set.descriptor_set).collect();
         unsafe {
             device_context
                 .logical_device

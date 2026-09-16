@@ -19,10 +19,10 @@ use heph_gl::{
         Renderer,
         concurrency::{RendererHandle, RendererWorkerFactory},
         error::RendererError,
-        resources::{BufferUsage, GpuBuffer, PipelineHandle, ResourceBinding, ResourceBindingType},
+        resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType},
         settings::{FeatureRequest, InitializeOptions, Settings},
     },
-    shader::ShaderSource,
+    shader::Shader,
 };
 use libtest_mimic::{Arguments, Trial};
 
@@ -85,7 +85,6 @@ define_renderer_test_flags!(
     test_index_buffer,
     test_vertex_buffer,
     test_impossible_buffer_size,
-    test_shader,
     test_calling_main_thread_only_fn_from_worker_thread,
     test_multiple_workers_per_thread,
     test_excess_threads,
@@ -257,7 +256,6 @@ where
                 create_trial!(versioned_test_suite, test_index_buffer),
                 create_trial!(versioned_test_suite, test_vertex_buffer),
                 create_trial!(versioned_test_suite, test_impossible_buffer_size),
-                create_trial!(versioned_test_suite, test_shader),
                 create_trial!(
                     versioned_test_suite,
                     test_calling_main_thread_only_fn_from_worker_thread
@@ -661,16 +659,6 @@ where
         heph_expect_err!(renderer.create_buffer(buffer_size, BufferUsage::Storage));
     }
 
-    fn test_shader(&self) {
-        let renderer = self.create_renderer_with_any_device(&[]);
-
-        let shader_source = heph_expect_success!(ShaderSource::from_file(
-            SHADERS_DIR.to_owned() + "/addition.spv"
-        ));
-        let shader = heph_expect_success!(renderer.create_shader(&shader_source));
-        heph_expect_success!(renderer.destroy_shader(&shader));
-    }
-
     fn test_calling_main_thread_only_fn_from_worker_thread(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[]);
         let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);
@@ -800,11 +788,10 @@ where
         };
         heph_expect_success!(renderer.set_settings(settings));
 
-        let shader_source = heph_expect_success!(ShaderSource::from_file(
-            SHADERS_DIR.to_owned() + "/addition.spv"
-        ));
-        let shader = heph_expect_success!(renderer.create_shader(&shader_source));
+        let shader =
+            heph_expect_success!(Shader::from_file(SHADERS_DIR.to_owned() + "/addition.spv"));
         let pipeline = heph_expect_success!(renderer.create_compute_pipeline(&shader));
+        drop(shader);
 
         let mut buffers = Vec::with_capacity(n_frames);
 
@@ -858,13 +845,9 @@ where
                 },
             ];
 
-            let resource_set = heph_expect_success!(
-                renderer.create_resource_set(&PipelineHandle::Compute(pipeline), &bindings)
-            );
-
             let recorded_command = heph_expect_success!(renderer.record_compute_pass(
                 &pipeline,
-                &[&resource_set],
+                &[&bindings],
                 (1, 1, 1)
             ));
             heph_expect_success!(renderer.submit_commands(&[recorded_command]));
@@ -902,7 +885,6 @@ where
         }
 
         heph_expect_success!(renderer.destroy_compute_pipeline(&pipeline));
-        heph_expect_success!(renderer.destroy_shader(&shader));
     }
 
     fn test_single_threaded_compute_discrete_gpu(&self) {
@@ -964,10 +946,9 @@ where
         let mut renderer = create_renderer_result.unwrap();
 
         let shader_path = SHADERS_DIR.to_owned() + "/addition.spv";
-        let shader_module = heph_expect_success!(
-            renderer.create_shader(heph_expect_success!(&ShaderSource::from_file(shader_path)))
-        );
-        let pipeline = heph_expect_success!(renderer.create_compute_pipeline(&shader_module));
+        let shader = heph_expect_success!(Shader::from_file(shader_path));
+        let pipeline = heph_expect_success!(renderer.create_compute_pipeline(&shader));
+        drop(shader);
 
         std::thread::scope(|s| {
             let (tx, rx) = std::sync::mpsc::channel();
@@ -977,6 +958,7 @@ where
             for thread_id in 0..n_threads {
                 let tx = tx.clone();
                 let barrier = barrier.clone();
+                let pipeline = pipeline.clone();
 
                 s.spawn(move || {
                     let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
@@ -1038,13 +1020,8 @@ where
                             },
                         },
                     ];
-
-                    let resource_set = heph_expect_success!(
-                        renderer_worker
-                            .create_resource_set(&PipelineHandle::Compute(pipeline), &bindings)
-                    );
                     let recorded_command = heph_expect_success!(
-                        renderer_worker.record_compute_pass(&pipeline, &[&resource_set], (1, 1, 1))
+                        renderer_worker.record_compute_pass(&pipeline, &[&bindings], (1, 1, 1))
                     );
 
                     heph_expect_success!(tx.send((
@@ -1098,7 +1075,6 @@ where
         });
 
         heph_expect_success!(renderer.destroy_compute_pipeline(&pipeline));
-        heph_expect_success!(renderer.destroy_shader(&shader_module));
     }
 
     fn test_multi_threaded_compute_discrete_gpu(&self) {
