@@ -6,7 +6,7 @@ use crate::{
     renderers::{
         GpuBuffer, Renderer, RendererResult,
         error::RendererError,
-        resources::{ResourceBinding, ResourceBindingType},
+        resources::{BufferUsage, ResourceBinding, ResourceBindingType},
         vulkan::{VulkanRenderer, queue::QueueType},
     },
     shader::ShaderBindingType,
@@ -82,23 +82,6 @@ impl VulkanRenderer {
         };
 
         for (i, &binding_set) in binding_sets.iter().enumerate() {
-            for binding in binding_set {
-                match binding.resource {
-                    ResourceBindingType::Buffer {
-                        handle,
-                        offset,
-                        size,
-                        ..
-                    } => {
-                        if (offset + size) > handle.size {
-                            return Err(RendererError::invalid_argument(
-                                "Buffer overflow when binding resources.",
-                            ));
-                        }
-                    }
-                }
-            }
-
             let buffer_infos: Vec<_> = binding_set
                 .iter()
                 .map(|binding| match &binding.resource {
@@ -113,17 +96,42 @@ impl VulkanRenderer {
                         .range(*size as u64),
                 })
                 .collect();
-            let writes: Vec<_> = buffer_infos
-                .iter()
-                .enumerate()
-                .map(|(j, info)| {
+
+            let mut writes = Vec::with_capacity(binding_set.len());
+            for (binding, info) in binding_set.iter().zip(buffer_infos.iter()) {
+                let descriptor_type = match binding.resource {
+                    ResourceBindingType::Buffer {
+                        handle,
+                        usage,
+                        offset,
+                        size,
+                    } => {
+                        if offset + size > handle.size {
+                            return Err(RendererError::invalid_argument(
+                                "Buffer overflow when binding resources.",
+                            ));
+                        }
+
+                        match usage {
+                            BufferUsage::Storage => ash::vk::DescriptorType::STORAGE_BUFFER,
+                            BufferUsage::Uniform => ash::vk::DescriptorType::UNIFORM_BUFFER,
+                            _ => {
+                                return Err(RendererError::invalid_argument(
+                                    "Invalid buffer usage for resource binding.",
+                                ));
+                            }
+                        }
+                    }
+                };
+                writes.push(
                     ash::vk::WriteDescriptorSet::default()
                         .dst_set(descriptor_sets[i])
-                        .dst_binding(j as u32)
-                        .descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER)
-                        .buffer_info(std::slice::from_ref(info))
-                })
-                .collect();
+                        .dst_binding(binding.binding)
+                        .descriptor_type(descriptor_type)
+                        .buffer_info(std::slice::from_ref(info)),
+                );
+            }
+
             unsafe {
                 device_context
                     .logical_device
