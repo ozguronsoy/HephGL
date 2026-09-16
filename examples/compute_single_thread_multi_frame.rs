@@ -1,11 +1,10 @@
 use heph_gl::{
     graphics_device::Feature::ComputeShaders,
     renderers::{
-        Renderer, resources::BufferUsage, resources::GpuBuffer, resources::PipelineHandle,
-        resources::ResourceBinding, resources::ResourceBindingType, settings::FeatureRequest,
-        settings::Settings,
+        Renderer, resources::BufferUsage, resources::GpuBuffer, resources::ResourceBinding,
+        resources::ResourceBindingType, settings::FeatureRequest, settings::Settings,
     },
-    shader::ShaderSource,
+    shader::Shader,
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
@@ -50,9 +49,9 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 
     // This shader takes one set of resources with 3 bindings (2 input buffers, and
     // an output buffer).
-    let shader_source = ShaderSource::from_file(SHADERS_DIR.to_owned() + "/addition.spv").unwrap();
-    let shader = renderer.create_shader(&shader_source).unwrap();
+    let shader = Shader::from_file(SHADERS_DIR.to_owned() + "/addition.spv").unwrap();
     let pipeline = renderer.create_compute_pipeline(&shader).unwrap();
+    drop(shader);
 
     // Create resources for each frame in flight. For this example, we only have
     // general purpose storage buffers in GPU as resources.
@@ -151,13 +150,9 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
                 },
             },
         ];
-        let resource_set = renderer
-            .create_resource_set(&PipelineHandle::Compute(pipeline), &bindings)
-            .unwrap();
-
         // Record a command and submit it to the GPU.
         let recorded_command = renderer
-            .record_compute_pass(&pipeline, &[&resource_set], (1, 1, 1))
+            .record_compute_pass(&pipeline, &[&bindings], (1, 1, 1))
             .unwrap();
         renderer.submit_commands(&[recorded_command]).unwrap();
 
@@ -171,7 +166,6 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         renderer.destroy_buffer(&mut frame.buffer_c).unwrap();
     }
     renderer.destroy_compute_pipeline(&pipeline).unwrap();
-    renderer.destroy_shader(&shader).unwrap();
 
     std::process::exit(0);
 }

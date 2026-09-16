@@ -11,7 +11,7 @@ use renkrs::RGB;
 
 use crate::{
     graphics_device::GraphicsDevice, renderers::error::*, renderers::resources::*,
-    renderers::settings::*, shader::ShaderSource,
+    renderers::settings::*, shader::Shader,
 };
 
 // Represents the result of a renderer operation.
@@ -19,16 +19,12 @@ type RendererResult<T> = Result<T, RendererError>;
 
 /// The core interface for a graphics renderer.
 pub trait Renderer {
-    /// Represents a compiled shader module on the GPU.
-    type ShaderHandle: Copy + Clone + Send + Sync;
     /// Represents a block of memory on the GPU.
     type BufferHandle: GpuBuffer;
     /// Represents a compiled graphics pipeline.
-    type GraphicsPipelineHandle: Copy + Clone + Send + Sync;
+    type GraphicsPipelineHandle: Clone + Send + Sync;
     /// Represents a compiled compute pipeline.
-    type ComputePipelineHandle: Copy + Clone + Send + Sync;
-    /// Represents a resource set.
-    type ResourceSetHandle: Copy + Clone + Send + Sync;
+    type ComputePipelineHandle: Clone + Send + Sync;
     /// Represents a recorded command.
     type RecordedCommand: Copy + Clone + Send + Sync;
 
@@ -88,18 +84,6 @@ pub trait Renderer {
         requested_features: &[FeatureRequest],
     ) -> RendererResult<()>;
 
-    /// Compiles the shader from the provided source.
-    fn create_shader(&self, source: &ShaderSource) -> RendererResult<Self::ShaderHandle>;
-    /// Destroys the shader and frees the resources.
-    fn destroy_shader(&self, shader: &Self::ShaderHandle) -> RendererResult<()>;
-
-    /// Creates a resource set.
-    fn create_resource_set(
-        &self,
-        pipeline_handle: &PipelineHandle<Self::GraphicsPipelineHandle, Self::ComputePipelineHandle>,
-        bindings: &[ResourceBinding<Self::BufferHandle>],
-    ) -> RendererResult<Self::ResourceSetHandle>;
-
     /// Allocates a new buffer on the GPU with the specified size and usage.
     fn create_buffer(&self, size: usize, usage: BufferUsage) -> RendererResult<Self::BufferHandle>;
     /// Writes data to the buffer on the GPU.
@@ -112,7 +96,7 @@ pub trait Renderer {
     /// Creates a compute pipeline using the provided shader.
     fn create_compute_pipeline(
         &self,
-        shader: &Self::ShaderHandle,
+        shader: &Shader,
     ) -> RendererResult<Self::ComputePipelineHandle>;
     /// Destroys the compute pipeline.
     fn destroy_compute_pipeline(
@@ -123,7 +107,7 @@ pub trait Renderer {
     fn record_compute_pass(
         &mut self,
         pipeline: &Self::ComputePipelineHandle,
-        resource_sets: &[&Self::ResourceSetHandle],
+        binding_sets: &[&[ResourceBinding<Self::BufferHandle>]],
         group_count: (u32, u32, u32),
     ) -> RendererResult<Self::RecordedCommand>;
 

@@ -39,11 +39,6 @@ pub enum ResourceBindingType<BufferHandle> {
     },
 }
 
-pub enum PipelineHandle<G, C> {
-    Graphics(G),
-    Compute(C),
-}
-
 /// Stores data in a GPU.
 pub trait GpuBuffer: std::fmt::Debug + Copy + Clone + Send + Sync {
     fn size(&self) -> usize;

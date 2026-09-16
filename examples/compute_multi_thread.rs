@@ -2,10 +2,10 @@ use heph_gl::{
     graphics_device::Feature::ComputeShaders,
     renderers::{
         Renderer, concurrency::RendererHandle, concurrency::RendererWorkerFactory,
-        resources::BufferUsage, resources::GpuBuffer, resources::PipelineHandle,
-        resources::ResourceBinding, resources::ResourceBindingType, settings::FeatureRequest,
+        resources::BufferUsage, resources::GpuBuffer, resources::ResourceBinding,
+        resources::ResourceBindingType, settings::FeatureRequest,
     },
-    shader::ShaderSource,
+    shader::Shader,
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
@@ -38,9 +38,9 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 
     // This shader takes one set of resources with 3 bindings (2 input buffers, and
     // an output buffer).
-    let shader_source = ShaderSource::from_file(SHADERS_DIR.to_owned() + "/addition.spv").unwrap();
-    let shader = renderer.create_shader(&shader_source).unwrap();
+    let shader = Shader::from_file(SHADERS_DIR.to_owned() + "/addition.spv").unwrap();
     let pipeline = renderer.create_compute_pipeline(&shader).unwrap();
+    drop(shader);
 
     std::thread::scope(|s| {
         let (tx, rx) = std::sync::mpsc::channel();
@@ -53,6 +53,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         for thread_index in 0..N_THREADS {
             let tx = tx.clone();
             let barrier = barrier.clone();
+            let pipeline = pipeline.clone();
 
             s.spawn(move || {
                 let mut renderer = renderer_handle.spawn_worker().unwrap();
@@ -109,14 +110,10 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
                         },
                     },
                 ];
-                let resource_set = renderer
-                    .create_resource_set(&PipelineHandle::Compute(pipeline), &bindings)
-                    .unwrap();
-
                 // Record a command. We will submit it to the GPU in the main thread with the
                 // other commands.
                 let recorded_command = renderer
-                    .record_compute_pass(&pipeline, &[&resource_set], (1, 1, 1))
+                    .record_compute_pass(&pipeline, &[&bindings], (1, 1, 1))
                     .unwrap();
 
                 // Send resources we prepared to the main thread, so we can submit them to the
@@ -178,7 +175,6 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 
     // Cleanup
     renderer.destroy_compute_pipeline(&pipeline).unwrap();
-    renderer.destroy_shader(&shader).unwrap();
 
     std::process::exit(0);
 }
