@@ -1,16 +1,30 @@
-use ash::vk::{
-    Buffer, DescriptorSet, DescriptorSetLayout, DescriptorType, Pipeline, PipelineLayout,
-};
+use ash::vk::{Buffer, DescriptorSet, DescriptorType};
 
 use crate::{
     renderers::{
         GpuBuffer, Renderer, RendererResult,
         error::RendererError,
         resources::{BufferUsage, ResourceBinding, ResourceBindingType},
-        vulkan::{VulkanRenderer, queue::QueueType},
+        vulkan::{VulkanRenderer, pipeline::VulkanComputePipeline, queue::QueueType},
     },
     shader::ShaderBindingType,
 };
+
+/// An opaque handle to a compute pipeline.
+#[derive(Clone, Copy)]
+pub struct VulkanComputePipelineHandle {
+    /// Pointer to the pipeline instance.
+    pub(super) ptr: usize,
+    /// Position of the current pipeline within the internal pipeline list. This is used for
+    /// validating the handle.
+    pub(super) index: usize,
+}
+
+/// An opaque handle to a graphics pipeline.
+#[derive(Clone, Copy)]
+pub struct VulkanGraphicsPipelineHandle {
+    // TODO
+}
 
 /// Represents a Vulkan buffer.
 #[derive(Debug, Copy, Clone)]
@@ -21,20 +35,6 @@ pub struct VulkanBuffer {
     pub(super) vma_allocation: vk_mem::Allocation,
     /// The size of the buffer in bytes.
     pub(super) size: usize,
-}
-
-/// Represents a Vulkan graphics pipeline.
-#[derive(Clone)]
-pub struct VulkanGraphicsPipeline {
-    // TODO
-}
-
-/// Represents a Vulkan compute pipeline.
-#[derive(Clone)]
-pub struct VulkanComputePipeline {
-    pub(super) pipeline: Pipeline,
-    pub(super) layout: PipelineLayout,
-    pub(super) descriptor_layouts: Vec<DescriptorSetLayout>,
 }
 
 /// Represents a recorded Vulkan command.
@@ -54,7 +54,7 @@ impl GpuBuffer for VulkanBuffer {
 impl VulkanRenderer {
     pub(super) fn create_resource_sets(
         &self,
-        pipeline: &<VulkanRenderer as Renderer>::ComputePipelineHandle,
+        pipeline: &VulkanComputePipeline,
         binding_sets: &[&[ResourceBinding<<VulkanRenderer as Renderer>::BufferHandle>]],
     ) -> RendererResult<Vec<DescriptorSet>> {
         // TODO: Verify group count and bindings.

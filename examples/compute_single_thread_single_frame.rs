@@ -36,7 +36,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     // This shader takes one set of resources with 3 bindings (2 input buffers, and
     // an output buffer).
     let shader = Shader::from_file(SHADERS_DIR.to_owned() + "/addition.spv").unwrap();
-    let pipeline = renderer.create_compute_pipeline(&shader).unwrap();
+    let pipeline_handle = renderer.create_compute_pipeline(&shader).unwrap();
     drop(shader);
 
     renderer.begin_frame().unwrap();
@@ -94,7 +94,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     ];
     // Record a command and submit it to the GPU.
     let recorded_command = renderer
-        .record_compute_pass(&pipeline, &[&bindings], (1, 1, 1))
+        .record_compute_pass(pipeline_handle, &[&bindings], (1, 1, 1))
         .unwrap();
     renderer.submit_commands(&[recorded_command]).unwrap();
 
@@ -116,7 +116,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     renderer.destroy_buffer(&mut buffer_a).unwrap();
     renderer.destroy_buffer(&mut buffer_b).unwrap();
     renderer.destroy_buffer(&mut buffer_c).unwrap();
-    renderer.destroy_compute_pipeline(&pipeline).unwrap();
+    renderer.destroy_compute_pipeline(pipeline_handle).unwrap();
 
     std::process::exit(0);
 }

@@ -21,10 +21,10 @@ type RendererResult<T> = Result<T, RendererError>;
 pub trait Renderer {
     /// Represents a block of memory on the GPU.
     type BufferHandle: GpuBuffer;
-    /// Represents a compiled graphics pipeline.
-    type GraphicsPipelineHandle: Clone + Send + Sync;
     /// Represents a compiled compute pipeline.
-    type ComputePipelineHandle: Clone + Send + Sync;
+    type ComputePipelineHandle: Copy + Clone + Send + Sync;
+    /// Represents a compiled graphics pipeline.
+    type GraphicsPipelineHandle: Copy + Clone + Send + Sync;
     /// Represents a recorded command.
     type RecordedCommand: Copy + Clone + Send + Sync;
 
@@ -95,18 +95,19 @@ pub trait Renderer {
 
     /// Creates a compute pipeline using the provided shader.
     fn create_compute_pipeline(
-        &self,
+        &mut self,
         shader: &Shader,
     ) -> RendererResult<Self::ComputePipelineHandle>;
     /// Destroys the compute pipeline.
     fn destroy_compute_pipeline(
-        &self,
-        pipeline: &Self::ComputePipelineHandle,
+        &mut self,
+        pipeline_handle: Self::ComputePipelineHandle,
     ) -> RendererResult<()>;
+
     /// Dispatches a compute workload to the GPU.
     fn record_compute_pass(
         &mut self,
-        pipeline: &Self::ComputePipelineHandle,
+        pipeline_handle: Self::ComputePipelineHandle,
         binding_sets: &[&[ResourceBinding<Self::BufferHandle>]],
         group_count: (u32, u32, u32),
     ) -> RendererResult<Self::RecordedCommand>;

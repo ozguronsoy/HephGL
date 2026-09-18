@@ -39,7 +39,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     // This shader takes one set of resources with 3 bindings (2 input buffers, and
     // an output buffer).
     let shader = Shader::from_file(SHADERS_DIR.to_owned() + "/addition.spv").unwrap();
-    let pipeline = renderer.create_compute_pipeline(&shader).unwrap();
+    let pipeline_handle = renderer.create_compute_pipeline(&shader).unwrap();
     drop(shader);
 
     std::thread::scope(|s| {
@@ -53,7 +53,6 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         for thread_index in 0..N_THREADS {
             let tx = tx.clone();
             let barrier = barrier.clone();
-            let pipeline = pipeline.clone();
 
             s.spawn(move || {
                 let mut renderer = renderer_handle.spawn_worker().unwrap();
@@ -113,7 +112,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
                 // Record a command. We will submit it to the GPU in the main thread with the
                 // other commands.
                 let recorded_command = renderer
-                    .record_compute_pass(&pipeline, &[&bindings], (1, 1, 1))
+                    .record_compute_pass(pipeline_handle, &[&bindings], (1, 1, 1))
                     .unwrap();
 
                 // Send resources we prepared to the main thread, so we can submit them to the
@@ -174,7 +173,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     });
 
     // Cleanup
-    renderer.destroy_compute_pipeline(&pipeline).unwrap();
+    renderer.destroy_compute_pipeline(pipeline_handle).unwrap();
 
     std::process::exit(0);
 }

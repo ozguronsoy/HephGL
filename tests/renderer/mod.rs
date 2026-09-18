@@ -790,7 +790,7 @@ where
 
         let shader =
             heph_expect_success!(Shader::from_file(SHADERS_DIR.to_owned() + "/addition.spv"));
-        let pipeline = heph_expect_success!(renderer.create_compute_pipeline(&shader));
+        let pipeline_handle = heph_expect_success!(renderer.create_compute_pipeline(&shader));
         drop(shader);
 
         let mut buffers = Vec::with_capacity(n_frames);
@@ -846,7 +846,7 @@ where
             ];
 
             let recorded_command = heph_expect_success!(renderer.record_compute_pass(
-                &pipeline,
+                pipeline_handle,
                 &[&bindings],
                 (1, 1, 1)
             ));
@@ -884,7 +884,7 @@ where
             heph_expect_success!(renderer.destroy_buffer(&mut buffer.2));
         }
 
-        heph_expect_success!(renderer.destroy_compute_pipeline(&pipeline));
+        heph_expect_success!(renderer.destroy_compute_pipeline(pipeline_handle));
     }
 
     fn test_single_threaded_compute_discrete_gpu(&self) {
@@ -947,7 +947,7 @@ where
 
         let shader_path = SHADERS_DIR.to_owned() + "/addition.spv";
         let shader = heph_expect_success!(Shader::from_file(shader_path));
-        let pipeline = heph_expect_success!(renderer.create_compute_pipeline(&shader));
+        let pipeline_handle = heph_expect_success!(renderer.create_compute_pipeline(&shader));
         drop(shader);
 
         std::thread::scope(|s| {
@@ -958,7 +958,6 @@ where
             for thread_id in 0..n_threads {
                 let tx = tx.clone();
                 let barrier = barrier.clone();
-                let pipeline = pipeline.clone();
 
                 s.spawn(move || {
                     let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
@@ -1020,9 +1019,12 @@ where
                             },
                         },
                     ];
-                    let recorded_command = heph_expect_success!(
-                        renderer_worker.record_compute_pass(&pipeline, &[&bindings], (1, 1, 1))
-                    );
+                    let recorded_command =
+                        heph_expect_success!(renderer_worker.record_compute_pass(
+                            pipeline_handle,
+                            &[&bindings],
+                            (1, 1, 1)
+                        ));
 
                     heph_expect_success!(tx.send((
                         recorded_command,
@@ -1074,7 +1076,7 @@ where
             heph_expect_success!(renderer.end_frame());
         });
 
-        heph_expect_success!(renderer.destroy_compute_pipeline(&pipeline));
+        heph_expect_success!(renderer.destroy_compute_pipeline(pipeline_handle));
     }
 
     fn test_multi_threaded_compute_discrete_gpu(&self) {

@@ -2,6 +2,7 @@ mod device;
 mod error;
 mod frame;
 mod handle;
+mod pipeline;
 mod queue;
 pub mod resources;
 mod swapchain;
@@ -40,6 +41,7 @@ use crate::{
         vulkan::{
             device::DeviceContext,
             frame::Frame,
+            pipeline::VulkanComputePipeline,
             queue::{QueueContext, QueueType},
             resources::*,
             swapchain::SwapchainContext,
@@ -74,8 +76,8 @@ pub struct VulkanRenderer {
 
 impl Renderer for VulkanRenderer {
     type BufferHandle = VulkanBuffer;
-    type GraphicsPipelineHandle = VulkanGraphicsPipeline;
-    type ComputePipelineHandle = VulkanComputePipeline;
+    type ComputePipelineHandle = VulkanComputePipelineHandle;
+    type GraphicsPipelineHandle = VulkanGraphicsPipelineHandle;
     type RecordedCommand = VulkanRecordedCommand;
 
     const MIN_SUPPORTED_API_VERSION: Version = Version::new(1, 0, 0);
@@ -707,9 +709,9 @@ impl Renderer for VulkanRenderer {
                 swapchain: SwapchainKHR::null(),
                 format: ash::vk::Format::default(),
                 extent: ash::vk::Extent2D::default(),
-                images: Vec::default(),
-                image_views: Vec::default(),
-                semaphores: Vec::default(),
+                images: Vec::new(),
+                image_views: Vec::new(),
+                semaphores: Vec::new(),
                 depth_image: ash::vk::Image::null(),
                 depth_image_allocation: None,
                 depth_image_view: ash::vk::ImageView::null(),
@@ -718,6 +720,8 @@ impl Renderer for VulkanRenderer {
             physical_device,
             logical_device,
             supports_timeline_semaphore,
+
+            compute_pipelines: Mutex::new(Vec::new()),
 
             thread_context_masks: Mutex::new(std::array::from_fn(|_| ThreadContextMask::default())),
         });
@@ -830,26 +834,24 @@ impl Renderer for VulkanRenderer {
     }
 
     fn create_compute_pipeline(
-        &self,
+        &mut self,
         shader: &Shader,
     ) -> RendererResult<Self::ComputePipelineHandle> {
         struct ShaderModuleGuard<'a> {
             module: ash::vk::ShaderModule,
-            device_context: &'a DeviceContext,
+            logical_device: &'a ash::Device,
         }
         impl<'a> Drop for ShaderModuleGuard<'a> {
             fn drop(&mut self) {
                 unsafe {
-                    self.device_context
-                        .logical_device
-                        .destroy_shader_module(self.module, None);
+                    self.logical_device.destroy_shader_module(self.module, None);
                 }
             }
         }
 
         let device_context = self
             .device_context
-            .as_ref()
+            .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
 
         let (prefix, code_u32, suffix) = unsafe { shader.data.align_to::<u32>() };
@@ -865,7 +867,7 @@ impl Renderer for VulkanRenderer {
                     .logical_device
                     .create_shader_module(&ShaderModuleCreateInfo::default().code(code_u32), None)?
             },
-            device_context,
+            logical_device: &device_context.logical_device,
         };
         let shader_stage = Self::convert_shader_stage(shader.metadata.stage)?;
 
@@ -916,20 +918,27 @@ impl Renderer for VulkanRenderer {
             )?[0]
         };
 
-        Ok(VulkanComputePipeline {
+        let mut compute_pipelines = device_context.compute_pipelines.lock()?;
+        let index = compute_pipelines.len();
+        compute_pipelines.push(Box::new(VulkanComputePipeline {
             pipeline,
             layout,
             descriptor_layouts,
+        }));
+        Ok(VulkanComputePipelineHandle {
+            ptr: compute_pipelines[index].as_ref() as *const VulkanComputePipeline as usize,
+            index,
         })
     }
 
     fn destroy_compute_pipeline(
-        &self,
-        pipeline: &Self::ComputePipelineHandle,
+        &mut self,
+        pipeline_handle: Self::ComputePipelineHandle,
     ) -> RendererResult<()> {
+        let pipeline = unsafe { &*self.compute_pipeline(pipeline_handle)? };
         let device_context = self
             .device_context
-            .as_ref()
+            .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
 
         unsafe {
@@ -945,15 +954,19 @@ impl Renderer for VulkanRenderer {
                     .destroy_descriptor_set_layout(*descriptor_layout, None);
             }
         }
+
+        let mut compute_pipelines = device_context.compute_pipelines.lock()?;
+        compute_pipelines.remove(pipeline_handle.index);
         Ok(())
     }
 
     fn record_compute_pass(
         &mut self,
-        pipeline: &Self::ComputePipelineHandle,
+        pipeline_handle: Self::ComputePipelineHandle,
         binding_sets: &[&[ResourceBinding<Self::BufferHandle>]],
         group_count: (u32, u32, u32),
     ) -> RendererResult<Self::RecordedCommand> {
+        let pipeline = unsafe { &*self.compute_pipeline(pipeline_handle)? };
         let mapped_sets = self.create_resource_sets(pipeline, binding_sets)?;
         let device_context = self
             .device_context

@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+
 use ash::vk::{PhysicalDeviceProperties2, QueueFamilyProperties2};
 
 use crate::{
@@ -8,6 +10,7 @@ use crate::{
         thread_context::ThreadContextMaskArray,
         vulkan::{
             VulkanRenderer,
+            pipeline::VulkanComputePipeline,
             queue::{QueueContext, QueueFamily},
             swapchain::SwapchainContext,
         },
@@ -34,10 +37,17 @@ pub struct DeviceContext {
     pub logical_device: ash::Device,
     pub supports_timeline_semaphore: bool,
 
+    /// A list of compute pipelines.
+    ///
+    /// ### Important
+    /// New elements can only be **appended**.
+    #[allow(clippy::vec_box)]
+    pub compute_pipelines: Mutex<Vec<Box<VulkanComputePipeline>>>,
+
     /// The bitmasks indicating the availability of thread contexts.
     /// `0` means the context at that index is available, `1` means it is
     /// currently in use.
-    pub thread_context_masks: std::sync::Mutex<ThreadContextMaskArray>,
+    pub thread_context_masks: Mutex<ThreadContextMaskArray>,
 }
 
 impl VulkanRenderer {
