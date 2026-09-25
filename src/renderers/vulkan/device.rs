@@ -3,7 +3,7 @@ use ash::vk::{PhysicalDeviceProperties2, QueueFamilyProperties2};
 use crate::{
     graphics_device::GraphicsDevice,
     renderers::{
-        RendererResult,
+        Renderer, RendererResult,
         error::RendererError,
         thread_context::ThreadContextMaskArray,
         vulkan::{
@@ -120,6 +120,7 @@ impl VulkanRenderer {
     /// active device to `None`.
     pub(super) fn uninitialize_device(&mut self) -> RendererResult<()> {
         if self.device_context.is_some() {
+            self.wait_idle()?;
             self.destroy_rendering()?;
             self.destroy_swapchain()?;
             self.destroy_frame_sync()?;

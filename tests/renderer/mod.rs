@@ -1122,6 +1122,9 @@ where
         let command = heph_expect_success!(renderer.record_graphics_command(&pipeline, &[], 3, 1));
         heph_expect_success!(renderer.submit_commands(&[command]));
         heph_expect_success!(renderer.end_frame());
+
+        heph_expect_success!(renderer.wait_idle());
+        heph_expect_success!(renderer.destroy_graphics_pipeline(&pipeline));
     }
 
     fn test_clear(&self) {
