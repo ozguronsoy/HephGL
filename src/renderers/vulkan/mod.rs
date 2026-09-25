@@ -71,6 +71,9 @@ pub struct VulkanRenderer {
     device_context: Option<DeviceContext>,
 
     main_thread_id: std::thread::ThreadId,
+
+    // TODO: Remove this once recorded commands are internal.
+    recorded_render_command: bool,
 }
 
 impl Renderer for VulkanRenderer {
@@ -97,6 +100,8 @@ impl Renderer for VulkanRenderer {
             device_context: None,
 
             main_thread_id: std::thread::current().id(),
+
+            recorded_render_command: false,
         }
     }
 
@@ -1088,6 +1093,20 @@ impl Renderer for VulkanRenderer {
             extent,
         };
 
+        // TODO: Move this to `begin_frame`.
+        device_context.swapchain_context.current_image_index = unsafe {
+            device_context
+                .swapchain_context
+                .loader
+                .acquire_next_image(
+                    device_context.swapchain_context.swapchain,
+                    1e9 as u64,
+                    device_context.swapchain_context.semaphores[current_frame_index].0,
+                    ash::vk::Fence::null(),
+                )?
+                .0 as usize
+        };
+
         let begin_info =
             CommandBufferBeginInfo::default().flags(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         unsafe {
@@ -1211,7 +1230,7 @@ impl Renderer for VulkanRenderer {
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
 
-        let submit_queue = |queue_context: &mut QueueContext| {
+        let mut submit_queue = |queue_context: &mut QueueContext| {
             const INVALID_FRAME_INDEX: usize = usize::MAX;
             let mut command_buffers = Vec::with_capacity(recorded_commands.len());
             let mut frame_index = INVALID_FRAME_INDEX;
@@ -1250,6 +1269,7 @@ impl Renderer for VulkanRenderer {
                         .wait_dst_stage_mask(&wait_stages)
                         .command_buffers(&command_buffers)
                         .signal_semaphores(&render_finished_semaphores);
+                    self.recorded_render_command = true;
                 }
 
                 let frame_sync = queue_context
@@ -1304,19 +1324,6 @@ impl Renderer for VulkanRenderer {
             wait_frame_sync(compute_queue_context)?;
         }
 
-        device_context.swapchain_context.current_image_index = unsafe {
-            device_context
-                .swapchain_context
-                .loader
-                .acquire_next_image(
-                    device_context.swapchain_context.swapchain,
-                    1e9 as u64,
-                    device_context.swapchain_context.semaphores[current_frame_index].0,
-                    ash::vk::Fence::null(),
-                )?
-                .0 as usize
-        };
-
         // Reset the command pools.
         let reset_command_pool = |queue_context: &QueueContext| -> RendererResult<()> {
             unsafe {
@@ -1367,20 +1374,23 @@ impl Renderer for VulkanRenderer {
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
         let image_index = device_context.swapchain_context.current_image_index;
 
-        let wait_semaphores = [device_context.swapchain_context.semaphores[image_index].1];
-        let swapchains = [device_context.swapchain_context.swapchain];
-        let image_indices = [image_index as u32];
-        let present_info = ash::vk::PresentInfoKHR::default()
-            .wait_semaphores(&wait_semaphores)
-            .swapchains(&swapchains)
-            .image_indices(&image_indices);
-        let _suboptimal = unsafe {
-            device_context
-                .swapchain_context
-                .loader
-                .queue_present(device_context.graphics_queue_context.queue, &present_info)?
-        };
-        // TODO: Recreate swapchain if suboptimal.
+        if self.recorded_render_command {
+            let wait_semaphores = [device_context.swapchain_context.semaphores[image_index].1];
+            let swapchains = [device_context.swapchain_context.swapchain];
+            let image_indices = [image_index as u32];
+            let present_info = ash::vk::PresentInfoKHR::default()
+                .wait_semaphores(&wait_semaphores)
+                .swapchains(&swapchains)
+                .image_indices(&image_indices);
+            let _suboptimal = unsafe {
+                device_context
+                    .swapchain_context
+                    .loader
+                    .queue_present(device_context.graphics_queue_context.queue, &present_info)?
+            };
+            self.recorded_render_command = false;
+            // TODO: Recreate swapchain if suboptimal.
+        }
 
         self.current_frame_index = (self.current_frame_index + 1) % self.settings.frames_in_flight;
 
