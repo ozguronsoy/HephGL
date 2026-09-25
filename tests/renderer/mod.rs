@@ -98,6 +98,7 @@ define_renderer_test_flags!(
     test_multi_threaded_compute_cpu,
     test_multi_threaded_compute_virtual_gpu,
     test_multi_threaded_compute_other,
+    test_render_basic_triangle,
     test_clear
 );
 
@@ -312,6 +313,7 @@ where
                     test_multi_threaded_compute_other,
                     skip_other_device_tests
                 ),
+                create_trial!(versioned_test_suite, test_render_basic_triangle),
                 create_trial!(versioned_test_suite, test_clear),
             ];
             tests.append(&mut test_suite);
@@ -549,7 +551,7 @@ where
 
     fn test_set_settings(&self) {
         let settings = Settings {
-            frames_in_flight: 10,
+            frames_in_flight: 2,
             ..Default::default()
         };
 
@@ -845,7 +847,7 @@ where
                 },
             ];
 
-            let recorded_command = heph_expect_success!(renderer.record_compute_pass(
+            let recorded_command = heph_expect_success!(renderer.record_compute_command(
                 &pipeline,
                 &[&bindings],
                 (1, 1, 1)
@@ -1021,7 +1023,7 @@ where
                         },
                     ];
                     let recorded_command = heph_expect_success!(
-                        renderer_worker.record_compute_pass(&pipeline, &[&bindings], (1, 1, 1))
+                        renderer_worker.record_compute_command(&pipeline, &[&bindings], (1, 1, 1))
                     );
 
                     heph_expect_success!(tx.send((
@@ -1101,6 +1103,28 @@ where
         const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type =
             heph_gl::graphics_device::Type::Other;
         self.test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
+    }
+
+    fn test_render_basic_triangle(&self) {
+        let mut renderer = self.create_renderer_with_any_device(&[]);
+        let vert_shader = heph_expect_success!(Shader::from_file(format!(
+            "{}/{}",
+            SHADERS_DIR, "basic_triangle_vert.spv"
+        )));
+        let frag_shader = heph_expect_success!(Shader::from_file(format!(
+            "{}/{}",
+            SHADERS_DIR, "basic_triangle_frag.spv"
+        )));
+        let pipeline =
+            heph_expect_success!(renderer.create_graphics_pipeline(&[&vert_shader, &frag_shader]));
+
+        heph_expect_success!(renderer.begin_frame());
+        let command = heph_expect_success!(renderer.record_graphics_command(&pipeline, &[], 3, 1));
+        heph_expect_success!(renderer.submit_commands(&[command]));
+        heph_expect_success!(renderer.end_frame());
+
+        heph_expect_success!(renderer.wait_idle());
+        heph_expect_success!(renderer.destroy_graphics_pipeline(&pipeline));
     }
 
     fn test_clear(&self) {

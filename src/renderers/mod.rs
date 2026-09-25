@@ -103,12 +103,31 @@ pub trait Renderer {
         &self,
         pipeline: &Self::ComputePipelineHandle,
     ) -> RendererResult<()>;
-    /// Dispatches a compute workload to the GPU.
-    fn record_compute_pass(
+    /// Creates a compute workload for the GPU.
+    fn record_compute_command(
         &mut self,
         pipeline: &Self::ComputePipelineHandle,
         binding_sets: &[&[ResourceBinding<Self::BufferHandle>]],
         group_count: (u32, u32, u32),
+    ) -> RendererResult<Self::RecordedCommand>;
+
+    /// Creates a graphics pipeline using the provided shaders.
+    fn create_graphics_pipeline(
+        &mut self,
+        shaders: &[&Shader],
+    ) -> RendererResult<Self::GraphicsPipelineHandle>;
+    /// Destroys the graphics pipeline.
+    fn destroy_graphics_pipeline(
+        &mut self,
+        pipeline: &Self::GraphicsPipelineHandle,
+    ) -> RendererResult<()>;
+    /// Creates a graphics workload for the GPU.
+    fn record_graphics_command(
+        &mut self,
+        pipeline: &Self::GraphicsPipelineHandle,
+        binding_sets: &[&[ResourceBinding<Self::BufferHandle>]],
+        vertex_count: u32,
+        instance_count: u32,
     ) -> RendererResult<Self::RecordedCommand>;
 
     /// Submits the recorded commands to the GPU.

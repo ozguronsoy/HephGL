@@ -49,7 +49,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 
     // This shader takes one set of resources with 3 bindings (2 input buffers, and
     // an output buffer).
-    let shader = Shader::from_file(SHADERS_DIR.to_owned() + "/addition.spv").unwrap();
+    let shader = Shader::from_file(format!("{}/{}", SHADERS_DIR, "/addition.spv")).unwrap();
     let pipeline = renderer.create_compute_pipeline(&shader).unwrap();
     drop(shader);
 
@@ -152,7 +152,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         ];
         // Record a command and submit it to the GPU.
         let recorded_command = renderer
-            .record_compute_pass(&pipeline, &[&bindings], (1, 1, 1))
+            .record_compute_command(&pipeline, &[&bindings], (1, 1, 1))
             .unwrap();
         renderer.submit_commands(&[recorded_command]).unwrap();
 

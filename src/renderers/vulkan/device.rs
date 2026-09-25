@@ -3,12 +3,13 @@ use ash::vk::{PhysicalDeviceProperties2, QueueFamilyProperties2};
 use crate::{
     graphics_device::GraphicsDevice,
     renderers::{
-        RendererResult,
+        Renderer, RendererResult,
         error::RendererError,
         thread_context::ThreadContextMaskArray,
         vulkan::{
             VulkanRenderer,
             queue::{QueueContext, QueueFamily},
+            rendering::VulkanRendering,
             swapchain::SwapchainContext,
         },
     },
@@ -29,10 +30,12 @@ pub struct DeviceContext {
     pub compute_queue_context: Option<QueueContext>,
 
     pub swapchain_context: SwapchainContext,
+    pub rendering: Option<Box<dyn VulkanRendering>>,
 
     pub physical_device: ash::vk::PhysicalDevice,
     pub logical_device: ash::Device,
     pub supports_timeline_semaphore: bool,
+    pub supports_dynamic_rendering: bool,
 
     /// The bitmasks indicating the availability of thread contexts.
     /// `0` means the context at that index is available, `1` means it is
@@ -117,9 +120,11 @@ impl VulkanRenderer {
     /// active device to `None`.
     pub(super) fn uninitialize_device(&mut self) -> RendererResult<()> {
         if self.device_context.is_some() {
+            self.wait_idle()?;
+            self.destroy_rendering()?;
             self.destroy_swapchain()?;
-            self.uninitialize_thread()?;
             self.destroy_frame_sync()?;
+            self.uninitialize_thread()?;
         }
 
         if let Some(device_context) = self.device_context.take() {

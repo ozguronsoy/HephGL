@@ -21,14 +21,16 @@ pub struct SwapchainContext {
     pub images: Vec<ash::vk::Image>,
     /// The views required to draw into the Vulkan images as color attachments.
     pub image_views: Vec<ash::vk::ImageView>,
-    /// The semaphore used for GPU-GPU synchronization.
-    pub semaphores: Vec<ash::vk::Semaphore>,
+    /// The image available and render finished semaphores.
+    pub semaphores: Vec<(ash::vk::Semaphore, ash::vk::Semaphore)>,
     /// The depth buffer.
     pub depth_image: ash::vk::Image,
     /// The allocation of depth buffer.
     pub depth_image_allocation: Option<vk_mem::Allocation>,
     /// The depth buffer view
     pub depth_image_view: ash::vk::ImageView,
+    /// The index of the image currently used for rendering.
+    pub current_image_index: usize,
 }
 
 impl VulkanRenderer {
@@ -110,6 +112,13 @@ impl VulkanRenderer {
             false => (1, ash::vk::ImageViewType::TYPE_2D),
         };
 
+        if requested_image_count < self.settings.frames_in_flight {
+            return Err(RendererError::Fail(format!(
+                "Failed to create `{}` amount of frames.",
+                self.settings.frames_in_flight
+            )));
+        }
+
         // Create the swapchain, image views, and semaphores.
         unsafe {
             let swapchain_create_info = SwapchainCreateInfoKHR::default()
@@ -170,11 +179,14 @@ impl VulkanRenderer {
                 );
 
                 let semaphore_create_info = SemaphoreCreateInfo::default();
-                device_context.swapchain_context.semaphores.push(
+                device_context.swapchain_context.semaphores.push((
                     device_context
                         .logical_device
                         .create_semaphore(&semaphore_create_info, None)?,
-                );
+                    device_context
+                        .logical_device
+                        .create_semaphore(&semaphore_create_info, None)?,
+                ));
             }
         }
 
@@ -256,9 +268,14 @@ impl VulkanRenderer {
             device_context.swapchain_context.depth_image_allocation = None;
 
             for i in 0..device_context.swapchain_context.images.len() {
+                let (image_available_semaphore, render_finished_semaphore) =
+                    device_context.swapchain_context.semaphores[i];
                 device_context
                     .logical_device
-                    .destroy_semaphore(device_context.swapchain_context.semaphores[i], None);
+                    .destroy_semaphore(image_available_semaphore, None);
+                device_context
+                    .logical_device
+                    .destroy_semaphore(render_finished_semaphore, None);
                 device_context
                     .logical_device
                     .destroy_image_view(device_context.swapchain_context.image_views[i], None);
@@ -276,5 +293,49 @@ impl VulkanRenderer {
         }
 
         Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn transition_image_layout(
+        device: &ash::Device,
+        command_buffer: ash::vk::CommandBuffer,
+        image: ash::vk::Image,
+        old_layout: ash::vk::ImageLayout,
+        new_layout: ash::vk::ImageLayout,
+        src_access_mask: ash::vk::AccessFlags,
+        dst_access_mask: ash::vk::AccessFlags,
+        src_stage_mask: ash::vk::PipelineStageFlags,
+        dst_stage_mask: ash::vk::PipelineStageFlags,
+        aspect_mask: ash::vk::ImageAspectFlags,
+        layer_count: u32,
+    ) {
+        let barrier = ash::vk::ImageMemoryBarrier::default()
+            .src_access_mask(src_access_mask)
+            .dst_access_mask(dst_access_mask)
+            .old_layout(old_layout)
+            .new_layout(new_layout)
+            .src_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
+            .image(image)
+            .subresource_range(
+                ash::vk::ImageSubresourceRange::default()
+                    .aspect_mask(aspect_mask)
+                    .base_mip_level(0)
+                    .level_count(1)
+                    .base_array_layer(0)
+                    .layer_count(layer_count),
+            );
+
+        unsafe {
+            device.cmd_pipeline_barrier(
+                command_buffer,
+                src_stage_mask,
+                dst_stage_mask,
+                ash::vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                std::slice::from_ref(&barrier),
+            );
+        }
     }
 }
