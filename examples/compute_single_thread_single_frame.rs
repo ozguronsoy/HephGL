@@ -35,7 +35,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 
     // This shader takes one set of resources with 3 bindings (2 input buffers, and
     // an output buffer).
-    let shader = Shader::from_file(SHADERS_DIR.to_owned() + "/addition.spv").unwrap();
+    let shader = Shader::from_file(format!("{}/{}", SHADERS_DIR, "/addition.spv")).unwrap();
     let pipeline = renderer.create_compute_pipeline(&shader).unwrap();
     drop(shader);
 
