@@ -152,7 +152,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         ];
         // Record a command and submit it to the GPU.
         let recorded_command = renderer
-            .record_compute_pass(&pipeline, &[&bindings], (1, 1, 1))
+            .record_compute_command(&pipeline, &[&bindings], (1, 1, 1))
             .unwrap();
         renderer.submit_commands(&[recorded_command]).unwrap();
 

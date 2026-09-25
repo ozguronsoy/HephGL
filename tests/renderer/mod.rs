@@ -549,7 +549,7 @@ where
 
     fn test_set_settings(&self) {
         let settings = Settings {
-            frames_in_flight: 10,
+            frames_in_flight: 2,
             ..Default::default()
         };
 
@@ -845,7 +845,7 @@ where
                 },
             ];
 
-            let recorded_command = heph_expect_success!(renderer.record_compute_pass(
+            let recorded_command = heph_expect_success!(renderer.record_compute_command(
                 &pipeline,
                 &[&bindings],
                 (1, 1, 1)
@@ -1021,7 +1021,7 @@ where
                         },
                     ];
                     let recorded_command = heph_expect_success!(
-                        renderer_worker.record_compute_pass(&pipeline, &[&bindings], (1, 1, 1))
+                        renderer_worker.record_compute_command(&pipeline, &[&bindings], (1, 1, 1))
                     );
 
                     heph_expect_success!(tx.send((

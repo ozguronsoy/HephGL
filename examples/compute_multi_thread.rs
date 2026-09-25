@@ -113,7 +113,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
                 // Record a command. We will submit it to the GPU in the main thread with the
                 // other commands.
                 let recorded_command = renderer
-                    .record_compute_pass(&pipeline, &[&bindings], (1, 1, 1))
+                    .record_compute_command(&pipeline, &[&bindings], (1, 1, 1))
                     .unwrap();
 
                 // Send resources we prepared to the main thread, so we can submit them to the

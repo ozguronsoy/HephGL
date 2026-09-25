@@ -26,7 +26,9 @@ pub struct VulkanBuffer {
 /// Represents a Vulkan graphics pipeline.
 #[derive(Clone)]
 pub struct VulkanGraphicsPipeline {
-    // TODO
+    pub(super) pipeline: ash::vk::Pipeline,
+    pub(super) layout: ash::vk::PipelineLayout,
+    pub(super) descriptor_layouts: Vec<ash::vk::DescriptorSetLayout>,
 }
 
 /// Represents a Vulkan compute pipeline.
@@ -52,11 +54,15 @@ impl GpuBuffer for VulkanBuffer {
 }
 
 impl VulkanRenderer {
-    pub(super) fn create_resource_sets(
+    pub(super) fn create_compute_resource_sets(
         &self,
         pipeline: &<VulkanRenderer as Renderer>::ComputePipelineHandle,
         binding_sets: &[&[ResourceBinding<<VulkanRenderer as Renderer>::BufferHandle>]],
     ) -> RendererResult<Vec<DescriptorSet>> {
+        if binding_sets.is_empty() {
+            return Ok(Vec::new());
+        }
+
         // TODO: Verify group count and bindings.
         let device_context = self
             .device_context
@@ -69,6 +75,96 @@ impl VulkanRenderer {
         )?;
         let thread_context_index = Self::thread_context_index()?;
         let current_frame = &compute_queue_context.frames[self.current_frame_index as usize]
+            .thread_contexts[thread_context_index];
+        let descriptor_pool = current_frame.descriptor_pool;
+
+        let alloc_info = ash::vk::DescriptorSetAllocateInfo::default()
+            .descriptor_pool(descriptor_pool)
+            .set_layouts(&pipeline.descriptor_layouts);
+        let descriptor_sets = unsafe {
+            device_context
+                .logical_device
+                .allocate_descriptor_sets(&alloc_info)?
+        };
+
+        for (i, &binding_set) in binding_sets.iter().enumerate() {
+            let buffer_infos: Vec<_> = binding_set
+                .iter()
+                .map(|binding| match &binding.resource {
+                    ResourceBindingType::Buffer {
+                        handle,
+                        offset,
+                        size,
+                        ..
+                    } => ash::vk::DescriptorBufferInfo::default()
+                        .buffer(handle.buffer)
+                        .offset(*offset as u64)
+                        .range(*size as u64),
+                })
+                .collect();
+
+            let mut writes = Vec::with_capacity(binding_set.len());
+            for (binding, info) in binding_set.iter().zip(buffer_infos.iter()) {
+                let descriptor_type = match binding.resource {
+                    ResourceBindingType::Buffer {
+                        handle,
+                        usage,
+                        offset,
+                        size,
+                    } => {
+                        if offset + size > handle.size {
+                            return Err(RendererError::invalid_argument(
+                                "Buffer overflow when binding resources.",
+                            ));
+                        }
+
+                        match usage {
+                            BufferUsage::Storage => ash::vk::DescriptorType::STORAGE_BUFFER,
+                            BufferUsage::Uniform => ash::vk::DescriptorType::UNIFORM_BUFFER,
+                            _ => {
+                                return Err(RendererError::invalid_argument(
+                                    "Invalid buffer usage for resource binding.",
+                                ));
+                            }
+                        }
+                    }
+                };
+                writes.push(
+                    ash::vk::WriteDescriptorSet::default()
+                        .dst_set(descriptor_sets[i])
+                        .dst_binding(binding.binding)
+                        .descriptor_type(descriptor_type)
+                        .buffer_info(std::slice::from_ref(info)),
+                );
+            }
+
+            unsafe {
+                device_context
+                    .logical_device
+                    .update_descriptor_sets(&writes, &[]);
+            }
+        }
+
+        Ok(descriptor_sets)
+    }
+
+    pub(super) fn create_graphics_resource_sets(
+        &self,
+        pipeline: &<VulkanRenderer as Renderer>::GraphicsPipelineHandle,
+        binding_sets: &[&[ResourceBinding<<VulkanRenderer as Renderer>::BufferHandle>]],
+    ) -> RendererResult<Vec<DescriptorSet>> {
+        if binding_sets.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // TODO: Verify group count and bindings.
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+        let graphics_queue_context = &device_context.graphics_queue_context;
+        let thread_context_index = Self::thread_context_index()?;
+        let current_frame = &graphics_queue_context.frames[self.current_frame_index as usize]
             .thread_contexts[thread_context_index];
         let descriptor_pool = current_frame.descriptor_pool;
 
