@@ -1391,10 +1391,12 @@ impl Renderer for VulkanRenderer {
             let wait_semaphores = [device_context.swapchain_context.semaphores[image_index].1];
             let swapchains = [device_context.swapchain_context.swapchain];
             let image_indices = [image_index as u32];
-            let present_info = ash::vk::PresentInfoKHR::default()
-                .wait_semaphores(&wait_semaphores)
+            let mut present_info = ash::vk::PresentInfoKHR::default()
                 .swapchains(&swapchains)
                 .image_indices(&image_indices);
+            if !graphics_command_buffers.is_empty() {
+                present_info = present_info.wait_semaphores(&wait_semaphores);
+            }
             let _suboptimal = unsafe {
                 device_context
                     .swapchain_context
