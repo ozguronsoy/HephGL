@@ -31,6 +31,13 @@ pub struct SwapchainContext {
     pub depth_image_view: ash::vk::ImageView,
     /// The index of the image currently used for rendering.
     pub current_image_index: usize,
+    /// The index of the semaphore used for acquiring an image.
+    pub image_avaliable_semaphore_index: usize,
+}
+
+impl SwapchainContext {
+    /// Indicates an invalid index.
+    pub const INVALID_INDEX: usize = usize::MAX;
 }
 
 impl VulkanRenderer {
@@ -232,6 +239,9 @@ impl VulkanRenderer {
                 .logical_device
                 .create_image_view(&depth_image_view_create_info, None)?;
         }
+        device_context
+            .swapchain_context
+            .image_avaliable_semaphore_index = SwapchainContext::INVALID_INDEX;
 
         Ok(())
     }

@@ -716,6 +716,7 @@ impl Renderer for VulkanRenderer {
                 depth_image_allocation: None,
                 depth_image_view: ash::vk::ImageView::null(),
                 current_image_index: 0,
+                image_avaliable_semaphore_index: SwapchainContext::INVALID_INDEX,
             },
             rendering: None,
 
@@ -1107,18 +1108,27 @@ impl Renderer for VulkanRenderer {
                 wait_frame_sync(compute_queue_context)?;
             }
 
-            device_context.swapchain_context.current_image_index = unsafe {
+            if device_context
+                .swapchain_context
+                .image_avaliable_semaphore_index
+                == SwapchainContext::INVALID_INDEX
+            {
+                device_context.swapchain_context.current_image_index = unsafe {
+                    device_context
+                        .swapchain_context
+                        .loader
+                        .acquire_next_image(
+                            device_context.swapchain_context.swapchain,
+                            1e9 as u64,
+                            device_context.swapchain_context.semaphores[current_frame_index].0,
+                            ash::vk::Fence::null(),
+                        )?
+                        .0 as usize
+                };
                 device_context
                     .swapchain_context
-                    .loader
-                    .acquire_next_image(
-                        device_context.swapchain_context.swapchain,
-                        1e9 as u64,
-                        device_context.swapchain_context.semaphores[current_frame_index].0,
-                        ash::vk::Fence::null(),
-                    )?
-                    .0 as usize
-            };
+                    .image_avaliable_semaphore_index = current_frame_index;
+            }
         }
 
         let rendering = device_context
@@ -1349,8 +1359,11 @@ impl Renderer for VulkanRenderer {
                                    is_graphics: bool|
              -> RendererResult<()> {
                 if !command_buffers.is_empty() {
-                    let image_available_semaphores =
-                        [device_context.swapchain_context.semaphores[current_frame_index].0];
+                    let image_available_semaphores = [device_context.swapchain_context.semaphores
+                        [device_context
+                            .swapchain_context
+                            .image_avaliable_semaphore_index]
+                        .0];
                     let render_finished_semaphores = [device_context.swapchain_context.semaphores
                         [device_context.swapchain_context.current_image_index]
                         .1];
@@ -1388,22 +1401,25 @@ impl Renderer for VulkanRenderer {
                 submit_commands(compute_queue_context, &compute_command_buffers, false)?;
             }
 
-            let wait_semaphores = [device_context.swapchain_context.semaphores[image_index].1];
-            let swapchains = [device_context.swapchain_context.swapchain];
-            let image_indices = [image_index as u32];
-            let mut present_info = ash::vk::PresentInfoKHR::default()
-                .swapchains(&swapchains)
-                .image_indices(&image_indices);
             if !graphics_command_buffers.is_empty() {
-                present_info = present_info.wait_semaphores(&wait_semaphores);
-            }
-            let _suboptimal = unsafe {
+                let wait_semaphores = [device_context.swapchain_context.semaphores[image_index].1];
+                let swapchains = [device_context.swapchain_context.swapchain];
+                let image_indices = [image_index as u32];
+                let present_info = ash::vk::PresentInfoKHR::default()
+                    .wait_semaphores(&wait_semaphores)
+                    .swapchains(&swapchains)
+                    .image_indices(&image_indices);
+                let _suboptimal = unsafe {
+                    device_context
+                        .swapchain_context
+                        .loader
+                        .queue_present(device_context.graphics_queue_context.queue, &present_info)?
+                };
+                // TODO: Recreate swapchain if suboptimal.
                 device_context
                     .swapchain_context
-                    .loader
-                    .queue_present(device_context.graphics_queue_context.queue, &present_info)?
-            };
-            // TODO: Recreate swapchain if suboptimal.
+                    .image_avaliable_semaphore_index = SwapchainContext::INVALID_INDEX;
+            }
 
             self.current_frame_index =
                 (self.current_frame_index + 1) % self.settings.frames_in_flight;
