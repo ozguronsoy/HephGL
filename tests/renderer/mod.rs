@@ -242,9 +242,11 @@ where
                 continue;
             }
             api_versions.push(api_version);
-            versioned_test_suite.flags.skip_all_tests = !renderer
-                .is_api_version_supported(api_version)
-                .unwrap_or(false);
+            if !versioned_test_suite.flags.skip_all_tests {
+                versioned_test_suite.flags.skip_all_tests = !renderer
+                    .is_api_version_supported(api_version)
+                    .unwrap_or(false);
+            }
 
             let mut test_suite = vec![
                 create_trial!(versioned_test_suite, test_invalid_app_name),
