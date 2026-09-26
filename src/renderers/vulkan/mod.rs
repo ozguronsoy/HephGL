@@ -36,11 +36,15 @@ use crate::{
     renderers::{
         BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererError, RendererResult,
         ResourceBinding, Settings,
-        thread_context::{ThreadContextIndex, ThreadContextMask},
+        thread_context::{ThreadContextIndex, ThreadContextMask, is_thread_context_active},
         version::DriverVersion,
         vulkan::{
-            device::DeviceContext, frame::Frame, queue::QueueContext, resources::*,
-            swapchain::SwapchainContext, version::VulkanApiVersion,
+            device::DeviceContext,
+            frame::{Frame, FrameState},
+            queue::QueueContext,
+            resources::*,
+            swapchain::SwapchainContext,
+            version::VulkanApiVersion,
         },
     },
     shader::Shader,
@@ -712,6 +716,7 @@ impl Renderer for VulkanRenderer {
                 depth_image_allocation: None,
                 depth_image_view: ash::vk::ImageView::null(),
                 current_image_index: 0,
+                image_avaliable_semaphore_index: SwapchainContext::INVALID_INDEX,
             },
             rendering: None,
 
@@ -973,13 +978,7 @@ impl Renderer for VulkanRenderer {
         let current_frame = &mut compute_queue_context.frames[self.current_frame_index as usize]
             .thread_contexts[thread_context_index];
 
-        let begin_info =
-            CommandBufferBeginInfo::default().flags(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         unsafe {
-            // TODO: Move these to `begin_frame`.
-            device_context
-                .logical_device
-                .begin_command_buffer(current_frame.command_buffer, &begin_info)?;
             device_context.logical_device.cmd_bind_pipeline(
                 current_frame.command_buffer,
                 PipelineBindPoint::COMPUTE,
@@ -1001,10 +1000,6 @@ impl Renderer for VulkanRenderer {
                 group_count.1,
                 group_count.2,
             );
-            // TODO: Move these to `end_frame`.
-            device_context
-                .logical_device
-                .end_command_buffer(current_frame.command_buffer)?;
         }
 
         current_frame.recorded = true;
@@ -1058,89 +1053,7 @@ impl Renderer for VulkanRenderer {
         let thread_context_index = Self::thread_context_index()?;
         let current_frame = &mut graphics_queue_context.frames[current_frame_index].thread_contexts
             [thread_context_index];
-        let rendering = device_context
-            .rendering
-            .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
-
-        let extent = device_context.swapchain_context.extent;
-        let viewport = ash::vk::Viewport {
-            x: 0.0,
-            y: 0.0,
-            width: extent.width as f32,
-            height: extent.height as f32,
-            min_depth: 0.0,
-            max_depth: 1.0,
-        };
-        let scissor = ash::vk::Rect2D {
-            offset: ash::vk::Offset2D { x: 0, y: 0 },
-            extent,
-        };
-
-        // TODO: Move this to `begin_frame`.
-        device_context.swapchain_context.current_image_index = unsafe {
-            device_context
-                .swapchain_context
-                .loader
-                .acquire_next_image(
-                    device_context.swapchain_context.swapchain,
-                    1e9 as u64,
-                    device_context.swapchain_context.semaphores[current_frame_index].0,
-                    ash::vk::Fence::null(),
-                )?
-                .0 as usize
-        };
-
-        let begin_info =
-            CommandBufferBeginInfo::default().flags(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         unsafe {
-            // TODO: Move these to `begin_frame`.
-            device_context
-                .logical_device
-                .begin_command_buffer(current_frame.command_buffer, &begin_info)?;
-
-            let layer_count = match self.settings.stereoscopic_3d_rendering {
-                true => 2,
-                false => 1,
-            };
-            Self::transition_image_layout(
-                &device_context.logical_device,
-                current_frame.command_buffer,
-                device_context.swapchain_context.images
-                    [device_context.swapchain_context.current_image_index],
-                ash::vk::ImageLayout::UNDEFINED,
-                ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                ash::vk::AccessFlags::empty(),
-                ash::vk::AccessFlags::COLOR_ATTACHMENT_READ
-                    | ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                ash::vk::ImageAspectFlags::COLOR,
-                layer_count,
-            );
-            Self::transition_image_layout(
-                &device_context.logical_device,
-                current_frame.command_buffer,
-                device_context.swapchain_context.depth_image,
-                ash::vk::ImageLayout::UNDEFINED,
-                ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-                ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                    | ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-                ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
-                    | ash::vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
-                ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
-                    | ash::vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
-                ash::vk::ImageAspectFlags::DEPTH,
-                layer_count,
-            );
-
-            rendering.begin(
-                &self.settings,
-                &device_context.logical_device,
-                current_frame.command_buffer,
-                &device_context.swapchain_context,
-            )?;
             device_context.logical_device.cmd_bind_pipeline(
                 current_frame.command_buffer,
                 PipelineBindPoint::GRAPHICS,
@@ -1156,16 +1069,6 @@ impl Renderer for VulkanRenderer {
                     &[],
                 );
             }
-            device_context.logical_device.cmd_set_viewport(
-                current_frame.command_buffer,
-                0,
-                std::slice::from_ref(&viewport),
-            );
-            device_context.logical_device.cmd_set_scissor(
-                current_frame.command_buffer,
-                0,
-                std::slice::from_ref(&scissor),
-            );
             device_context.logical_device.cmd_draw(
                 current_frame.command_buffer,
                 vertex_count,
@@ -1173,27 +1076,6 @@ impl Renderer for VulkanRenderer {
                 0,
                 0,
             );
-            // TODO: Move these to `end_frame`.
-            rendering.end(&device_context.logical_device, current_frame.command_buffer)?;
-
-            Self::transition_image_layout(
-                &device_context.logical_device,
-                current_frame.command_buffer,
-                device_context.swapchain_context.images
-                    [device_context.swapchain_context.current_image_index],
-                ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                ash::vk::ImageLayout::PRESENT_SRC_KHR,
-                ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                ash::vk::AccessFlags::empty(),
-                ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                ash::vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-                ash::vk::ImageAspectFlags::COLOR,
-                layer_count,
-            );
-
-            device_context
-                .logical_device
-                .end_command_buffer(current_frame.command_buffer)?;
         }
 
         current_frame.recorded = true;
@@ -1225,44 +1107,137 @@ impl Renderer for VulkanRenderer {
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 wait_frame_sync(compute_queue_context)?;
             }
+
+            if device_context
+                .swapchain_context
+                .image_avaliable_semaphore_index
+                == SwapchainContext::INVALID_INDEX
+            {
+                device_context.swapchain_context.current_image_index = unsafe {
+                    device_context
+                        .swapchain_context
+                        .loader
+                        .acquire_next_image(
+                            device_context.swapchain_context.swapchain,
+                            1e9 as u64,
+                            device_context.swapchain_context.semaphores[current_frame_index].0,
+                            ash::vk::Fence::null(),
+                        )?
+                        .0 as usize
+                };
+                device_context
+                    .swapchain_context
+                    .image_avaliable_semaphore_index = current_frame_index;
+            }
         }
 
-        // Reset the command pools.
-        let reset_command_pool = |queue_context: &QueueContext| -> RendererResult<()> {
-            unsafe {
-                device_context.logical_device.reset_command_pool(
-                    queue_context.frames[current_frame_index].thread_contexts[thread_context_index]
-                        .command_pool,
-                    ash::vk::CommandPoolResetFlags::empty(),
-                )?;
-                Ok(())
-            }
-        };
-        reset_command_pool(&device_context.graphics_queue_context)?;
-        if let Some(transfer_queue_context) = &device_context.transfer_queue_context {
-            reset_command_pool(transfer_queue_context)?;
-        }
-        if let Some(compute_queue_context) = &device_context.compute_queue_context {
-            reset_command_pool(compute_queue_context)?;
-        }
+        let rendering = device_context
+            .rendering
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+        let mut begin_queue =
+            |queue_context: &mut QueueContext, is_graphics: bool| -> RendererResult<()> {
+                let current_frame = &mut queue_context.frames[current_frame_index].thread_contexts
+                    [thread_context_index];
+                let (state_mutex, _) = &current_frame.sync_state;
+                let mut state = state_mutex.lock()?;
+                if *state != FrameState::Idle {
+                    return Err(RendererError::invalid_operation(
+                        "Invalid frame state, did you forget to call `end_frame`?",
+                    ));
+                }
+                unsafe {
+                    device_context.logical_device.reset_command_pool(
+                        current_frame.command_pool,
+                        ash::vk::CommandPoolResetFlags::empty(),
+                    )?;
+                    device_context.logical_device.reset_descriptor_pool(
+                        current_frame.descriptor_pool,
+                        DescriptorPoolResetFlags::empty(),
+                    )?;
 
-        // Reset the descriptor pools.
-        let reset_descriptor_pool = |queue_context: &QueueContext| -> RendererResult<()> {
-            unsafe {
-                device_context.logical_device.reset_descriptor_pool(
-                    queue_context.frames[current_frame_index].thread_contexts[thread_context_index]
-                        .descriptor_pool,
-                    DescriptorPoolResetFlags::empty(),
-                )?;
+                    let begin_info = CommandBufferBeginInfo::default()
+                        .flags(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+                    device_context
+                        .logical_device
+                        .begin_command_buffer(current_frame.command_buffer, &begin_info)?;
+                    if is_graphics {
+                        let layer_count = match self.settings.stereoscopic_3d_rendering {
+                            true => 2,
+                            false => 1,
+                        };
+                        Self::transition_image_layout(
+                            &device_context.logical_device,
+                            current_frame.command_buffer,
+                            device_context.swapchain_context.images
+                                [device_context.swapchain_context.current_image_index],
+                            ash::vk::ImageLayout::UNDEFINED,
+                            ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                            ash::vk::AccessFlags::empty(),
+                            ash::vk::AccessFlags::COLOR_ATTACHMENT_READ
+                                | ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                            ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                            ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                            ash::vk::ImageAspectFlags::COLOR,
+                            layer_count,
+                        );
+                        Self::transition_image_layout(
+                            &device_context.logical_device,
+                            current_frame.command_buffer,
+                            device_context.swapchain_context.depth_image,
+                            ash::vk::ImageLayout::UNDEFINED,
+                            ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                            ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+                            ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                                | ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+                            ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+                                | ash::vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
+                            ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+                                | ash::vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
+                            ash::vk::ImageAspectFlags::DEPTH,
+                            layer_count,
+                        );
+                        rendering.begin(
+                            &self.settings,
+                            &device_context.logical_device,
+                            current_frame.command_buffer,
+                            &device_context.swapchain_context,
+                        )?;
+
+                        let extent = device_context.swapchain_context.extent;
+                        let viewport = ash::vk::Viewport {
+                            x: 0.0,
+                            y: 0.0,
+                            width: extent.width as f32,
+                            height: extent.height as f32,
+                            min_depth: 0.0,
+                            max_depth: 1.0,
+                        };
+                        let scissor = ash::vk::Rect2D {
+                            offset: ash::vk::Offset2D { x: 0, y: 0 },
+                            extent,
+                        };
+                        device_context.logical_device.cmd_set_viewport(
+                            current_frame.command_buffer,
+                            0,
+                            std::slice::from_ref(&viewport),
+                        );
+                        device_context.logical_device.cmd_set_scissor(
+                            current_frame.command_buffer,
+                            0,
+                            std::slice::from_ref(&scissor),
+                        );
+                    }
+                }
+                *state = FrameState::Started;
                 Ok(())
-            }
-        };
-        reset_descriptor_pool(&device_context.graphics_queue_context)?;
-        if let Some(transfer_queue_context) = &device_context.transfer_queue_context {
-            reset_descriptor_pool(transfer_queue_context)?;
+            };
+        begin_queue(&mut device_context.graphics_queue_context, true)?;
+        if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
+            begin_queue(transfer_queue_context, false)?;
         }
-        if let Some(compute_queue_context) = &device_context.compute_queue_context {
-            reset_descriptor_pool(compute_queue_context)?;
+        if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
+            begin_queue(compute_queue_context, false)?;
         }
 
         Ok(())
@@ -1275,34 +1250,107 @@ impl Renderer for VulkanRenderer {
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
         let current_frame_index = self.current_frame_index as usize;
+        let thread_context_index = Self::thread_context_index()?;
         let image_index = device_context.swapchain_context.current_image_index;
+        let rendering = device_context
+            .rendering
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+
+        let mut end_queue = |queue_context: &mut QueueContext,
+                             is_graphics: bool|
+         -> RendererResult<()> {
+            let current_frame = &mut queue_context.frames[current_frame_index].thread_contexts
+                [thread_context_index];
+            let (state_mutex, condvar) = &current_frame.sync_state;
+            let mut state = state_mutex.lock()?;
+            if *state != FrameState::Started {
+                return Err(RendererError::invalid_operation(
+                    "Cannot end a frame that hasn't started yet.",
+                ));
+            }
+            unsafe {
+                if is_graphics {
+                    rendering.end(&device_context.logical_device, current_frame.command_buffer)?;
+                    Self::transition_image_layout(
+                        &device_context.logical_device,
+                        current_frame.command_buffer,
+                        device_context.swapchain_context.images
+                            [device_context.swapchain_context.current_image_index],
+                        ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                        ash::vk::ImageLayout::PRESENT_SRC_KHR,
+                        ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                        ash::vk::AccessFlags::empty(),
+                        ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                        ash::vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                        ash::vk::ImageAspectFlags::COLOR,
+                        match self.settings.stereoscopic_3d_rendering {
+                            true => 2,
+                            false => 1,
+                        },
+                    );
+                }
+                device_context
+                    .logical_device
+                    .end_command_buffer(current_frame.command_buffer)?;
+            }
+            *state = FrameState::Finished;
+            condvar.notify_one();
+            Ok(())
+        };
+        end_queue(&mut device_context.graphics_queue_context, true)?;
+        if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
+            end_queue(transfer_queue_context, false)?;
+        }
+        if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
+            end_queue(compute_queue_context, false)?;
+        }
 
         if is_in_main_thread {
             let mut graphics_command_buffers = Vec::new();
             let mut transfer_command_buffers = Vec::new();
             let mut compute_command_buffers = Vec::new();
+            let masks = device_context.thread_context_masks.lock()?;
             for thread_context_index in 0..super::thread_context::thread_context_count() {
-                // We don't need to check masks since `current_frame.recorded` will be `false` for
-                // unused thread contexts.
-                let add_command_buffer =
-                    |queue_context: &mut QueueContext,
-                     command_buffers: &mut Vec<ash::vk::CommandBuffer>| {
-                        let current_frame = &mut queue_context.frames[current_frame_index]
-                            .thread_contexts[thread_context_index];
-                        if current_frame.recorded {
-                            command_buffers.push(current_frame.command_buffer);
-                            current_frame.recorded = false;
-                        }
-                    };
+                if !is_thread_context_active(thread_context_index, &masks) {
+                    continue;
+                }
+
+                let add_command_buffer = |queue_context: &mut QueueContext,
+                                          command_buffers: &mut Vec<ash::vk::CommandBuffer>|
+                 -> RendererResult<()> {
+                    let current_frame = &mut queue_context.frames[current_frame_index]
+                        .thread_contexts[thread_context_index];
+
+                    // Wait for the worker thread to signal the frame is finished.
+                    let (state_mutex, condvar) = &current_frame.sync_state;
+                    let mut state = state_mutex.lock()?;
+                    if *state == FrameState::Idle {
+                        return Err(RendererError::invalid_operation(
+                            "Invalid frame state, did you forget to call `begin_frame`?",
+                        ));
+                    }
+                    while *state != FrameState::Finished {
+                        state = condvar.wait(state)?;
+                    }
+                    *state = FrameState::Idle;
+
+                    if current_frame.recorded {
+                        command_buffers.push(current_frame.command_buffer);
+                        current_frame.recorded = false;
+                    }
+
+                    Ok(())
+                };
                 add_command_buffer(
                     &mut device_context.graphics_queue_context,
                     &mut graphics_command_buffers,
-                );
+                )?;
                 if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                    add_command_buffer(transfer_queue_context, &mut transfer_command_buffers);
+                    add_command_buffer(transfer_queue_context, &mut transfer_command_buffers)?;
                 }
                 if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-                    add_command_buffer(compute_queue_context, &mut compute_command_buffers);
+                    add_command_buffer(compute_queue_context, &mut compute_command_buffers)?;
                 }
             }
 
@@ -1311,8 +1359,11 @@ impl Renderer for VulkanRenderer {
                                    is_graphics: bool|
              -> RendererResult<()> {
                 if !command_buffers.is_empty() {
-                    let image_available_semaphores =
-                        [device_context.swapchain_context.semaphores[current_frame_index].0];
+                    let image_available_semaphores = [device_context.swapchain_context.semaphores
+                        [device_context
+                            .swapchain_context
+                            .image_avaliable_semaphore_index]
+                        .0];
                     let render_finished_semaphores = [device_context.swapchain_context.semaphores
                         [device_context.swapchain_context.current_image_index]
                         .1];
@@ -1365,6 +1416,9 @@ impl Renderer for VulkanRenderer {
                         .queue_present(device_context.graphics_queue_context.queue, &present_info)?
                 };
                 // TODO: Recreate swapchain if suboptimal.
+                device_context
+                    .swapchain_context
+                    .image_avaliable_semaphore_index = SwapchainContext::INVALID_INDEX;
             }
 
             self.current_frame_index =

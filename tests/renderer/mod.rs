@@ -242,9 +242,11 @@ where
                 continue;
             }
             api_versions.push(api_version);
-            versioned_test_suite.flags.skip_all_tests = !renderer
-                .is_api_version_supported(api_version)
-                .unwrap_or(false);
+            if !versioned_test_suite.flags.skip_all_tests {
+                versioned_test_suite.flags.skip_all_tests = !renderer
+                    .is_api_version_supported(api_version)
+                    .unwrap_or(false);
+            }
 
             let mut test_suite = vec![
                 create_trial!(versioned_test_suite, test_invalid_app_name),
@@ -951,8 +953,7 @@ where
 
                 s.spawn(move || {
                     let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
-
-                    barrier.wait();
+                    heph_expect_success!(renderer_worker.begin_frame());
 
                     let i = thread_id + 1;
 
@@ -1015,15 +1016,12 @@ where
                         (1, 1, 1)
                     ));
 
-                    heph_expect_success!(tx.send((buffer_a, buffer_b, buffer_c, a_data, b_data,)));
+                    heph_expect_success!(renderer_worker.end_frame());
 
+                    heph_expect_success!(tx.send((buffer_a, buffer_b, buffer_c, a_data, b_data,)));
                     barrier.wait();
                 });
             }
-
-            heph_expect_success!(renderer.begin_frame());
-
-            barrier.wait();
 
             let mut cleanup_data = Vec::with_capacity(n_threads);
             for _ in 0..n_threads {
@@ -1032,6 +1030,7 @@ where
                 cleanup_data.push((buffer_a, buffer_b, buffer_c, a_data, b_data));
             }
 
+            heph_expect_success!(renderer.begin_frame());
             heph_expect_success!(renderer.end_frame());
             heph_expect_success!(renderer.wait_idle());
 
@@ -1049,7 +1048,6 @@ where
                 heph_expect_success!(renderer.destroy_buffer(&mut buffer_b));
                 heph_expect_success!(renderer.destroy_buffer(&mut buffer_c));
             }
-
             barrier.wait();
         });
 

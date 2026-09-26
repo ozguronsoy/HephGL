@@ -174,6 +174,13 @@ pub fn unregister(
     })
 }
 
+/// Checks whether the thread context at the provided index is active.
+pub fn is_thread_context_active(index: usize, masks: &ThreadContextMaskArray) -> bool {
+    let mask = masks[index / THREAD_CONTEXT_MASK_BIT_SIZE];
+    let flag = 1 << (index % THREAD_CONTEXT_MASK_BIT_SIZE);
+    (mask & flag) == flag
+}
+
 /// Gets the maximum number of threads that can execute concurrently.
 pub const fn thread_context_count() -> usize {
     THREAD_CONTEXT_COUNT
