@@ -1278,9 +1278,6 @@ impl Renderer for VulkanRenderer {
         let image_index = device_context.swapchain_context.current_image_index;
 
         if is_in_main_thread {
-            // Submit commands.
-            // TODO: Should we keep submitting all threads at once when we make calling
-            // `begin/end_frame` a must from the worker threads as well?
             let mut graphics_command_buffers = Vec::new();
             let mut transfer_command_buffers = Vec::new();
             let mut compute_command_buffers = Vec::new();
