@@ -112,15 +112,14 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
                 ];
                 // Record a command. We will submit it to the GPU in the main thread with the
                 // other commands.
-                let recorded_command = renderer
+                renderer
                     .record_compute_command(&pipeline, &[&bindings], (1, 1, 1))
                     .unwrap();
 
-                // Send resources we prepared to the main thread, so we can submit them to the
-                // GPU.
+                // Send resources we prepared to the main thread, so we can print the results and
+                // free the buffers.
                 tx.send((
                     thread_index + 1,
-                    recorded_command,
                     buffer_a,
                     buffer_b,
                     buffer_c,
@@ -129,23 +128,20 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
                 ))
                 .unwrap();
 
-                // Wait until the main thread receives the recorded commands and resources from
-                // all threads, and GPU finishes processing them.
+                // Wait until the main thread receives the resources from all threads, and GPU
+                // finishes processing them.
                 barrier.wait();
             });
         }
 
-        // Create command for each thread.
-        let mut commands = Vec::with_capacity(N_THREADS);
+        // Wait for threads to finish recording commands and receive the resources.
         let mut cleanup_data = Vec::with_capacity(N_THREADS);
         for _ in 0..N_THREADS {
-            let (thread, command, buffer_a, buffer_b, buffer_c, data_a, data_b) =
-                rx.recv().unwrap();
-            commands.push(command);
+            let (thread, buffer_a, buffer_b, buffer_c, data_a, data_b) = rx.recv().unwrap();
             cleanup_data.push((thread, buffer_a, buffer_b, buffer_c, data_a, data_b));
         }
 
-        renderer.submit_commands(&commands).unwrap();
+        renderer.end_frame().unwrap();
 
         // Wait for GPU to finish processing.
         renderer.wait_idle().unwrap();
@@ -169,8 +165,6 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
             renderer.destroy_buffer(buffer_b).unwrap();
             renderer.destroy_buffer(buffer_c).unwrap();
         }
-
-        renderer.end_frame().unwrap();
     });
 
     // Cleanup

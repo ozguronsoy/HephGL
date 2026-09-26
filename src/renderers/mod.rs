@@ -25,8 +25,6 @@ pub trait Renderer {
     type GraphicsPipelineHandle: Clone + Send + Sync;
     /// Represents a compiled compute pipeline.
     type ComputePipelineHandle: Clone + Send + Sync;
-    /// Represents a recorded command.
-    type RecordedCommand: Copy + Clone + Send + Sync;
 
     /// The minimum supported API version by the backend. Initializing a renderer with an earlier
     /// API version will result in an error.
@@ -109,7 +107,7 @@ pub trait Renderer {
         pipeline: &Self::ComputePipelineHandle,
         binding_sets: &[&[ResourceBinding<Self::BufferHandle>]],
         group_count: (u32, u32, u32),
-    ) -> RendererResult<Self::RecordedCommand>;
+    ) -> RendererResult<()>;
 
     /// Creates a graphics pipeline using the provided shaders.
     fn create_graphics_pipeline(
@@ -128,26 +126,11 @@ pub trait Renderer {
         binding_sets: &[&[ResourceBinding<Self::BufferHandle>]],
         vertex_count: u32,
         instance_count: u32,
-    ) -> RendererResult<Self::RecordedCommand>;
-
-    /// Submits the recorded commands to the GPU.
-    ///
-    /// ### Note
-    /// This function can only be called from the main thread.
-    fn submit_commands(
-        &mut self,
-        recorded_commands: &[Self::RecordedCommand],
     ) -> RendererResult<()>;
 
     /// Begins a new frame. `end_frame` must be called when the frame is done.
-    ///
-    /// ### Note
-    /// This function can only be called from the main thread.
     fn begin_frame(&mut self) -> RendererResult<()>;
     /// Ends the frame. `begin_frame` must be called before calling this method.
-    ///
-    /// ### Note
-    /// This function can only be called from the main thread.
     fn end_frame(&mut self) -> RendererResult<()>;
 
     /// Blocks the current CPU thread until the GPU has finished executing all

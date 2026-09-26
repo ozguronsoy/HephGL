@@ -7,7 +7,7 @@ use crate::{
         GpuBuffer, Renderer, RendererResult,
         error::RendererError,
         resources::{BufferUsage, ResourceBinding, ResourceBindingType},
-        vulkan::{VulkanRenderer, queue::QueueType},
+        vulkan::VulkanRenderer,
     },
     shader::ShaderBindingType,
 };
@@ -37,14 +37,6 @@ pub struct VulkanComputePipeline {
     pub(super) pipeline: Pipeline,
     pub(super) layout: PipelineLayout,
     pub(super) descriptor_layouts: Vec<DescriptorSetLayout>,
-}
-
-/// Represents a recorded Vulkan command.
-#[derive(Debug, Copy, Clone)]
-pub struct VulkanRecordedCommand {
-    pub(super) queue_type: QueueType,
-    pub(super) frame_index: u32,
-    pub(super) thread_context_index: usize,
 }
 
 impl GpuBuffer for VulkanBuffer {

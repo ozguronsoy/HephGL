@@ -24,10 +24,9 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 
     const VERTEX_COUNT: u32 = 3;
     const INSTANCE_COUNT: u32 = 1;
-    let recorded_command = renderer
+    renderer
         .record_graphics_command(&pipeline, &[], VERTEX_COUNT, INSTANCE_COUNT)
         .unwrap();
-    renderer.submit_commands(&[recorded_command]).unwrap();
 
     renderer.end_frame().unwrap();
 
