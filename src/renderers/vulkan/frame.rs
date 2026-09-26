@@ -11,6 +11,18 @@ use crate::renderers::{
     vulkan::{VulkanRenderer, queue::QueueContext},
 };
 
+/// Defines possible frame states.
+#[derive(Default, PartialEq)]
+pub enum FrameState {
+    /// The frame is not started.
+    #[default]
+    Idle,
+    /// The frame is started via `begin_frame` function.
+    Started,
+    /// The frame is finished via `end_frame` function.
+    Finished,
+}
+
 /// Represents the per-thread resources used for recording commands.
 #[derive(Default)]
 pub struct ThreadContext {
@@ -22,6 +34,8 @@ pub struct ThreadContext {
     pub descriptor_pool: DescriptorPool,
     /// Indicates whether any command has been recorded in this thread.
     pub recorded: bool,
+    /// Indicates whether the current thread began the current frame.
+    pub sync_state: (std::sync::Mutex<FrameState>, std::sync::Condvar),
 }
 
 /// Represents the resources and synchronization state for a single frame.

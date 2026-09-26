@@ -951,8 +951,7 @@ where
 
                 s.spawn(move || {
                     let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
-
-                    barrier.wait();
+                    heph_expect_success!(renderer_worker.begin_frame());
 
                     let i = thread_id + 1;
 
@@ -1015,15 +1014,12 @@ where
                         (1, 1, 1)
                     ));
 
-                    heph_expect_success!(tx.send((buffer_a, buffer_b, buffer_c, a_data, b_data,)));
+                    heph_expect_success!(renderer_worker.end_frame());
 
+                    heph_expect_success!(tx.send((buffer_a, buffer_b, buffer_c, a_data, b_data,)));
                     barrier.wait();
                 });
             }
-
-            heph_expect_success!(renderer.begin_frame());
-
-            barrier.wait();
 
             let mut cleanup_data = Vec::with_capacity(n_threads);
             for _ in 0..n_threads {
@@ -1032,8 +1028,10 @@ where
                 cleanup_data.push((buffer_a, buffer_b, buffer_c, a_data, b_data));
             }
 
+            heph_expect_success!(renderer.begin_frame());
             heph_expect_success!(renderer.end_frame());
             heph_expect_success!(renderer.wait_idle());
+            barrier.wait();
 
             for (mut buffer_a, mut buffer_b, mut buffer_c, a_data, b_data) in cleanup_data {
                 let mut c_data = vec![0.0f32; DATA_COUNT];
@@ -1049,8 +1047,6 @@ where
                 heph_expect_success!(renderer.destroy_buffer(&mut buffer_b));
                 heph_expect_success!(renderer.destroy_buffer(&mut buffer_c));
             }
-
-            barrier.wait();
         });
 
         heph_expect_success!(renderer.destroy_compute_pipeline(&pipeline));

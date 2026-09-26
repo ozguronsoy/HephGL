@@ -46,8 +46,6 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         let (tx, rx) = std::sync::mpsc::channel();
         let barrier = std::sync::Arc::new(std::sync::Barrier::new(N_THREADS + 1));
 
-        renderer.begin_frame().unwrap();
-
         // Share the renderer across threads.
         let renderer_handle = RendererHandle::<ExampleRenderer>::from(&mut *renderer);
         for thread_index in 0..N_THREADS {
@@ -61,6 +59,8 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
                 // Every thread have its own internal data which must be initialized. This is
                 // done internally for the main thread so we don't have to explicitly call
                 // these in the main thread.
+
+                renderer.begin_frame().unwrap();
 
                 // Create buffers in GPU, and fill them.
                 let (data_a, data_b) = create_data(thread_index);
@@ -116,6 +116,8 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
                     .record_compute_command(&pipeline, &[&bindings], (1, 1, 1))
                     .unwrap();
 
+                renderer.end_frame().unwrap();
+
                 // Send resources we prepared to the main thread, so we can print the results and
                 // free the buffers.
                 tx.send((
@@ -141,6 +143,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
             cleanup_data.push((thread, buffer_a, buffer_b, buffer_c, data_a, data_b));
         }
 
+        renderer.begin_frame().unwrap();
         renderer.end_frame().unwrap();
 
         // Wait for GPU to finish processing.
