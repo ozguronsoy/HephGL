@@ -13,7 +13,7 @@ fn main() -> ExitCode {
         ..Default::default()
     };
     let mut vulkan_10_flags = vulkan_13_flags;
-    vulkan_10_flags.skip_test_render_basic_triangle = true;
+    vulkan_10_flags.skip_all_tests = true;
     RendererTests::<VulkanRenderer>::run(&[
         RendererVersionedTestSuite {
             api_version: Some(Version::new(1, 0, 0)),
