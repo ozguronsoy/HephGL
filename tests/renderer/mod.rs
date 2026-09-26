@@ -1033,7 +1033,6 @@ where
             heph_expect_success!(renderer.begin_frame());
             heph_expect_success!(renderer.end_frame());
             heph_expect_success!(renderer.wait_idle());
-            barrier.wait();
 
             for (mut buffer_a, mut buffer_b, mut buffer_c, a_data, b_data) in cleanup_data {
                 let mut c_data = vec![0.0f32; DATA_COUNT];
@@ -1049,6 +1048,7 @@ where
                 heph_expect_success!(renderer.destroy_buffer(&mut buffer_b));
                 heph_expect_success!(renderer.destroy_buffer(&mut buffer_c));
             }
+            barrier.wait();
         });
 
         heph_expect_success!(renderer.destroy_compute_pipeline(&pipeline));
