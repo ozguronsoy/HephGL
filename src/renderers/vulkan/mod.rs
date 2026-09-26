@@ -36,7 +36,7 @@ use crate::{
     renderers::{
         BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererError, RendererResult,
         ResourceBinding, Settings,
-        thread_context::{ThreadContextIndex, ThreadContextMask},
+        thread_context::{ThreadContextIndex, ThreadContextMask, is_thread_context_active},
         version::DriverVersion,
         vulkan::{
             device::DeviceContext, frame::Frame, queue::QueueContext, resources::*,
@@ -1281,9 +1281,12 @@ impl Renderer for VulkanRenderer {
             let mut graphics_command_buffers = Vec::new();
             let mut transfer_command_buffers = Vec::new();
             let mut compute_command_buffers = Vec::new();
+            let masks = device_context.thread_context_masks.lock()?;
             for thread_context_index in 0..super::thread_context::thread_context_count() {
-                // We don't need to check masks since `current_frame.recorded` will be `false` for
-                // unused thread contexts.
+                if !is_thread_context_active(thread_context_index, &masks) {
+                    continue;
+                }
+
                 let add_command_buffer =
                     |queue_context: &mut QueueContext,
                      command_buffers: &mut Vec<ash::vk::CommandBuffer>| {
