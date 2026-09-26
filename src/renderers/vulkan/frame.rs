@@ -20,6 +20,8 @@ pub struct ThreadContext {
     pub command_buffer: CommandBuffer,
     /// The descriptor pool allocated for resources used during this thread.
     pub descriptor_pool: DescriptorPool,
+    /// Indicates whether any command has been recorded in this thread.
+    pub recorded: bool,
 }
 
 /// Represents the resources and synchronization state for a single frame.

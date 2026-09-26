@@ -689,18 +689,6 @@ where
                     RendererError::invalid_operation("")
                 );
                 heph_expect_err!(
-                    renderer_worker.submit_commands(&[]),
-                    RendererError::invalid_operation("")
-                );
-                heph_expect_err!(
-                    renderer_worker.begin_frame(),
-                    RendererError::invalid_operation("")
-                );
-                heph_expect_err!(
-                    renderer_worker.end_frame(),
-                    RendererError::invalid_operation("")
-                );
-                heph_expect_err!(
                     renderer_worker.wait_idle(),
                     RendererError::invalid_operation("")
                 );
@@ -847,12 +835,11 @@ where
                 },
             ];
 
-            let recorded_command = heph_expect_success!(renderer.record_compute_command(
+            heph_expect_success!(renderer.record_compute_command(
                 &pipeline,
                 &[&bindings],
                 (1, 1, 1)
             ));
-            heph_expect_success!(renderer.submit_commands(&[recorded_command]));
 
             heph_expect_success!(renderer.end_frame());
 
@@ -1022,18 +1009,13 @@ where
                             },
                         },
                     ];
-                    let recorded_command = heph_expect_success!(
-                        renderer_worker.record_compute_command(&pipeline, &[&bindings], (1, 1, 1))
-                    );
+                    heph_expect_success!(renderer_worker.record_compute_command(
+                        &pipeline,
+                        &[&bindings],
+                        (1, 1, 1)
+                    ));
 
-                    heph_expect_success!(tx.send((
-                        recorded_command,
-                        buffer_a,
-                        buffer_b,
-                        buffer_c,
-                        a_data,
-                        b_data,
-                    )));
+                    heph_expect_success!(tx.send((buffer_a, buffer_b, buffer_c, a_data, b_data,)));
 
                     barrier.wait();
                 });
@@ -1043,17 +1025,14 @@ where
 
             barrier.wait();
 
-            let mut commands = Vec::with_capacity(n_threads);
             let mut cleanup_data = Vec::with_capacity(n_threads);
-
             for _ in 0..n_threads {
-                let (command, buffer_a, buffer_b, buffer_c, a_data, b_data) =
+                let (buffer_a, buffer_b, buffer_c, a_data, b_data) =
                     heph_expect_success!(rx.recv());
-                commands.push(command);
                 cleanup_data.push((buffer_a, buffer_b, buffer_c, a_data, b_data));
             }
 
-            heph_expect_success!(renderer.submit_commands(&commands));
+            heph_expect_success!(renderer.end_frame());
             heph_expect_success!(renderer.wait_idle());
 
             for (mut buffer_a, mut buffer_b, mut buffer_c, a_data, b_data) in cleanup_data {
@@ -1072,8 +1051,6 @@ where
             }
 
             barrier.wait();
-
-            heph_expect_success!(renderer.end_frame());
         });
 
         heph_expect_success!(renderer.destroy_compute_pipeline(&pipeline));
@@ -1119,8 +1096,7 @@ where
             heph_expect_success!(renderer.create_graphics_pipeline(&[&vert_shader, &frag_shader]));
 
         heph_expect_success!(renderer.begin_frame());
-        let command = heph_expect_success!(renderer.record_graphics_command(&pipeline, &[], 3, 1));
-        heph_expect_success!(renderer.submit_commands(&[command]));
+        heph_expect_success!(renderer.record_graphics_command(&pipeline, &[], 3, 1));
         heph_expect_success!(renderer.end_frame());
 
         heph_expect_success!(renderer.wait_idle());

@@ -5,16 +5,21 @@ use crate::renderers::{
 };
 
 impl VulkanRenderer {
+    /// Checks whether the call is being made from the main thread.
+    pub(super) fn is_in_main_thread(&self) -> bool {
+        self.main_thread_id == std::thread::current().id()
+    }
+
     /// Checks whether the call is being made from the main thread. If not,
     /// returns an error.
     pub(super) fn main_thread_only(&self) -> RendererResult<()> {
-        (self.main_thread_id == std::thread::current().id())
-            .then_some(())
-            .ok_or_else(|| {
-                RendererError::invalid_operation(
-                    "This action can only be performed in the main thread.",
-                )
-            })
+        if self.is_in_main_thread() {
+            Ok(())
+        } else {
+            Err(RendererError::invalid_operation(
+                "This action can only be performed in the main thread.",
+            ))
+        }
     }
 
     /// Gets the current thread's context index.
