@@ -8,7 +8,14 @@ pub(crate) enum ShaderBindingType {
     StorageBuffer,
 }
 
-pub(crate) struct ShaderBinding {
+pub(crate) struct ShaderVertexBinding {
+    pub location: u32,
+    pub scalar_kind: naga::ScalarKind,
+    pub scalar_width: u8,
+    pub components: u32,
+}
+
+pub(crate) struct ShaderDescriptorBinding {
     pub group: u32,
     pub binding: u32,
     pub binding_type: ShaderBindingType,
@@ -18,7 +25,8 @@ pub(crate) struct ShaderMetadata {
     pub entry_name: String,
     pub stage: ShaderStage,
     pub size: [u32; 3],
-    pub bindings: Vec<ShaderBinding>,
+    pub vertex_bindings: Vec<ShaderVertexBinding>,
+    pub descriptor_bindings: Vec<ShaderDescriptorBinding>,
 }
 
 /// Represents a loaded shader resource containing compiled bytecode.
@@ -48,7 +56,8 @@ impl Shader {
                 entry_name: String::default(),
                 stage: ShaderStage::Vertex,
                 size: [0, 0, 0],
-                bindings: Vec::default(),
+                descriptor_bindings: Vec::default(),
+                vertex_bindings: Vec::default(),
             },
         };
         shader.verify_shader_language()?;
@@ -56,13 +65,13 @@ impl Shader {
         Ok(shader)
     }
 
-    /// Calculates the number of resource groups.
-    pub fn group_count(&self) -> u32 {
+    /// Calculates the number of descriptor resource groups.
+    pub fn descriptor_group_count(&self) -> usize {
         let mut max_group = -1;
-        for binding in &self.metadata.bindings {
+        for binding in &self.metadata.descriptor_bindings {
             max_group = max_group.max(binding.group as i32);
         }
-        (max_group + 1) as u32
+        (max_group + 1) as usize
     }
 
     fn extract_metadata(&mut self) -> Result<(), ShaderError> {
@@ -78,7 +87,45 @@ impl Shader {
         self.metadata.entry_name = entry_point.name.clone();
         self.metadata.stage = entry_point.stage;
         self.metadata.size = entry_point.workgroup_size;
-        self.metadata.bindings.clear();
+        self.metadata.vertex_bindings.clear();
+        self.metadata.descriptor_bindings.clear();
+
+        if entry_point.stage == ShaderStage::Vertex {
+            for argument in &entry_point.function.arguments {
+                let Some(naga::Binding::Location { location, .. }) = &argument.binding else {
+                    continue;
+                };
+
+                let (scalar_kind, scalar_width, components) = match &module.types[argument.ty].inner
+                {
+                    naga::TypeInner::Scalar(scalar) => (scalar.kind, scalar.width, 1),
+                    naga::TypeInner::Vector { size, scalar } => {
+                        let components = match size {
+                            naga::VectorSize::Bi => 2,
+                            naga::VectorSize::Tri => 3,
+                            naga::VectorSize::Quad => 4,
+                        };
+
+                        (scalar.kind, scalar.width, components)
+                    }
+                    _ => {
+                        return Err(ShaderError::fail("Unsupported vertex input type."));
+                    }
+                };
+
+                self.metadata.vertex_bindings.push(ShaderVertexBinding {
+                    location: *location,
+                    scalar_kind,
+                    scalar_width,
+                    components,
+                });
+            }
+
+            self.metadata
+                .vertex_bindings
+                .sort_by_key(|binding| binding.location);
+        }
+
         for (_, global) in module.global_variables.iter() {
             let Some(binding) = &global.binding else {
                 continue;
@@ -90,12 +137,19 @@ impl Shader {
                 _ => continue,
             };
 
-            self.metadata.bindings.push(ShaderBinding {
-                group: binding.group,
-                binding: binding.binding,
-                binding_type,
-            });
+            self.metadata
+                .descriptor_bindings
+                .push(ShaderDescriptorBinding {
+                    group: binding.group,
+                    binding: binding.binding,
+                    binding_type,
+                });
         }
+
+        self.metadata.vertex_bindings.sort_by_key(|b| b.location);
+        self.metadata
+            .descriptor_bindings
+            .sort_by_key(|b| (b.group, b.binding));
 
         Ok(())
     }

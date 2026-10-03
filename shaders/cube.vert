@@ -2,8 +2,10 @@
 
 layout(location = 0) in vec3 in_position;
 layout(location = 1) in vec3 in_color;
+layout(location = 2) in vec3 in_offset;
 
 layout(location = 0) out vec3 frag_color;
+layout(location = 1) out vec3 frag_position;
 
 void main()
 {
@@ -29,10 +31,25 @@ void main()
         sx * position.y + cx * position.z
     );
 
-    position *= 0.55;
-    position.x += 0.25;
-    position.z = position.z * 0.5 + 0.5;
+    float scale = 1.0 - in_offset.z;
+    position *= 0.55 * scale;
+    position.xy += in_offset.xy;
 
-    gl_Position = vec4(position, 1.0);
+    float near = 0.1;
+    float far = 10.0;
+    float depth = position.z + 2.0 + in_offset.z;
+    float focal_length = 2.0;
+
+    float z = far / (far - near) * depth - (far * near) / (far - near);
+
+    frag_position = position;
+
+    gl_Position = vec4(
+        position.x * focal_length,
+        position.y * focal_length,
+        z,
+        depth
+    );
+
     frag_color = in_color;
 }
