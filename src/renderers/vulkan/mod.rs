@@ -1044,7 +1044,7 @@ impl Renderer for VulkanRenderer {
         &mut self,
         pipeline: &Self::GraphicsPipelineHandle,
         binding_sets: &[&[ResourceBinding<Self::BufferHandle>]],
-        vertex_count: u32,
+        draw_count: u32,
         instance_count: u32,
     ) -> RendererResult<()> {
         let mapped_sets = self.create_graphics_resource_sets(pipeline, binding_sets)?;
@@ -1055,6 +1055,19 @@ impl Renderer for VulkanRenderer {
                 ResourceBindingType::Buffer {
                     handle,
                     usage: BufferUsage::Vertex,
+                    offset,
+                    size,
+                } => Some((binding.binding, handle, offset, size)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let index_bindings = binding_sets
+            .iter()
+            .flat_map(|set| set.iter())
+            .filter_map(|binding| match binding.resource {
+                ResourceBindingType::Buffer {
+                    handle,
+                    usage: BufferUsage::Index,
                     offset,
                     size,
                 } => Some((binding.binding, handle, offset, size)),
@@ -1101,13 +1114,36 @@ impl Renderer for VulkanRenderer {
                     std::slice::from_ref(&(offset as u64)),
                 );
             }
-            device_context.logical_device.cmd_draw(
-                current_frame.command_buffer,
-                vertex_count,
-                instance_count,
-                0,
-                0,
-            );
+
+            if !index_bindings.is_empty() {
+                if index_bindings.len() > 1 {
+                    return Err(RendererError::invalid_argument(
+                        "Only one index buffer can be bound per draw.",
+                    ));
+                }
+                device_context.logical_device.cmd_bind_index_buffer(
+                    current_frame.command_buffer,
+                    index_bindings[0].1.buffer,
+                    index_bindings[0].2 as u64,
+                    ash::vk::IndexType::UINT32,
+                );
+                device_context.logical_device.cmd_draw_indexed(
+                    current_frame.command_buffer,
+                    draw_count,
+                    instance_count,
+                    0,
+                    0,
+                    0,
+                );
+            } else {
+                device_context.logical_device.cmd_draw(
+                    current_frame.command_buffer,
+                    draw_count,
+                    instance_count,
+                    0,
+                    0,
+                );
+            }
         }
 
         current_frame.recorded = true;

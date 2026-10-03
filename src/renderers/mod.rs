@@ -124,7 +124,7 @@ pub trait Renderer {
         &mut self,
         pipeline: &Self::GraphicsPipelineHandle,
         binding_sets: &[&[ResourceBinding<Self::BufferHandle>]],
-        vertex_count: u32,
+        draw_count: u32,
         instance_count: u32,
     ) -> RendererResult<()>;
 
