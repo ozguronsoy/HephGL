@@ -85,6 +85,8 @@ define_renderer_test_flags!(
     test_index_buffer,
     test_vertex_buffer,
     test_impossible_buffer_size,
+    test_begin_twice,
+    test_end_without_begin,
     test_calling_main_thread_only_fn_from_worker_thread,
     test_multiple_workers_per_thread,
     test_excess_threads,
@@ -260,6 +262,8 @@ where
                 create_trial!(versioned_test_suite, test_index_buffer),
                 create_trial!(versioned_test_suite, test_vertex_buffer),
                 create_trial!(versioned_test_suite, test_impossible_buffer_size),
+                create_trial!(versioned_test_suite, test_begin_twice),
+                create_trial!(versioned_test_suite, test_end_without_begin),
                 create_trial!(
                     versioned_test_suite,
                     test_calling_main_thread_only_fn_from_worker_thread
@@ -663,6 +667,17 @@ where
         let renderer = self.create_renderer_with_any_device(&[]);
         let buffer_size = 1024 * 1024 * 1024 * 1024; // 1 TB
         heph_expect_err!(renderer.create_buffer(buffer_size, BufferUsage::Storage));
+    }
+
+    fn test_begin_twice(&self) {
+        let mut renderer = self.create_renderer_with_any_device(&[]);
+        heph_expect_success!(renderer.begin_frame());
+        heph_expect_err!(renderer.begin_frame(), RendererError::invalid_operation(""));
+    }
+
+    fn test_end_without_begin(&self) {
+        let mut renderer = self.create_renderer_with_any_device(&[]);
+        heph_expect_err!(renderer.end_frame(), RendererError::invalid_operation(""));
     }
 
     fn test_calling_main_thread_only_fn_from_worker_thread(&self) {
