@@ -98,7 +98,8 @@ define_renderer_test_flags!(
     test_multi_threaded_compute_cpu,
     test_multi_threaded_compute_virtual_gpu,
     test_multi_threaded_compute_other,
-    test_render_basic_triangle,
+    test_render_static_triangle,
+    test_render_dynamic_cubes,
     test_clear
 );
 
@@ -315,7 +316,8 @@ where
                     test_multi_threaded_compute_other,
                     skip_other_device_tests
                 ),
-                create_trial!(versioned_test_suite, test_render_basic_triangle),
+                create_trial!(versioned_test_suite, test_render_static_triangle),
+                create_trial!(versioned_test_suite, test_render_dynamic_cubes),
                 create_trial!(versioned_test_suite, test_clear),
             ];
             tests.append(&mut test_suite);
@@ -1080,7 +1082,7 @@ where
         self.test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
     }
 
-    fn test_render_basic_triangle(&self) {
+    fn test_render_static_triangle(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[]);
         let vert_shader = heph_expect_success!(Shader::from_file(format!(
             "{}/{}",
@@ -1098,6 +1100,108 @@ where
         heph_expect_success!(renderer.end_frame());
 
         heph_expect_success!(renderer.wait_idle());
+        heph_expect_success!(renderer.destroy_graphics_pipeline(&pipeline));
+    }
+
+    fn test_render_dynamic_cubes(&self) {
+        type Vertex = [f32; 9];
+        const VERTEX_COUNT: u32 = 36;
+        const POSITIONS: [[f32; 3]; 8] = [
+            [-0.5, -0.5, -0.5],
+            [0.5, -0.5, -0.5],
+            [0.5, 0.5, -0.5],
+            [-0.5, 0.5, -0.5],
+            [-0.5, -0.5, 0.5],
+            [0.5, -0.5, 0.5],
+            [0.5, 0.5, 0.5],
+            [-0.5, 0.5, 0.5],
+        ];
+        const INDICES: [usize; 36] = [
+            0, 1, 2, 2, 3, 0, 4, 6, 5, 6, 4, 7, 0, 3, 7, 7, 4, 0, 1, 5, 6, 6, 2, 1, 0, 4, 5, 5, 1,
+            0, 3, 2, 6, 6, 7, 3,
+        ];
+
+        let mut renderer = self.create_renderer_with_any_device(&[]);
+        let vert_shader = heph_expect_success!(Shader::from_file(format!(
+            "{}/{}",
+            SHADERS_DIR, "cube_vert.spv"
+        )));
+        let frag_shader = heph_expect_success!(Shader::from_file(format!(
+            "{}/{}",
+            SHADERS_DIR, "cube_frag.spv"
+        )));
+        let pipeline =
+            heph_expect_success!(renderer.create_graphics_pipeline(&[&vert_shader, &frag_shader]));
+        drop(vert_shader);
+        drop(frag_shader);
+
+        let buffer_size = std::mem::size_of::<[Vertex; 36]>();
+        let mut cube_a_buffer =
+            heph_expect_success!(renderer.create_buffer(buffer_size, BufferUsage::Vertex));
+        let mut cube_b_buffer =
+            heph_expect_success!(renderer.create_buffer(buffer_size, BufferUsage::Vertex));
+
+        let cube_vertices = |offset: [f32; 3], color: [f32; 3]| -> [Vertex; 36] {
+            std::array::from_fn(|i| {
+                let position = POSITIONS[INDICES[i]];
+
+                [
+                    position[0],
+                    position[1],
+                    position[2],
+                    color[0],
+                    color[1],
+                    color[2],
+                    offset[0],
+                    offset[1],
+                    offset[2],
+                ]
+            })
+        };
+
+        heph_expect_success!(renderer.begin_frame());
+
+        let cube_a = cube_vertices([-0.5, -0.125, 0.5], [1.0, 0.0, 0.0]);
+        let cube_b = cube_vertices([0.5, 0.125, 0.2], [0.0, 0.0, 1.0]);
+        heph_expect_success!(renderer.write_buffer(&cube_a_buffer, bytemuck::cast_slice(&cube_a)));
+        heph_expect_success!(renderer.write_buffer(&cube_b_buffer, bytemuck::cast_slice(&cube_b)));
+
+        let cube_a_bindings = [ResourceBinding {
+            binding: 0,
+            resource: ResourceBindingType::Buffer {
+                handle: cube_a_buffer,
+                usage: BufferUsage::Vertex,
+                offset: 0,
+                size: cube_a_buffer.size(),
+            },
+        }];
+        let cube_b_bindings = [ResourceBinding {
+            binding: 0,
+            resource: ResourceBindingType::Buffer {
+                handle: cube_b_buffer,
+                usage: BufferUsage::Vertex,
+                offset: 0,
+                size: cube_b_buffer.size(),
+            },
+        }];
+        heph_expect_success!(renderer.record_graphics_command(
+            &pipeline,
+            &[&cube_a_bindings],
+            VERTEX_COUNT,
+            1
+        ));
+        heph_expect_success!(renderer.record_graphics_command(
+            &pipeline,
+            &[&cube_b_bindings],
+            VERTEX_COUNT,
+            1
+        ));
+
+        heph_expect_success!(renderer.end_frame());
+
+        heph_expect_success!(renderer.wait_idle());
+        heph_expect_success!(renderer.destroy_buffer(&mut cube_a_buffer));
+        heph_expect_success!(renderer.destroy_buffer(&mut cube_b_buffer));
         heph_expect_success!(renderer.destroy_graphics_pipeline(&pipeline));
     }
 
