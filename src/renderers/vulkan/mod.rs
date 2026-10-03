@@ -36,6 +36,7 @@ use crate::{
     renderers::{
         BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererError, RendererResult,
         ResourceBinding, Settings,
+        resources::ResourceBindingType,
         thread_context::{ThreadContextIndex, ThreadContextMask, is_thread_context_active},
         version::DriverVersion,
         vulkan::{
@@ -879,9 +880,11 @@ impl Renderer for VulkanRenderer {
         };
         let shader_stage = Self::convert_shader_stage(shader.metadata.stage)?;
 
-        let mut binding_sets =
-            vec![Vec::with_capacity(shader.metadata.bindings.len()); shader.group_count() as usize];
-        for binding in &shader.metadata.bindings {
+        let mut binding_sets = vec![
+            Vec::with_capacity(shader.metadata.descriptor_bindings.len());
+            shader.descriptor_group_count()
+        ];
+        for binding in &shader.metadata.descriptor_bindings {
             binding_sets[binding.group as usize].push(
                 DescriptorSetLayoutBinding::default()
                     .binding(binding.binding)
@@ -965,6 +968,7 @@ impl Renderer for VulkanRenderer {
         group_count: (u32, u32, u32),
     ) -> RendererResult<()> {
         let mapped_sets = self.create_compute_resource_sets(pipeline, binding_sets)?;
+
         let device_context = self
             .device_context
             .as_mut()
@@ -1044,6 +1048,20 @@ impl Renderer for VulkanRenderer {
         instance_count: u32,
     ) -> RendererResult<()> {
         let mapped_sets = self.create_graphics_resource_sets(pipeline, binding_sets)?;
+        let vertex_bindings = binding_sets
+            .iter()
+            .flat_map(|set| set.iter())
+            .filter_map(|binding| match binding.resource {
+                ResourceBindingType::Buffer {
+                    handle,
+                    usage: BufferUsage::Vertex,
+                    offset,
+                    size,
+                } => Some((binding.binding, handle, offset, size)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
         let device_context = self
             .device_context
             .as_mut()
@@ -1067,6 +1085,20 @@ impl Renderer for VulkanRenderer {
                     0,
                     &mapped_sets,
                     &[],
+                );
+            }
+            for (binding, handle, offset, size) in vertex_bindings {
+                if offset + size > handle.size {
+                    return Err(RendererError::invalid_argument(
+                        "Buffer overflow when binding vertex buffer.",
+                    ));
+                }
+
+                device_context.logical_device.cmd_bind_vertex_buffers(
+                    current_frame.command_buffer,
+                    binding,
+                    std::slice::from_ref(&handle.buffer),
+                    std::slice::from_ref(&(offset as u64)),
                 );
             }
             device_context.logical_device.cmd_draw(

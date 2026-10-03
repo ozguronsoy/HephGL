@@ -145,7 +145,7 @@ impl VulkanRenderer {
         pipeline: &<VulkanRenderer as Renderer>::GraphicsPipelineHandle,
         binding_sets: &[&[ResourceBinding<<VulkanRenderer as Renderer>::BufferHandle>]],
     ) -> RendererResult<Vec<DescriptorSet>> {
-        if binding_sets.is_empty() {
+        if pipeline.descriptor_layouts.is_empty() {
             return Ok(Vec::new());
         }
 
@@ -170,7 +170,23 @@ impl VulkanRenderer {
         };
 
         for (i, &binding_set) in binding_sets.iter().enumerate() {
-            let buffer_infos: Vec<_> = binding_set
+            if i >= descriptor_sets.len() {
+                break;
+            }
+
+            let descriptor_bindings = binding_set
+                .iter()
+                .filter(|binding| {
+                    matches!(
+                        binding.resource,
+                        ResourceBindingType::Buffer {
+                            usage: BufferUsage::Storage | BufferUsage::Uniform,
+                            ..
+                        }
+                    )
+                })
+                .collect::<Vec<_>>();
+            let buffer_infos: Vec<_> = descriptor_bindings
                 .iter()
                 .map(|binding| match &binding.resource {
                     ResourceBindingType::Buffer {
@@ -185,8 +201,8 @@ impl VulkanRenderer {
                 })
                 .collect();
 
-            let mut writes = Vec::with_capacity(binding_set.len());
-            for (binding, info) in binding_set.iter().zip(buffer_infos.iter()) {
+            let mut writes = Vec::with_capacity(descriptor_bindings.len());
+            for (binding, info) in descriptor_bindings.iter().zip(buffer_infos.iter()) {
                 let descriptor_type = match binding.resource {
                     ResourceBindingType::Buffer {
                         handle,
@@ -205,7 +221,7 @@ impl VulkanRenderer {
                             BufferUsage::Uniform => ash::vk::DescriptorType::UNIFORM_BUFFER,
                             _ => {
                                 return Err(RendererError::invalid_argument(
-                                    "Invalid buffer usage for resource binding.",
+                                    "Invalid buffer usage for descriptor resource binding.",
                                 ));
                             }
                         }
