@@ -1,5 +1,3 @@
-use ash::vk::{PhysicalDeviceProperties2, QueueFamilyProperties2};
-
 use crate::{
     graphics_device::GraphicsDevice,
     renderers::{
@@ -72,32 +70,22 @@ impl VulkanRenderer {
 
         let mut queue_families = Vec::default();
         for physical_device in physical_devices {
-            let mut properties2 = PhysicalDeviceProperties2::default();
-            let mut queue_family_properties2_vec = Vec::<QueueFamilyProperties2>::default();
+            let properties;
+            let queue_family_properties_vec;
             unsafe {
-                instance.get_physical_device_properties2(physical_device, &mut properties2);
-                if device.device_id != properties2.properties.device_id {
+                properties = instance.get_physical_device_properties(physical_device);
+                if device.device_id != properties.device_id {
                     continue;
                 }
-
-                let queue_family_properties2_vec_size =
-                    instance.get_physical_device_queue_family_properties2_len(physical_device);
-                queue_family_properties2_vec.resize(
-                    queue_family_properties2_vec_size,
-                    QueueFamilyProperties2::default(),
-                );
-                instance.get_physical_device_queue_family_properties2(
-                    physical_device,
-                    &mut queue_family_properties2_vec,
-                );
+                queue_family_properties_vec =
+                    instance.get_physical_device_queue_family_properties(physical_device);
             };
 
-            for (index, queue_family_properties2) in queue_family_properties2_vec.iter().enumerate()
-            {
+            for (index, queue_family_properties) in queue_family_properties_vec.iter().enumerate() {
                 queue_families.push(QueueFamily {
                     index: index as u32,
-                    queue_count: queue_family_properties2.queue_family_properties.queue_count,
-                    queue_flags: queue_family_properties2.queue_family_properties.queue_flags,
+                    queue_count: queue_family_properties.queue_count,
+                    queue_flags: queue_family_properties.queue_flags,
                     present_supported: unsafe {
                         window_surface_loader.get_physical_device_surface_support(
                             physical_device,
