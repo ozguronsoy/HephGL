@@ -12,7 +12,8 @@ use std::{
 use heph_gl::{
     Version,
     graphics_device::{
-        Feature, GraphicsDevice,
+        Feature::{self, ComputeShaders, OpticalFlow, RayTracing, VideoDecoding, VideoEncoding},
+        GraphicsDevice,
         Type::{Cpu, DiscreteGpu, IntegratedGpu, VirtualGpu},
     },
     renderers::{
@@ -502,22 +503,10 @@ where
 
     fn test_set_device(&self) {
         let mut features = [
-            FeatureRequest {
-                feature: Feature::RayTracing,
-                required: false,
-            },
-            FeatureRequest {
-                feature: Feature::OpticalFlow,
-                required: false,
-            },
-            FeatureRequest {
-                feature: Feature::VideoDecoding,
-                required: false,
-            },
-            FeatureRequest {
-                feature: Feature::VideoEncoding,
-                required: false,
-            },
+            FeatureRequest::new(RayTracing, false),
+            FeatureRequest::new(OpticalFlow, false),
+            FeatureRequest::new(VideoDecoding, false),
+            FeatureRequest::new(VideoEncoding, false),
         ];
         let mut renderer = self.create_renderer_with_any_device(&features);
         assert!(renderer.get_device().is_some());
@@ -779,10 +768,7 @@ where
 
         let create_renderer_result = self.create_renderer_with_target_device(
             target_device_type,
-            &[FeatureRequest {
-                feature: Feature::ComputeShaders,
-                required: false,
-            }],
+            &[FeatureRequest::new(ComputeShaders, true)],
             false,
         );
         assert!(
@@ -941,10 +927,7 @@ where
 
         let create_renderer_result = self.create_renderer_with_target_device(
             target_device_type,
-            &[FeatureRequest {
-                feature: Feature::ComputeShaders,
-                required: false,
-            }],
+            &[FeatureRequest::new(ComputeShaders, true)],
             false,
         );
         assert!(

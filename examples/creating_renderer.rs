@@ -1,4 +1,10 @@
-use heph_gl::renderers::{Renderer, settings::FeatureRequest, settings::InitializeOptions};
+use heph_gl::{
+    graphics_device::Feature::ComputeShaders,
+    renderers::{
+        Renderer,
+        settings::{FeatureRequest, InitializeOptions},
+    },
+};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
 use crate::utils::{ExampleRenderer, run_example};
@@ -37,10 +43,7 @@ fn example(
     // Note: To use a specific GPU, you can call `renderer.enumerate_devices()`
     // to fetch available hardware and pass your preferred device here
     // instead of `DEFAULT_DEVICE`.
-    let requested_features = [FeatureRequest {
-        feature: heph_gl::graphics_device::Feature::ComputeShaders,
-        required: false,
-    }];
+    let requested_features = [FeatureRequest::new(ComputeShaders, false)];
     renderer
         .set_device(ExampleRenderer::DEFAULT_DEVICE, &requested_features)
         .unwrap();

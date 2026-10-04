@@ -37,6 +37,13 @@ pub struct FeatureRequest {
     pub required: bool,
 }
 
+impl FeatureRequest {
+    /// Creates a new instance.
+    pub fn new(feature: crate::graphics_device::Feature, required: bool) -> Self {
+        Self { feature, required }
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
