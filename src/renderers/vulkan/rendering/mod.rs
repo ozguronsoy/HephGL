@@ -1,4 +1,5 @@
 mod dynamic_rendering;
+mod lifetime_guards;
 mod render_pass_rendering;
 
 use ash::vk::CommandBuffer;
@@ -22,13 +23,16 @@ use crate::{
 /// Provides rendering operations.
 pub trait VulkanRendering {
     /// Creates the resources required for rendering.
-    fn new(device: &ash::Device, swapchain_context: &SwapchainContext) -> RendererResult<Self>
+    fn new(
+        settings: &Settings,
+        device: &ash::Device,
+        swapchain_context: &SwapchainContext,
+    ) -> RendererResult<Self>
     where
         Self: Sized;
     /// Creates a graphics pipeline using the provided shaders.
     fn create_graphics_pipeline(
         &mut self,
-        settings: &Settings,
         device: &ash::Device,
         shaders: &[&Shader],
     ) -> RendererResult<<VulkanRenderer as Renderer>::GraphicsPipelineHandle>;
@@ -41,7 +45,6 @@ pub trait VulkanRendering {
     /// Starts rendering the frame.
     fn begin(
         &mut self,
-        settings: &Settings,
         device: &ash::Device,
         command_buffer: CommandBuffer,
         swapchain_context: &SwapchainContext,
@@ -64,11 +67,13 @@ impl VulkanRenderer {
 
         if device_context.supports_dynamic_rendering {
             device_context.rendering = Some(Box::new(DynamicRendering::new(
+                &self.settings,
                 &device_context.logical_device,
                 &device_context.swapchain_context,
             )?));
         } else {
             device_context.rendering = Some(Box::new(RenderPassRendering::new(
+                &self.settings,
                 &device_context.logical_device,
                 &device_context.swapchain_context,
             )?));

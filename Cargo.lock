@@ -1383,9 +1383,9 @@ dependencies = [
 
 [[package]]
 name = "renkrs"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c35d4f27ea3042db2ba2334c84b10cc86f8ecb95c2d7241a2a8288d8968ad6ec"
+checksum = "86038ae60cfe8353c5626e5510d01b322a07012e4146b84a40377df31a71d4db"
 
 [[package]]
 name = "rustc-hash"

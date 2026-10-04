@@ -145,7 +145,6 @@ impl Renderer for VulkanRenderer {
             self.current_frame_index = 0;
 
             let device_context = self.device_context.as_mut().unwrap();
-            let supports_dynamic_rendering = device_context.supports_dynamic_rendering;
             let mut resize_frames = |queue_context: &mut QueueContext| -> RendererResult<()> {
                 let masks = device_context.thread_context_masks.lock()?;
 
@@ -174,10 +173,7 @@ impl Renderer for VulkanRenderer {
             self.create_frame_sync()?;
             self.initialize_thread()?;
             self.create_swapchain()?;
-            // TODO: Remove this check after implementing render pass rendering.
-            if supports_dynamic_rendering {
-                self.create_rendering()?;
-            }
+            self.create_rendering()?;
         } else {
             self.settings = settings;
             self.current_frame_index = 0;
@@ -634,7 +630,6 @@ impl Renderer for VulkanRenderer {
                 instance.get_physical_device_features2(physical_device, &mut features);
             }
             supports_dynamic_rendering = vulkan_13_features.dynamic_rendering == ash::vk::TRUE;
-            // TODO: Set `supports_dynamic_rendering_semaphore`.
 
             vulkan_13_features = ash::vk::PhysicalDeviceVulkan13Features::default();
             vulkan_13_features = vulkan_13_features.dynamic_rendering(supports_dynamic_rendering);
@@ -737,10 +732,7 @@ impl Renderer for VulkanRenderer {
         self.initialize_thread()?;
         self.create_frame_sync()?;
         self.create_swapchain()?;
-        // TODO: Remove this check after implementing render pass rendering.
-        if supports_dynamic_rendering {
-            self.create_rendering()?;
-        }
+        self.create_rendering()?;
 
         Ok(())
     }
@@ -1027,7 +1019,7 @@ impl Renderer for VulkanRenderer {
             .rendering
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
-        rendering.create_graphics_pipeline(&self.settings, &device_context.logical_device, shaders)
+        rendering.create_graphics_pipeline(&device_context.logical_device, shaders)
     }
 
     fn destroy_graphics_pipeline(
@@ -1287,7 +1279,6 @@ impl Renderer for VulkanRenderer {
                             );
                         }
                         rendering.begin(
-                            &self.settings,
                             &device_context.logical_device,
                             current_frame.command_buffer,
                             &device_context.swapchain_context,

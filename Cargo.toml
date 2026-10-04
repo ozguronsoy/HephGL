@@ -11,7 +11,7 @@ keywords = ["vulkan"]
 categories = ["graphics"]
 
 [dependencies]
-renkrs = "0.1.0"
+renkrs = "0.1.1"
 glam = "0.33.2"
 raw-window-handle = "0.6.2"
 ash = "0.38.0"

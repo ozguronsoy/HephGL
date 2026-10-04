@@ -2,14 +2,13 @@ use std::ffi::CString;
 
 use ash::vk::{
     AttachmentLoadOp, AttachmentStoreOp, ClearDepthStencilValue, ColorComponentFlags,
-    CommandBuffer, CullModeFlags, DescriptorSetLayout, DescriptorSetLayoutBinding,
-    DescriptorSetLayoutCreateInfo, DescriptorType, DynamicState, FrontFace,
-    GraphicsPipelineCreateInfo, ImageLayout, PipelineCache, PipelineColorBlendAttachmentState,
-    PipelineColorBlendStateCreateInfo, PipelineDepthStencilStateCreateInfo,
-    PipelineDynamicStateCreateInfo, PipelineInputAssemblyStateCreateInfo, PipelineLayout,
-    PipelineLayoutCreateInfo, PipelineMultisampleStateCreateInfo,
-    PipelineRasterizationStateCreateInfo, PipelineRenderingCreateInfo,
-    PipelineShaderStageCreateInfo, PipelineVertexInputStateCreateInfo,
+    CommandBuffer, CullModeFlags, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
+    DescriptorType, DynamicState, FrontFace, GraphicsPipelineCreateInfo, ImageLayout,
+    PipelineCache, PipelineColorBlendAttachmentState, PipelineColorBlendStateCreateInfo,
+    PipelineDepthStencilStateCreateInfo, PipelineDynamicStateCreateInfo,
+    PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
+    PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
+    PipelineRenderingCreateInfo, PipelineShaderStageCreateInfo, PipelineVertexInputStateCreateInfo,
     PipelineViewportStateCreateInfo, PolygonMode, PrimitiveTopology, RenderingAttachmentInfo,
     RenderingInfo, ShaderModuleCreateInfo, ShaderStageFlags, VertexInputAttributeDescription,
     VertexInputBindingDescription, VertexInputRate,
@@ -21,7 +20,12 @@ use crate::{
         error::RendererError,
         settings::{Msaa, Settings},
         vulkan::{
-            VulkanRenderer, rendering::VulkanRendering, resources::VulkanGraphicsPipeline,
+            VulkanRenderer,
+            rendering::{
+                VulkanRendering,
+                lifetime_guards::{PipelineResources, ShaderModules},
+            },
+            resources::VulkanGraphicsPipeline,
             swapchain::SwapchainContext,
         },
     },
@@ -32,59 +36,33 @@ use crate::{
 pub struct DynamicRendering {
     color_format: ash::vk::Format,
     depth_format: ash::vk::Format,
+    msaa: Msaa,
+    stereoscopic_3d_rendering: bool,
 }
 
 impl VulkanRendering for DynamicRendering {
-    fn new(_: &ash::Device, swapchain_context: &SwapchainContext) -> RendererResult<Self>
+    fn new(
+        settings: &Settings,
+        _: &ash::Device,
+        swapchain_context: &SwapchainContext,
+    ) -> RendererResult<Self>
     where
         Self: Sized,
     {
+        // This is recreated when settings change, so we can store the settings we need here.
         Ok(Self {
             color_format: swapchain_context.format,
             // TODO: Get this from swapchain context?
             depth_format: ash::vk::Format::D32_SFLOAT,
+            msaa: settings.msaa,
+            stereoscopic_3d_rendering: settings.stereoscopic_3d_rendering,
         })
     }
     fn create_graphics_pipeline(
         &mut self,
-        settings: &Settings,
         device: &ash::Device,
         shaders: &[&Shader],
     ) -> RendererResult<<VulkanRenderer as Renderer>::GraphicsPipelineHandle> {
-        struct ShaderModules<'a> {
-            device: &'a ash::Device,
-            modules: Vec<ash::vk::ShaderModule>,
-        }
-        impl Drop for ShaderModules<'_> {
-            fn drop(&mut self) {
-                unsafe {
-                    for module in &self.modules {
-                        self.device.destroy_shader_module(*module, None);
-                    }
-                }
-            }
-        }
-
-        struct PipelineResources<'a> {
-            device: &'a ash::Device,
-            layout: Option<PipelineLayout>,
-            descriptor_layouts: Vec<DescriptorSetLayout>,
-        }
-        impl Drop for PipelineResources<'_> {
-            fn drop(&mut self) {
-                unsafe {
-                    if let Some(layout) = self.layout {
-                        self.device.destroy_pipeline_layout(layout, None);
-                    }
-
-                    for descriptor_layout in &self.descriptor_layouts {
-                        self.device
-                            .destroy_descriptor_set_layout(*descriptor_layout, None);
-                    }
-                }
-            }
-        }
-
         // Create shader stage infos.
         let mut shader_modules = ShaderModules {
             device,
@@ -254,7 +232,7 @@ impl VulkanRendering for DynamicRendering {
             .depth_bias_enable(false)
             .line_width(1.0);
         let multisampling = PipelineMultisampleStateCreateInfo::default()
-            .rasterization_samples(settings.msaa.into())
+            .rasterization_samples(self.msaa.into())
             .sample_shading_enable(false);
         let depth_stencil = PipelineDepthStencilStateCreateInfo::default()
             .depth_test_enable(true)
@@ -279,7 +257,6 @@ impl VulkanRendering for DynamicRendering {
         let mut rendering_info = PipelineRenderingCreateInfo::default()
             .color_attachment_formats(&color_formats)
             .depth_attachment_format(self.depth_format);
-
         let pipeline_info = GraphicsPipelineCreateInfo::default()
             .stages(&stage_infos)
             .vertex_input_state(&vertex_input)
@@ -320,12 +297,11 @@ impl VulkanRendering for DynamicRendering {
     }
     fn begin(
         &mut self,
-        settings: &Settings,
         device: &ash::Device,
         command_buffer: CommandBuffer,
         swapchain_context: &SwapchainContext,
     ) -> RendererResult<()> {
-        let color_attachment_info = if settings.msaa == Msaa::X1 {
+        let color_attachment_info = if self.msaa == Msaa::X1 {
             RenderingAttachmentInfo::default()
                 .image_view(swapchain_context.image_views[swapchain_context.current_image_index])
                 .image_layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
@@ -359,7 +335,7 @@ impl VulkanRendering for DynamicRendering {
                 offset: ash::vk::Offset2D { x: 0, y: 0 },
                 extent: swapchain_context.extent,
             })
-            .layer_count(match settings.stereoscopic_3d_rendering {
+            .layer_count(match self.stereoscopic_3d_rendering {
                 true => 2,
                 false => 1,
             })
