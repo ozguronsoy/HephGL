@@ -83,7 +83,7 @@ impl ApplicationHandler for App {
                     vsync: true,
                     stereoscopic_3d_rendering: false,
                     default_size: (1920, 1080),
-                    msaa: settings::Msaa::X8,
+                    msaa: settings::Msaa::X1,
                 })
                 .unwrap();
         }

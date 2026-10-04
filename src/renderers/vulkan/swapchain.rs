@@ -52,6 +52,12 @@ impl VulkanRenderer {
     pub(super) fn create_swapchain(&mut self) -> RendererResult<()> {
         self.destroy_swapchain()?;
 
+        let instance = self
+            .instance
+            .as_ref()
+            .ok_or(RendererError::invalid_operation(
+                "Renderer is not initialized.",
+            ))?;
         let window_surface_loader =
             self.window_surface_loader
                 .as_ref()
@@ -249,6 +255,16 @@ impl VulkanRenderer {
         }
 
         // Create MSAA image.
+        let properties =
+            unsafe { instance.get_physical_device_properties(device_context.physical_device) };
+        let supported_sample_counts = properties.limits.framebuffer_color_sample_counts
+            & properties.limits.framebuffer_depth_sample_counts;
+        if !supported_sample_counts.contains(sample_count) {
+            return Err(RendererError::invalid_argument(
+                "Requested MSAA sample count is not supported by the selected device.",
+            ));
+        }
+
         if sample_count != SampleCountFlags::TYPE_1 {
             let color_image_create_info = ImageCreateInfo::default()
                 .image_type(ash::vk::ImageType::TYPE_2D)
