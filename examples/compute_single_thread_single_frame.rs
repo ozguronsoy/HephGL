@@ -27,10 +27,7 @@ fn create_random_data() -> (Vec<f32>, Vec<f32>) {
 
 fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHandle) {
     let device = get_best_device(renderer);
-    let features = [FeatureRequest {
-        feature: ComputeShaders,
-        required: true,
-    }];
+    let features = [FeatureRequest::new(ComputeShaders, true)];
     renderer.set_device(Some(&device), &features).unwrap();
 
     // This shader takes one set of resources with 3 bindings (2 input buffers, and

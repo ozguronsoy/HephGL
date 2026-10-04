@@ -31,10 +31,7 @@ fn create_data(frame: usize) -> (Vec<f32>, Vec<f32>) {
 
 fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHandle) {
     let device = get_best_device(renderer);
-    let features = [FeatureRequest {
-        feature: ComputeShaders,
-        required: true,
-    }];
+    let features = [FeatureRequest::new(ComputeShaders, true)];
     renderer.set_device(Some(&device), &features).unwrap();
 
     // Settings can be set anytime, but you must ensure all processing in GPU is
