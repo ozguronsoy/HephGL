@@ -3,7 +3,10 @@ use heph_gl::{
         GraphicsDevice,
         Type::{DiscreteGpu, IntegratedGpu},
     },
-    renderers::{settings::InitializeOptions, *},
+    renderers::{
+        settings::{InitializeOptions, Settings},
+        *,
+    },
 };
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use winit::{
@@ -74,6 +77,14 @@ impl ApplicationHandler for App {
                 api_version: ExampleRenderer::LATEST_API_VERSION,
             };
             renderer.initialize(&init_options).unwrap();
+            renderer
+                .set_settings(Settings {
+                    frames_in_flight: 1,
+                    vsync: true,
+                    stereoscopic_3d_rendering: false,
+                    default_size: (1920, 1080),
+                })
+                .unwrap();
         }
 
         (self.example)(&mut renderer, window_handle, display_handle);

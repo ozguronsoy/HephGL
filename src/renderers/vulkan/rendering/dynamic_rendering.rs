@@ -12,6 +12,7 @@ use ash::vk::{
     PipelineShaderStageCreateInfo, PipelineVertexInputStateCreateInfo,
     PipelineViewportStateCreateInfo, PolygonMode, PrimitiveTopology, RenderingAttachmentInfo,
     RenderingInfo, SampleCountFlags, ShaderModuleCreateInfo, ShaderStageFlags,
+    VertexInputAttributeDescription, VertexInputBindingDescription, VertexInputRate,
 };
 
 use crate::{
@@ -126,14 +127,14 @@ impl VulkanRendering for DynamicRendering {
         // Merge descriptor bindings used by different shader stages.
         let group_count = shaders
             .iter()
-            .map(|shader| shader.group_count() as usize)
+            .map(|shader| shader.descriptor_group_count())
             .max()
             .unwrap_or(0);
         let mut binding_sets = Vec::with_capacity(group_count);
         binding_sets.resize_with(group_count, Vec::new);
 
         for (shader, shader_stage) in shaders.iter().zip(&shader_stages) {
-            for binding in &shader.metadata.bindings {
+            for binding in &shader.metadata.descriptor_bindings {
                 let binding_set = &mut binding_sets[binding.group as usize];
                 let descriptor_type: DescriptorType = binding.binding_type.into();
                 if let Some(existing_binding) =
@@ -184,8 +185,56 @@ impl VulkanRendering for DynamicRendering {
             unsafe { device.create_pipeline_layout(&pipeline_layout_info, None)? };
         resources.layout = Some(pipeline_layout);
 
-        // TODO: Implement vertex attributes.
-        let vertex_input = PipelineVertexInputStateCreateInfo::default();
+        let vertex_shader = shaders
+            .iter()
+            .find(|shader| shader.metadata.stage == naga::ShaderStage::Vertex)
+            .ok_or(RendererError::invalid_argument(
+                "Graphics pipeline requires a vertex shader.",
+            ))?;
+        let mut offset = 0;
+        let mut attribute_descriptions =
+            Vec::with_capacity(vertex_shader.metadata.vertex_bindings.len());
+        for binding in &vertex_shader.metadata.vertex_bindings {
+            let format = match (
+                binding.scalar_kind,
+                binding.scalar_width,
+                binding.components,
+            ) {
+                (naga::ScalarKind::Float, 4, 1) => ash::vk::Format::R32_SFLOAT,
+                (naga::ScalarKind::Float, 4, 2) => ash::vk::Format::R32G32_SFLOAT,
+                (naga::ScalarKind::Float, 4, 3) => ash::vk::Format::R32G32B32_SFLOAT,
+                (naga::ScalarKind::Float, 4, 4) => ash::vk::Format::R32G32B32A32_SFLOAT,
+                _ => {
+                    return Err(RendererError::invalid_argument(
+                        "Unsupported vertex format.",
+                    ));
+                }
+            };
+
+            attribute_descriptions.push(
+                VertexInputAttributeDescription::default()
+                    .location(binding.location)
+                    .binding(0)
+                    .format(format)
+                    .offset(offset),
+            );
+
+            offset += binding.scalar_width as u32 * binding.components;
+        }
+        let vertex_buffer_bindings = if attribute_descriptions.is_empty() {
+            Vec::new()
+        } else {
+            vec![
+                VertexInputBindingDescription::default()
+                    .binding(0)
+                    .stride(offset)
+                    .input_rate(VertexInputRate::VERTEX),
+            ]
+        };
+        let vertex_input = PipelineVertexInputStateCreateInfo::default()
+            .vertex_binding_descriptions(&vertex_buffer_bindings)
+            .vertex_attribute_descriptions(&attribute_descriptions);
+
         let input_assembly = PipelineInputAssemblyStateCreateInfo::default()
             .topology(PrimitiveTopology::TRIANGLE_LIST)
             .primitive_restart_enable(false);
@@ -279,8 +328,13 @@ impl VulkanRendering for DynamicRendering {
         let color_attachment_info = RenderingAttachmentInfo::default()
             .image_view(swapchain_context.image_views[swapchain_context.current_image_index])
             .image_layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .load_op(AttachmentLoadOp::DONT_CARE)
-            .store_op(AttachmentStoreOp::STORE);
+            .load_op(AttachmentLoadOp::CLEAR)
+            .store_op(AttachmentStoreOp::STORE)
+            .clear_value(ash::vk::ClearValue {
+                color: ash::vk::ClearColorValue {
+                    float32: [0.0, 0.0, 0.0, 1.0],
+                },
+            });
         let depth_attachment_info = RenderingAttachmentInfo::default()
             .image_view(swapchain_context.depth_image_view)
             .image_layout(ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)

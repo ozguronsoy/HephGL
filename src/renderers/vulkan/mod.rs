@@ -36,6 +36,7 @@ use crate::{
     renderers::{
         BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererError, RendererResult,
         ResourceBinding, Settings,
+        resources::ResourceBindingType,
         thread_context::{ThreadContextIndex, ThreadContextMask, is_thread_context_active},
         version::DriverVersion,
         vulkan::{
@@ -879,9 +880,11 @@ impl Renderer for VulkanRenderer {
         };
         let shader_stage = Self::convert_shader_stage(shader.metadata.stage)?;
 
-        let mut binding_sets =
-            vec![Vec::with_capacity(shader.metadata.bindings.len()); shader.group_count() as usize];
-        for binding in &shader.metadata.bindings {
+        let mut binding_sets = vec![
+            Vec::with_capacity(shader.metadata.descriptor_bindings.len());
+            shader.descriptor_group_count()
+        ];
+        for binding in &shader.metadata.descriptor_bindings {
             binding_sets[binding.group as usize].push(
                 DescriptorSetLayoutBinding::default()
                     .binding(binding.binding)
@@ -965,6 +968,7 @@ impl Renderer for VulkanRenderer {
         group_count: (u32, u32, u32),
     ) -> RendererResult<()> {
         let mapped_sets = self.create_compute_resource_sets(pipeline, binding_sets)?;
+
         let device_context = self
             .device_context
             .as_mut()
@@ -1040,10 +1044,37 @@ impl Renderer for VulkanRenderer {
         &mut self,
         pipeline: &Self::GraphicsPipelineHandle,
         binding_sets: &[&[ResourceBinding<Self::BufferHandle>]],
-        vertex_count: u32,
+        draw_count: u32,
         instance_count: u32,
     ) -> RendererResult<()> {
         let mapped_sets = self.create_graphics_resource_sets(pipeline, binding_sets)?;
+        let vertex_bindings = binding_sets
+            .iter()
+            .flat_map(|set| set.iter())
+            .filter_map(|binding| match binding.resource {
+                ResourceBindingType::Buffer {
+                    handle,
+                    usage: BufferUsage::Vertex,
+                    offset,
+                    size,
+                } => Some((binding.binding, handle, offset, size)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let index_bindings = binding_sets
+            .iter()
+            .flat_map(|set| set.iter())
+            .filter_map(|binding| match binding.resource {
+                ResourceBindingType::Buffer {
+                    handle,
+                    usage: BufferUsage::Index,
+                    offset,
+                    size,
+                } => Some((binding.binding, handle, offset, size)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
         let device_context = self
             .device_context
             .as_mut()
@@ -1069,13 +1100,50 @@ impl Renderer for VulkanRenderer {
                     &[],
                 );
             }
-            device_context.logical_device.cmd_draw(
-                current_frame.command_buffer,
-                vertex_count,
-                instance_count,
-                0,
-                0,
-            );
+            for (binding, handle, offset, size) in vertex_bindings {
+                if offset + size > handle.size {
+                    return Err(RendererError::invalid_argument(
+                        "Buffer overflow when binding vertex buffer.",
+                    ));
+                }
+
+                device_context.logical_device.cmd_bind_vertex_buffers(
+                    current_frame.command_buffer,
+                    binding,
+                    std::slice::from_ref(&handle.buffer),
+                    std::slice::from_ref(&(offset as u64)),
+                );
+            }
+
+            if !index_bindings.is_empty() {
+                if index_bindings.len() > 1 {
+                    return Err(RendererError::invalid_argument(
+                        "Only one index buffer can be bound per draw.",
+                    ));
+                }
+                device_context.logical_device.cmd_bind_index_buffer(
+                    current_frame.command_buffer,
+                    index_bindings[0].1.buffer,
+                    index_bindings[0].2 as u64,
+                    ash::vk::IndexType::UINT32,
+                );
+                device_context.logical_device.cmd_draw_indexed(
+                    current_frame.command_buffer,
+                    draw_count,
+                    instance_count,
+                    0,
+                    0,
+                    0,
+                );
+            } else {
+                device_context.logical_device.cmd_draw(
+                    current_frame.command_buffer,
+                    draw_count,
+                    instance_count,
+                    0,
+                    0,
+                );
+            }
         }
 
         current_frame.recorded = true;
