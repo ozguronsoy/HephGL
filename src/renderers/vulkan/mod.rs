@@ -5,6 +5,7 @@ mod handle;
 mod queue;
 mod rendering;
 pub mod resources;
+mod settings;
 mod swapchain;
 mod sync;
 mod thread;
@@ -37,6 +38,7 @@ use crate::{
         BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererError, RendererResult,
         ResourceBinding, Settings,
         resources::ResourceBindingType,
+        settings::Msaa,
         thread_context::{ThreadContextIndex, ThreadContextMask, is_thread_context_active},
         version::DriverVersion,
         vulkan::{
@@ -716,6 +718,9 @@ impl Renderer for VulkanRenderer {
                 depth_image: ash::vk::Image::null(),
                 depth_image_allocation: None,
                 depth_image_view: ash::vk::ImageView::null(),
+                msaa_color_image: ash::vk::Image::null(),
+                msaa_color_image_allocation: None,
+                msaa_color_image_view: ash::vk::ImageView::null(),
                 current_image_index: 0,
                 image_avaliable_semaphore_index: SwapchainContext::INVALID_INDEX,
             },
@@ -1022,7 +1027,7 @@ impl Renderer for VulkanRenderer {
             .rendering
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
-        rendering.create_graphics_pipeline(&device_context.logical_device, shaders)
+        rendering.create_graphics_pipeline(&self.settings, &device_context.logical_device, shaders)
     }
 
     fn destroy_graphics_pipeline(
@@ -1265,6 +1270,22 @@ impl Renderer for VulkanRenderer {
                             ash::vk::ImageAspectFlags::DEPTH,
                             layer_count,
                         );
+                        if self.settings.msaa != Msaa::X1 {
+                            Self::transition_image_layout(
+                                &device_context.logical_device,
+                                current_frame.command_buffer,
+                                device_context.swapchain_context.msaa_color_image,
+                                ash::vk::ImageLayout::UNDEFINED,
+                                ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                                ash::vk::AccessFlags::empty(),
+                                ash::vk::AccessFlags::COLOR_ATTACHMENT_READ
+                                    | ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                                ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                                ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                                ash::vk::ImageAspectFlags::COLOR,
+                                layer_count,
+                            );
+                        }
                         rendering.begin(
                             &self.settings,
                             &device_context.logical_device,

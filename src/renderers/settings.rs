@@ -1,3 +1,22 @@
+/// Defines the multisample anti-aliasing sample count used when rendering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Msaa {
+    /// Disables MSAA and uses a single sample per pixel.
+    X1,
+    /// Uses 2 samples per pixel.
+    X2,
+    /// Uses 4 samples per pixel.
+    X4,
+    /// Uses 8 samples per pixel.
+    X8,
+    /// Uses 16 samples per pixel.
+    X16,
+    /// Uses 32 samples per pixel.
+    X32,
+    /// Uses 64 samples per pixel.
+    X64,
+}
+
 /// Represents the settings used throughout the lifetime of the renderer.
 #[derive(Debug, Clone, Copy)]
 pub struct Settings {
@@ -11,6 +30,8 @@ pub struct Settings {
     /// The size that will be used as fallback when the renderer fails to fetch the target window's
     /// size.
     pub default_size: (u32, u32),
+    /// The multisample anti-aliasing sample count.
+    pub msaa: Msaa,
 }
 
 /// Represents the options used while initializing the renderer.
@@ -51,6 +72,7 @@ impl Default for Settings {
             vsync: false,
             stereoscopic_3d_rendering: false,
             default_size: (1920, 1080),
+            msaa: Msaa::X1,
         }
     }
 }

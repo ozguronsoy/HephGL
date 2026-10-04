@@ -27,8 +27,14 @@ pub struct SwapchainContext {
     pub depth_image: ash::vk::Image,
     /// The allocation of depth buffer.
     pub depth_image_allocation: Option<vk_mem::Allocation>,
-    /// The depth buffer view
+    /// The depth buffer view.
     pub depth_image_view: ash::vk::ImageView,
+    /// The color image that will be used if MSAA is enabled.
+    pub msaa_color_image: ash::vk::Image,
+    /// The allocation of color image that will be used if MSAA is enabled.
+    pub msaa_color_image_allocation: Option<vk_mem::Allocation>,
+    /// The color image view that will be used if MSAA is enabled.
+    pub msaa_color_image_view: ash::vk::ImageView,
     /// The index of the image currently used for rendering.
     pub current_image_index: usize,
     /// The index of the semaphore used for acquiring an image.
@@ -197,6 +203,8 @@ impl VulkanRenderer {
             }
         }
 
+        let sample_count: SampleCountFlags = self.settings.msaa.into();
+
         // Create depth buffer.
         unsafe {
             let depth_format = ash::vk::Format::D32_SFLOAT;
@@ -210,7 +218,7 @@ impl VulkanRenderer {
                 })
                 .mip_levels(1)
                 .array_layers(array_layer_count)
-                .samples(SampleCountFlags::TYPE_1)
+                .samples(sample_count)
                 .tiling(ImageTiling::OPTIMAL)
                 .usage(ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
                 .initial_layout(ImageLayout::UNDEFINED);
@@ -239,6 +247,54 @@ impl VulkanRenderer {
                 .logical_device
                 .create_image_view(&depth_image_view_create_info, None)?;
         }
+
+        // Create MSAA image.
+        if sample_count != SampleCountFlags::TYPE_1 {
+            let color_image_create_info = ImageCreateInfo::default()
+                .image_type(ash::vk::ImageType::TYPE_2D)
+                .format(device_context.swapchain_context.format)
+                .extent(Extent3D {
+                    width: device_context.swapchain_context.extent.width,
+                    height: device_context.swapchain_context.extent.height,
+                    depth: 1,
+                })
+                .mip_levels(1)
+                .array_layers(array_layer_count)
+                .samples(sample_count)
+                .tiling(ImageTiling::OPTIMAL)
+                .usage(ImageUsageFlags::COLOR_ATTACHMENT | ImageUsageFlags::TRANSIENT_ATTACHMENT)
+                .initial_layout(ImageLayout::UNDEFINED);
+            let allocation_info = vk_mem::AllocationCreateInfo {
+                usage: vk_mem::MemoryUsage::AutoPreferDevice,
+                ..Default::default()
+            };
+            let (image, allocation) = unsafe {
+                device_context
+                    .vma_allocator
+                    .create_image(&color_image_create_info, &allocation_info)?
+            };
+            device_context.swapchain_context.msaa_color_image = image;
+            device_context.swapchain_context.msaa_color_image_allocation = Some(allocation);
+
+            let image_view_create_info = ImageViewCreateInfo::default()
+                .image(image)
+                .view_type(image_view_type)
+                .format(device_context.swapchain_context.format)
+                .subresource_range(
+                    ImageSubresourceRange::default()
+                        .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+                        .base_mip_level(0)
+                        .level_count(1)
+                        .base_array_layer(0)
+                        .layer_count(array_layer_count),
+                );
+            device_context.swapchain_context.msaa_color_image_view = unsafe {
+                device_context
+                    .logical_device
+                    .create_image_view(&image_view_create_info, None)?
+            };
+        }
+
         device_context
             .swapchain_context
             .image_avaliable_semaphore_index = SwapchainContext::INVALID_INDEX;
@@ -300,6 +356,30 @@ impl VulkanRenderer {
                 .destroy_swapchain(device_context.swapchain_context.swapchain, None);
             device_context.swapchain_context.images.clear();
             device_context.swapchain_context.swapchain = SwapchainKHR::null();
+
+            if !device_context
+                .swapchain_context
+                .msaa_color_image_view
+                .is_null()
+            {
+                device_context.logical_device.destroy_image_view(
+                    device_context.swapchain_context.msaa_color_image_view,
+                    None,
+                );
+
+                device_context.vma_allocator.destroy_image(
+                    device_context.swapchain_context.msaa_color_image,
+                    device_context
+                        .swapchain_context
+                        .msaa_color_image_allocation
+                        .as_mut()
+                        .unwrap(),
+                );
+
+                device_context.swapchain_context.msaa_color_image = ash::vk::Image::null();
+                device_context.swapchain_context.msaa_color_image_view = ash::vk::ImageView::null();
+                device_context.swapchain_context.msaa_color_image_allocation = None;
+            }
         }
 
         Ok(())
