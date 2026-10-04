@@ -26,6 +26,7 @@ use heph_gl::{
     shader::Shader,
 };
 use libtest_mimic::{Arguments, Trial};
+use renkrs::RGB;
 
 use crate::utils::{SHADERS_DIR, TestEnv};
 use crate::{heph_expect_err, heph_expect_success};
@@ -102,8 +103,7 @@ define_renderer_test_flags!(
     test_multi_threaded_compute_virtual_gpu,
     test_multi_threaded_compute_other,
     test_render_static_triangle,
-    test_render_dynamic_cubes,
-    test_clear
+    test_render_dynamic_cubes
 );
 
 #[derive(Clone, Copy)]
@@ -323,7 +323,6 @@ where
                 ),
                 create_trial!(versioned_test_suite, test_render_static_triangle),
                 create_trial!(versioned_test_suite, test_render_dynamic_cubes),
-                create_trial!(versioned_test_suite, test_clear),
             ];
             tests.append(&mut test_suite);
         }
@@ -1094,6 +1093,7 @@ where
             heph_expect_success!(renderer.create_graphics_pipeline(&[&vert_shader, &frag_shader]));
 
         heph_expect_success!(renderer.begin_frame());
+        heph_expect_success!(renderer.clear(RGB::default()));
         heph_expect_success!(renderer.record_graphics_command(&pipeline, &[], 3, 1));
         heph_expect_success!(renderer.end_frame());
 
@@ -1162,6 +1162,7 @@ where
         };
 
         heph_expect_success!(renderer.begin_frame());
+        heph_expect_success!(renderer.clear(RGB::default()));
 
         let cube_a = cube_vertices([-0.5, -0.125, 0.5], [1.0, 0.0, 0.0]);
         let cube_b = cube_vertices([0.5, 0.125, 0.2], [0.0, 0.0, 1.0]);
@@ -1228,14 +1229,5 @@ where
         heph_expect_success!(renderer.destroy_buffer(&mut cube_b_buffer));
         heph_expect_success!(renderer.destroy_buffer(&mut index_buffer));
         heph_expect_success!(renderer.destroy_graphics_pipeline(&pipeline));
-    }
-
-    fn test_clear(&self) {
-        let mut renderer = self.create_renderer_with_any_device(&[]);
-        heph_expect_success!(renderer.clear(renkrs::RGB {
-            r: 0.0,
-            g: 1.0,
-            b: 0.0
-        }));
     }
 }

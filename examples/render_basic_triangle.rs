@@ -1,5 +1,6 @@
 use heph_gl::{renderers::Renderer, shader::Shader};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
+use renkrs::RGB;
 
 use crate::utils::{ExampleRenderer, SHADERS_DIR, get_best_device, run_example};
 
@@ -21,6 +22,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     drop(frag_shader);
 
     renderer.begin_frame().unwrap();
+    renderer.clear(RGB::default()).unwrap();
 
     const VERTEX_COUNT: u32 = 3;
     const INSTANCE_COUNT: u32 = 1;

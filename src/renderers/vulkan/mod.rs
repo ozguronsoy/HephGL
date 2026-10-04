@@ -1530,8 +1530,53 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn clear(&mut self, _color: RGB<f32>) -> RendererResult<()> {
-        todo!();
+    fn clear(&mut self, color: RGB<f32>) -> RendererResult<()> {
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+        let thread_context_index = Self::thread_context_index()?;
+        let current_frame_index = self.current_frame_index as usize;
+        let current_frame = &mut device_context.graphics_queue_context.frames[current_frame_index]
+            .thread_contexts[thread_context_index];
+
+        {
+            let state = current_frame.sync_state.0.lock()?;
+            if *state != FrameState::Started {
+                return Err(RendererError::invalid_operation(
+                    "Cannot clear outside of a frame.",
+                ));
+            }
+        }
+
+        let clear_attachment = ash::vk::ClearAttachment::default()
+            .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+            .color_attachment(0)
+            .clear_value(ash::vk::ClearValue {
+                color: ash::vk::ClearColorValue {
+                    float32: [color.r, color.g, color.b, 1.0],
+                },
+            });
+        let clear_rect = ash::vk::ClearRect::default()
+            .rect(ash::vk::Rect2D {
+                offset: ash::vk::Offset2D { x: 0, y: 0 },
+                extent: device_context.swapchain_context.extent,
+            })
+            .base_array_layer(0)
+            .layer_count(match self.settings.stereoscopic_3d_rendering {
+                true => 2,
+                false => 1,
+            });
+        unsafe {
+            device_context.logical_device.cmd_clear_attachments(
+                current_frame.command_buffer,
+                std::slice::from_ref(&clear_attachment),
+                std::slice::from_ref(&clear_rect),
+            );
+        }
+
+        current_frame.recorded = true;
+        Ok(())
     }
 }
 
