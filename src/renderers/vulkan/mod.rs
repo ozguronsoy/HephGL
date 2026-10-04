@@ -23,9 +23,8 @@ use ash::vk::{
     CommandBufferUsageFlags, ComputePipelineCreateInfo, DescriptorPoolResetFlags,
     DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DeviceCreateInfo,
     DeviceQueueCreateInfo, InstanceCreateInfo, MemoryHeapFlags, PhysicalDeviceFeatures2,
-    PhysicalDeviceMemoryProperties2, PhysicalDeviceProperties2, PhysicalDeviceType,
-    PipelineBindPoint, PipelineCache, PipelineLayoutCreateInfo, PipelineShaderStageCreateInfo,
-    QueueFamilyProperties2, QueueFlags, ShaderModuleCreateInfo, StructureType, SubmitInfo,
+    PhysicalDeviceType, PipelineBindPoint, PipelineCache, PipelineLayoutCreateInfo,
+    PipelineShaderStageCreateInfo, QueueFlags, ShaderModuleCreateInfo, StructureType, SubmitInfo,
     SurfaceKHR, SwapchainKHR,
 };
 use renkrs::RGB;
@@ -320,37 +319,22 @@ impl Renderer for VulkanRenderer {
         let physical_devices = unsafe { instance.enumerate_physical_devices()? };
 
         for physical_device in physical_devices {
-            let mut properties2 = PhysicalDeviceProperties2::default();
-            let mut memory_properties2 = PhysicalDeviceMemoryProperties2::default();
-            let mut physical_features2 = PhysicalDeviceFeatures2::default();
-            let mut queue_family_properties2_vec = Vec::<QueueFamilyProperties2>::default();
-            unsafe {
-                instance.get_physical_device_properties2(physical_device, &mut properties2);
-                instance.get_physical_device_memory_properties2(
-                    physical_device,
-                    &mut memory_properties2,
-                );
-                instance.get_physical_device_features2(physical_device, &mut physical_features2);
-
-                let queue_family_properties2_vec_size =
-                    instance.get_physical_device_queue_family_properties2_len(physical_device);
-                queue_family_properties2_vec.resize(
-                    queue_family_properties2_vec_size,
-                    QueueFamilyProperties2::default(),
-                );
-                instance.get_physical_device_queue_family_properties2(
-                    physical_device,
-                    &mut queue_family_properties2_vec,
-                );
+            let (properties, memory_properties, physical_features, queue_family_properties_vec) = unsafe {
+                (
+                    instance.get_physical_device_properties(physical_device),
+                    instance.get_physical_device_memory_properties(physical_device),
+                    instance.get_physical_device_features(physical_device),
+                    instance.get_physical_device_queue_family_properties(physical_device),
+                )
             };
 
             let device_name = unsafe {
-                std::ffi::CStr::from_ptr(properties2.properties.device_name.as_ptr())
+                std::ffi::CStr::from_ptr(properties.device_name.as_ptr())
                     .to_string_lossy()
                     .into_owned()
             };
 
-            let device_type = match properties2.properties.device_type {
+            let device_type = match properties.device_type {
                 PhysicalDeviceType::DISCRETE_GPU => crate::graphics_device::Type::DiscreteGpu,
                 PhysicalDeviceType::INTEGRATED_GPU => crate::graphics_device::Type::IntegratedGpu,
                 PhysicalDeviceType::VIRTUAL_GPU => crate::graphics_device::Type::VirtualGpu,
@@ -359,20 +343,20 @@ impl Renderer for VulkanRenderer {
                 _ => crate::graphics_device::Type::Invalid,
             };
 
-            let device_vendor_id = properties2.properties.vendor_id;
-            let device_id = properties2.properties.device_id;
+            let device_vendor_id = properties.vendor_id;
+            let device_id = properties.device_id;
 
-            let device_api_version = VulkanApiVersion(properties2.properties.api_version).into();
+            let device_api_version = VulkanApiVersion(properties.api_version).into();
             let device_driver_version = DriverVersion::new(
-                properties2.properties.driver_version,
-                GraphicsDevice::vendor_from_id(properties2.properties.vendor_id),
+                properties.driver_version,
+                GraphicsDevice::vendor_from_id(properties.vendor_id),
             )
             .into();
 
             // VRAM is the sum of the sizes of all DEVICE_LOCAL heaps
             let mut device_vram: u64 = 0;
-            let heap_count = memory_properties2.memory_properties.memory_heap_count as usize;
-            for heap in memory_properties2.memory_properties.memory_heaps[..heap_count].iter() {
+            let heap_count = memory_properties.memory_heap_count as usize;
+            for heap in memory_properties.memory_heaps[..heap_count].iter() {
                 if heap.flags.contains(MemoryHeapFlags::DEVICE_LOCAL) {
                     device_vram += heap.size;
                 }
@@ -381,16 +365,16 @@ impl Renderer for VulkanRenderer {
             let mut supported_features = HashSet::<crate::graphics_device::Feature>::default();
             let extension_properties =
                 unsafe { instance.enumerate_device_extension_properties(physical_device)? };
-            if physical_features2.features.geometry_shader == ash::vk::TRUE {
+            if physical_features.geometry_shader == ash::vk::TRUE {
                 supported_features.insert(crate::graphics_device::Feature::GeometryShaders);
             }
-            if physical_features2.features.fill_mode_non_solid == ash::vk::TRUE {
+            if physical_features.fill_mode_non_solid == ash::vk::TRUE {
                 supported_features.insert(crate::graphics_device::Feature::WireframeMode);
             }
-            if physical_features2.features.wide_lines == ash::vk::TRUE {
+            if physical_features.wide_lines == ash::vk::TRUE {
                 supported_features.insert(crate::graphics_device::Feature::WideLines);
             }
-            if physical_features2.features.sampler_anisotropy == ash::vk::TRUE {
+            if physical_features.sampler_anisotropy == ash::vk::TRUE {
                 supported_features.insert(crate::graphics_device::Feature::AnisotropicFiltering);
             }
             for ext in extension_properties {
@@ -399,8 +383,8 @@ impl Renderer for VulkanRenderer {
                     supported_features.insert(crate::graphics_device::Feature::RayTracing);
                 }
             }
-            for queue_family_properties2 in &queue_family_properties2_vec {
-                let queue_flags = queue_family_properties2.queue_family_properties.queue_flags;
+            for queue_family_properties in &queue_family_properties_vec {
+                let queue_flags = queue_family_properties.queue_flags;
                 if queue_flags.contains(QueueFlags::COMPUTE) {
                     supported_features.insert(crate::graphics_device::Feature::ComputeShaders);
                 }
@@ -562,14 +546,10 @@ impl Renderer for VulkanRenderer {
         let mut physical_device = None;
         let mut physical_device_api_version = Self::MIN_SUPPORTED_API_VERSION;
         for pd in physical_devices {
-            let mut properties2 = PhysicalDeviceProperties2::default();
-            unsafe {
-                instance.get_physical_device_properties2(pd, &mut properties2);
-            }
-            if properties2.properties.device_id == device.device_id {
+            let properties = unsafe { instance.get_physical_device_properties(pd) };
+            if properties.device_id == device.device_id {
                 physical_device = Some(pd);
-                physical_device_api_version =
-                    VulkanApiVersion(properties2.properties.api_version).into();
+                physical_device_api_version = VulkanApiVersion(properties.api_version).into();
                 break;
             }
         }
