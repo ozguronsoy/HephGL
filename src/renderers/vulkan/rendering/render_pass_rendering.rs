@@ -21,6 +21,7 @@ impl VulkanRendering for RenderPassRendering {
     }
     fn create_graphics_pipeline(
         &mut self,
+        _: &Settings,
         _: &ash::Device,
         _: &[&Shader],
     ) -> RendererResult<<VulkanRenderer as Renderer>::GraphicsPipelineHandle> {

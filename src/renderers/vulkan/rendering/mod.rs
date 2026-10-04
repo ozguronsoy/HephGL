@@ -28,6 +28,7 @@ pub trait VulkanRendering {
     /// Creates a graphics pipeline using the provided shaders.
     fn create_graphics_pipeline(
         &mut self,
+        settings: &Settings,
         device: &ash::Device,
         shaders: &[&Shader],
     ) -> RendererResult<<VulkanRenderer as Renderer>::GraphicsPipelineHandle>;

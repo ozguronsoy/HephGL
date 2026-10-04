@@ -8,6 +8,7 @@ use heph_gl::{
     shader::Shader,
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
+use renkrs::RGB;
 
 use crate::utils::{ExampleRenderer, SHADERS_DIR, get_best_device, run_example};
 
@@ -80,6 +81,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     let start = Instant::now();
     while start.elapsed() < Duration::from_secs(5) {
         renderer.begin_frame().unwrap();
+        renderer.clear(RGB::default()).unwrap();
 
         let time = start.elapsed().as_secs_f32();
         let movement = (time * 2.0).sin() * 0.2;

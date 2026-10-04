@@ -8,10 +8,7 @@ mod renderer;
 mod utils;
 
 fn main() -> ExitCode {
-    let vulkan_13_flags = RendererTestFlags {
-        todo_test_clear: true,
-        ..Default::default()
-    };
+    let vulkan_13_flags = RendererTestFlags::default();
     let mut vulkan_10_flags = vulkan_13_flags;
     vulkan_10_flags.skip_all_tests = true;
     RendererTests::<VulkanRenderer>::run(&[

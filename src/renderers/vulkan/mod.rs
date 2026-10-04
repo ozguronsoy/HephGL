@@ -5,6 +5,7 @@ mod handle;
 mod queue;
 mod rendering;
 pub mod resources;
+mod settings;
 mod swapchain;
 mod sync;
 mod thread;
@@ -37,6 +38,7 @@ use crate::{
         BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererError, RendererResult,
         ResourceBinding, Settings,
         resources::ResourceBindingType,
+        settings::Msaa,
         thread_context::{ThreadContextIndex, ThreadContextMask, is_thread_context_active},
         version::DriverVersion,
         vulkan::{
@@ -716,6 +718,9 @@ impl Renderer for VulkanRenderer {
                 depth_image: ash::vk::Image::null(),
                 depth_image_allocation: None,
                 depth_image_view: ash::vk::ImageView::null(),
+                msaa_color_image: ash::vk::Image::null(),
+                msaa_color_image_allocation: None,
+                msaa_color_image_view: ash::vk::ImageView::null(),
                 current_image_index: 0,
                 image_avaliable_semaphore_index: SwapchainContext::INVALID_INDEX,
             },
@@ -1022,7 +1027,7 @@ impl Renderer for VulkanRenderer {
             .rendering
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
-        rendering.create_graphics_pipeline(&device_context.logical_device, shaders)
+        rendering.create_graphics_pipeline(&self.settings, &device_context.logical_device, shaders)
     }
 
     fn destroy_graphics_pipeline(
@@ -1265,6 +1270,22 @@ impl Renderer for VulkanRenderer {
                             ash::vk::ImageAspectFlags::DEPTH,
                             layer_count,
                         );
+                        if self.settings.msaa != Msaa::X1 {
+                            Self::transition_image_layout(
+                                &device_context.logical_device,
+                                current_frame.command_buffer,
+                                device_context.swapchain_context.msaa_color_image,
+                                ash::vk::ImageLayout::UNDEFINED,
+                                ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                                ash::vk::AccessFlags::empty(),
+                                ash::vk::AccessFlags::COLOR_ATTACHMENT_READ
+                                    | ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                                ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                                ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                                ash::vk::ImageAspectFlags::COLOR,
+                                layer_count,
+                            );
+                        }
                         rendering.begin(
                             &self.settings,
                             &device_context.logical_device,
@@ -1509,8 +1530,53 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn clear(&mut self, _color: RGB<f32>) -> RendererResult<()> {
-        todo!();
+    fn clear(&mut self, color: RGB<f32>) -> RendererResult<()> {
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+        let thread_context_index = Self::thread_context_index()?;
+        let current_frame_index = self.current_frame_index as usize;
+        let current_frame = &mut device_context.graphics_queue_context.frames[current_frame_index]
+            .thread_contexts[thread_context_index];
+
+        {
+            let state = current_frame.sync_state.0.lock()?;
+            if *state != FrameState::Started {
+                return Err(RendererError::invalid_operation(
+                    "Cannot clear outside of a frame.",
+                ));
+            }
+        }
+
+        let clear_attachment = ash::vk::ClearAttachment::default()
+            .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+            .color_attachment(0)
+            .clear_value(ash::vk::ClearValue {
+                color: ash::vk::ClearColorValue {
+                    float32: [color.r, color.g, color.b, 1.0],
+                },
+            });
+        let clear_rect = ash::vk::ClearRect::default()
+            .rect(ash::vk::Rect2D {
+                offset: ash::vk::Offset2D { x: 0, y: 0 },
+                extent: device_context.swapchain_context.extent,
+            })
+            .base_array_layer(0)
+            .layer_count(match self.settings.stereoscopic_3d_rendering {
+                true => 2,
+                false => 1,
+            });
+        unsafe {
+            device_context.logical_device.cmd_clear_attachments(
+                current_frame.command_buffer,
+                std::slice::from_ref(&clear_attachment),
+                std::slice::from_ref(&clear_rect),
+            );
+        }
+
+        current_frame.recorded = true;
+        Ok(())
     }
 }
 

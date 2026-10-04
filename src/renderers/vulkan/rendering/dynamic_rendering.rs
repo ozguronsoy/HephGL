@@ -11,15 +11,15 @@ use ash::vk::{
     PipelineRasterizationStateCreateInfo, PipelineRenderingCreateInfo,
     PipelineShaderStageCreateInfo, PipelineVertexInputStateCreateInfo,
     PipelineViewportStateCreateInfo, PolygonMode, PrimitiveTopology, RenderingAttachmentInfo,
-    RenderingInfo, SampleCountFlags, ShaderModuleCreateInfo, ShaderStageFlags,
-    VertexInputAttributeDescription, VertexInputBindingDescription, VertexInputRate,
+    RenderingInfo, ShaderModuleCreateInfo, ShaderStageFlags, VertexInputAttributeDescription,
+    VertexInputBindingDescription, VertexInputRate,
 };
 
 use crate::{
     renderers::{
         Renderer, RendererResult,
         error::RendererError,
-        settings::Settings,
+        settings::{Msaa, Settings},
         vulkan::{
             VulkanRenderer, rendering::VulkanRendering, resources::VulkanGraphicsPipeline,
             swapchain::SwapchainContext,
@@ -47,6 +47,7 @@ impl VulkanRendering for DynamicRendering {
     }
     fn create_graphics_pipeline(
         &mut self,
+        settings: &Settings,
         device: &ash::Device,
         shaders: &[&Shader],
     ) -> RendererResult<<VulkanRenderer as Renderer>::GraphicsPipelineHandle> {
@@ -252,9 +253,8 @@ impl VulkanRendering for DynamicRendering {
             .front_face(FrontFace::COUNTER_CLOCKWISE)
             .depth_bias_enable(false)
             .line_width(1.0);
-        // TODO: Add MSAA to the renderer settings.
         let multisampling = PipelineMultisampleStateCreateInfo::default()
-            .rasterization_samples(SampleCountFlags::TYPE_1)
+            .rasterization_samples(settings.msaa.into())
             .sample_shading_enable(false);
         let depth_stencil = PipelineDepthStencilStateCreateInfo::default()
             .depth_test_enable(true)
@@ -325,16 +325,24 @@ impl VulkanRendering for DynamicRendering {
         command_buffer: CommandBuffer,
         swapchain_context: &SwapchainContext,
     ) -> RendererResult<()> {
-        let color_attachment_info = RenderingAttachmentInfo::default()
-            .image_view(swapchain_context.image_views[swapchain_context.current_image_index])
-            .image_layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .load_op(AttachmentLoadOp::CLEAR)
-            .store_op(AttachmentStoreOp::STORE)
-            .clear_value(ash::vk::ClearValue {
-                color: ash::vk::ClearColorValue {
-                    float32: [0.0, 0.0, 0.0, 1.0],
-                },
-            });
+        let color_attachment_info = if settings.msaa == Msaa::X1 {
+            RenderingAttachmentInfo::default()
+                .image_view(swapchain_context.image_views[swapchain_context.current_image_index])
+                .image_layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                .load_op(AttachmentLoadOp::DONT_CARE)
+                .store_op(AttachmentStoreOp::STORE)
+        } else {
+            RenderingAttachmentInfo::default()
+                .image_view(swapchain_context.msaa_color_image_view)
+                .image_layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                .load_op(AttachmentLoadOp::DONT_CARE)
+                .store_op(AttachmentStoreOp::DONT_CARE)
+                .resolve_mode(ash::vk::ResolveModeFlags::AVERAGE)
+                .resolve_image_view(
+                    swapchain_context.image_views[swapchain_context.current_image_index],
+                )
+                .resolve_image_layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+        };
         let depth_attachment_info = RenderingAttachmentInfo::default()
             .image_view(swapchain_context.depth_image_view)
             .image_layout(ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
