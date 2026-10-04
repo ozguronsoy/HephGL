@@ -32,22 +32,30 @@ use crate::{
 pub struct DynamicRendering {
     color_format: ash::vk::Format,
     depth_format: ash::vk::Format,
+    msaa: Msaa,
+    stereoscopic_3d_rendering: bool,
 }
 
 impl VulkanRendering for DynamicRendering {
-    fn new(_: &ash::Device, swapchain_context: &SwapchainContext) -> RendererResult<Self>
+    fn new(
+        settings: &Settings,
+        _: &ash::Device,
+        swapchain_context: &SwapchainContext,
+    ) -> RendererResult<Self>
     where
         Self: Sized,
     {
+        // This is recreated when settings change, so we can store the settings we need here.
         Ok(Self {
             color_format: swapchain_context.format,
             // TODO: Get this from swapchain context?
             depth_format: ash::vk::Format::D32_SFLOAT,
+            msaa: settings.msaa,
+            stereoscopic_3d_rendering: settings.stereoscopic_3d_rendering,
         })
     }
     fn create_graphics_pipeline(
         &mut self,
-        settings: &Settings,
         device: &ash::Device,
         shaders: &[&Shader],
     ) -> RendererResult<<VulkanRenderer as Renderer>::GraphicsPipelineHandle> {
@@ -254,7 +262,7 @@ impl VulkanRendering for DynamicRendering {
             .depth_bias_enable(false)
             .line_width(1.0);
         let multisampling = PipelineMultisampleStateCreateInfo::default()
-            .rasterization_samples(settings.msaa.into())
+            .rasterization_samples(self.msaa.into())
             .sample_shading_enable(false);
         let depth_stencil = PipelineDepthStencilStateCreateInfo::default()
             .depth_test_enable(true)
@@ -320,12 +328,11 @@ impl VulkanRendering for DynamicRendering {
     }
     fn begin(
         &mut self,
-        settings: &Settings,
         device: &ash::Device,
         command_buffer: CommandBuffer,
         swapchain_context: &SwapchainContext,
     ) -> RendererResult<()> {
-        let color_attachment_info = if settings.msaa == Msaa::X1 {
+        let color_attachment_info = if self.msaa == Msaa::X1 {
             RenderingAttachmentInfo::default()
                 .image_view(swapchain_context.image_views[swapchain_context.current_image_index])
                 .image_layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
@@ -359,7 +366,7 @@ impl VulkanRendering for DynamicRendering {
                 offset: ash::vk::Offset2D { x: 0, y: 0 },
                 extent: swapchain_context.extent,
             })
-            .layer_count(match settings.stereoscopic_3d_rendering {
+            .layer_count(match self.stereoscopic_3d_rendering {
                 true => 2,
                 false => 1,
             })

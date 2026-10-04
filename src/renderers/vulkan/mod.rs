@@ -1027,7 +1027,7 @@ impl Renderer for VulkanRenderer {
             .rendering
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
-        rendering.create_graphics_pipeline(&self.settings, &device_context.logical_device, shaders)
+        rendering.create_graphics_pipeline(&device_context.logical_device, shaders)
     }
 
     fn destroy_graphics_pipeline(
@@ -1287,7 +1287,6 @@ impl Renderer for VulkanRenderer {
                             );
                         }
                         rendering.begin(
-                            &self.settings,
                             &device_context.logical_device,
                             current_frame.command_buffer,
                             &device_context.swapchain_context,

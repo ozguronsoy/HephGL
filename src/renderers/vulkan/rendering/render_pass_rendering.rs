@@ -13,7 +13,7 @@ use crate::{
 pub struct RenderPassRendering;
 
 impl VulkanRendering for RenderPassRendering {
-    fn new(_: &ash::Device, _: &SwapchainContext) -> RendererResult<Self>
+    fn new(_: &Settings, _: &ash::Device, _: &SwapchainContext) -> RendererResult<Self>
     where
         Self: Sized,
     {
@@ -21,7 +21,6 @@ impl VulkanRendering for RenderPassRendering {
     }
     fn create_graphics_pipeline(
         &mut self,
-        _: &Settings,
         _: &ash::Device,
         _: &[&Shader],
     ) -> RendererResult<<VulkanRenderer as Renderer>::GraphicsPipelineHandle> {
@@ -36,7 +35,6 @@ impl VulkanRendering for RenderPassRendering {
     }
     fn begin(
         &mut self,
-        _: &Settings,
         _: &ash::Device,
         _: CommandBuffer,
         _: &SwapchainContext,
