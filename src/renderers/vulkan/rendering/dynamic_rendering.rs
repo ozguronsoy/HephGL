@@ -2,14 +2,13 @@ use std::ffi::CString;
 
 use ash::vk::{
     AttachmentLoadOp, AttachmentStoreOp, ClearDepthStencilValue, ColorComponentFlags,
-    CommandBuffer, CullModeFlags, DescriptorSetLayout, DescriptorSetLayoutBinding,
-    DescriptorSetLayoutCreateInfo, DescriptorType, DynamicState, FrontFace,
-    GraphicsPipelineCreateInfo, ImageLayout, PipelineCache, PipelineColorBlendAttachmentState,
-    PipelineColorBlendStateCreateInfo, PipelineDepthStencilStateCreateInfo,
-    PipelineDynamicStateCreateInfo, PipelineInputAssemblyStateCreateInfo, PipelineLayout,
-    PipelineLayoutCreateInfo, PipelineMultisampleStateCreateInfo,
-    PipelineRasterizationStateCreateInfo, PipelineRenderingCreateInfo,
-    PipelineShaderStageCreateInfo, PipelineVertexInputStateCreateInfo,
+    CommandBuffer, CullModeFlags, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
+    DescriptorType, DynamicState, FrontFace, GraphicsPipelineCreateInfo, ImageLayout,
+    PipelineCache, PipelineColorBlendAttachmentState, PipelineColorBlendStateCreateInfo,
+    PipelineDepthStencilStateCreateInfo, PipelineDynamicStateCreateInfo,
+    PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
+    PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
+    PipelineRenderingCreateInfo, PipelineShaderStageCreateInfo, PipelineVertexInputStateCreateInfo,
     PipelineViewportStateCreateInfo, PolygonMode, PrimitiveTopology, RenderingAttachmentInfo,
     RenderingInfo, ShaderModuleCreateInfo, ShaderStageFlags, VertexInputAttributeDescription,
     VertexInputBindingDescription, VertexInputRate,
@@ -21,7 +20,12 @@ use crate::{
         error::RendererError,
         settings::{Msaa, Settings},
         vulkan::{
-            VulkanRenderer, rendering::VulkanRendering, resources::VulkanGraphicsPipeline,
+            VulkanRenderer,
+            rendering::{
+                VulkanRendering,
+                lifetime_guards::{PipelineResources, ShaderModules},
+            },
+            resources::VulkanGraphicsPipeline,
             swapchain::SwapchainContext,
         },
     },
@@ -59,40 +63,6 @@ impl VulkanRendering for DynamicRendering {
         device: &ash::Device,
         shaders: &[&Shader],
     ) -> RendererResult<<VulkanRenderer as Renderer>::GraphicsPipelineHandle> {
-        struct ShaderModules<'a> {
-            device: &'a ash::Device,
-            modules: Vec<ash::vk::ShaderModule>,
-        }
-        impl Drop for ShaderModules<'_> {
-            fn drop(&mut self) {
-                unsafe {
-                    for module in &self.modules {
-                        self.device.destroy_shader_module(*module, None);
-                    }
-                }
-            }
-        }
-
-        struct PipelineResources<'a> {
-            device: &'a ash::Device,
-            layout: Option<PipelineLayout>,
-            descriptor_layouts: Vec<DescriptorSetLayout>,
-        }
-        impl Drop for PipelineResources<'_> {
-            fn drop(&mut self) {
-                unsafe {
-                    if let Some(layout) = self.layout {
-                        self.device.destroy_pipeline_layout(layout, None);
-                    }
-
-                    for descriptor_layout in &self.descriptor_layouts {
-                        self.device
-                            .destroy_descriptor_set_layout(*descriptor_layout, None);
-                    }
-                }
-            }
-        }
-
         // Create shader stage infos.
         let mut shader_modules = ShaderModules {
             device,
@@ -287,7 +257,6 @@ impl VulkanRendering for DynamicRendering {
         let mut rendering_info = PipelineRenderingCreateInfo::default()
             .color_attachment_formats(&color_formats)
             .depth_attachment_format(self.depth_format);
-
         let pipeline_info = GraphicsPipelineCreateInfo::default()
             .stages(&stage_infos)
             .vertex_input_state(&vertex_input)

@@ -8,29 +8,27 @@ mod renderer;
 mod utils;
 
 fn main() -> ExitCode {
-    let vulkan_13_flags = RendererTestFlags::default();
-    let mut vulkan_10_flags = vulkan_13_flags;
-    vulkan_10_flags.skip_all_tests = true;
+    let flags = RendererTestFlags::default();
     RendererTests::<VulkanRenderer>::run(&[
         RendererVersionedTestSuite {
             api_version: Some(Version::new(1, 0, 0)),
-            flags: vulkan_10_flags,
+            flags,
         },
         RendererVersionedTestSuite {
             api_version: Some(Version::new(1, 1, 0)),
-            flags: vulkan_10_flags,
+            flags,
         },
         RendererVersionedTestSuite {
             api_version: Some(Version::new(1, 2, 0)),
-            flags: vulkan_10_flags,
+            flags,
         },
         RendererVersionedTestSuite {
             api_version: Some(Version::new(1, 3, 0)),
-            flags: vulkan_13_flags,
+            flags,
         },
         RendererVersionedTestSuite {
             api_version: Some(Version::new(1, 4, 0)),
-            flags: vulkan_13_flags,
+            flags,
         },
     ])
 }
