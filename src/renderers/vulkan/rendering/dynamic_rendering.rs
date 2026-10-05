@@ -3,9 +3,9 @@ use std::ffi::CString;
 use ash::vk::{
     AttachmentLoadOp, AttachmentStoreOp, ClearDepthStencilValue, CommandBuffer,
     DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType, DynamicState,
-    FrontFace, GraphicsPipelineCreateInfo, ImageLayout, PipelineCache,
-    PipelineColorBlendStateCreateInfo, PipelineDepthStencilStateCreateInfo,
-    PipelineDynamicStateCreateInfo, PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
+    GraphicsPipelineCreateInfo, ImageLayout, PipelineCache, PipelineColorBlendStateCreateInfo,
+    PipelineDepthStencilStateCreateInfo, PipelineDynamicStateCreateInfo,
+    PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
     PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
     PipelineRenderingCreateInfo, PipelineShaderStageCreateInfo, PipelineVertexInputStateCreateInfo,
     PipelineViewportStateCreateInfo, PolygonMode, PrimitiveTopology, RenderingAttachmentInfo,
@@ -228,7 +228,7 @@ impl VulkanRendering for DynamicRendering {
             .rasterizer_discard_enable(false)
             .polygon_mode(PolygonMode::FILL)
             .cull_mode(options.culling.into())
-            .front_face(FrontFace::COUNTER_CLOCKWISE)
+            .front_face(options.front_face.into())
             .depth_bias_enable(false)
             .line_width(1.0);
         let multisampling = PipelineMultisampleStateCreateInfo::default()

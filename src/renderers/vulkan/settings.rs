@@ -67,3 +67,12 @@ impl From<CullingMode> for ash::vk::CullModeFlags {
         }
     }
 }
+
+impl From<crate::renderers::settings::FrontFace> for ash::vk::FrontFace {
+    fn from(value: crate::renderers::settings::FrontFace) -> Self {
+        match value {
+            crate::renderers::settings::FrontFace::Clockwise => Self::CLOCKWISE,
+            crate::renderers::settings::FrontFace::CounterClockwise => Self::COUNTER_CLOCKWISE,
+        }
+    }
+}

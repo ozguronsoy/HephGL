@@ -97,6 +97,16 @@ pub enum CullingMode {
     Back,
 }
 
+/// Defines which vertex winding order is considered front-facing.
+#[derive(Default, Clone, Copy)]
+pub enum FrontFace {
+    /// Vertices ordered clockwise are considered front-facing.
+    Clockwise,
+    /// Vertices ordered counter-clockwise are considered front-facing.
+    #[default]
+    CounterClockwise,
+}
+
 /// Provides the capabilities of a graphics pipeline.
 #[derive(Default, Clone, Copy)]
 pub struct GraphicsPipelineOptions {
@@ -106,6 +116,8 @@ pub struct GraphicsPipelineOptions {
     pub topology: PrimitiveTopology,
     /// The face culling mode.
     pub culling: CullingMode,
+    /// The vertex winding order considered front-facing.
+    pub front_face: FrontFace,
 }
 
 impl FeatureRequest {

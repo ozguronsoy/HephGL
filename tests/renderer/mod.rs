@@ -22,8 +22,8 @@ use heph_gl::{
         error::RendererError,
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType},
         settings::{
-            ColorBlending, CullingMode, FeatureRequest, GraphicsPipelineOptions, InitializeOptions,
-            PrimitiveTopology, Settings,
+            ColorBlending, CullingMode, FeatureRequest, FrontFace, GraphicsPipelineOptions,
+            InitializeOptions, PrimitiveTopology, Settings,
         },
     },
     shader::Shader,
@@ -1165,7 +1165,8 @@ where
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
                 blending: ColorBlending::Alpha,
-                culling: CullingMode::Front,
+                culling: CullingMode::Back,
+                front_face: FrontFace::Clockwise,
                 ..Default::default()
             }
         ));

@@ -4,7 +4,7 @@ use heph_gl::{
     renderers::{
         Renderer,
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType},
-        settings::{ColorBlending, CullingMode, GraphicsPipelineOptions},
+        settings::{ColorBlending, CullingMode, FrontFace, GraphicsPipelineOptions},
     },
     shader::Shader,
 };
@@ -64,7 +64,8 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
                 blending: ColorBlending::Alpha,
-                culling: CullingMode::Front,
+                culling: CullingMode::Back,
+                front_face: FrontFace::Clockwise,
                 ..Default::default()
             },
         )
