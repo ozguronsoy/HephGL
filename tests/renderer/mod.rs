@@ -1093,9 +1093,7 @@ where
         )));
         let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
-            &GraphicsPipelineOptions {
-                blending: ColorBlending::Alpha,
-            },
+            &GraphicsPipelineOptions::default(),
         ));
 
         heph_expect_success!(renderer.begin_frame());
@@ -1108,7 +1106,7 @@ where
     }
 
     fn test_render_dynamic_cubes(&self) {
-        type Vertex = [f32; 9];
+        type Vertex = [f32; 10];
         const POSITIONS: [[f32; 3]; 8] = [
             [-0.5, -0.5, -0.5],
             [0.5, -0.5, -0.5],
@@ -1135,7 +1133,9 @@ where
         )));
         let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
-            &GraphicsPipelineOptions::default()
+            &GraphicsPipelineOptions {
+                blending: ColorBlending::Alpha,
+            }
         ));
         drop(vert_shader);
         drop(frag_shader);
@@ -1151,7 +1151,7 @@ where
 
         heph_expect_success!(renderer.write_buffer(&index_buffer, bytemuck::cast_slice(&INDICES)));
 
-        let cube_vertices = |offset: [f32; 3], color: [f32; 3]| -> [Vertex; 8] {
+        let cube_vertices = |offset: [f32; 3], color: [f32; 4]| -> [Vertex; 8] {
             std::array::from_fn(|i| {
                 let position = POSITIONS[i];
 
@@ -1162,6 +1162,7 @@ where
                     color[0],
                     color[1],
                     color[2],
+                    color[3],
                     offset[0],
                     offset[1],
                     offset[2],
@@ -1172,8 +1173,8 @@ where
         heph_expect_success!(renderer.begin_frame());
         heph_expect_success!(renderer.clear(RGB::default()));
 
-        let cube_a = cube_vertices([-0.5, -0.125, 0.5], [1.0, 0.0, 0.0]);
-        let cube_b = cube_vertices([0.5, 0.125, 0.2], [0.0, 0.0, 1.0]);
+        let cube_a = cube_vertices([-0.5, -0.125, 0.5], [1.0, 0.0, 0.0, 1.0]);
+        let cube_b = cube_vertices([0.5, 0.125, 0.2], [0.0, 0.0, 1.0, 0.5]);
         heph_expect_success!(renderer.write_buffer(&cube_a_buffer, bytemuck::cast_slice(&cube_a)));
         heph_expect_success!(renderer.write_buffer(&cube_b_buffer, bytemuck::cast_slice(&cube_b)));
 

@@ -4,7 +4,7 @@ use heph_gl::{
     renderers::{
         Renderer,
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType},
-        settings::GraphicsPipelineOptions,
+        settings::{ColorBlending, GraphicsPipelineOptions},
     },
     shader::Shader,
 };
@@ -15,7 +15,7 @@ use crate::utils::{ExampleRenderer, SHADERS_DIR, get_best_device, run_example};
 
 mod utils;
 
-type Vertex = [f32; 9];
+type Vertex = [f32; 10];
 
 const POSITIONS: [[f32; 3]; 8] = [
     [-0.5, -0.5, -0.5],
@@ -32,7 +32,7 @@ const INDICES: [u32; 36] = [
     6, 6, 7, 3,
 ];
 
-fn cube_vertices(offset: [f32; 3], color: [f32; 3]) -> [Vertex; 8] {
+fn cube_vertices(offset: [f32; 3], color: [f32; 4]) -> [Vertex; 8] {
     std::array::from_fn(|i| {
         let position = POSITIONS[i];
 
@@ -43,6 +43,7 @@ fn cube_vertices(offset: [f32; 3], color: [f32; 3]) -> [Vertex; 8] {
             color[0],
             color[1],
             color[2],
+            color[3],
             offset[0],
             offset[1],
             offset[2],
@@ -59,7 +60,9 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     let pipeline = renderer
         .create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
-            &GraphicsPipelineOptions::default(),
+            &GraphicsPipelineOptions {
+                blending: ColorBlending::Alpha,
+            },
         )
         .unwrap();
     drop(vert_shader);
@@ -90,8 +93,8 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         let time = start.elapsed().as_secs_f32();
         let movement = (time * 2.0).sin() * 0.2;
 
-        let cube_a = cube_vertices([-0.1 + movement, -0.125, 0.5], [1.0, 0.0, 0.0]);
-        let cube_b = cube_vertices([0.1 - movement, 0.125, 0.2], [0.0, 0.0, 1.0]);
+        let cube_a = cube_vertices([-0.1 + movement, -0.125, 0.5], [1.0, 0.0, 0.0, 1.0]);
+        let cube_b = cube_vertices([0.1 - movement, 0.125, 0.2], [0.0, 0.0, 1.0, 0.6]);
         renderer
             .write_buffer(&cube_a_buffer, bytemuck::cast_slice(&cube_a))
             .unwrap();
