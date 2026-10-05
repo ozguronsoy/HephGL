@@ -20,8 +20,8 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     let vertex_shader_infos = [
         ("dot", PrimitiveTopology::PointList, 1),
         ("line", PrimitiveTopology::LineList, 2),
-        ("ellipse", PrimitiveTopology::LineStrip, 65),
-        ("pentagon", PrimitiveTopology::LineStrip, 6),
+        ("ellipse", PrimitiveTopology::LineStrip, 257),
+        ("pentagon", PrimitiveTopology::TriangleStrip, 5),
     ];
     let mut pipelines = Vec::with_capacity(vertex_shader_infos.len());
     {
