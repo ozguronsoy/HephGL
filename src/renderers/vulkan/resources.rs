@@ -48,8 +48,8 @@ impl GpuBuffer for VulkanBuffer {
 impl VulkanRenderer {
     pub(super) fn create_compute_resource_sets(
         &self,
-        pipeline: &<VulkanRenderer as Renderer>::ComputePipelineHandle,
-        binding_sets: &[&[ResourceBinding<<VulkanRenderer as Renderer>::BufferHandle>]],
+        pipeline: &<VulkanRenderer as Renderer>::ComputePipeline,
+        binding_sets: &[&[ResourceBinding<<VulkanRenderer as Renderer>::Buffer>]],
     ) -> RendererResult<Vec<DescriptorSet>> {
         if binding_sets.is_empty() {
             return Ok(Vec::new());
@@ -142,8 +142,8 @@ impl VulkanRenderer {
 
     pub(super) fn create_graphics_resource_sets(
         &self,
-        pipeline: &<VulkanRenderer as Renderer>::GraphicsPipelineHandle,
-        binding_sets: &[&[ResourceBinding<<VulkanRenderer as Renderer>::BufferHandle>]],
+        pipeline: &<VulkanRenderer as Renderer>::GraphicsPipeline,
+        binding_sets: &[&[ResourceBinding<<VulkanRenderer as Renderer>::Buffer>]],
     ) -> RendererResult<Vec<DescriptorSet>> {
         if pipeline.descriptor_layouts.is_empty() {
             return Ok(Vec::new());

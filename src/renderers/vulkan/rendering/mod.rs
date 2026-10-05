@@ -35,12 +35,12 @@ pub trait VulkanRendering {
         &mut self,
         device: &ash::Device,
         shaders: &[&Shader],
-    ) -> RendererResult<<VulkanRenderer as Renderer>::GraphicsPipelineHandle>;
+    ) -> RendererResult<<VulkanRenderer as Renderer>::GraphicsPipeline>;
     /// Destroys the graphics pipeline.
     fn destroy_graphics_pipeline(
         &mut self,
         device: &ash::Device,
-        pipeline: &<VulkanRenderer as Renderer>::GraphicsPipelineHandle,
+        pipeline: &<VulkanRenderer as Renderer>::GraphicsPipeline,
     ) -> RendererResult<()>;
     /// Starts rendering the frame.
     fn begin(

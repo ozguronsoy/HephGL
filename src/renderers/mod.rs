@@ -20,11 +20,11 @@ type RendererResult<T> = Result<T, RendererError>;
 /// The core interface for a graphics renderer.
 pub trait Renderer {
     /// Represents a block of memory on the GPU.
-    type BufferHandle: GpuBuffer;
+    type Buffer: GpuBuffer;
     /// Represents a compiled graphics pipeline.
-    type GraphicsPipelineHandle: Clone + Send + Sync;
+    type GraphicsPipeline: Clone + Send + Sync;
     /// Represents a compiled compute pipeline.
-    type ComputePipelineHandle: Clone + Send + Sync;
+    type ComputePipeline: Clone + Send + Sync;
 
     /// The minimum supported API version by the backend. Initializing a renderer with an earlier
     /// API version will result in an error.
@@ -83,29 +83,23 @@ pub trait Renderer {
     ) -> RendererResult<()>;
 
     /// Allocates a new buffer on the GPU with the specified size and usage.
-    fn create_buffer(&self, size: usize, usage: BufferUsage) -> RendererResult<Self::BufferHandle>;
+    fn create_buffer(&self, size: usize, usage: BufferUsage) -> RendererResult<Self::Buffer>;
     /// Writes data to the buffer on the GPU.
-    fn write_buffer(&self, buffer: &Self::BufferHandle, data: &[u8]) -> RendererResult<()>;
+    fn write_buffer(&self, buffer: &Self::Buffer, data: &[u8]) -> RendererResult<()>;
     /// Reads data from the buffer on the GPU.
-    fn read_buffer(&self, buffer: &Self::BufferHandle, dest: &mut [u8]) -> RendererResult<()>;
+    fn read_buffer(&self, buffer: &Self::Buffer, dest: &mut [u8]) -> RendererResult<()>;
     /// Frees the memory allocated for the provided buffer.
-    fn destroy_buffer(&self, buffer: &mut Self::BufferHandle) -> RendererResult<()>;
+    fn destroy_buffer(&self, buffer: &mut Self::Buffer) -> RendererResult<()>;
 
     /// Creates a compute pipeline using the provided shader.
-    fn create_compute_pipeline(
-        &self,
-        shader: &Shader,
-    ) -> RendererResult<Self::ComputePipelineHandle>;
+    fn create_compute_pipeline(&self, shader: &Shader) -> RendererResult<Self::ComputePipeline>;
     /// Destroys the compute pipeline.
-    fn destroy_compute_pipeline(
-        &self,
-        pipeline: &Self::ComputePipelineHandle,
-    ) -> RendererResult<()>;
+    fn destroy_compute_pipeline(&self, pipeline: &Self::ComputePipeline) -> RendererResult<()>;
     /// Creates a compute workload for the GPU.
     fn record_compute_command(
         &mut self,
-        pipeline: &Self::ComputePipelineHandle,
-        binding_sets: &[&[ResourceBinding<Self::BufferHandle>]],
+        pipeline: &Self::ComputePipeline,
+        binding_sets: &[&[ResourceBinding<Self::Buffer>]],
         group_count: (u32, u32, u32),
     ) -> RendererResult<()>;
 
@@ -113,17 +107,17 @@ pub trait Renderer {
     fn create_graphics_pipeline(
         &mut self,
         shaders: &[&Shader],
-    ) -> RendererResult<Self::GraphicsPipelineHandle>;
+    ) -> RendererResult<Self::GraphicsPipeline>;
     /// Destroys the graphics pipeline.
     fn destroy_graphics_pipeline(
         &mut self,
-        pipeline: &Self::GraphicsPipelineHandle,
+        pipeline: &Self::GraphicsPipeline,
     ) -> RendererResult<()>;
     /// Creates a graphics workload for the GPU.
     fn record_graphics_command(
         &mut self,
-        pipeline: &Self::GraphicsPipelineHandle,
-        binding_sets: &[&[ResourceBinding<Self::BufferHandle>]],
+        pipeline: &Self::GraphicsPipeline,
+        binding_sets: &[&[ResourceBinding<Self::Buffer>]],
         draw_count: u32,
         instance_count: u32,
     ) -> RendererResult<()>;
