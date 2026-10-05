@@ -21,7 +21,9 @@ use heph_gl::{
         concurrency::{RendererHandle, RendererWorkerFactory},
         error::RendererError,
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType},
-        settings::{FeatureRequest, GraphicsPipelineOptions, InitializeOptions, Settings},
+        settings::{
+            ColorBlending, FeatureRequest, GraphicsPipelineOptions, InitializeOptions, Settings,
+        },
     },
     shader::Shader,
 };
@@ -1091,7 +1093,9 @@ where
         )));
         let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
-            &GraphicsPipelineOptions::default()
+            &GraphicsPipelineOptions {
+                blending: ColorBlending::Alpha,
+            },
         ));
 
         heph_expect_success!(renderer.begin_frame());

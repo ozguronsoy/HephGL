@@ -1,5 +1,8 @@
 use heph_gl::{
-    renderers::{Renderer, settings::GraphicsPipelineOptions},
+    renderers::{
+        Renderer,
+        settings::{ColorBlending, GraphicsPipelineOptions},
+    },
     shader::Shader,
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -21,7 +24,9 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     let pipeline = renderer
         .create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
-            &GraphicsPipelineOptions::default(),
+            &GraphicsPipelineOptions {
+                blending: ColorBlending::Alpha,
+            },
         )
         .unwrap();
     drop(vert_shader);
