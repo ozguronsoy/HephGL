@@ -1,7 +1,7 @@
 use std::ffi::CString;
 
 use ash::vk::{
-    AttachmentLoadOp, AttachmentStoreOp, ClearDepthStencilValue, CommandBuffer, CullModeFlags,
+    AttachmentLoadOp, AttachmentStoreOp, ClearDepthStencilValue, CommandBuffer,
     DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType, DynamicState,
     FrontFace, GraphicsPipelineCreateInfo, ImageLayout, PipelineCache,
     PipelineColorBlendStateCreateInfo, PipelineDepthStencilStateCreateInfo,
@@ -227,7 +227,7 @@ impl VulkanRendering for DynamicRendering {
             .depth_clamp_enable(false)
             .rasterizer_discard_enable(false)
             .polygon_mode(PolygonMode::FILL)
-            .cull_mode(CullModeFlags::NONE)
+            .cull_mode(options.culling.into())
             .front_face(FrontFace::COUNTER_CLOCKWISE)
             .depth_bias_enable(false)
             .line_width(1.0);

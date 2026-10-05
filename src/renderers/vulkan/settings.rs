@@ -1,6 +1,6 @@
 use ash::vk::{ColorComponentFlags, PipelineColorBlendAttachmentState, SampleCountFlags};
 
-use crate::renderers::settings::{ColorBlending, Msaa};
+use crate::renderers::settings::{ColorBlending, CullingMode, Msaa};
 
 impl From<Msaa> for SampleCountFlags {
     fn from(value: Msaa) -> Self {
@@ -54,6 +54,16 @@ impl From<crate::renderers::settings::PrimitiveTopology> for ash::vk::PrimitiveT
             crate::renderers::settings::PrimitiveTopology::LineStrip => Self::LINE_STRIP,
             crate::renderers::settings::PrimitiveTopology::TriangleList => Self::TRIANGLE_LIST,
             crate::renderers::settings::PrimitiveTopology::TriangleStrip => Self::TRIANGLE_STRIP,
+        }
+    }
+}
+
+impl From<CullingMode> for ash::vk::CullModeFlags {
+    fn from(value: CullingMode) -> Self {
+        match value {
+            CullingMode::Disabled => Self::NONE,
+            CullingMode::Front => Self::FRONT,
+            CullingMode::Back => Self::BACK,
         }
     }
 }

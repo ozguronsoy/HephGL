@@ -85,6 +85,18 @@ pub enum PrimitiveTopology {
     TriangleStrip,
 }
 
+/// Defines which triangle faces are discarded during rasterization.
+#[derive(Default, Clone, Copy)]
+pub enum CullingMode {
+    /// No faces are culled.
+    #[default]
+    Disabled,
+    /// Front-facing triangles are culled.
+    Front,
+    /// Back-facing triangles are culled.
+    Back,
+}
+
 /// Provides the capabilities of a graphics pipeline.
 #[derive(Default, Clone, Copy)]
 pub struct GraphicsPipelineOptions {
@@ -92,6 +104,8 @@ pub struct GraphicsPipelineOptions {
     pub blending: ColorBlending,
     /// The primitive topology used to assemble vertices.
     pub topology: PrimitiveTopology,
+    /// The face culling mode.
+    pub culling: CullingMode,
 }
 
 impl FeatureRequest {
