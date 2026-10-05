@@ -1092,8 +1092,8 @@ where
             (
                 "basic_triangle",
                 "basic_triangle",
-                PrimitiveTopology::TriangleStrip,
-                5,
+                PrimitiveTopology::TriangleList,
+                3,
             ),
         ];
         let mut pipelines = Vec::with_capacity(shader_infos.len());
