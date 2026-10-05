@@ -21,7 +21,7 @@ use heph_gl::{
         concurrency::{RendererHandle, RendererWorkerFactory},
         error::RendererError,
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType},
-        settings::{FeatureRequest, InitializeOptions, Settings},
+        settings::{FeatureRequest, GraphicsPipelineOptions, InitializeOptions, Settings},
     },
     shader::Shader,
 };
@@ -1089,8 +1089,10 @@ where
             "{}/{}",
             SHADERS_DIR, "basic_triangle_frag.spv"
         )));
-        let pipeline =
-            heph_expect_success!(renderer.create_graphics_pipeline(&[&vert_shader, &frag_shader]));
+        let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+            &[&vert_shader, &frag_shader],
+            &GraphicsPipelineOptions::default()
+        ));
 
         heph_expect_success!(renderer.begin_frame());
         heph_expect_success!(renderer.clear(RGB::default()));
@@ -1127,8 +1129,10 @@ where
             "{}/{}",
             SHADERS_DIR, "cube_frag.spv"
         )));
-        let pipeline =
-            heph_expect_success!(renderer.create_graphics_pipeline(&[&vert_shader, &frag_shader]));
+        let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+            &[&vert_shader, &frag_shader],
+            &GraphicsPipelineOptions::default()
+        ));
         drop(vert_shader);
         drop(frag_shader);
 

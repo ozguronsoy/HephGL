@@ -4,6 +4,7 @@ use heph_gl::{
     renderers::{
         Renderer,
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType},
+        settings::GraphicsPipelineOptions,
     },
     shader::Shader,
 };
@@ -56,7 +57,10 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     let vert_shader = Shader::from_file(format!("{}/{}", SHADERS_DIR, "cube_vert.spv")).unwrap();
     let frag_shader = Shader::from_file(format!("{}/{}", SHADERS_DIR, "cube_frag.spv")).unwrap();
     let pipeline = renderer
-        .create_graphics_pipeline(&[&vert_shader, &frag_shader])
+        .create_graphics_pipeline(
+            &[&vert_shader, &frag_shader],
+            &GraphicsPipelineOptions::default(),
+        )
         .unwrap();
     drop(vert_shader);
     drop(frag_shader);

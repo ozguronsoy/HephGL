@@ -107,6 +107,7 @@ pub trait Renderer {
     fn create_graphics_pipeline(
         &mut self,
         shaders: &[&Shader],
+        options: &GraphicsPipelineOptions,
     ) -> RendererResult<Self::GraphicsPipeline>;
     /// Destroys the graphics pipeline.
     fn destroy_graphics_pipeline(

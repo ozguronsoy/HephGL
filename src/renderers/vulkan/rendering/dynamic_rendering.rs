@@ -1,12 +1,11 @@
 use std::ffi::CString;
 
 use ash::vk::{
-    AttachmentLoadOp, AttachmentStoreOp, ClearDepthStencilValue, ColorComponentFlags,
-    CommandBuffer, CullModeFlags, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
-    DescriptorType, DynamicState, FrontFace, GraphicsPipelineCreateInfo, ImageLayout,
-    PipelineCache, PipelineColorBlendAttachmentState, PipelineColorBlendStateCreateInfo,
-    PipelineDepthStencilStateCreateInfo, PipelineDynamicStateCreateInfo,
-    PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
+    AttachmentLoadOp, AttachmentStoreOp, ClearDepthStencilValue, CommandBuffer, CullModeFlags,
+    DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType, DynamicState,
+    FrontFace, GraphicsPipelineCreateInfo, ImageLayout, PipelineCache,
+    PipelineColorBlendStateCreateInfo, PipelineDepthStencilStateCreateInfo,
+    PipelineDynamicStateCreateInfo, PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
     PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
     PipelineRenderingCreateInfo, PipelineShaderStageCreateInfo, PipelineVertexInputStateCreateInfo,
     PipelineViewportStateCreateInfo, PolygonMode, PrimitiveTopology, RenderingAttachmentInfo,
@@ -18,7 +17,7 @@ use crate::{
     renderers::{
         Renderer, RendererResult,
         error::RendererError,
-        settings::{Msaa, Settings},
+        settings::{GraphicsPipelineOptions, Msaa, Settings},
         vulkan::{
             VulkanRenderer,
             rendering::{
@@ -62,6 +61,7 @@ impl VulkanRendering for DynamicRendering {
         &mut self,
         device: &ash::Device,
         shaders: &[&Shader],
+        options: &GraphicsPipelineOptions,
     ) -> RendererResult<<VulkanRenderer as Renderer>::GraphicsPipeline> {
         // Create shader stage infos.
         let mut shader_modules = ShaderModules {
@@ -240,14 +240,7 @@ impl VulkanRendering for DynamicRendering {
             .depth_compare_op(ash::vk::CompareOp::LESS)
             .depth_bounds_test_enable(false)
             .stencil_test_enable(false);
-        let color_blend_attachment = PipelineColorBlendAttachmentState::default()
-            .blend_enable(false)
-            .color_write_mask(
-                ColorComponentFlags::R
-                    | ColorComponentFlags::G
-                    | ColorComponentFlags::B
-                    | ColorComponentFlags::A,
-            );
+        let color_blend_attachment = options.blending.into();
         let color_blend = PipelineColorBlendStateCreateInfo::default()
             .attachments(std::slice::from_ref(&color_blend_attachment));
         let dynamic_states = [DynamicState::VIEWPORT, DynamicState::SCISSOR];

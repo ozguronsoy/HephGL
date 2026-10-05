@@ -1,4 +1,7 @@
-use heph_gl::{renderers::Renderer, shader::Shader};
+use heph_gl::{
+    renderers::{Renderer, settings::GraphicsPipelineOptions},
+    shader::Shader,
+};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
 
@@ -16,7 +19,10 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     let frag_shader =
         Shader::from_file(format!("{}/{}", SHADERS_DIR, "basic_triangle_frag.spv")).unwrap();
     let pipeline = renderer
-        .create_graphics_pipeline(&[&vert_shader, &frag_shader])
+        .create_graphics_pipeline(
+            &[&vert_shader, &frag_shader],
+            &GraphicsPipelineOptions::default(),
+        )
         .unwrap();
     drop(vert_shader);
     drop(frag_shader);

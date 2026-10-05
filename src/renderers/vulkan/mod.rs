@@ -37,7 +37,7 @@ use crate::{
         BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererError, RendererResult,
         ResourceBinding, Settings,
         resources::ResourceBindingType,
-        settings::Msaa,
+        settings::{GraphicsPipelineOptions, Msaa},
         thread_context::{ThreadContextIndex, ThreadContextMask, is_thread_context_active},
         version::DriverVersion,
         vulkan::{
@@ -984,6 +984,7 @@ impl Renderer for VulkanRenderer {
     fn create_graphics_pipeline(
         &mut self,
         shaders: &[&Shader],
+        options: &GraphicsPipelineOptions,
     ) -> RendererResult<Self::GraphicsPipeline> {
         let device_context = self
             .device_context
@@ -993,7 +994,7 @@ impl Renderer for VulkanRenderer {
             .rendering
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
-        rendering.create_graphics_pipeline(&device_context.logical_device, shaders)
+        rendering.create_graphics_pipeline(&device_context.logical_device, shaders, options)
     }
 
     fn destroy_graphics_pipeline(
