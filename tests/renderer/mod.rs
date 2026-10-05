@@ -1084,11 +1084,11 @@ where
     fn test_render_static_triangle(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[]);
         let vert_shader = heph_expect_success!(Shader::from_file(format!(
-            "{}/{}",
+            "{}/shapes/{}",
             SHADERS_DIR, "basic_triangle_vert.spv"
         )));
         let frag_shader = heph_expect_success!(Shader::from_file(format!(
-            "{}/{}",
+            "{}/shapes/{}",
             SHADERS_DIR, "basic_triangle_frag.spv"
         )));
         let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
@@ -1124,11 +1124,11 @@ where
 
         let mut renderer = self.create_renderer_with_any_device(&[]);
         let vert_shader = heph_expect_success!(Shader::from_file(format!(
-            "{}/{}",
+            "{}/shapes/{}",
             SHADERS_DIR, "cube_vert.spv"
         )));
         let frag_shader = heph_expect_success!(Shader::from_file(format!(
-            "{}/{}",
+            "{}/shapes/{}",
             SHADERS_DIR, "cube_frag.spv"
         )));
         let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(

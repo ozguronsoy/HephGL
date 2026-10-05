@@ -14,10 +14,16 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     renderer.set_device(Some(&device), &[]).unwrap();
 
     // These shaders do not use resources.
-    let vert_shader =
-        Shader::from_file(format!("{}/{}", SHADERS_DIR, "basic_triangle_vert.spv")).unwrap();
-    let frag_shader =
-        Shader::from_file(format!("{}/{}", SHADERS_DIR, "basic_triangle_frag.spv")).unwrap();
+    let vert_shader = Shader::from_file(format!(
+        "{}/shapes/{}",
+        SHADERS_DIR, "basic_triangle_vert.spv"
+    ))
+    .unwrap();
+    let frag_shader = Shader::from_file(format!(
+        "{}/shapes/{}",
+        SHADERS_DIR, "basic_triangle_frag.spv"
+    ))
+    .unwrap();
     let pipeline = renderer
         .create_graphics_pipeline(
             &[&vert_shader, &frag_shader],

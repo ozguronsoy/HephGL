@@ -55,8 +55,10 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     let device = get_best_device(renderer);
     renderer.set_device(Some(&device), &[]).unwrap();
 
-    let vert_shader = Shader::from_file(format!("{}/{}", SHADERS_DIR, "cube_vert.spv")).unwrap();
-    let frag_shader = Shader::from_file(format!("{}/{}", SHADERS_DIR, "cube_frag.spv")).unwrap();
+    let vert_shader =
+        Shader::from_file(format!("{}/shapes/{}", SHADERS_DIR, "cube_vert.spv")).unwrap();
+    let frag_shader =
+        Shader::from_file(format!("{}/shapes/{}", SHADERS_DIR, "cube_frag.spv")).unwrap();
     let pipeline = renderer
         .create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
