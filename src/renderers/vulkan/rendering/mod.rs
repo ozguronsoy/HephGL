@@ -8,7 +8,7 @@ use crate::{
     renderers::{
         Renderer, RendererResult,
         error::RendererError,
-        settings::Settings,
+        settings::{GraphicsPipelineOptions, Settings},
         vulkan::{
             VulkanRenderer,
             rendering::{
@@ -35,6 +35,7 @@ pub trait VulkanRendering {
         &mut self,
         device: &ash::Device,
         shaders: &[&Shader],
+        options: &GraphicsPipelineOptions,
     ) -> RendererResult<<VulkanRenderer as Renderer>::GraphicsPipeline>;
     /// Destroys the graphics pipeline.
     fn destroy_graphics_pipeline(

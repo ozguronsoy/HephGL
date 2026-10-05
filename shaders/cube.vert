@@ -1,10 +1,10 @@
 #version 450
 
 layout(location = 0) in vec3 in_position;
-layout(location = 1) in vec3 in_color;
+layout(location = 1) in vec4 in_color;
 layout(location = 2) in vec3 in_offset;
 
-layout(location = 0) out vec3 frag_color;
+layout(location = 0) out vec4 frag_color;
 layout(location = 1) out vec3 frag_position;
 
 void main()

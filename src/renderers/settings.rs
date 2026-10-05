@@ -18,7 +18,7 @@ pub enum Msaa {
 }
 
 /// Represents the settings used throughout the lifetime of the renderer.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct Settings {
     /// The maximum number of frames that can be processed concurrently by the
     /// CPU and GPU.
@@ -49,13 +49,31 @@ pub struct InitializeOptions<'a> {
 
 /// Represents a request for a specific graphics feature, indicating whether it
 /// is strictly required.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy)]
 pub struct FeatureRequest {
     /// The feature that is being requested.
     pub feature: crate::graphics_device::Feature,
     /// Indicates whether the graphics device must support the requested
     /// feature.
     pub required: bool,
+}
+
+/// Defines the color blending modes supported by the renderers.
+#[derive(Default, Clone, Copy)]
+pub enum ColorBlending {
+    /// Color blending is disabled.
+    #[default]
+    Disabled,
+    /// Uses standard alpha blending, combining the source and destination colors based on the
+    /// source alpha.
+    Alpha,
+}
+
+/// Provides the capabilities of a graphics pipeline.
+#[derive(Default, Clone, Copy)]
+pub struct GraphicsPipelineOptions {
+    /// The color blending mode.
+    pub blending: ColorBlending,
 }
 
 impl FeatureRequest {
