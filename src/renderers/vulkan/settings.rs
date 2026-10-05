@@ -45,3 +45,15 @@ impl From<ColorBlending> for PipelineColorBlendAttachmentState {
         }
     }
 }
+
+impl From<crate::renderers::settings::PrimitiveTopology> for ash::vk::PrimitiveTopology {
+    fn from(value: crate::renderers::settings::PrimitiveTopology) -> Self {
+        match value {
+            crate::renderers::settings::PrimitiveTopology::PointList => Self::POINT_LIST,
+            crate::renderers::settings::PrimitiveTopology::LineList => Self::LINE_LIST,
+            crate::renderers::settings::PrimitiveTopology::LineStrip => Self::LINE_STRIP,
+            crate::renderers::settings::PrimitiveTopology::TriangleList => Self::TRIANGLE_LIST,
+            crate::renderers::settings::PrimitiveTopology::TriangleStrip => Self::TRIANGLE_STRIP,
+        }
+    }
+}

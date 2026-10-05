@@ -22,7 +22,8 @@ use heph_gl::{
         error::RendererError,
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType},
         settings::{
-            ColorBlending, FeatureRequest, GraphicsPipelineOptions, InitializeOptions, Settings,
+            ColorBlending, FeatureRequest, GraphicsPipelineOptions, InitializeOptions,
+            PrimitiveTopology, Settings,
         },
     },
     shader::Shader,
@@ -104,7 +105,7 @@ define_renderer_test_flags!(
     test_multi_threaded_compute_cpu,
     test_multi_threaded_compute_virtual_gpu,
     test_multi_threaded_compute_other,
-    test_render_static_triangle,
+    test_render_static_shapes,
     test_render_dynamic_cubes
 );
 
@@ -323,7 +324,7 @@ where
                     test_multi_threaded_compute_other,
                     skip_other_device_tests
                 ),
-                create_trial!(versioned_test_suite, test_render_static_triangle),
+                create_trial!(versioned_test_suite, test_render_static_shapes),
                 create_trial!(versioned_test_suite, test_render_dynamic_cubes),
             ];
             tests.append(&mut test_suite);
@@ -1081,28 +1082,57 @@ where
         self.test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
     }
 
-    fn test_render_static_triangle(&self) {
+    fn test_render_static_shapes(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[]);
-        let vert_shader = heph_expect_success!(Shader::from_file(format!(
-            "{}/{}",
-            SHADERS_DIR, "basic_triangle_vert.spv"
-        )));
-        let frag_shader = heph_expect_success!(Shader::from_file(format!(
-            "{}/{}",
-            SHADERS_DIR, "basic_triangle_frag.spv"
-        )));
-        let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
-            &[&vert_shader, &frag_shader],
-            &GraphicsPipelineOptions::default(),
-        ));
+        let shader_infos = [
+            ("dot", "shape", PrimitiveTopology::PointList, 1),
+            ("line", "shape", PrimitiveTopology::LineList, 2),
+            ("ellipse", "shape", PrimitiveTopology::LineStrip, 257),
+            ("pentagon", "shape", PrimitiveTopology::TriangleStrip, 5),
+            (
+                "basic_triangle",
+                "basic_triangle",
+                PrimitiveTopology::TriangleList,
+                3,
+            ),
+        ];
+        let mut pipelines = Vec::with_capacity(shader_infos.len());
+        {
+            for (vertex_shader_name, frag_shader_name, topology, draw_count) in shader_infos {
+                let vertex_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/shapes/{}_vert.spv",
+                    SHADERS_DIR, vertex_shader_name
+                )));
+                let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/shapes/{}_frag.spv",
+                    SHADERS_DIR, frag_shader_name
+                )));
+                pipelines.push((
+                    renderer
+                        .create_graphics_pipeline(
+                            &[&vertex_shader, &frag_shader],
+                            &GraphicsPipelineOptions {
+                                topology,
+                                ..Default::default()
+                            },
+                        )
+                        .unwrap(),
+                    draw_count,
+                ));
+            }
+        }
 
         heph_expect_success!(renderer.begin_frame());
         heph_expect_success!(renderer.clear(RGB::default()));
-        heph_expect_success!(renderer.record_graphics_command(&pipeline, &[], 3, 1));
+        for (pipeline, draw_count) in pipelines.iter() {
+            heph_expect_success!(renderer.record_graphics_command(pipeline, &[], *draw_count, 1));
+        }
         heph_expect_success!(renderer.end_frame());
 
         heph_expect_success!(renderer.wait_idle());
-        heph_expect_success!(renderer.destroy_graphics_pipeline(&pipeline));
+        for (ref pipeline, _) in pipelines {
+            heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline));
+        }
     }
 
     fn test_render_dynamic_cubes(&self) {
@@ -1124,17 +1154,18 @@ where
 
         let mut renderer = self.create_renderer_with_any_device(&[]);
         let vert_shader = heph_expect_success!(Shader::from_file(format!(
-            "{}/{}",
+            "{}/shapes/{}",
             SHADERS_DIR, "cube_vert.spv"
         )));
         let frag_shader = heph_expect_success!(Shader::from_file(format!(
-            "{}/{}",
+            "{}/shapes/{}",
             SHADERS_DIR, "cube_frag.spv"
         )));
         let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
                 blending: ColorBlending::Alpha,
+                ..Default::default()
             }
         ));
         drop(vert_shader);

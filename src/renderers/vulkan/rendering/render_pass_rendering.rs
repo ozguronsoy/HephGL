@@ -361,7 +361,7 @@ impl VulkanRendering for RenderPassRendering {
             .vertex_attribute_descriptions(&attribute_descriptions);
 
         let input_assembly = PipelineInputAssemblyStateCreateInfo::default()
-            .topology(PrimitiveTopology::TRIANGLE_LIST)
+            .topology(PrimitiveTopology::from(options.topology))
             .primitive_restart_enable(false);
 
         // Viewport and scissor are dynamic so pipelines don't need to be recreated when the
