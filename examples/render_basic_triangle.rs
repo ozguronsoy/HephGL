@@ -44,6 +44,10 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 
     renderer.end_frame().unwrap();
 
+    // Cleanup.
+    renderer.wait_idle().unwrap();
+    renderer.destroy_graphics_pipeline(&pipeline).unwrap();
+
     std::thread::sleep(std::time::Duration::from_secs(5));
     std::process::exit(0);
 }

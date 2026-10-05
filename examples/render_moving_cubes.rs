@@ -156,8 +156,8 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         renderer.end_frame().unwrap();
     }
 
+    // Cleanup.
     renderer.wait_idle().unwrap();
-
     renderer.destroy_buffer(&mut cube_a_buffer).unwrap();
     renderer.destroy_buffer(&mut cube_b_buffer).unwrap();
     renderer.destroy_buffer(&mut index_buffer).unwrap();

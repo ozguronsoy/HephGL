@@ -16,7 +16,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     let device = get_best_device(renderer);
     renderer.set_device(Some(&device), &[]).unwrap();
 
-    // These shaders do not use resources.
+    // These shaders do not have any input.
     let vertex_shader_infos = [
         ("dot", PrimitiveTopology::PointList, 1),
         ("line", PrimitiveTopology::LineList, 2),
@@ -51,14 +51,20 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     renderer.begin_frame().unwrap();
     renderer.clear(RGB::default()).unwrap();
 
-    for (ref pipeline, draw_count) in pipelines {
+    for (pipeline, draw_count) in pipelines.iter() {
         const INSTANCE_COUNT: u32 = 1;
         renderer
-            .record_graphics_command(pipeline, &[], draw_count, INSTANCE_COUNT)
+            .record_graphics_command(pipeline, &[], *draw_count, INSTANCE_COUNT)
             .unwrap();
     }
 
     renderer.end_frame().unwrap();
+
+    // Cleanup.
+    renderer.wait_idle().unwrap();
+    for (ref pipeline, _) in pipelines {
+        renderer.destroy_graphics_pipeline(pipeline).unwrap();
+    }
 
     std::thread::sleep(std::time::Duration::from_secs(5));
     std::process::exit(0);
