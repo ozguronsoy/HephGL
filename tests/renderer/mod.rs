@@ -1135,6 +1135,7 @@ where
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
                 blending: ColorBlending::Alpha,
+                ..Default::default()
             }
         ));
         drop(vert_shader);

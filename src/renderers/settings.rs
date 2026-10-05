@@ -69,11 +69,29 @@ pub enum ColorBlending {
     Alpha,
 }
 
+/// Defines how vertices are assembled into primitives.
+#[derive(Default, Clone, Copy)]
+pub enum PrimitiveTopology {
+    /// Each vertex represents an individual point.
+    PointList,
+    /// Every pair of vertices represents an independent line.
+    LineList,
+    /// Consecutive vertices form a connected sequence of lines.
+    LineStrip,
+    /// Every three vertices represent an independent triangle.
+    #[default]
+    TriangleList,
+    /// Consecutive vertices form a connected sequence of triangles.
+    TriangleStrip,
+}
+
 /// Provides the capabilities of a graphics pipeline.
 #[derive(Default, Clone, Copy)]
 pub struct GraphicsPipelineOptions {
     /// The color blending mode.
     pub blending: ColorBlending,
+    /// The primitive topology used to assemble vertices.
+    pub topology: PrimitiveTopology,
 }
 
 impl FeatureRequest {

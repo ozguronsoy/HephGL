@@ -62,6 +62,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
                 blending: ColorBlending::Alpha,
+                ..Default::default()
             },
         )
         .unwrap();
