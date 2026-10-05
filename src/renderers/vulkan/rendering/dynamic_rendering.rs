@@ -62,7 +62,7 @@ impl VulkanRendering for DynamicRendering {
         &mut self,
         device: &ash::Device,
         shaders: &[&Shader],
-    ) -> RendererResult<<VulkanRenderer as Renderer>::GraphicsPipelineHandle> {
+    ) -> RendererResult<<VulkanRenderer as Renderer>::GraphicsPipeline> {
         // Create shader stage infos.
         let mut shader_modules = ShaderModules {
             device,
@@ -284,7 +284,7 @@ impl VulkanRendering for DynamicRendering {
     fn destroy_graphics_pipeline(
         &mut self,
         device: &ash::Device,
-        pipeline: &<VulkanRenderer as Renderer>::GraphicsPipelineHandle,
+        pipeline: &<VulkanRenderer as Renderer>::GraphicsPipeline,
     ) -> RendererResult<()> {
         unsafe {
             device.destroy_pipeline(pipeline.pipeline, None);

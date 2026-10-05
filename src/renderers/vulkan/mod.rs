@@ -76,9 +76,9 @@ pub struct VulkanRenderer {
 }
 
 impl Renderer for VulkanRenderer {
-    type BufferHandle = VulkanBuffer;
-    type GraphicsPipelineHandle = VulkanGraphicsPipeline;
-    type ComputePipelineHandle = VulkanComputePipeline;
+    type Buffer = VulkanBuffer;
+    type GraphicsPipeline = VulkanGraphicsPipeline;
+    type ComputePipeline = VulkanComputePipeline;
 
     const MIN_SUPPORTED_API_VERSION: Version = Version::new(1, 0, 0);
 
@@ -717,7 +717,7 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn create_buffer(&self, size: usize, usage: BufferUsage) -> RendererResult<Self::BufferHandle> {
+    fn create_buffer(&self, size: usize, usage: BufferUsage) -> RendererResult<Self::Buffer> {
         let device_context = self
             .device_context
             .as_ref()
@@ -752,7 +752,7 @@ impl Renderer for VulkanRenderer {
         })
     }
 
-    fn write_buffer(&self, buffer: &Self::BufferHandle, data: &[u8]) -> RendererResult<()> {
+    fn write_buffer(&self, buffer: &Self::Buffer, data: &[u8]) -> RendererResult<()> {
         if data.len() > buffer.size {
             return Err(RendererError::fail("Data exceeds buffer size!"));
         }
@@ -776,7 +776,7 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn read_buffer(&self, buffer: &Self::BufferHandle, dest: &mut [u8]) -> RendererResult<()> {
+    fn read_buffer(&self, buffer: &Self::Buffer, dest: &mut [u8]) -> RendererResult<()> {
         if dest.len() > buffer.size {
             return Err(RendererError::fail(
                 "Destination slice is larger than buffer!",
@@ -802,7 +802,7 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn destroy_buffer(&self, buffer: &mut Self::BufferHandle) -> RendererResult<()> {
+    fn destroy_buffer(&self, buffer: &mut Self::Buffer) -> RendererResult<()> {
         let device_context = self
             .device_context
             .as_ref()
@@ -817,10 +817,7 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn create_compute_pipeline(
-        &self,
-        shader: &Shader,
-    ) -> RendererResult<Self::ComputePipelineHandle> {
+    fn create_compute_pipeline(&self, shader: &Shader) -> RendererResult<Self::ComputePipeline> {
         struct ShaderModuleGuard<'a> {
             module: ash::vk::ShaderModule,
             device_context: &'a DeviceContext,
@@ -913,10 +910,7 @@ impl Renderer for VulkanRenderer {
         })
     }
 
-    fn destroy_compute_pipeline(
-        &self,
-        pipeline: &Self::ComputePipelineHandle,
-    ) -> RendererResult<()> {
+    fn destroy_compute_pipeline(&self, pipeline: &Self::ComputePipeline) -> RendererResult<()> {
         let device_context = self
             .device_context
             .as_ref()
@@ -940,8 +934,8 @@ impl Renderer for VulkanRenderer {
 
     fn record_compute_command(
         &mut self,
-        pipeline: &Self::ComputePipelineHandle,
-        binding_sets: &[&[ResourceBinding<Self::BufferHandle>]],
+        pipeline: &Self::ComputePipeline,
+        binding_sets: &[&[ResourceBinding<Self::Buffer>]],
         group_count: (u32, u32, u32),
     ) -> RendererResult<()> {
         let mapped_sets = self.create_compute_resource_sets(pipeline, binding_sets)?;
@@ -990,7 +984,7 @@ impl Renderer for VulkanRenderer {
     fn create_graphics_pipeline(
         &mut self,
         shaders: &[&Shader],
-    ) -> RendererResult<Self::GraphicsPipelineHandle> {
+    ) -> RendererResult<Self::GraphicsPipeline> {
         let device_context = self
             .device_context
             .as_mut()
@@ -1004,7 +998,7 @@ impl Renderer for VulkanRenderer {
 
     fn destroy_graphics_pipeline(
         &mut self,
-        pipeline: &Self::GraphicsPipelineHandle,
+        pipeline: &Self::GraphicsPipeline,
     ) -> RendererResult<()> {
         let device_context = self
             .device_context
@@ -1019,8 +1013,8 @@ impl Renderer for VulkanRenderer {
 
     fn record_graphics_command(
         &mut self,
-        pipeline: &Self::GraphicsPipelineHandle,
-        binding_sets: &[&[ResourceBinding<Self::BufferHandle>]],
+        pipeline: &Self::GraphicsPipeline,
+        binding_sets: &[&[ResourceBinding<Self::Buffer>]],
         draw_count: u32,
         instance_count: u32,
     ) -> RendererResult<()> {
