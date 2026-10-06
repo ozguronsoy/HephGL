@@ -235,8 +235,8 @@ impl VulkanRendering for DynamicRendering {
             .rasterization_samples(self.msaa.into())
             .sample_shading_enable(false);
         let depth_stencil = PipelineDepthStencilStateCreateInfo::default()
-            .depth_test_enable(true)
-            .depth_write_enable(true)
+            .depth_test_enable(options.depth_test)
+            .depth_write_enable(options.depth_write)
             .depth_compare_op(ash::vk::CompareOp::LESS)
             .depth_bounds_test_enable(false)
             .stencil_test_enable(false);

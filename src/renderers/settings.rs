@@ -108,7 +108,7 @@ pub enum FrontFace {
 }
 
 /// Provides the capabilities of a graphics pipeline.
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct GraphicsPipelineOptions {
     /// The color blending mode.
     pub blending: ColorBlending,
@@ -118,6 +118,23 @@ pub struct GraphicsPipelineOptions {
     pub culling: CullingMode,
     /// The vertex winding order considered front-facing.
     pub front_face: FrontFace,
+    /// Indicates whether depth testing is enabled.
+    pub depth_test: bool,
+    /// Indicates whether fragments write their depth value to the depth buffer.
+    pub depth_write: bool,
+}
+
+impl Default for GraphicsPipelineOptions {
+    fn default() -> Self {
+        Self {
+            blending: ColorBlending::default(),
+            topology: PrimitiveTopology::default(),
+            culling: CullingMode::default(),
+            front_face: FrontFace::default(),
+            depth_test: true,
+            depth_write: true,
+        }
+    }
 }
 
 impl FeatureRequest {
