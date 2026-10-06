@@ -11,7 +11,7 @@ use heph_gl::{
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
 
-use crate::utils::{ExampleRenderer, SHADERS_DIR, get_best_device, run_example};
+use crate::utils::{ExampleRenderer, SHADERS_DIR, get_best_device, run_example, set_best_msaa};
 
 mod utils;
 
@@ -54,6 +54,7 @@ fn cube_vertices(offset: [f32; 3], color: [f32; 4]) -> [Vertex; 8] {
 fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHandle) {
     let device = get_best_device(renderer);
     renderer.set_device(Some(&device), &[]).unwrap();
+    set_best_msaa(renderer);
 
     let vert_shader =
         Shader::from_file(format!("{}/shapes/{}", SHADERS_DIR, "cube_vert.spv")).unwrap();
