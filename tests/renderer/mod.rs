@@ -1084,6 +1084,16 @@ where
 
     fn test_render_static_shapes(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[]);
+
+        {
+            let msaa = heph_expect_success!(renderer.supported_msaa_list()).last();
+            assert!(msaa.is_some());
+            heph_expect_success!(renderer.set_settings(Settings {
+                msaa: *msaa.unwrap(),
+                ..Default::default()
+            }));
+        }
+
         let shader_infos = [
             ("dot", "shape", PrimitiveTopology::PointList, 1),
             ("line", "shape", PrimitiveTopology::LineList, 2),
