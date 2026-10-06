@@ -82,6 +82,9 @@ pub trait Renderer {
         requested_features: &[FeatureRequest],
     ) -> RendererResult<()>;
 
+    /// Gets a list of MSAA supported by the current device.
+    fn supported_msaa_list(&self) -> RendererResult<&Vec<Msaa>>;
+
     /// Allocates a new buffer on the GPU with the specified size and usage.
     fn create_buffer(&self, size: usize, usage: BufferUsage) -> RendererResult<Self::Buffer>;
     /// Writes data to the buffer on the GPU.

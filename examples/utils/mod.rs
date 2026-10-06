@@ -4,7 +4,7 @@ use heph_gl::{
         Type::{DiscreteGpu, IntegratedGpu},
     },
     renderers::{
-        settings::{InitializeOptions, Settings},
+        settings::{InitializeOptions, Msaa, Settings},
         *,
     },
 };
@@ -125,6 +125,29 @@ pub fn get_best_device(renderer: &ExampleRenderer) -> GraphicsDevice {
         device = devices.first();
     }
     device.unwrap().clone()
+}
+
+#[allow(dead_code)]
+pub fn set_best_msaa(renderer: &mut ExampleRenderer) {
+    let supported_msaa_list = renderer.supported_msaa_list().unwrap();
+    let msaa = if supported_msaa_list.contains(&Msaa::X64) {
+        Msaa::X64
+    } else if supported_msaa_list.contains(&Msaa::X32) {
+        Msaa::X32
+    } else if supported_msaa_list.contains(&Msaa::X16) {
+        Msaa::X16
+    } else if supported_msaa_list.contains(&Msaa::X8) {
+        Msaa::X8
+    } else if supported_msaa_list.contains(&Msaa::X4) {
+        Msaa::X4
+    } else if supported_msaa_list.contains(&Msaa::X2) {
+        Msaa::X2
+    } else {
+        Msaa::X1
+    };
+    let mut settings = *renderer.get_settings();
+    settings.msaa = msaa;
+    renderer.set_settings(settings).unwrap();
 }
 
 pub fn run_example(name: &str, init_renderer: bool, example: ExampleFn) {

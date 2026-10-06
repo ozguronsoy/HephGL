@@ -3,6 +3,7 @@ use crate::{
     renderers::{
         Renderer, RendererResult,
         error::RendererError,
+        settings::Msaa,
         thread_context::ThreadContextMaskArray,
         vulkan::{
             VulkanRenderer,
@@ -34,6 +35,7 @@ pub struct DeviceContext {
     pub logical_device: ash::Device,
     pub supports_timeline_semaphore: bool,
     pub supports_dynamic_rendering: bool,
+    pub supported_msaa_list: Vec<Msaa>,
 
     /// The bitmasks indicating the availability of thread contexts.
     /// `0` means the context at that index is available, `1` means it is

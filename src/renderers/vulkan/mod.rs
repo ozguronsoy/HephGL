@@ -545,11 +545,28 @@ impl Renderer for VulkanRenderer {
         let physical_devices = unsafe { instance.enumerate_physical_devices()? };
         let mut physical_device = None;
         let mut physical_device_api_version = Self::MIN_SUPPORTED_API_VERSION;
+        let mut supported_msaa_list = Vec::default();
         for pd in physical_devices {
             let properties = unsafe { instance.get_physical_device_properties(pd) };
             if properties.device_id == device.device_id {
                 physical_device = Some(pd);
                 physical_device_api_version = VulkanApiVersion(properties.api_version).into();
+
+                let sample_counts = properties.limits.framebuffer_color_sample_counts
+                    & properties.limits.framebuffer_depth_sample_counts;
+                const MSAA_ALL: [Msaa; 7] = [
+                    Msaa::X1,
+                    Msaa::X2,
+                    Msaa::X4,
+                    Msaa::X8,
+                    Msaa::X16,
+                    Msaa::X32,
+                    Msaa::X64,
+                ];
+                supported_msaa_list = MSAA_ALL
+                    .into_iter()
+                    .filter(|msaa| sample_counts.contains((*msaa).into()))
+                    .collect::<Vec<_>>();
                 break;
             }
         }
@@ -705,6 +722,7 @@ impl Renderer for VulkanRenderer {
             logical_device,
             supports_timeline_semaphore,
             supports_dynamic_rendering,
+            supported_msaa_list,
 
             thread_context_masks: Mutex::new(std::array::from_fn(|_| ThreadContextMask::default())),
         });
@@ -715,6 +733,14 @@ impl Renderer for VulkanRenderer {
         self.create_rendering()?;
 
         Ok(())
+    }
+
+    fn supported_msaa_list(&self) -> RendererResult<&Vec<Msaa>> {
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+        Ok(&device_context.supported_msaa_list)
     }
 
     fn create_buffer(&self, size: usize, usage: BufferUsage) -> RendererResult<Self::Buffer> {
