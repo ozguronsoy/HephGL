@@ -85,6 +85,28 @@ pub enum PrimitiveTopology {
     TriangleStrip,
 }
 
+/// Defines which triangle faces are discarded during rasterization.
+#[derive(Default, Clone, Copy)]
+pub enum CullingMode {
+    /// No faces are culled.
+    #[default]
+    Disabled,
+    /// Front-facing triangles are culled.
+    Front,
+    /// Back-facing triangles are culled.
+    Back,
+}
+
+/// Defines which vertex winding order is considered front-facing.
+#[derive(Default, Clone, Copy)]
+pub enum FrontFace {
+    /// Vertices ordered clockwise are considered front-facing.
+    Clockwise,
+    /// Vertices ordered counter-clockwise are considered front-facing.
+    #[default]
+    CounterClockwise,
+}
+
 /// Provides the capabilities of a graphics pipeline.
 #[derive(Default, Clone, Copy)]
 pub struct GraphicsPipelineOptions {
@@ -92,6 +114,10 @@ pub struct GraphicsPipelineOptions {
     pub blending: ColorBlending,
     /// The primitive topology used to assemble vertices.
     pub topology: PrimitiveTopology,
+    /// The face culling mode.
+    pub culling: CullingMode,
+    /// The vertex winding order considered front-facing.
+    pub front_face: FrontFace,
 }
 
 impl FeatureRequest {
