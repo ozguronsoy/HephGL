@@ -60,9 +60,7 @@ impl VulkanRenderer {
         };
 
         create_queue_frame_sync(&mut device_context.graphics_queue_context)?;
-        if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-            create_queue_frame_sync(transfer_queue_context)?;
-        }
+        create_queue_frame_sync(&mut device_context.transfer_queue_context)?;
         if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
             create_queue_frame_sync(compute_queue_context)?;
         }
@@ -84,9 +82,7 @@ impl VulkanRenderer {
         };
 
         destroy_queue_frame_sync(&mut device_context.graphics_queue_context)?;
-        if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-            destroy_queue_frame_sync(transfer_queue_context)?;
-        }
+        destroy_queue_frame_sync(&mut device_context.transfer_queue_context)?;
         if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
             destroy_queue_frame_sync(compute_queue_context)?;
         }

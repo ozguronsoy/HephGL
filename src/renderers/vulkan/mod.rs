@@ -164,9 +164,7 @@ impl Renderer for VulkanRenderer {
             };
 
             resize_frames(&mut device_context.graphics_queue_context)?;
-            if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                resize_frames(transfer_queue_context)?;
-            }
+            resize_frames(&mut device_context.transfer_queue_context)?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 resize_frames(compute_queue_context)?;
             }
@@ -400,9 +398,11 @@ impl Renderer for VulkanRenderer {
                 }
                 // Vulkan guarantees that the main graphics family will also support
                 // TRANSFER. Thus, we only consider families that support TRANSFER
-                // but do not support GRAPHICS to be dedicated async (DMA) transfer queues.
+                // but do not support GRAPHICS and COMPUTE to be dedicated async (DMA) transfer
+                // queues.
                 if queue_flags.contains(QueueFlags::TRANSFER)
                     && !queue_flags.contains(QueueFlags::GRAPHICS)
+                    && !queue_flags.contains(QueueFlags::COMPUTE)
                 {
                     supported_features.insert(crate::graphics_device::Feature::AsyncTransfer);
                 }
@@ -494,26 +494,21 @@ impl Renderer for VulkanRenderer {
 
         // Use DMA Transfer family if available. Otherwise, use the main graphics
         // family.
-        let mut transfer_family = None;
-        if available_features.contains(&Feature::AsyncTransfer) {
-            let transfer_family = transfer_family.insert(
-                queue_families
-                    .iter()
-                    .find(|f| {
-                        f.queue_flags.contains(QueueFlags::TRANSFER)
-                            && !f.queue_flags.contains(QueueFlags::GRAPHICS)
-                            && !f.queue_flags.contains(QueueFlags::COMPUTE)
-                    })
-                    .or_else(|| {
-                        queue_families.iter().find(|f| {
-                            f.queue_flags.contains(QueueFlags::TRANSFER)
-                                && !f.queue_flags.contains(QueueFlags::GRAPHICS)
-                        })
-                    })
-                    .unwrap_or(graphics_family),
-            );
-            request_queue(transfer_family.index, transfer_family.queue_count);
-        }
+        let transfer_family = if available_features.contains(&Feature::AsyncTransfer) {
+            queue_families
+                .iter()
+                .find(|f| {
+                    f.queue_flags.contains(QueueFlags::TRANSFER)
+                        && !f.queue_flags.contains(QueueFlags::GRAPHICS)
+                        && !f.queue_flags.contains(QueueFlags::COMPUTE)
+                })
+                .ok_or(RendererError::fail(
+                    "Asynchronous transfer is not supported by this device.",
+                ))?
+        } else {
+            graphics_family
+        };
+        request_queue(transfer_family.index, transfer_family.queue_count);
 
         // Use the pure compute family if available. Otherwise, use the main graphics
         // family.
@@ -644,24 +639,9 @@ impl Renderer for VulkanRenderer {
             *queue_index = (*queue_index + 1) % max_queues;
             queue
         };
-
         let graphics_queue = get_next_queue(graphics_family.index, graphics_family.queue_count);
-
-        let mut transfer_queue_handle = None;
-        if let Some(transfer_family) = transfer_family {
-            transfer_queue_handle = Some(get_next_queue(
-                transfer_family.index,
-                transfer_family.queue_count,
-            ));
-        }
-
-        let mut compute_queue_handle = None;
-        if let Some(compute_family) = compute_family {
-            compute_queue_handle = Some(get_next_queue(
-                compute_family.index,
-                compute_family.queue_count,
-            ));
-        }
+        let transfer_queue = get_next_queue(transfer_family.index, transfer_family.queue_count);
+        let compute_queue = compute_family.map(|f| get_next_queue(f.index, f.queue_count));
 
         // Initialize VMA.
 
@@ -698,15 +678,15 @@ impl Renderer for VulkanRenderer {
                     .collect::<Vec<Frame>>(),
                 frame_sync: None,
             },
-            transfer_queue_context: transfer_queue_handle.map(|queue| QueueContext {
-                queue,
-                queue_family_index: transfer_family.unwrap().index,
+            transfer_queue_context: QueueContext {
+                queue: transfer_queue,
+                queue_family_index: transfer_family.index,
                 frames: (0..self.settings.frames_in_flight)
                     .map(|_| Frame::default())
                     .collect::<Vec<Frame>>(),
                 frame_sync: None,
-            }),
-            compute_queue_context: compute_queue_handle.map(|queue| QueueContext {
+            },
+            compute_queue_context: compute_queue.map(|queue| QueueContext {
                 queue,
                 queue_family_index: compute_family.unwrap().index,
                 frames: (0..self.settings.frames_in_flight)
@@ -1185,9 +1165,7 @@ impl Renderer for VulkanRenderer {
                 frame_sync.wait(&device_context.logical_device, current_frame_index)
             };
             wait_frame_sync(&mut device_context.graphics_queue_context)?;
-            if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                wait_frame_sync(transfer_queue_context)?;
-            }
+            wait_frame_sync(&mut device_context.transfer_queue_context)?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 wait_frame_sync(compute_queue_context)?;
             }
@@ -1332,9 +1310,7 @@ impl Renderer for VulkanRenderer {
                 Ok(())
             };
         begin_queue(&mut device_context.graphics_queue_context, true)?;
-        if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-            begin_queue(transfer_queue_context, false)?;
-        }
+        begin_queue(&mut device_context.transfer_queue_context, false)?;
         if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
             begin_queue(compute_queue_context, false)?;
         }
@@ -1398,9 +1374,7 @@ impl Renderer for VulkanRenderer {
             Ok(())
         };
         end_queue(&mut device_context.graphics_queue_context, true)?;
-        if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-            end_queue(transfer_queue_context, false)?;
-        }
+        end_queue(&mut device_context.transfer_queue_context, false)?;
         if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
             end_queue(compute_queue_context, false)?;
         }
@@ -1445,9 +1419,10 @@ impl Renderer for VulkanRenderer {
                     &mut device_context.graphics_queue_context,
                     &mut graphics_command_buffers,
                 )?;
-                if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                    add_command_buffer(transfer_queue_context, &mut transfer_command_buffers)?;
-                }
+                add_command_buffer(
+                    &mut device_context.transfer_queue_context,
+                    &mut transfer_command_buffers,
+                )?;
                 if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                     add_command_buffer(compute_queue_context, &mut compute_command_buffers)?;
                 }
@@ -1493,9 +1468,11 @@ impl Renderer for VulkanRenderer {
                 &graphics_command_buffers,
                 true,
             )?;
-            if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                submit_commands(transfer_queue_context, &transfer_command_buffers, false)?;
-            }
+            submit_commands(
+                &mut device_context.transfer_queue_context,
+                &transfer_command_buffers,
+                false,
+            )?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 submit_commands(compute_queue_context, &compute_command_buffers, false)?;
             }

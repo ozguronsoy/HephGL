@@ -81,9 +81,7 @@ impl VulkanRenderer {
 
         for frame_index in 0..fif {
             create_command_pool(&mut device_context.graphics_queue_context, frame_index)?;
-            if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                create_command_pool(transfer_queue_context, frame_index)?;
-            }
+            create_command_pool(&mut device_context.transfer_queue_context, frame_index)?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 create_command_pool(compute_queue_context, frame_index)?;
             }
@@ -120,9 +118,7 @@ impl VulkanRenderer {
 
         for frame_index in 0..fif {
             allocate_buffers(&mut device_context.graphics_queue_context, frame_index)?;
-            if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                allocate_buffers(transfer_queue_context, frame_index)?;
-            }
+            allocate_buffers(&mut device_context.transfer_queue_context, frame_index)?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 allocate_buffers(compute_queue_context, frame_index)?;
             }
@@ -174,9 +170,7 @@ impl VulkanRenderer {
 
         for frame_index in 0..fif {
             allocate_pool(&mut device_context.graphics_queue_context, frame_index)?;
-            if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                allocate_pool(transfer_queue_context, frame_index)?;
-            }
+            allocate_pool(&mut device_context.transfer_queue_context, frame_index)?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 allocate_pool(compute_queue_context, frame_index)?;
             }
@@ -204,9 +198,7 @@ impl VulkanRenderer {
         };
         for frame_index in 0..fif {
             destroy_command_pool(&mut device_context.graphics_queue_context, frame_index);
-            if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                destroy_command_pool(transfer_queue_context, frame_index);
-            }
+            destroy_command_pool(&mut device_context.transfer_queue_context, frame_index);
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 destroy_command_pool(compute_queue_context, frame_index);
             }
@@ -235,9 +227,7 @@ impl VulkanRenderer {
 
         for frame_index in 0..fif {
             destroy_command_buffer(&mut device_context.graphics_queue_context, frame_index);
-            if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                destroy_command_buffer(transfer_queue_context, frame_index);
-            }
+            destroy_command_buffer(&mut device_context.transfer_queue_context, frame_index);
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 destroy_command_buffer(compute_queue_context, frame_index);
             }
@@ -266,9 +256,7 @@ impl VulkanRenderer {
 
         for frame_index in 0..fif {
             destroy_desc_pool(&mut device_context.graphics_queue_context, frame_index);
-            if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                destroy_desc_pool(transfer_queue_context, frame_index);
-            }
+            destroy_desc_pool(&mut device_context.transfer_queue_context, frame_index);
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 destroy_desc_pool(compute_queue_context, frame_index);
             }

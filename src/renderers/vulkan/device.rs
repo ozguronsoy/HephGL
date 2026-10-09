@@ -25,7 +25,7 @@ pub struct DeviceContext {
     pub vma_allocator: vk_mem::Allocator,
 
     pub graphics_queue_context: QueueContext,
-    pub transfer_queue_context: Option<QueueContext>,
+    pub transfer_queue_context: QueueContext,
     pub compute_queue_context: Option<QueueContext>,
 
     pub swapchain_context: SwapchainContext,
