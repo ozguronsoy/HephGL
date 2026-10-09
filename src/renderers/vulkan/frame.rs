@@ -152,6 +152,9 @@ impl VulkanRenderer {
             DescriptorPoolSize::default()
                 .ty(DescriptorType::STORAGE_BUFFER)
                 .descriptor_count(DESCRIPTOR_COUNT),
+            DescriptorPoolSize::default()
+                .ty(DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .descriptor_count(DESCRIPTOR_COUNT),
         ];
 
         let pool_info = DescriptorPoolCreateInfo::default()

@@ -77,6 +77,7 @@ pub struct VulkanRenderer {
 
 impl Renderer for VulkanRenderer {
     type Buffer = VulkanBuffer;
+    type Texture = VulkanTexture;
     type GraphicsPipeline = VulkanGraphicsPipeline;
     type ComputePipeline = VulkanComputePipeline;
 
@@ -669,6 +670,21 @@ impl Renderer for VulkanRenderer {
         allocator_create_info.vulkan_api_version = VulkanApiVersion::from(self.api_version).0;
         let vma_allocator = unsafe { vk_mem::Allocator::new(allocator_create_info)? };
 
+        // Create the default sampler.
+        // TODO: Remove this when the custom samplers are enabled.
+        let default_sampler_info = ash::vk::SamplerCreateInfo::default()
+            .mag_filter(ash::vk::Filter::LINEAR)
+            .min_filter(ash::vk::Filter::LINEAR)
+            .mipmap_mode(ash::vk::SamplerMipmapMode::LINEAR)
+            .address_mode_u(ash::vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .address_mode_v(ash::vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .address_mode_w(ash::vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .min_lod(0.0)
+            .max_lod(0.0)
+            .anisotropy_enable(false);
+        let default_sampler =
+            unsafe { logical_device.create_sampler(&default_sampler_info, None)? };
+
         self.device_context = Some(DeviceContext {
             graphics_device: device.clone(),
 
@@ -723,6 +739,8 @@ impl Renderer for VulkanRenderer {
             supports_timeline_semaphore,
             supports_dynamic_rendering,
             supported_msaa_list,
+
+            default_sampler,
 
             thread_context_masks: Mutex::new(std::array::from_fn(|_| ThreadContextMask::default())),
         });
@@ -961,7 +979,7 @@ impl Renderer for VulkanRenderer {
     fn record_compute_command(
         &mut self,
         pipeline: &Self::ComputePipeline,
-        binding_sets: &[&[ResourceBinding<Self::Buffer>]],
+        binding_sets: &[&[ResourceBinding<Self::Buffer, Self::Texture>]],
         group_count: (u32, u32, u32),
     ) -> RendererResult<()> {
         let mapped_sets = self.create_compute_resource_sets(pipeline, binding_sets)?;
@@ -1041,7 +1059,7 @@ impl Renderer for VulkanRenderer {
     fn record_graphics_command(
         &mut self,
         pipeline: &Self::GraphicsPipeline,
-        binding_sets: &[&[ResourceBinding<Self::Buffer>]],
+        binding_sets: &[&[ResourceBinding<Self::Buffer, Self::Texture>]],
         draw_count: u32,
         instance_count: u32,
     ) -> RendererResult<()> {

@@ -6,6 +6,8 @@ use naga::ShaderStage;
 pub(crate) enum ShaderBindingType {
     UniformBuffer,
     StorageBuffer,
+    #[allow(dead_code)]
+    Texture,
 }
 
 pub(crate) struct ShaderVertexBinding {

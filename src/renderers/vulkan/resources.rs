@@ -6,14 +6,14 @@ use crate::{
     renderers::{
         GpuBuffer, Renderer, RendererResult,
         error::RendererError,
-        resources::{BufferUsage, ResourceBinding, ResourceBindingType},
+        resources::{BufferUsage, GpuTexture, ResourceBinding, ResourceBindingType, TextureFormat},
         vulkan::VulkanRenderer,
     },
     shader::ShaderBindingType,
 };
 
 /// Represents a Vulkan buffer.
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct VulkanBuffer {
     /// The Vulkan buffer.
     pub(super) buffer: Buffer,
@@ -21,6 +21,19 @@ pub struct VulkanBuffer {
     pub(super) vma_allocation: vk_mem::Allocation,
     /// The size of the buffer in bytes.
     pub(super) size: usize,
+}
+
+/// Represents a Vulkan texture.
+#[derive(Copy, Clone)]
+pub struct VulkanTexture {
+    #[allow(dead_code)]
+    pub(super) image: ash::vk::Image,
+    pub(super) image_view: ash::vk::ImageView,
+    #[allow(dead_code)]
+    pub(super) vma_allocation: vk_mem::Allocation,
+    pub(super) width: u32,
+    pub(super) height: u32,
+    pub(super) format: TextureFormat,
 }
 
 /// Represents a Vulkan graphics pipeline.
@@ -39,6 +52,18 @@ pub struct VulkanComputePipeline {
     pub(super) descriptor_layouts: Vec<DescriptorSetLayout>,
 }
 
+impl GpuTexture for VulkanTexture {
+    fn width(&self) -> u32 {
+        self.width
+    }
+    fn height(&self) -> u32 {
+        self.height
+    }
+    fn format(&self) -> TextureFormat {
+        self.format
+    }
+}
+
 impl GpuBuffer for VulkanBuffer {
     fn size(&self) -> usize {
         self.size
@@ -49,7 +74,7 @@ impl VulkanRenderer {
     pub(super) fn create_compute_resource_sets(
         &self,
         pipeline: &<VulkanRenderer as Renderer>::ComputePipeline,
-        binding_sets: &[&[ResourceBinding<<VulkanRenderer as Renderer>::Buffer>]],
+        binding_sets: &[&[ResourceBinding<VulkanBuffer, VulkanTexture>]],
     ) -> RendererResult<Vec<DescriptorSet>> {
         if binding_sets.is_empty() {
             return Ok(Vec::new());
@@ -80,24 +105,10 @@ impl VulkanRenderer {
         };
 
         for (i, &binding_set) in binding_sets.iter().enumerate() {
-            let buffer_infos: Vec<_> = binding_set
-                .iter()
-                .map(|binding| match &binding.resource {
-                    ResourceBindingType::Buffer {
-                        handle,
-                        offset,
-                        size,
-                        ..
-                    } => ash::vk::DescriptorBufferInfo::default()
-                        .buffer(handle.buffer)
-                        .offset(*offset as u64)
-                        .range(*size as u64),
-                })
-                .collect();
-
-            let mut writes = Vec::with_capacity(binding_set.len());
-            for (binding, info) in binding_set.iter().zip(buffer_infos.iter()) {
-                let descriptor_type = match binding.resource {
+            let mut buffer_infos = Vec::new();
+            let mut image_infos = Vec::new();
+            for binding in binding_set {
+                match &binding.resource {
                     ResourceBindingType::Buffer {
                         handle,
                         usage,
@@ -109,25 +120,65 @@ impl VulkanRenderer {
                                 "Buffer overflow when binding resources.",
                             ));
                         }
-
                         match usage {
-                            BufferUsage::Storage => ash::vk::DescriptorType::STORAGE_BUFFER,
-                            BufferUsage::Uniform => ash::vk::DescriptorType::UNIFORM_BUFFER,
+                            BufferUsage::Storage | BufferUsage::Uniform => {}
                             _ => {
                                 return Err(RendererError::invalid_argument(
-                                    "Invalid buffer usage for resource binding.",
+                                    "Invalid buffer usage for descriptor resource binding.",
                                 ));
                             }
                         }
+                        buffer_infos.push(
+                            ash::vk::DescriptorBufferInfo::default()
+                                .buffer(handle.buffer)
+                                .offset(*offset as u64)
+                                .range(*size as u64),
+                        );
+                    }
+                    ResourceBindingType::Texture { handle } => {
+                        image_infos.push(
+                            ash::vk::DescriptorImageInfo::default()
+                                .sampler(device_context.default_sampler)
+                                .image_view(handle.image_view)
+                                .image_layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL),
+                        );
+                    }
+                }
+            }
+
+            let mut buffer_index = 0;
+            let mut image_index = 0;
+            let mut writes = Vec::with_capacity(binding_set.len());
+            for binding in binding_set {
+                let write = match binding.resource {
+                    ResourceBindingType::Buffer { usage, .. } => {
+                        let descriptor_type = match usage {
+                            BufferUsage::Storage => ash::vk::DescriptorType::STORAGE_BUFFER,
+                            BufferUsage::Uniform => ash::vk::DescriptorType::UNIFORM_BUFFER,
+                            _ => unreachable!(),
+                        };
+
+                        let info = &buffer_infos[buffer_index];
+                        buffer_index += 1;
+
+                        ash::vk::WriteDescriptorSet::default()
+                            .dst_set(descriptor_sets[i])
+                            .dst_binding(binding.binding)
+                            .descriptor_type(descriptor_type)
+                            .buffer_info(std::slice::from_ref(info))
+                    }
+                    ResourceBindingType::Texture { .. } => {
+                        let info = &image_infos[image_index];
+                        image_index += 1;
+
+                        ash::vk::WriteDescriptorSet::default()
+                            .dst_set(descriptor_sets[i])
+                            .dst_binding(binding.binding)
+                            .descriptor_type(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                            .image_info(std::slice::from_ref(info))
                     }
                 };
-                writes.push(
-                    ash::vk::WriteDescriptorSet::default()
-                        .dst_set(descriptor_sets[i])
-                        .dst_binding(binding.binding)
-                        .descriptor_type(descriptor_type)
-                        .buffer_info(std::slice::from_ref(info)),
-                );
+                writes.push(write);
             }
 
             unsafe {
@@ -143,7 +194,7 @@ impl VulkanRenderer {
     pub(super) fn create_graphics_resource_sets(
         &self,
         pipeline: &<VulkanRenderer as Renderer>::GraphicsPipeline,
-        binding_sets: &[&[ResourceBinding<<VulkanRenderer as Renderer>::Buffer>]],
+        binding_sets: &[&[ResourceBinding<VulkanBuffer, VulkanTexture>]],
     ) -> RendererResult<Vec<DescriptorSet>> {
         if pipeline.descriptor_layouts.is_empty() {
             return Ok(Vec::new());
@@ -182,58 +233,78 @@ impl VulkanRenderer {
                         ResourceBindingType::Buffer {
                             usage: BufferUsage::Storage | BufferUsage::Uniform,
                             ..
-                        }
+                        } | ResourceBindingType::Texture { .. }
                     )
                 })
                 .collect::<Vec<_>>();
-            let buffer_infos: Vec<_> = descriptor_bindings
-                .iter()
-                .map(|binding| match &binding.resource {
+
+            let mut buffer_infos = Vec::new();
+            let mut image_infos = Vec::new();
+
+            for binding in &descriptor_bindings {
+                match &binding.resource {
                     ResourceBindingType::Buffer {
                         handle,
                         offset,
                         size,
                         ..
-                    } => ash::vk::DescriptorBufferInfo::default()
-                        .buffer(handle.buffer)
-                        .offset(*offset as u64)
-                        .range(*size as u64),
-                })
-                .collect();
-
-            let mut writes = Vec::with_capacity(descriptor_bindings.len());
-            for (binding, info) in descriptor_bindings.iter().zip(buffer_infos.iter()) {
-                let descriptor_type = match binding.resource {
-                    ResourceBindingType::Buffer {
-                        handle,
-                        usage,
-                        offset,
-                        size,
                     } => {
                         if offset + size > handle.size {
                             return Err(RendererError::invalid_argument(
                                 "Buffer overflow when binding resources.",
                             ));
                         }
+                        buffer_infos.push(
+                            ash::vk::DescriptorBufferInfo::default()
+                                .buffer(handle.buffer)
+                                .offset(*offset as u64)
+                                .range(*size as u64),
+                        );
+                    }
+                    ResourceBindingType::Texture { handle } => {
+                        image_infos.push(
+                            ash::vk::DescriptorImageInfo::default()
+                                .sampler(device_context.default_sampler)
+                                .image_view(handle.image_view)
+                                .image_layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL),
+                        );
+                    }
+                }
+            }
 
-                        match usage {
+            let mut buffer_index = 0;
+            let mut image_index = 0;
+            let mut writes = Vec::with_capacity(descriptor_bindings.len());
+            for binding in descriptor_bindings {
+                let write = match binding.resource {
+                    ResourceBindingType::Buffer { usage, .. } => {
+                        let descriptor_type = match usage {
                             BufferUsage::Storage => ash::vk::DescriptorType::STORAGE_BUFFER,
                             BufferUsage::Uniform => ash::vk::DescriptorType::UNIFORM_BUFFER,
-                            _ => {
-                                return Err(RendererError::invalid_argument(
-                                    "Invalid buffer usage for descriptor resource binding.",
-                                ));
-                            }
-                        }
+                            _ => unreachable!(),
+                        };
+
+                        let info = &buffer_infos[buffer_index];
+                        buffer_index += 1;
+
+                        ash::vk::WriteDescriptorSet::default()
+                            .dst_set(descriptor_sets[i])
+                            .dst_binding(binding.binding)
+                            .descriptor_type(descriptor_type)
+                            .buffer_info(std::slice::from_ref(info))
+                    }
+                    ResourceBindingType::Texture { .. } => {
+                        let info = &image_infos[image_index];
+                        image_index += 1;
+
+                        ash::vk::WriteDescriptorSet::default()
+                            .dst_set(descriptor_sets[i])
+                            .dst_binding(binding.binding)
+                            .descriptor_type(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                            .image_info(std::slice::from_ref(info))
                     }
                 };
-                writes.push(
-                    ash::vk::WriteDescriptorSet::default()
-                        .dst_set(descriptor_sets[i])
-                        .dst_binding(binding.binding)
-                        .descriptor_type(descriptor_type)
-                        .buffer_info(std::slice::from_ref(info)),
-                );
+                writes.push(write);
             }
 
             unsafe {
@@ -263,6 +334,16 @@ impl From<ShaderBindingType> for DescriptorType {
         match value {
             ShaderBindingType::UniformBuffer => DescriptorType::UNIFORM_BUFFER,
             ShaderBindingType::StorageBuffer => DescriptorType::STORAGE_BUFFER,
+            ShaderBindingType::Texture => DescriptorType::COMBINED_IMAGE_SAMPLER,
+        }
+    }
+}
+
+impl From<TextureFormat> for ash::vk::Format {
+    fn from(value: TextureFormat) -> Self {
+        match value {
+            TextureFormat::Rgba8Unorm => Self::R8G8B8A8_UNORM,
+            TextureFormat::Rgba8Srgb => Self::R8G8B8A8_SRGB,
         }
     }
 }

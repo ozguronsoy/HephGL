@@ -21,6 +21,8 @@ type RendererResult<T> = Result<T, RendererError>;
 pub trait Renderer {
     /// Represents a block of memory on the GPU.
     type Buffer: GpuBuffer;
+    /// Represents a texture allocated on the GPU.
+    type Texture: GpuTexture;
     /// Represents a compiled graphics pipeline.
     type GraphicsPipeline: Clone + Send + Sync;
     /// Represents a compiled compute pipeline.
@@ -102,7 +104,7 @@ pub trait Renderer {
     fn record_compute_command(
         &mut self,
         pipeline: &Self::ComputePipeline,
-        binding_sets: &[&[ResourceBinding<Self::Buffer>]],
+        binding_sets: &[&[ResourceBinding<Self::Buffer, Self::Texture>]],
         group_count: (u32, u32, u32),
     ) -> RendererResult<()>;
 
@@ -121,7 +123,7 @@ pub trait Renderer {
     fn record_graphics_command(
         &mut self,
         pipeline: &Self::GraphicsPipeline,
-        binding_sets: &[&[ResourceBinding<Self::Buffer>]],
+        binding_sets: &[&[ResourceBinding<Self::Buffer, Self::Texture>]],
         draw_count: u32,
         instance_count: u32,
     ) -> RendererResult<()>;
