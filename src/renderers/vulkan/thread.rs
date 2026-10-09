@@ -69,6 +69,7 @@ impl VulkanRenderer {
 
         // TODO: Wait for fences to avoid destroying resources before commands
         // dispatched to GPU finishes.
+        self.destroy_transfer_buffers()?;
         self.destroy_descriptor_pools()?;
         self.destroy_command_buffers()?;
         self.destroy_command_pools()?;

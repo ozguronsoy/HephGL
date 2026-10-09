@@ -21,6 +21,10 @@ type RendererResult<T> = Result<T, RendererError>;
 pub trait Renderer {
     /// Represents a block of memory on the GPU.
     type Buffer: GpuBuffer;
+    /// Represents a texture allocated on the GPU.
+    type Texture: GpuTexture;
+    /// Represents a texture sampler.
+    type Sampler: Copy + Clone + Send + Sync;
     /// Represents a compiled graphics pipeline.
     type GraphicsPipeline: Clone + Send + Sync;
     /// Represents a compiled compute pipeline.
@@ -94,15 +98,32 @@ pub trait Renderer {
     /// Frees the memory allocated for the provided buffer.
     fn destroy_buffer(&self, buffer: &mut Self::Buffer) -> RendererResult<()>;
 
+    /// Creates a texture with the specified dimensions, format, and pixel data.
+    fn create_texture(
+        &mut self,
+        width: u32,
+        height: u32,
+        format: TextureFormat,
+        data: &[u8],
+    ) -> RendererResult<Self::Texture>;
+    /// Frees the resources allocated for the provided texture.
+    fn destroy_texture(&self, texture: &mut Self::Texture) -> RendererResult<()>;
+
+    /// Creates a texture sampler using the provided options.
+    fn create_sampler(&self, options: &SamplerOptions) -> RendererResult<Self::Sampler>;
+    /// Frees the resources allocated for the provided sampler.
+    fn destroy_sampler(&self, sampler: &mut Self::Sampler) -> RendererResult<()>;
+
     /// Creates a compute pipeline using the provided shader.
     fn create_compute_pipeline(&self, shader: &Shader) -> RendererResult<Self::ComputePipeline>;
     /// Destroys the compute pipeline.
     fn destroy_compute_pipeline(&self, pipeline: &Self::ComputePipeline) -> RendererResult<()>;
     /// Creates a compute workload for the GPU.
+    #[allow(clippy::type_complexity)]
     fn record_compute_command(
         &mut self,
         pipeline: &Self::ComputePipeline,
-        binding_sets: &[&[ResourceBinding<Self::Buffer>]],
+        binding_sets: &[&[ResourceBinding<Self::Buffer, Self::Texture, Self::Sampler>]],
         group_count: (u32, u32, u32),
     ) -> RendererResult<()>;
 
@@ -118,10 +139,11 @@ pub trait Renderer {
         pipeline: &Self::GraphicsPipeline,
     ) -> RendererResult<()>;
     /// Creates a graphics workload for the GPU.
+    #[allow(clippy::type_complexity)]
     fn record_graphics_command(
         &mut self,
         pipeline: &Self::GraphicsPipeline,
-        binding_sets: &[&[ResourceBinding<Self::Buffer>]],
+        binding_sets: &[&[ResourceBinding<Self::Buffer, Self::Texture, Self::Sampler>]],
         draw_count: u32,
         instance_count: u32,
     ) -> RendererResult<()>;

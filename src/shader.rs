@@ -6,6 +6,8 @@ use naga::ShaderStage;
 pub(crate) enum ShaderBindingType {
     UniformBuffer,
     StorageBuffer,
+    Texture,
+    Sampler,
 }
 
 pub(crate) struct ShaderVertexBinding {
@@ -134,6 +136,14 @@ impl Shader {
             let binding_type = match global.space {
                 naga::AddressSpace::Uniform => ShaderBindingType::UniformBuffer,
                 naga::AddressSpace::Storage { access: _ } => ShaderBindingType::StorageBuffer,
+                naga::AddressSpace::Handle => match &module.types[global.ty].inner {
+                    naga::TypeInner::Image {
+                        class: naga::ImageClass::Sampled { .. } | naga::ImageClass::Depth { .. },
+                        ..
+                    } => ShaderBindingType::Texture,
+                    naga::TypeInner::Sampler { .. } => ShaderBindingType::Sampler,
+                    _ => continue,
+                },
                 _ => continue,
             };
 

@@ -1,12 +1,11 @@
 /// Represents a resource binding.
 #[derive(Debug, Clone, Copy)]
-pub struct ResourceBinding<B> {
+pub struct ResourceBinding<B, T, S> {
     /// The binding number specified in the shader (e.g., `layout(binding =
     /// 0)`).
     pub binding: u32,
-
     /// The actual resource this slot binds to.
-    pub resource: ResourceBindingType<B>,
+    pub resource: ResourceBindingType<B, T, S>,
 }
 
 /// Defines the possible usages of a buffer.
@@ -23,9 +22,19 @@ pub enum BufferUsage {
     Index,
 }
 
+/// Defines the pixel format of a texture.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TextureFormat {
+    /// 8-bit RGBA using linear color values.
+    Rgba8Unorm,
+    /// 8-bit RGBA using the sRGB color space.
+    #[default]
+    Rgba8Srgb,
+}
+
 /// Defines the types of resources being bound to a shader slot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ResourceBindingType<BufferHandle> {
+pub enum ResourceBindingType<BufferHandle, TextureHandle, SamplerHandle> {
     /// A block of GPU memory.
     Buffer {
         /// The handle referencing the allocated buffer.
@@ -37,9 +46,30 @@ pub enum ResourceBindingType<BufferHandle> {
         /// The size in bytes of the buffer region being bound.
         size: usize,
     },
+    /// The GPU texture.
+    Texture {
+        /// The handle referencing the GPU texture.
+        handle: TextureHandle,
+    },
+    /// The GPU texture sampler.
+    Sampler {
+        /// The handle referencing the GPU texture sampler.
+        handle: SamplerHandle,
+    },
 }
 
 /// Stores data in a GPU.
-pub trait GpuBuffer: std::fmt::Debug + Copy + Clone + Send + Sync {
+pub trait GpuBuffer: Copy + Clone + Send + Sync {
+    /// Returns the size of the buffer in bytes.
     fn size(&self) -> usize;
+}
+
+/// Represents a GPU texture.
+pub trait GpuTexture: Copy + Clone + Send + Sync {
+    /// Returns the texture width in pixels.
+    fn width(&self) -> u32;
+    /// Returns the texture height in pixels.
+    fn height(&self) -> u32;
+    /// Returns the texture format.
+    fn format(&self) -> TextureFormat;
 }

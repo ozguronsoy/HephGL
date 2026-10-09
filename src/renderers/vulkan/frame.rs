@@ -8,7 +8,7 @@ use crate::renderers::{
     RendererResult,
     error::RendererError,
     thread_context::ThreadContextArray,
-    vulkan::{VulkanRenderer, queue::QueueContext},
+    vulkan::{VulkanRenderer, queue::QueueContext, resources::VulkanBuffer},
 };
 
 /// Defines possible frame states.
@@ -32,6 +32,8 @@ pub struct ThreadContext {
     pub command_buffer: CommandBuffer,
     /// The descriptor pool allocated for resources used during this thread.
     pub descriptor_pool: DescriptorPool,
+    /// The temporary buffers used for transfering data to the GPU.
+    pub transfer_buffers: Vec<VulkanBuffer>,
     /// Indicates whether any command has been recorded in this thread.
     pub recorded: bool,
     /// Indicates whether the current thread began the current frame.
@@ -81,9 +83,7 @@ impl VulkanRenderer {
 
         for frame_index in 0..fif {
             create_command_pool(&mut device_context.graphics_queue_context, frame_index)?;
-            if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                create_command_pool(transfer_queue_context, frame_index)?;
-            }
+            create_command_pool(&mut device_context.transfer_queue_context, frame_index)?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 create_command_pool(compute_queue_context, frame_index)?;
             }
@@ -120,9 +120,7 @@ impl VulkanRenderer {
 
         for frame_index in 0..fif {
             allocate_buffers(&mut device_context.graphics_queue_context, frame_index)?;
-            if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                allocate_buffers(transfer_queue_context, frame_index)?;
-            }
+            allocate_buffers(&mut device_context.transfer_queue_context, frame_index)?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 allocate_buffers(compute_queue_context, frame_index)?;
             }
@@ -152,6 +150,12 @@ impl VulkanRenderer {
             DescriptorPoolSize::default()
                 .ty(DescriptorType::STORAGE_BUFFER)
                 .descriptor_count(DESCRIPTOR_COUNT),
+            DescriptorPoolSize::default()
+                .ty(DescriptorType::SAMPLED_IMAGE)
+                .descriptor_count(DESCRIPTOR_COUNT),
+            DescriptorPoolSize::default()
+                .ty(DescriptorType::SAMPLER)
+                .descriptor_count(DESCRIPTOR_COUNT),
         ];
 
         let pool_info = DescriptorPoolCreateInfo::default()
@@ -171,9 +175,7 @@ impl VulkanRenderer {
 
         for frame_index in 0..fif {
             allocate_pool(&mut device_context.graphics_queue_context, frame_index)?;
-            if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                allocate_pool(transfer_queue_context, frame_index)?;
-            }
+            allocate_pool(&mut device_context.transfer_queue_context, frame_index)?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 allocate_pool(compute_queue_context, frame_index)?;
             }
@@ -201,9 +203,7 @@ impl VulkanRenderer {
         };
         for frame_index in 0..fif {
             destroy_command_pool(&mut device_context.graphics_queue_context, frame_index);
-            if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                destroy_command_pool(transfer_queue_context, frame_index);
-            }
+            destroy_command_pool(&mut device_context.transfer_queue_context, frame_index);
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 destroy_command_pool(compute_queue_context, frame_index);
             }
@@ -232,9 +232,7 @@ impl VulkanRenderer {
 
         for frame_index in 0..fif {
             destroy_command_buffer(&mut device_context.graphics_queue_context, frame_index);
-            if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                destroy_command_buffer(transfer_queue_context, frame_index);
-            }
+            destroy_command_buffer(&mut device_context.transfer_queue_context, frame_index);
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 destroy_command_buffer(compute_queue_context, frame_index);
             }
@@ -263,11 +261,41 @@ impl VulkanRenderer {
 
         for frame_index in 0..fif {
             destroy_desc_pool(&mut device_context.graphics_queue_context, frame_index);
-            if let Some(transfer_queue_context) = &mut device_context.transfer_queue_context {
-                destroy_desc_pool(transfer_queue_context, frame_index);
-            }
+            destroy_desc_pool(&mut device_context.transfer_queue_context, frame_index);
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 destroy_desc_pool(compute_queue_context, frame_index);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Destroys the transfer buffers of the current thread if there are any.
+    pub(super) fn destroy_transfer_buffers(&mut self) -> RendererResult<()> {
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+        let fif = self.settings.frames_in_flight as usize;
+        let thread_context_index = Self::thread_context_index()?;
+
+        let destroy_transfer_buffers = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
+            let frame = &mut queue_context.frames[frame_index];
+            for mut transfer_buffer in frame.thread_contexts[thread_context_index]
+                .transfer_buffers
+                .drain(..)
+            {
+                device_context
+                    .vma_allocator
+                    .destroy_buffer(transfer_buffer.buffer, &mut transfer_buffer.vma_allocation);
+            }
+        };
+
+        for frame_index in 0..fif {
+            destroy_transfer_buffers(&mut device_context.graphics_queue_context, frame_index);
+            destroy_transfer_buffers(&mut device_context.transfer_queue_context, frame_index);
+            if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
+                destroy_transfer_buffers(compute_queue_context, frame_index);
             }
         }
 
