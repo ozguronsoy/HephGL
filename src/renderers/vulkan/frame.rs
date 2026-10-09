@@ -269,4 +269,36 @@ impl VulkanRenderer {
 
         Ok(())
     }
+
+    /// Destroys the transfer buffers of the current thread if there are any.
+    pub(super) fn destroy_transfer_buffers(&mut self) -> RendererResult<()> {
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+        let fif = self.settings.frames_in_flight as usize;
+        let thread_context_index = Self::thread_context_index()?;
+
+        let destroy_transfer_buffers = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
+            let frame = &mut queue_context.frames[frame_index];
+            for mut transfer_buffer in frame.thread_contexts[thread_context_index]
+                .transfer_buffers
+                .drain(..)
+            {
+                device_context
+                    .vma_allocator
+                    .destroy_buffer(transfer_buffer.buffer, &mut transfer_buffer.vma_allocation);
+            }
+        };
+
+        for frame_index in 0..fif {
+            destroy_transfer_buffers(&mut device_context.graphics_queue_context, frame_index);
+            destroy_transfer_buffers(&mut device_context.transfer_queue_context, frame_index);
+            if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
+                destroy_transfer_buffers(compute_queue_context, frame_index);
+            }
+        }
+
+        Ok(())
+    }
 }

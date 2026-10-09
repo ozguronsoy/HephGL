@@ -24,7 +24,7 @@ pub trait Renderer {
     /// Represents a texture allocated on the GPU.
     type Texture: GpuTexture;
     /// Represents a texture sampler.
-    type Sampler: Clone + Send + Sync;
+    type Sampler: Copy + Clone + Send + Sync;
     /// Represents a compiled graphics pipeline.
     type GraphicsPipeline: Clone + Send + Sync;
     /// Represents a compiled compute pipeline.
