@@ -26,14 +26,18 @@ pub struct VulkanBuffer {
 /// Represents a Vulkan texture.
 #[derive(Copy, Clone)]
 pub struct VulkanTexture {
-    #[allow(dead_code)]
     pub(super) image: ash::vk::Image,
     pub(super) image_view: ash::vk::ImageView,
-    #[allow(dead_code)]
     pub(super) vma_allocation: vk_mem::Allocation,
     pub(super) width: u32,
     pub(super) height: u32,
     pub(super) format: TextureFormat,
+}
+
+/// Represents a Vulkan texture sampler.
+#[derive(Copy, Clone)]
+pub struct VulkanSampler {
+    pub(super) sampler: ash::vk::Sampler,
 }
 
 /// Represents a Vulkan graphics pipeline.
@@ -74,7 +78,7 @@ impl VulkanRenderer {
     pub(super) fn create_compute_resource_sets(
         &self,
         pipeline: &<VulkanRenderer as Renderer>::ComputePipeline,
-        binding_sets: &[&[ResourceBinding<VulkanBuffer, VulkanTexture>]],
+        binding_sets: &[&[ResourceBinding<VulkanBuffer, VulkanTexture, VulkanSampler>]],
     ) -> RendererResult<Vec<DescriptorSet>> {
         if binding_sets.is_empty() {
             return Ok(Vec::new());
@@ -138,10 +142,13 @@ impl VulkanRenderer {
                     ResourceBindingType::Texture { handle } => {
                         image_infos.push(
                             ash::vk::DescriptorImageInfo::default()
-                                .sampler(device_context.default_sampler)
                                 .image_view(handle.image_view)
                                 .image_layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL),
                         );
+                    }
+                    ResourceBindingType::Sampler { handle } => {
+                        image_infos
+                            .push(ash::vk::DescriptorImageInfo::default().sampler(handle.sampler));
                     }
                 }
             }
@@ -174,7 +181,17 @@ impl VulkanRenderer {
                         ash::vk::WriteDescriptorSet::default()
                             .dst_set(descriptor_sets[i])
                             .dst_binding(binding.binding)
-                            .descriptor_type(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                            .descriptor_type(ash::vk::DescriptorType::SAMPLED_IMAGE)
+                            .image_info(std::slice::from_ref(info))
+                    }
+                    ResourceBindingType::Sampler { .. } => {
+                        let info = &image_infos[image_index];
+                        image_index += 1;
+
+                        ash::vk::WriteDescriptorSet::default()
+                            .dst_set(descriptor_sets[i])
+                            .dst_binding(binding.binding)
+                            .descriptor_type(ash::vk::DescriptorType::SAMPLER)
                             .image_info(std::slice::from_ref(info))
                     }
                 };
@@ -194,7 +211,7 @@ impl VulkanRenderer {
     pub(super) fn create_graphics_resource_sets(
         &self,
         pipeline: &<VulkanRenderer as Renderer>::GraphicsPipeline,
-        binding_sets: &[&[ResourceBinding<VulkanBuffer, VulkanTexture>]],
+        binding_sets: &[&[ResourceBinding<VulkanBuffer, VulkanTexture, VulkanSampler>]],
     ) -> RendererResult<Vec<DescriptorSet>> {
         if pipeline.descriptor_layouts.is_empty() {
             return Ok(Vec::new());
@@ -234,6 +251,7 @@ impl VulkanRenderer {
                             usage: BufferUsage::Storage | BufferUsage::Uniform,
                             ..
                         } | ResourceBindingType::Texture { .. }
+                            | ResourceBindingType::Sampler { .. }
                     )
                 })
                 .collect::<Vec<_>>();
@@ -264,10 +282,13 @@ impl VulkanRenderer {
                     ResourceBindingType::Texture { handle } => {
                         image_infos.push(
                             ash::vk::DescriptorImageInfo::default()
-                                .sampler(device_context.default_sampler)
                                 .image_view(handle.image_view)
                                 .image_layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL),
                         );
+                    }
+                    ResourceBindingType::Sampler { handle } => {
+                        image_infos
+                            .push(ash::vk::DescriptorImageInfo::default().sampler(handle.sampler));
                     }
                 }
             }
@@ -300,7 +321,17 @@ impl VulkanRenderer {
                         ash::vk::WriteDescriptorSet::default()
                             .dst_set(descriptor_sets[i])
                             .dst_binding(binding.binding)
-                            .descriptor_type(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                            .descriptor_type(ash::vk::DescriptorType::SAMPLED_IMAGE)
+                            .image_info(std::slice::from_ref(info))
+                    }
+                    ResourceBindingType::Sampler { .. } => {
+                        let info = &image_infos[image_index];
+                        image_index += 1;
+
+                        ash::vk::WriteDescriptorSet::default()
+                            .dst_set(descriptor_sets[i])
+                            .dst_binding(binding.binding)
+                            .descriptor_type(ash::vk::DescriptorType::SAMPLER)
                             .image_info(std::slice::from_ref(info))
                     }
                 };
@@ -334,7 +365,8 @@ impl From<ShaderBindingType> for DescriptorType {
         match value {
             ShaderBindingType::UniformBuffer => DescriptorType::UNIFORM_BUFFER,
             ShaderBindingType::StorageBuffer => DescriptorType::STORAGE_BUFFER,
-            ShaderBindingType::Texture => DescriptorType::COMBINED_IMAGE_SAMPLER,
+            ShaderBindingType::Texture => DescriptorType::SAMPLED_IMAGE,
+            ShaderBindingType::Sampler => DescriptorType::SAMPLER,
         }
     }
 }

@@ -37,7 +37,7 @@ use crate::{
         BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererError, RendererResult,
         ResourceBinding, Settings,
         resources::{ResourceBindingType, TextureFormat},
-        settings::{GraphicsPipelineOptions, Msaa},
+        settings::{GraphicsPipelineOptions, Msaa, SamplerOptions},
         thread_context::{ThreadContextIndex, ThreadContextMask, is_thread_context_active},
         version::DriverVersion,
         vulkan::{
@@ -78,6 +78,7 @@ pub struct VulkanRenderer {
 impl Renderer for VulkanRenderer {
     type Buffer = VulkanBuffer;
     type Texture = VulkanTexture;
+    type Sampler = VulkanSampler;
     type GraphicsPipeline = VulkanGraphicsPipeline;
     type ComputePipeline = VulkanComputePipeline;
 
@@ -1079,6 +1080,43 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
+    fn create_sampler(&self, options: &SamplerOptions) -> RendererResult<Self::Sampler> {
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+        let create_info = ash::vk::SamplerCreateInfo::default()
+            .mag_filter(options.mag_filter.into())
+            .min_filter(options.min_filter.into())
+            .mipmap_mode(ash::vk::SamplerMipmapMode::LINEAR)
+            .address_mode_u(options.address_mode_u.into())
+            .address_mode_v(options.address_mode_v.into())
+            .address_mode_w(options.address_mode_w.into())
+            .min_lod(0.0)
+            .max_lod(0.0)
+            .anisotropy_enable(false);
+        let sampler = unsafe {
+            device_context
+                .logical_device
+                .create_sampler(&create_info, None)?
+        };
+        Ok(VulkanSampler { sampler })
+    }
+
+    fn destroy_sampler(&self, sampler: &mut Self::Sampler) -> RendererResult<()> {
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+        unsafe {
+            device_context
+                .logical_device
+                .destroy_sampler(sampler.sampler, None);
+        }
+        sampler.sampler = ash::vk::Sampler::null();
+        Ok(())
+    }
+
     fn create_compute_pipeline(&self, shader: &Shader) -> RendererResult<Self::ComputePipeline> {
         struct ShaderModuleGuard<'a> {
             module: ash::vk::ShaderModule,
@@ -1197,7 +1235,7 @@ impl Renderer for VulkanRenderer {
     fn record_compute_command(
         &mut self,
         pipeline: &Self::ComputePipeline,
-        binding_sets: &[&[ResourceBinding<Self::Buffer, Self::Texture>]],
+        binding_sets: &[&[ResourceBinding<Self::Buffer, Self::Texture, Self::Sampler>]],
         group_count: (u32, u32, u32),
     ) -> RendererResult<()> {
         let mapped_sets = self.create_compute_resource_sets(pipeline, binding_sets)?;
@@ -1277,7 +1315,7 @@ impl Renderer for VulkanRenderer {
     fn record_graphics_command(
         &mut self,
         pipeline: &Self::GraphicsPipeline,
-        binding_sets: &[&[ResourceBinding<Self::Buffer, Self::Texture>]],
+        binding_sets: &[&[ResourceBinding<Self::Buffer, Self::Texture, Self::Sampler>]],
         draw_count: u32,
         instance_count: u32,
     ) -> RendererResult<()> {

@@ -17,47 +17,6 @@ pub enum Msaa {
     X64,
 }
 
-/// Represents the settings used throughout the lifetime of the renderer.
-#[derive(Clone, Copy)]
-pub struct Settings {
-    /// The maximum number of frames that can be processed concurrently by the
-    /// CPU and GPU.
-    pub frames_in_flight: u32,
-    /// Indicates whether the vsync is enabled.
-    pub vsync: bool,
-    /// Indicates whether stereoscopic 3D rendering is enabled.
-    pub stereoscopic_3d_rendering: bool,
-    /// The size that will be used as fallback when the renderer fails to fetch the target window's
-    /// size.
-    pub default_size: (u32, u32),
-    /// The multisample anti-aliasing sample count.
-    pub msaa: Msaa,
-}
-
-/// Represents the options used while initializing the renderer.
-pub struct InitializeOptions<'a> {
-    /// The name of the application using the renderer.
-    pub app_name: &'a str,
-    /// Handle to the native window.
-    pub window_handle: raw_window_handle::RawWindowHandle,
-    /// Handle to the display device.
-    pub display_handle: raw_window_handle::RawDisplayHandle,
-    /// The underlying backend's API version. Set this to `None` for using the latest available
-    /// version.
-    pub api_version: Option<crate::Version>,
-}
-
-/// Represents a request for a specific graphics feature, indicating whether it
-/// is strictly required.
-#[derive(Clone, Copy)]
-pub struct FeatureRequest {
-    /// The feature that is being requested.
-    pub feature: crate::graphics_device::Feature,
-    /// Indicates whether the graphics device must support the requested
-    /// feature.
-    pub required: bool,
-}
-
 /// Defines the color blending modes supported by the renderers.
 #[derive(Default, Clone, Copy)]
 pub enum ColorBlending {
@@ -107,6 +66,64 @@ pub enum FrontFace {
     CounterClockwise,
 }
 
+/// Defines the filtering mode used by a sampler.
+#[derive(Default, Clone, Copy)]
+pub enum SamplerFilter {
+    Nearest,
+    #[default]
+    Linear,
+}
+
+/// Defines how texture coordinates outside the texture range are handled.
+#[derive(Default, Clone, Copy)]
+pub enum SamplerAddressMode {
+    Repeat,
+    MirroredRepeat,
+    #[default]
+    ClampToEdge,
+}
+
+/// Represents the settings used throughout the lifetime of the renderer.
+#[derive(Clone, Copy)]
+pub struct Settings {
+    /// The maximum number of frames that can be processed concurrently by the
+    /// CPU and GPU.
+    pub frames_in_flight: u32,
+    /// Indicates whether the vsync is enabled.
+    pub vsync: bool,
+    /// Indicates whether stereoscopic 3D rendering is enabled.
+    pub stereoscopic_3d_rendering: bool,
+    /// The size that will be used as fallback when the renderer fails to fetch the target window's
+    /// size.
+    pub default_size: (u32, u32),
+    /// The multisample anti-aliasing sample count.
+    pub msaa: Msaa,
+}
+
+/// Represents the options used while initializing the renderer.
+pub struct InitializeOptions<'a> {
+    /// The name of the application using the renderer.
+    pub app_name: &'a str,
+    /// Handle to the native window.
+    pub window_handle: raw_window_handle::RawWindowHandle,
+    /// Handle to the display device.
+    pub display_handle: raw_window_handle::RawDisplayHandle,
+    /// The underlying backend's API version. Set this to `None` for using the latest available
+    /// version.
+    pub api_version: Option<crate::Version>,
+}
+
+/// Represents a request for a specific graphics feature, indicating whether it
+/// is strictly required.
+#[derive(Clone, Copy)]
+pub struct FeatureRequest {
+    /// The feature that is being requested.
+    pub feature: crate::graphics_device::Feature,
+    /// Indicates whether the graphics device must support the requested
+    /// feature.
+    pub required: bool,
+}
+
 /// Provides the capabilities of a graphics pipeline.
 #[derive(Clone, Copy)]
 pub struct GraphicsPipelineOptions {
@@ -122,6 +139,16 @@ pub struct GraphicsPipelineOptions {
     pub depth_test: bool,
     /// Indicates whether fragments write their depth value to the depth buffer.
     pub depth_write: bool,
+}
+
+/// Defines the properties of a texture sampler.
+#[derive(Default, Clone, Copy)]
+pub struct SamplerOptions {
+    pub min_filter: SamplerFilter,
+    pub mag_filter: SamplerFilter,
+    pub address_mode_u: SamplerAddressMode,
+    pub address_mode_v: SamplerAddressMode,
+    pub address_mode_w: SamplerAddressMode,
 }
 
 impl Default for GraphicsPipelineOptions {

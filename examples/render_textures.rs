@@ -2,7 +2,7 @@ use heph_gl::{
     renderers::{
         Renderer,
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType, TextureFormat},
-        settings::GraphicsPipelineOptions,
+        settings::{GraphicsPipelineOptions, SamplerOptions},
     },
     shader::Shader,
 };
@@ -65,6 +65,8 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     let mut texture = renderer
         .create_texture(width, height, TextureFormat::Rgba8Srgb, image.as_raw())
         .unwrap();
+    let mut sampler = renderer.create_sampler(&SamplerOptions::default()).unwrap();
+
     let bindings = [
         ResourceBinding {
             binding: 0,
@@ -79,6 +81,10 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
             binding: 0,
             resource: ResourceBindingType::Texture { handle: texture },
         },
+        ResourceBinding {
+            binding: 1,
+            resource: ResourceBindingType::Sampler { handle: sampler },
+        },
     ];
     renderer
         .record_graphics_command(&pipeline, &[&bindings], VERTICES.len() as u32, 1)
@@ -88,6 +94,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 
     // Cleanup.
     renderer.wait_idle().unwrap();
+    renderer.destroy_sampler(&mut sampler).unwrap();
     renderer.destroy_texture(&mut texture).unwrap();
     renderer.destroy_buffer(&mut vertex_buffer).unwrap();
     renderer.destroy_graphics_pipeline(&pipeline).unwrap();

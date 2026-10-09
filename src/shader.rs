@@ -7,6 +7,7 @@ pub(crate) enum ShaderBindingType {
     UniformBuffer,
     StorageBuffer,
     Texture,
+    Sampler,
 }
 
 pub(crate) struct ShaderVertexBinding {
@@ -140,6 +141,7 @@ impl Shader {
                         class: naga::ImageClass::Sampled { .. } | naga::ImageClass::Depth { .. },
                         ..
                     } => ShaderBindingType::Texture,
+                    naga::TypeInner::Sampler { .. } => ShaderBindingType::Sampler,
                     _ => continue,
                 },
                 _ => continue,

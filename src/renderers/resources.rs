@@ -1,11 +1,11 @@
 /// Represents a resource binding.
 #[derive(Debug, Clone, Copy)]
-pub struct ResourceBinding<B, T> {
+pub struct ResourceBinding<B, T, S> {
     /// The binding number specified in the shader (e.g., `layout(binding =
     /// 0)`).
     pub binding: u32,
     /// The actual resource this slot binds to.
-    pub resource: ResourceBindingType<B, T>,
+    pub resource: ResourceBindingType<B, T, S>,
 }
 
 /// Defines the possible usages of a buffer.
@@ -34,7 +34,7 @@ pub enum TextureFormat {
 
 /// Defines the types of resources being bound to a shader slot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ResourceBindingType<BufferHandle, TextureHandle> {
+pub enum ResourceBindingType<BufferHandle, TextureHandle, SamplerHandle> {
     /// A block of GPU memory.
     Buffer {
         /// The handle referencing the allocated buffer.
@@ -50,6 +50,11 @@ pub enum ResourceBindingType<BufferHandle, TextureHandle> {
     Texture {
         /// The handle referencing the GPU texture.
         handle: TextureHandle,
+    },
+    /// The GPU texture sampler.
+    Sampler {
+        /// The handle referencing the GPU texture sampler.
+        handle: SamplerHandle,
     },
 }
 

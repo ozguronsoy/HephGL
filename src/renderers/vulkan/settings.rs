@@ -1,6 +1,9 @@
 use ash::vk::{ColorComponentFlags, PipelineColorBlendAttachmentState, SampleCountFlags};
 
-use crate::renderers::settings::{ColorBlending, CullingMode, Msaa};
+use crate::renderers::{
+    ColorBlending, CullingMode, Msaa, SamplerAddressMode, SamplerFilter,
+    settings::{FrontFace, PrimitiveTopology},
+};
 
 impl From<Msaa> for SampleCountFlags {
     fn from(value: Msaa) -> Self {
@@ -46,14 +49,14 @@ impl From<ColorBlending> for PipelineColorBlendAttachmentState {
     }
 }
 
-impl From<crate::renderers::settings::PrimitiveTopology> for ash::vk::PrimitiveTopology {
-    fn from(value: crate::renderers::settings::PrimitiveTopology) -> Self {
+impl From<PrimitiveTopology> for ash::vk::PrimitiveTopology {
+    fn from(value: PrimitiveTopology) -> Self {
         match value {
-            crate::renderers::settings::PrimitiveTopology::PointList => Self::POINT_LIST,
-            crate::renderers::settings::PrimitiveTopology::LineList => Self::LINE_LIST,
-            crate::renderers::settings::PrimitiveTopology::LineStrip => Self::LINE_STRIP,
-            crate::renderers::settings::PrimitiveTopology::TriangleList => Self::TRIANGLE_LIST,
-            crate::renderers::settings::PrimitiveTopology::TriangleStrip => Self::TRIANGLE_STRIP,
+            PrimitiveTopology::PointList => Self::POINT_LIST,
+            PrimitiveTopology::LineList => Self::LINE_LIST,
+            PrimitiveTopology::LineStrip => Self::LINE_STRIP,
+            PrimitiveTopology::TriangleList => Self::TRIANGLE_LIST,
+            PrimitiveTopology::TriangleStrip => Self::TRIANGLE_STRIP,
         }
     }
 }
@@ -68,11 +71,30 @@ impl From<CullingMode> for ash::vk::CullModeFlags {
     }
 }
 
-impl From<crate::renderers::settings::FrontFace> for ash::vk::FrontFace {
-    fn from(value: crate::renderers::settings::FrontFace) -> Self {
+impl From<FrontFace> for ash::vk::FrontFace {
+    fn from(value: FrontFace) -> Self {
         match value {
-            crate::renderers::settings::FrontFace::Clockwise => Self::CLOCKWISE,
-            crate::renderers::settings::FrontFace::CounterClockwise => Self::COUNTER_CLOCKWISE,
+            FrontFace::Clockwise => Self::CLOCKWISE,
+            FrontFace::CounterClockwise => Self::COUNTER_CLOCKWISE,
+        }
+    }
+}
+
+impl From<SamplerFilter> for ash::vk::Filter {
+    fn from(value: SamplerFilter) -> Self {
+        match value {
+            SamplerFilter::Nearest => Self::NEAREST,
+            SamplerFilter::Linear => Self::LINEAR,
+        }
+    }
+}
+
+impl From<SamplerAddressMode> for ash::vk::SamplerAddressMode {
+    fn from(value: SamplerAddressMode) -> Self {
+        match value {
+            SamplerAddressMode::Repeat => Self::REPEAT,
+            SamplerAddressMode::MirroredRepeat => Self::MIRRORED_REPEAT,
+            SamplerAddressMode::ClampToEdge => Self::CLAMP_TO_EDGE,
         }
     }
 }
@@ -95,33 +117,23 @@ mod tests {
     #[test]
     fn test_topology() {
         assert_eq!(
-            ash::vk::PrimitiveTopology::from(
-                crate::renderers::settings::PrimitiveTopology::PointList
-            ),
+            ash::vk::PrimitiveTopology::from(PrimitiveTopology::PointList),
             ash::vk::PrimitiveTopology::POINT_LIST
         );
         assert_eq!(
-            ash::vk::PrimitiveTopology::from(
-                crate::renderers::settings::PrimitiveTopology::LineList
-            ),
+            ash::vk::PrimitiveTopology::from(PrimitiveTopology::LineList),
             ash::vk::PrimitiveTopology::LINE_LIST
         );
         assert_eq!(
-            ash::vk::PrimitiveTopology::from(
-                crate::renderers::settings::PrimitiveTopology::LineStrip
-            ),
+            ash::vk::PrimitiveTopology::from(PrimitiveTopology::LineStrip),
             ash::vk::PrimitiveTopology::LINE_STRIP
         );
         assert_eq!(
-            ash::vk::PrimitiveTopology::from(
-                crate::renderers::settings::PrimitiveTopology::TriangleList
-            ),
+            ash::vk::PrimitiveTopology::from(PrimitiveTopology::TriangleList),
             ash::vk::PrimitiveTopology::TRIANGLE_LIST
         );
         assert_eq!(
-            ash::vk::PrimitiveTopology::from(
-                crate::renderers::settings::PrimitiveTopology::TriangleStrip
-            ),
+            ash::vk::PrimitiveTopology::from(PrimitiveTopology::TriangleStrip),
             ash::vk::PrimitiveTopology::TRIANGLE_STRIP
         );
     }
@@ -145,12 +157,40 @@ mod tests {
     #[test]
     fn test_front_face() {
         assert_eq!(
-            ash::vk::FrontFace::from(crate::renderers::settings::FrontFace::Clockwise),
+            ash::vk::FrontFace::from(FrontFace::Clockwise),
             ash::vk::FrontFace::CLOCKWISE
         );
         assert_eq!(
-            ash::vk::FrontFace::from(crate::renderers::settings::FrontFace::CounterClockwise),
+            ash::vk::FrontFace::from(FrontFace::CounterClockwise),
             ash::vk::FrontFace::COUNTER_CLOCKWISE
+        );
+    }
+
+    #[test]
+    fn test_sampler_filter() {
+        assert_eq!(
+            ash::vk::Filter::from(SamplerFilter::Nearest),
+            ash::vk::Filter::NEAREST
+        );
+        assert_eq!(
+            ash::vk::Filter::from(SamplerFilter::Linear),
+            ash::vk::Filter::LINEAR
+        );
+    }
+
+    #[test]
+    fn test_sampler_address_mode() {
+        assert_eq!(
+            ash::vk::SamplerAddressMode::from(SamplerAddressMode::Repeat),
+            ash::vk::SamplerAddressMode::REPEAT
+        );
+        assert_eq!(
+            ash::vk::SamplerAddressMode::from(SamplerAddressMode::MirroredRepeat),
+            ash::vk::SamplerAddressMode::MIRRORED_REPEAT
+        );
+        assert_eq!(
+            ash::vk::SamplerAddressMode::from(SamplerAddressMode::ClampToEdge),
+            ash::vk::SamplerAddressMode::CLAMP_TO_EDGE
         );
     }
 }

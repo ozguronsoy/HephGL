@@ -151,7 +151,10 @@ impl VulkanRenderer {
                 .ty(DescriptorType::STORAGE_BUFFER)
                 .descriptor_count(DESCRIPTOR_COUNT),
             DescriptorPoolSize::default()
-                .ty(DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .ty(DescriptorType::SAMPLED_IMAGE)
+                .descriptor_count(DESCRIPTOR_COUNT),
+            DescriptorPoolSize::default()
+                .ty(DescriptorType::SAMPLER)
                 .descriptor_count(DESCRIPTOR_COUNT),
         ];
 
