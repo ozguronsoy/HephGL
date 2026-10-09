@@ -96,6 +96,17 @@ pub trait Renderer {
     /// Frees the memory allocated for the provided buffer.
     fn destroy_buffer(&self, buffer: &mut Self::Buffer) -> RendererResult<()>;
 
+    /// Creates a texture with the specified dimensions, format, and pixel data.
+    fn create_texture(
+        &mut self,
+        width: u32,
+        height: u32,
+        format: TextureFormat,
+        data: &[u8],
+    ) -> RendererResult<Self::Texture>;
+    /// Frees the resources allocated for the provided texture.
+    fn destroy_texture(&self, texture: &mut Self::Texture) -> RendererResult<()>;
+
     /// Creates a compute pipeline using the provided shader.
     fn create_compute_pipeline(&self, shader: &Shader) -> RendererResult<Self::ComputePipeline>;
     /// Destroys the compute pipeline.

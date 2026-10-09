@@ -8,7 +8,7 @@ use crate::renderers::{
     RendererResult,
     error::RendererError,
     thread_context::ThreadContextArray,
-    vulkan::{VulkanRenderer, queue::QueueContext},
+    vulkan::{VulkanRenderer, queue::QueueContext, resources::VulkanBuffer},
 };
 
 /// Defines possible frame states.
@@ -32,6 +32,8 @@ pub struct ThreadContext {
     pub command_buffer: CommandBuffer,
     /// The descriptor pool allocated for resources used during this thread.
     pub descriptor_pool: DescriptorPool,
+    /// The temporary buffers used for transfering data to the GPU.
+    pub transfer_buffers: Vec<VulkanBuffer>,
     /// Indicates whether any command has been recorded in this thread.
     pub recorded: bool,
     /// Indicates whether the current thread began the current frame.
