@@ -37,9 +37,6 @@ pub struct DeviceContext {
     pub supports_dynamic_rendering: bool,
     pub supported_msaa_list: Vec<Msaa>,
 
-    /// TODO: Remove this when the custom samplers are enabled.
-    pub default_sampler: ash::vk::Sampler,
-
     /// The bitmasks indicating the availability of thread contexts.
     /// `0` means the context at that index is available, `1` means it is
     /// currently in use.
@@ -122,10 +119,6 @@ impl VulkanRenderer {
 
         if let Some(device_context) = self.device_context.take() {
             unsafe {
-                // TODO: Remove this when the custom samplers are enabled.
-                device_context
-                    .logical_device
-                    .destroy_sampler(device_context.default_sampler, None);
                 drop(device_context.vma_allocator);
                 device_context.logical_device.destroy_device(None);
             }
