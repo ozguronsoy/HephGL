@@ -1196,7 +1196,7 @@ impl Renderer for VulkanRenderer {
             .address_mode_v(options.address_mode_v.into())
             .address_mode_w(options.address_mode_w.into())
             .min_lod(0.0)
-            .max_lod(0.0)
+            .max_lod(ash::vk::LOD_CLAMP_NONE)
             .anisotropy_enable(false);
         let sampler = unsafe {
             device_context
