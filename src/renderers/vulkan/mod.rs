@@ -1191,7 +1191,7 @@ impl Renderer for VulkanRenderer {
         let create_info = ash::vk::SamplerCreateInfo::default()
             .mag_filter(options.mag_filter.into())
             .min_filter(options.min_filter.into())
-            .mipmap_mode(ash::vk::SamplerMipmapMode::LINEAR)
+            .mipmap_mode(options.mipmap_filter.into())
             .address_mode_u(options.address_mode_u.into())
             .address_mode_v(options.address_mode_v.into())
             .address_mode_w(options.address_mode_w.into())

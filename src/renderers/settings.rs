@@ -163,6 +163,8 @@ pub struct SamplerOptions {
     pub min_filter: SamplerFilter,
     /// The filtering mode used when the texture is magnified.
     pub mag_filter: SamplerFilter,
+    /// The filtering mode used between mip levels.
+    pub mipmap_filter: SamplerFilter,
     /// The addressing mode used for the U texture coordinate.
     pub address_mode_u: SamplerAddressMode,
     /// The addressing mode used for the V texture coordinate.
