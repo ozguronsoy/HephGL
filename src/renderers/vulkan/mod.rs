@@ -863,6 +863,12 @@ impl Renderer for VulkanRenderer {
             )));
         }
 
+        let instance = self
+            .instance
+            .as_ref()
+            .ok_or(RendererError::invalid_operation(
+                "Renderer is not initialized",
+            ))?;
         let device_context = self
             .device_context
             .as_mut()
@@ -911,6 +917,22 @@ impl Renderer for VulkanRenderer {
         }
 
         let vk_format: ash::vk::Format = options.format.into();
+        let format_properties = unsafe {
+            instance
+                .get_physical_device_format_properties(device_context.physical_device, vk_format)
+        };
+        let required_features = ash::vk::FormatFeatureFlags::BLIT_SRC
+            | ash::vk::FormatFeatureFlags::BLIT_DST
+            | ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_LINEAR;
+        if !format_properties
+            .optimal_tiling_features
+            .contains(required_features)
+        {
+            return Err(RendererError::invalid_argument(
+                "The texture does not support multiple mip levels.",
+            ));
+        }
+
         let image_info = ash::vk::ImageCreateInfo::default()
             .image_type(ash::vk::ImageType::TYPE_2D)
             .format(vk_format)
@@ -1023,6 +1045,90 @@ impl Renderer for VulkanRenderer {
             );
         }
 
+        for mip_level in 1..options.mip_level_count {
+            let previous_mip_level = mip_level - 1;
+
+            Self::transition_image_layout(
+                &device_context.logical_device,
+                current_frame.command_buffer,
+                image,
+                ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                ash::vk::AccessFlags::TRANSFER_WRITE,
+                ash::vk::AccessFlags::TRANSFER_READ,
+                ash::vk::PipelineStageFlags::TRANSFER,
+                ash::vk::PipelineStageFlags::TRANSFER,
+                ash::vk::ImageAspectFlags::COLOR,
+                previous_mip_level,
+                1,
+                1,
+            );
+
+            let source_width = (options.width >> previous_mip_level).max(1) as i32;
+            let source_height = (options.height >> previous_mip_level).max(1) as i32;
+            let destination_width = (options.width >> mip_level).max(1) as i32;
+            let destination_height = (options.height >> mip_level).max(1) as i32;
+
+            let blit = ash::vk::ImageBlit::default()
+                .src_subresource(
+                    ash::vk::ImageSubresourceLayers::default()
+                        .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+                        .mip_level(previous_mip_level)
+                        .base_array_layer(0)
+                        .layer_count(1),
+                )
+                .src_offsets([
+                    ash::vk::Offset3D { x: 0, y: 0, z: 0 },
+                    ash::vk::Offset3D {
+                        x: source_width,
+                        y: source_height,
+                        z: 1,
+                    },
+                ])
+                .dst_subresource(
+                    ash::vk::ImageSubresourceLayers::default()
+                        .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+                        .mip_level(mip_level)
+                        .base_array_layer(0)
+                        .layer_count(1),
+                )
+                .dst_offsets([
+                    ash::vk::Offset3D { x: 0, y: 0, z: 0 },
+                    ash::vk::Offset3D {
+                        x: destination_width,
+                        y: destination_height,
+                        z: 1,
+                    },
+                ]);
+            unsafe {
+                device_context.logical_device.cmd_blit_image(
+                    current_frame.command_buffer,
+                    image,
+                    ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    image,
+                    ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    std::slice::from_ref(&blit),
+                    ash::vk::Filter::LINEAR,
+                );
+            }
+
+            Self::transition_image_layout(
+                &device_context.logical_device,
+                current_frame.command_buffer,
+                image,
+                ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                ash::vk::AccessFlags::TRANSFER_READ,
+                ash::vk::AccessFlags::SHADER_READ,
+                ash::vk::PipelineStageFlags::TRANSFER,
+                ash::vk::PipelineStageFlags::FRAGMENT_SHADER
+                    | ash::vk::PipelineStageFlags::COMPUTE_SHADER,
+                ash::vk::ImageAspectFlags::COLOR,
+                previous_mip_level,
+                1,
+                1,
+            );
+        }
         Self::transition_image_layout(
             &device_context.logical_device,
             current_frame.command_buffer,
@@ -1032,10 +1138,11 @@ impl Renderer for VulkanRenderer {
             ash::vk::AccessFlags::TRANSFER_WRITE,
             ash::vk::AccessFlags::SHADER_READ,
             ash::vk::PipelineStageFlags::TRANSFER,
-            ash::vk::PipelineStageFlags::ALL_GRAPHICS,
+            ash::vk::PipelineStageFlags::FRAGMENT_SHADER
+                | ash::vk::PipelineStageFlags::COMPUTE_SHADER,
             ash::vk::ImageAspectFlags::COLOR,
-            0,
-            options.mip_level_count,
+            options.mip_level_count - 1,
+            1,
             1,
         );
 
