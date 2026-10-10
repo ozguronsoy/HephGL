@@ -93,7 +93,7 @@ mod tests {
     #[test]
     fn test_texture_format_bytes_per_pixel() {
         assert_eq!(TextureFormat::R8Unorm.bytes_per_pixel(), 1);
-        assert_eq!(TextureFormat::Rgba8Unorm.bytes_per_pixel(), 1);
-        assert_eq!(TextureFormat::Rgba8Srgb.bytes_per_pixel(), 1);
+        assert_eq!(TextureFormat::Rgba8Unorm.bytes_per_pixel(), 4);
+        assert_eq!(TextureFormat::Rgba8Srgb.bytes_per_pixel(), 4);
     }
 }
