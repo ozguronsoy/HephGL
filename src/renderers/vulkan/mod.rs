@@ -36,8 +36,8 @@ use crate::{
     renderers::{
         BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererError, RendererResult,
         ResourceBinding, Settings,
-        resources::{ResourceBindingType, TextureFormat},
-        settings::{GraphicsPipelineOptions, Msaa, SamplerOptions},
+        resources::ResourceBindingType,
+        settings::{GraphicsPipelineOptions, Msaa, SamplerOptions, TextureOptions},
         thread_context::{ThreadContextIndex, ThreadContextMask, is_thread_context_active},
         version::DriverVersion,
         vulkan::{
@@ -828,20 +828,18 @@ impl Renderer for VulkanRenderer {
 
     fn create_texture(
         &mut self,
-        width: u32,
-        height: u32,
-        format: TextureFormat,
+        options: &TextureOptions,
         data: &[u8],
     ) -> RendererResult<Self::Texture> {
-        if width == 0 || height == 0 {
+        if options.width == 0 || options.height == 0 {
             return Err(RendererError::invalid_argument(
                 "Texture dimensions must be greater than zero.",
             ));
         }
 
-        let expected_size = (width as usize)
-            .checked_mul(height as usize)
-            .and_then(|size| size.checked_mul(format.bytes_per_pixel()))
+        let expected_size = (options.width as usize)
+            .checked_mul(options.height as usize)
+            .and_then(|size| size.checked_mul(options.format.bytes_per_pixel()))
             .ok_or(RendererError::invalid_argument(
                 "Texture dimensions are too large.",
             ))?;
@@ -852,6 +850,26 @@ impl Renderer for VulkanRenderer {
             )));
         }
 
+        if options.mip_level_count == 0 {
+            return Err(RendererError::invalid_argument(
+                "Mip level count cannot be zero.",
+            ));
+        }
+        let max_mip_level_count =
+            TextureOptions::max_mip_level_count(options.width, options.height);
+        if options.mip_level_count > max_mip_level_count {
+            return Err(RendererError::InvalidArgument(format!(
+                "Requested mip level count `{}` is greater than the maximum possible count this texture can have `{}`.",
+                options.mip_level_count, max_mip_level_count
+            )));
+        }
+
+        let instance = self
+            .instance
+            .as_ref()
+            .ok_or(RendererError::invalid_operation(
+                "Renderer is not initialized",
+            ))?;
         let device_context = self
             .device_context
             .as_mut()
@@ -899,20 +917,40 @@ impl Renderer for VulkanRenderer {
             return Err(error.into());
         }
 
-        let vk_format: ash::vk::Format = format.into();
+        let vk_format: ash::vk::Format = options.format.into();
+        let format_properties = unsafe {
+            instance
+                .get_physical_device_format_properties(device_context.physical_device, vk_format)
+        };
+        let required_features = ash::vk::FormatFeatureFlags::BLIT_SRC
+            | ash::vk::FormatFeatureFlags::BLIT_DST
+            | ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_LINEAR;
+        if !format_properties
+            .optimal_tiling_features
+            .contains(required_features)
+        {
+            return Err(RendererError::invalid_argument(
+                "The texture does not support multiple mip levels.",
+            ));
+        }
+
         let image_info = ash::vk::ImageCreateInfo::default()
             .image_type(ash::vk::ImageType::TYPE_2D)
             .format(vk_format)
             .extent(ash::vk::Extent3D {
-                width,
-                height,
+                width: options.width,
+                height: options.height,
                 depth: 1,
             })
-            .mip_levels(1)
+            .mip_levels(options.mip_level_count)
             .array_layers(1)
             .samples(ash::vk::SampleCountFlags::TYPE_1)
             .tiling(ash::vk::ImageTiling::OPTIMAL)
-            .usage(ash::vk::ImageUsageFlags::TRANSFER_DST | ash::vk::ImageUsageFlags::SAMPLED)
+            .usage(
+                ash::vk::ImageUsageFlags::TRANSFER_SRC
+                    | ash::vk::ImageUsageFlags::TRANSFER_DST
+                    | ash::vk::ImageUsageFlags::SAMPLED,
+            )
             .sharing_mode(ash::vk::SharingMode::EXCLUSIVE)
             .initial_layout(ash::vk::ImageLayout::UNDEFINED);
         let image_allocation_info = vk_mem::AllocationCreateInfo {
@@ -942,7 +980,7 @@ impl Renderer for VulkanRenderer {
                 ash::vk::ImageSubresourceRange::default()
                     .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
                     .base_mip_level(0)
-                    .level_count(1)
+                    .level_count(options.mip_level_count)
                     .base_array_layer(0)
                     .layer_count(1),
             );
@@ -976,6 +1014,8 @@ impl Renderer for VulkanRenderer {
             ash::vk::PipelineStageFlags::TOP_OF_PIPE,
             ash::vk::PipelineStageFlags::TRANSFER,
             ash::vk::ImageAspectFlags::COLOR,
+            0,
+            options.mip_level_count,
             1,
         );
 
@@ -992,8 +1032,8 @@ impl Renderer for VulkanRenderer {
             )
             .image_offset(ash::vk::Offset3D::default())
             .image_extent(ash::vk::Extent3D {
-                width,
-                height,
+                width: options.width,
+                height: options.height,
                 depth: 1,
             });
         unsafe {
@@ -1006,6 +1046,90 @@ impl Renderer for VulkanRenderer {
             );
         }
 
+        for mip_level in 1..options.mip_level_count {
+            let previous_mip_level = mip_level - 1;
+
+            Self::transition_image_layout(
+                &device_context.logical_device,
+                current_frame.command_buffer,
+                image,
+                ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                ash::vk::AccessFlags::TRANSFER_WRITE,
+                ash::vk::AccessFlags::TRANSFER_READ,
+                ash::vk::PipelineStageFlags::TRANSFER,
+                ash::vk::PipelineStageFlags::TRANSFER,
+                ash::vk::ImageAspectFlags::COLOR,
+                previous_mip_level,
+                1,
+                1,
+            );
+
+            let source_width = (options.width >> previous_mip_level).max(1) as i32;
+            let source_height = (options.height >> previous_mip_level).max(1) as i32;
+            let destination_width = (options.width >> mip_level).max(1) as i32;
+            let destination_height = (options.height >> mip_level).max(1) as i32;
+
+            let blit = ash::vk::ImageBlit::default()
+                .src_subresource(
+                    ash::vk::ImageSubresourceLayers::default()
+                        .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+                        .mip_level(previous_mip_level)
+                        .base_array_layer(0)
+                        .layer_count(1),
+                )
+                .src_offsets([
+                    ash::vk::Offset3D { x: 0, y: 0, z: 0 },
+                    ash::vk::Offset3D {
+                        x: source_width,
+                        y: source_height,
+                        z: 1,
+                    },
+                ])
+                .dst_subresource(
+                    ash::vk::ImageSubresourceLayers::default()
+                        .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+                        .mip_level(mip_level)
+                        .base_array_layer(0)
+                        .layer_count(1),
+                )
+                .dst_offsets([
+                    ash::vk::Offset3D { x: 0, y: 0, z: 0 },
+                    ash::vk::Offset3D {
+                        x: destination_width,
+                        y: destination_height,
+                        z: 1,
+                    },
+                ]);
+            unsafe {
+                device_context.logical_device.cmd_blit_image(
+                    current_frame.command_buffer,
+                    image,
+                    ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    image,
+                    ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    std::slice::from_ref(&blit),
+                    ash::vk::Filter::LINEAR,
+                );
+            }
+
+            Self::transition_image_layout(
+                &device_context.logical_device,
+                current_frame.command_buffer,
+                image,
+                ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                ash::vk::AccessFlags::TRANSFER_READ,
+                ash::vk::AccessFlags::SHADER_READ,
+                ash::vk::PipelineStageFlags::TRANSFER,
+                ash::vk::PipelineStageFlags::FRAGMENT_SHADER
+                    | ash::vk::PipelineStageFlags::COMPUTE_SHADER,
+                ash::vk::ImageAspectFlags::COLOR,
+                previous_mip_level,
+                1,
+                1,
+            );
+        }
         Self::transition_image_layout(
             &device_context.logical_device,
             current_frame.command_buffer,
@@ -1015,8 +1139,11 @@ impl Renderer for VulkanRenderer {
             ash::vk::AccessFlags::TRANSFER_WRITE,
             ash::vk::AccessFlags::SHADER_READ,
             ash::vk::PipelineStageFlags::TRANSFER,
-            ash::vk::PipelineStageFlags::ALL_GRAPHICS,
+            ash::vk::PipelineStageFlags::FRAGMENT_SHADER
+                | ash::vk::PipelineStageFlags::COMPUTE_SHADER,
             ash::vk::ImageAspectFlags::COLOR,
+            options.mip_level_count - 1,
+            1,
             1,
         );
 
@@ -1031,9 +1158,7 @@ impl Renderer for VulkanRenderer {
             image,
             image_view,
             vma_allocation: image_allocation,
-            width,
-            height,
-            format,
+            texture_options: *options,
         })
     }
 
@@ -1054,8 +1179,7 @@ impl Renderer for VulkanRenderer {
 
         texture.image = ash::vk::Image::null();
         texture.image_view = ash::vk::ImageView::null();
-        texture.width = 0;
-        texture.height = 0;
+        texture.texture_options = TextureOptions::default();
 
         Ok(())
     }
@@ -1068,12 +1192,12 @@ impl Renderer for VulkanRenderer {
         let create_info = ash::vk::SamplerCreateInfo::default()
             .mag_filter(options.mag_filter.into())
             .min_filter(options.min_filter.into())
-            .mipmap_mode(ash::vk::SamplerMipmapMode::LINEAR)
+            .mipmap_mode(options.mipmap_filter.into())
             .address_mode_u(options.address_mode_u.into())
             .address_mode_v(options.address_mode_v.into())
             .address_mode_w(options.address_mode_w.into())
             .min_lod(0.0)
-            .max_lod(0.0)
+            .max_lod(ash::vk::LOD_CLAMP_NONE)
             .anisotropy_enable(false);
         let sampler = unsafe {
             device_context
@@ -1505,6 +1629,8 @@ impl Renderer for VulkanRenderer {
                         ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                         ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                         ash::vk::ImageAspectFlags::COLOR,
+                        0,
+                        1,
                         layer_count,
                     );
                     Self::transition_image_layout(
@@ -1521,6 +1647,8 @@ impl Renderer for VulkanRenderer {
                         ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
                             | ash::vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
                         ash::vk::ImageAspectFlags::DEPTH,
+                        0,
+                        1,
                         layer_count,
                     );
                     if self.settings.msaa != Msaa::X1 {
@@ -1536,6 +1664,8 @@ impl Renderer for VulkanRenderer {
                             ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                             ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                             ash::vk::ImageAspectFlags::COLOR,
+                            0,
+                            1,
                             layer_count,
                         );
                     }
@@ -1623,6 +1753,8 @@ impl Renderer for VulkanRenderer {
                         ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                         ash::vk::PipelineStageFlags::BOTTOM_OF_PIPE,
                         ash::vk::ImageAspectFlags::COLOR,
+                        0,
+                        1,
                         match self.settings.stereoscopic_3d_rendering {
                             true => 2,
                             false => 1,

@@ -2,7 +2,7 @@ use heph_gl::{
     renderers::{
         Renderer,
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType, TextureFormat},
-        settings::{ColorBlending, GraphicsPipelineOptions, SamplerOptions},
+        settings::{ColorBlending, GraphicsPipelineOptions, SamplerOptions, TextureOptions},
     },
     shader::Shader,
 };
@@ -23,18 +23,18 @@ const TEXT: &str = "Rendering Textures!";
 const FONT_PATH: &str = "assets/liberation_sans/LiberationSans-Regular.ttf";
 const FONT_SIZE: f32 = 64.0;
 
-fn sphere_position(radius: f32, u: f32, v: f32) -> [f32; 3] {
+fn sphere_position(radius: f32, x_offset: f32, u: f32, v: f32) -> [f32; 3] {
     let theta = v * std::f32::consts::PI;
     let phi = u * std::f32::consts::TAU;
     let sin_theta = theta.sin();
     [
-        radius * sin_theta * phi.cos(),
+        x_offset + radius * sin_theta * phi.cos(),
         radius * theta.cos(),
         radius * sin_theta * phi.sin(),
     ]
 }
 
-fn sphere_vertices(radius: f32) -> Vec<Vertex> {
+fn sphere_vertices(radius: f32, x_offset: f32) -> Vec<Vertex> {
     let mut vertices = Vec::with_capacity(LATITUDE_SEGMENTS * LONGITUDE_SEGMENTS * 6);
 
     for y in 0..LATITUDE_SEGMENTS {
@@ -45,15 +45,31 @@ fn sphere_vertices(radius: f32) -> Vec<Vertex> {
             let u0 = x as f32 / LONGITUDE_SEGMENTS as f32;
             let u1 = (x + 1) as f32 / LONGITUDE_SEGMENTS as f32;
 
-            let p00 = sphere_position(radius, u0, v0);
-            let p10 = sphere_position(radius, u1, v0);
-            let p01 = sphere_position(radius, u0, v1);
-            let p11 = sphere_position(radius, u1, v1);
+            let p00 = sphere_position(radius, x_offset, u0, v0);
+            let p10 = sphere_position(radius, x_offset, u1, v0);
+            let p01 = sphere_position(radius, x_offset, u0, v1);
+            let p11 = sphere_position(radius, x_offset, u1, v1);
 
-            let n00 = [p00[0] / radius, p00[1] / radius, p00[2] / radius];
-            let n10 = [p10[0] / radius, p10[1] / radius, p10[2] / radius];
-            let n01 = [p01[0] / radius, p01[1] / radius, p01[2] / radius];
-            let n11 = [p11[0] / radius, p11[1] / radius, p11[2] / radius];
+            let n00 = [
+                (p00[0] - x_offset) / radius,
+                p00[1] / radius,
+                p00[2] / radius,
+            ];
+            let n10 = [
+                (p10[0] - x_offset) / radius,
+                p10[1] / radius,
+                p10[2] / radius,
+            ];
+            let n01 = [
+                (p01[0] - x_offset) / radius,
+                p01[1] / radius,
+                p01[2] / radius,
+            ];
+            let n11 = [
+                (p11[0] - x_offset) / radius,
+                p11[1] / radius,
+                p11[2] / radius,
+            ];
 
             vertices.extend_from_slice(&[
                 [p00[0], p00[1], p00[2], n00[0], n00[1], n00[2], u0, v0],
@@ -92,7 +108,11 @@ fn render_sphere(
     let width = image.width();
     let height = image.height();
 
-    let vertices = sphere_vertices(0.5);
+    let mut vertices = Vec::with_capacity(LATITUDE_SEGMENTS * LONGITUDE_SEGMENTS * 6 * 3);
+    vertices.extend(sphere_vertices(0.1, -1.2));
+    vertices.extend(sphere_vertices(0.25, -0.4));
+    vertices.extend(sphere_vertices(0.5, 0.8));
+
     let vertex_buffer = renderer
         .create_buffer(
             vertices.len() * std::mem::size_of::<Vertex>(),
@@ -106,7 +126,15 @@ fn render_sphere(
     // Creating a texture creates a GPU command to transfer the raw pixel data from CPU to GPU, thus
     // we must begin a frame first. Once a texture is loaded, we can use it until we destroy it.
     let texture = renderer
-        .create_texture(width, height, TextureFormat::Rgba8Srgb, image.as_raw())
+        .create_texture(
+            &TextureOptions {
+                width,
+                height,
+                format: TextureFormat::Rgba8Srgb,
+                mip_level_count: TextureOptions::max_mip_level_count(width, height),
+            },
+            image.as_raw(),
+        )
         .unwrap();
 
     let bindings = [
@@ -173,9 +201,12 @@ fn render_text(
     // we must begin a frame first. Once a texture is loaded, we can use it until we destroy it.
     let texture = renderer
         .create_texture(
-            font.atlas_width(),
-            font.atlas_height(),
-            TextureFormat::R8Unorm,
+            &TextureOptions {
+                width: font.atlas_width(),
+                height: font.atlas_height(),
+                format: TextureFormat::R8Unorm,
+                mip_level_count: 1,
+            },
             font.atlas_data(),
         )
         .unwrap();

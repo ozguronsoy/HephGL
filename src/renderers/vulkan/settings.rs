@@ -89,6 +89,15 @@ impl From<SamplerFilter> for ash::vk::Filter {
     }
 }
 
+impl From<SamplerFilter> for ash::vk::SamplerMipmapMode {
+    fn from(value: SamplerFilter) -> Self {
+        match value {
+            SamplerFilter::Nearest => Self::NEAREST,
+            SamplerFilter::Linear => Self::LINEAR,
+        }
+    }
+}
+
 impl From<SamplerAddressMode> for ash::vk::SamplerAddressMode {
     fn from(value: SamplerAddressMode) -> Self {
         match value {
@@ -175,6 +184,14 @@ mod tests {
         assert_eq!(
             ash::vk::Filter::from(SamplerFilter::Linear),
             ash::vk::Filter::LINEAR
+        );
+        assert_eq!(
+            ash::vk::SamplerMipmapMode::from(SamplerFilter::Nearest),
+            ash::vk::SamplerMipmapMode::NEAREST
+        );
+        assert_eq!(
+            ash::vk::SamplerMipmapMode::from(SamplerFilter::Linear),
+            ash::vk::SamplerMipmapMode::LINEAR
         );
     }
 

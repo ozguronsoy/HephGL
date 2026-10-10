@@ -405,6 +405,8 @@ impl VulkanRenderer {
         src_stage_mask: ash::vk::PipelineStageFlags,
         dst_stage_mask: ash::vk::PipelineStageFlags,
         aspect_mask: ash::vk::ImageAspectFlags,
+        base_mip_level: u32,
+        mip_level_count: u32,
         layer_count: u32,
     ) {
         let barrier = ash::vk::ImageMemoryBarrier::default()
@@ -418,8 +420,8 @@ impl VulkanRenderer {
             .subresource_range(
                 ash::vk::ImageSubresourceRange::default()
                     .aspect_mask(aspect_mask)
-                    .base_mip_level(0)
-                    .level_count(1)
+                    .base_mip_level(base_mip_level)
+                    .level_count(mip_level_count)
                     .base_array_layer(0)
                     .layer_count(layer_count),
             );

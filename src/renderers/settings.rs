@@ -1,3 +1,5 @@
+use crate::renderers::resources::TextureFormat;
+
 /// Defines the multisample anti-aliasing sample count used when rendering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Msaa {
@@ -141,14 +143,52 @@ pub struct GraphicsPipelineOptions {
     pub depth_write: bool,
 }
 
+/// Defines the properties of a texture.
+#[derive(Clone, Copy)]
+pub struct TextureOptions {
+    /// The width of the texture.
+    pub width: u32,
+    /// The height of the texture.
+    pub height: u32,
+    /// The pixel format of the texture.
+    pub format: TextureFormat,
+    /// The number of mip levels.
+    pub mip_level_count: u32,
+}
+
 /// Defines the properties of a texture sampler.
 #[derive(Default, Clone, Copy)]
 pub struct SamplerOptions {
+    /// The filtering mode used when the texture is minified.
     pub min_filter: SamplerFilter,
+    /// The filtering mode used when the texture is magnified.
     pub mag_filter: SamplerFilter,
+    /// The filtering mode used between mip levels.
+    pub mipmap_filter: SamplerFilter,
+    /// The addressing mode used for the U texture coordinate.
     pub address_mode_u: SamplerAddressMode,
+    /// The addressing mode used for the V texture coordinate.
     pub address_mode_v: SamplerAddressMode,
+    /// The addressing mode used for the W texture coordinate.
     pub address_mode_w: SamplerAddressMode,
+}
+
+impl Default for TextureOptions {
+    fn default() -> Self {
+        Self {
+            width: 0,
+            height: 0,
+            format: TextureFormat::default(),
+            mip_level_count: 1,
+        }
+    }
+}
+impl TextureOptions {
+    /// Calculates the maximum number of mip levels a texture with the provided dimensions can have.
+    // TODO: Should we move this function somewhere else?
+    pub fn max_mip_level_count(width: u32, height: u32) -> u32 {
+        u32::BITS - width.max(height).leading_zeros()
+    }
 }
 
 impl Default for GraphicsPipelineOptions {

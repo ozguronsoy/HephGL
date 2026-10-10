@@ -7,6 +7,7 @@ use crate::{
         GpuBuffer, Renderer, RendererResult,
         error::RendererError,
         resources::{BufferUsage, GpuTexture, ResourceBinding, ResourceBindingType, TextureFormat},
+        settings::TextureOptions,
         vulkan::VulkanRenderer,
     },
     shader::ShaderBindingType,
@@ -29,9 +30,7 @@ pub struct VulkanTexture {
     pub(super) image: ash::vk::Image,
     pub(super) image_view: ash::vk::ImageView,
     pub(super) vma_allocation: vk_mem::Allocation,
-    pub(super) width: u32,
-    pub(super) height: u32,
-    pub(super) format: TextureFormat,
+    pub(super) texture_options: TextureOptions,
 }
 
 /// Represents a Vulkan texture sampler.
@@ -58,13 +57,16 @@ pub struct VulkanComputePipeline {
 
 impl GpuTexture for VulkanTexture {
     fn width(&self) -> u32 {
-        self.width
+        self.texture_options.width
     }
     fn height(&self) -> u32 {
-        self.height
+        self.texture_options.height
     }
     fn format(&self) -> TextureFormat {
-        self.format
+        self.texture_options.format
+    }
+    fn mip_level_count(&self) -> u32 {
+        self.texture_options.mip_level_count
     }
 }
 
