@@ -855,7 +855,8 @@ impl Renderer for VulkanRenderer {
                 "Mip level count cannot be zero.",
             ));
         }
-        let max_mip_level_count = u32::BITS - options.width.max(options.height).leading_zeros();
+        let max_mip_level_count =
+            TextureOptions::max_mip_level_count(options.width, options.height);
         if options.mip_level_count > max_mip_level_count {
             return Err(RendererError::InvalidArgument(format!(
                 "Requested mip level count `{}` is greater than the maximum possible count this texture can have `{}`.",

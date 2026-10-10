@@ -183,6 +183,13 @@ impl Default for TextureOptions {
         }
     }
 }
+impl TextureOptions {
+    /// Calculates the maximum number of mip levels a texture with the provided dimensions can have.
+    // TODO: Should we move this function somewhere else?
+    pub fn max_mip_level_count(width: u32, height: u32) -> u32 {
+        u32::BITS - width.max(height).leading_zeros()
+    }
+}
 
 impl Default for GraphicsPipelineOptions {
     fn default() -> Self {
