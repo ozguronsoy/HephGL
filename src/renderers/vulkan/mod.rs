@@ -991,6 +991,8 @@ impl Renderer for VulkanRenderer {
             ash::vk::PipelineStageFlags::TOP_OF_PIPE,
             ash::vk::PipelineStageFlags::TRANSFER,
             ash::vk::ImageAspectFlags::COLOR,
+            0,
+            options.mip_level_count,
             1,
         );
 
@@ -1032,6 +1034,8 @@ impl Renderer for VulkanRenderer {
             ash::vk::PipelineStageFlags::TRANSFER,
             ash::vk::PipelineStageFlags::ALL_GRAPHICS,
             ash::vk::ImageAspectFlags::COLOR,
+            0,
+            options.mip_level_count,
             1,
         );
 
@@ -1517,6 +1521,8 @@ impl Renderer for VulkanRenderer {
                         ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                         ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                         ash::vk::ImageAspectFlags::COLOR,
+                        0,
+                        1,
                         layer_count,
                     );
                     Self::transition_image_layout(
@@ -1533,6 +1539,8 @@ impl Renderer for VulkanRenderer {
                         ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
                             | ash::vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
                         ash::vk::ImageAspectFlags::DEPTH,
+                        0,
+                        1,
                         layer_count,
                     );
                     if self.settings.msaa != Msaa::X1 {
@@ -1548,6 +1556,8 @@ impl Renderer for VulkanRenderer {
                             ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                             ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                             ash::vk::ImageAspectFlags::COLOR,
+                            0,
+                            1,
                             layer_count,
                         );
                     }
@@ -1635,6 +1645,8 @@ impl Renderer for VulkanRenderer {
                         ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                         ash::vk::PipelineStageFlags::BOTTOM_OF_PIPE,
                         ash::vk::ImageAspectFlags::COLOR,
+                        0,
+                        1,
                         match self.settings.stereoscopic_3d_rendering {
                             true => 2,
                             false => 1,
