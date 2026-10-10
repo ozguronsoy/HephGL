@@ -25,6 +25,8 @@ pub enum BufferUsage {
 /// Defines the pixel format of a texture.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextureFormat {
+    /// 8-bit single channel linear color value.
+    R8Unorm,
     /// 8-bit RGBA using linear color values.
     Rgba8Unorm,
     /// 8-bit RGBA using the sRGB color space.
@@ -72,4 +74,14 @@ pub trait GpuTexture: Copy + Clone + Send + Sync {
     fn height(&self) -> u32;
     /// Returns the texture format.
     fn format(&self) -> TextureFormat;
+}
+
+impl TextureFormat {
+    /// Calculates the size of each pixel in bytes.
+    pub(super) fn bytes_per_pixel(&self) -> usize {
+        match self {
+            Self::R8Unorm => 1,
+            Self::Rgba8Unorm | Self::Rgba8Srgb => 4,
+        }
+    }
 }

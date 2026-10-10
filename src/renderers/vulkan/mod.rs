@@ -839,12 +839,9 @@ impl Renderer for VulkanRenderer {
             ));
         }
 
-        let bytes_per_pixel = match format {
-            TextureFormat::Rgba8Unorm | TextureFormat::Rgba8Srgb => 4,
-        };
         let expected_size = (width as usize)
             .checked_mul(height as usize)
-            .and_then(|size| size.checked_mul(bytes_per_pixel))
+            .and_then(|size| size.checked_mul(format.bytes_per_pixel()))
             .ok_or(RendererError::invalid_argument(
                 "Texture dimensions are too large.",
             ))?;
