@@ -23,7 +23,7 @@ use heph_gl::{
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType, TextureFormat},
         settings::{
             ColorBlending, CullingMode, FeatureRequest, FrontFace, GraphicsPipelineOptions,
-            InitializeOptions, PrimitiveTopology, SamplerOptions, Settings,
+            InitializeOptions, PrimitiveTopology, SamplerOptions, Settings, TextureOptions,
         },
     },
     shader::Shader,
@@ -1364,9 +1364,12 @@ where
             );
 
             let texture = heph_expect_success!(renderer.create_texture(
-                width,
-                height,
-                TextureFormat::Rgba8Srgb,
+                &TextureOptions {
+                    width,
+                    height,
+                    format: TextureFormat::Rgba8Srgb,
+                    mip_level_count: 1,
+                },
                 image.as_raw()
             ));
 
@@ -1430,9 +1433,12 @@ where
             );
 
             let texture = heph_expect_success!(renderer.create_texture(
-                font.atlas_width(),
-                font.atlas_height(),
-                TextureFormat::R8Unorm,
+                &TextureOptions {
+                    width: font.atlas_width(),
+                    height: font.atlas_height(),
+                    format: TextureFormat::R8Unorm,
+                    mip_level_count: 1,
+                },
                 font.atlas_data(),
             ));
 

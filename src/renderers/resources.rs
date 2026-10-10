@@ -1,13 +1,3 @@
-/// Represents a resource binding.
-#[derive(Debug, Clone, Copy)]
-pub struct ResourceBinding<B, T, S> {
-    /// The binding number specified in the shader (e.g., `layout(binding =
-    /// 0)`).
-    pub binding: u32,
-    /// The actual resource this slot binds to.
-    pub resource: ResourceBindingType<B, T, S>,
-}
-
 /// Defines the possible usages of a buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BufferUsage {
@@ -60,6 +50,16 @@ pub enum ResourceBindingType<BufferHandle, TextureHandle, SamplerHandle> {
     },
 }
 
+/// Represents a resource binding.
+#[derive(Debug, Clone, Copy)]
+pub struct ResourceBinding<B, T, S> {
+    /// The binding number specified in the shader (e.g., `layout(binding =
+    /// 0)`).
+    pub binding: u32,
+    /// The actual resource this slot binds to.
+    pub resource: ResourceBindingType<B, T, S>,
+}
+
 /// Stores data in a GPU.
 pub trait GpuBuffer: Copy + Clone + Send + Sync {
     /// Returns the size of the buffer in bytes.
@@ -74,6 +74,8 @@ pub trait GpuTexture: Copy + Clone + Send + Sync {
     fn height(&self) -> u32;
     /// Returns the texture format.
     fn format(&self) -> TextureFormat;
+    /// Returns the number of mip levels.
+    fn mip_level_count(&self) -> u32;
 }
 
 impl TextureFormat {

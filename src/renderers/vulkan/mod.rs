@@ -36,8 +36,8 @@ use crate::{
     renderers::{
         BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererError, RendererResult,
         ResourceBinding, Settings,
-        resources::{ResourceBindingType, TextureFormat},
-        settings::{GraphicsPipelineOptions, Msaa, SamplerOptions},
+        resources::ResourceBindingType,
+        settings::{GraphicsPipelineOptions, Msaa, SamplerOptions, TextureOptions},
         thread_context::{ThreadContextIndex, ThreadContextMask, is_thread_context_active},
         version::DriverVersion,
         vulkan::{
@@ -828,20 +828,18 @@ impl Renderer for VulkanRenderer {
 
     fn create_texture(
         &mut self,
-        width: u32,
-        height: u32,
-        format: TextureFormat,
+        options: &TextureOptions,
         data: &[u8],
     ) -> RendererResult<Self::Texture> {
-        if width == 0 || height == 0 {
+        if options.width == 0 || options.height == 0 {
             return Err(RendererError::invalid_argument(
                 "Texture dimensions must be greater than zero.",
             ));
         }
 
-        let expected_size = (width as usize)
-            .checked_mul(height as usize)
-            .and_then(|size| size.checked_mul(format.bytes_per_pixel()))
+        let expected_size = (options.width as usize)
+            .checked_mul(options.height as usize)
+            .and_then(|size| size.checked_mul(options.format.bytes_per_pixel()))
             .ok_or(RendererError::invalid_argument(
                 "Texture dimensions are too large.",
             ))?;
@@ -849,6 +847,19 @@ impl Renderer for VulkanRenderer {
             return Err(RendererError::invalid_argument(format!(
                 "Texture data size does not match texture dimensions. Expected {expected_size} bytes, got {}.",
                 data.len()
+            )));
+        }
+
+        if options.mip_level_count == 0 {
+            return Err(RendererError::invalid_argument(
+                "Mip level count cannot be zero.",
+            ));
+        }
+        let max_mip_level_count = u32::BITS - options.width.max(options.height).leading_zeros();
+        if options.mip_level_count > max_mip_level_count {
+            return Err(RendererError::InvalidArgument(format!(
+                "Requested mip level count `{}` is greater than the maximum possible count this texture can have `{}`.",
+                options.mip_level_count, max_mip_level_count
             )));
         }
 
@@ -899,20 +910,24 @@ impl Renderer for VulkanRenderer {
             return Err(error.into());
         }
 
-        let vk_format: ash::vk::Format = format.into();
+        let vk_format: ash::vk::Format = options.format.into();
         let image_info = ash::vk::ImageCreateInfo::default()
             .image_type(ash::vk::ImageType::TYPE_2D)
             .format(vk_format)
             .extent(ash::vk::Extent3D {
-                width,
-                height,
+                width: options.width,
+                height: options.height,
                 depth: 1,
             })
-            .mip_levels(1)
+            .mip_levels(options.mip_level_count)
             .array_layers(1)
             .samples(ash::vk::SampleCountFlags::TYPE_1)
             .tiling(ash::vk::ImageTiling::OPTIMAL)
-            .usage(ash::vk::ImageUsageFlags::TRANSFER_DST | ash::vk::ImageUsageFlags::SAMPLED)
+            .usage(
+                ash::vk::ImageUsageFlags::TRANSFER_SRC
+                    | ash::vk::ImageUsageFlags::TRANSFER_DST
+                    | ash::vk::ImageUsageFlags::SAMPLED,
+            )
             .sharing_mode(ash::vk::SharingMode::EXCLUSIVE)
             .initial_layout(ash::vk::ImageLayout::UNDEFINED);
         let image_allocation_info = vk_mem::AllocationCreateInfo {
@@ -942,7 +957,7 @@ impl Renderer for VulkanRenderer {
                 ash::vk::ImageSubresourceRange::default()
                     .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
                     .base_mip_level(0)
-                    .level_count(1)
+                    .level_count(options.mip_level_count)
                     .base_array_layer(0)
                     .layer_count(1),
             );
@@ -992,8 +1007,8 @@ impl Renderer for VulkanRenderer {
             )
             .image_offset(ash::vk::Offset3D::default())
             .image_extent(ash::vk::Extent3D {
-                width,
-                height,
+                width: options.width,
+                height: options.height,
                 depth: 1,
             });
         unsafe {
@@ -1031,9 +1046,7 @@ impl Renderer for VulkanRenderer {
             image,
             image_view,
             vma_allocation: image_allocation,
-            width,
-            height,
-            format,
+            texture_options: *options,
         })
     }
 
@@ -1054,8 +1067,7 @@ impl Renderer for VulkanRenderer {
 
         texture.image = ash::vk::Image::null();
         texture.image_view = ash::vk::ImageView::null();
-        texture.width = 0;
-        texture.height = 0;
+        texture.texture_options = TextureOptions::default();
 
         Ok(())
     }

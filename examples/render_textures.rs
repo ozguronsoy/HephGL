@@ -2,7 +2,7 @@ use heph_gl::{
     renderers::{
         Renderer,
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType, TextureFormat},
-        settings::{ColorBlending, GraphicsPipelineOptions, SamplerOptions},
+        settings::{ColorBlending, GraphicsPipelineOptions, SamplerOptions, TextureOptions},
     },
     shader::Shader,
 };
@@ -106,7 +106,15 @@ fn render_sphere(
     // Creating a texture creates a GPU command to transfer the raw pixel data from CPU to GPU, thus
     // we must begin a frame first. Once a texture is loaded, we can use it until we destroy it.
     let texture = renderer
-        .create_texture(width, height, TextureFormat::Rgba8Srgb, image.as_raw())
+        .create_texture(
+            &TextureOptions {
+                width,
+                height,
+                format: TextureFormat::Rgba8Srgb,
+                mip_level_count: 1,
+            },
+            image.as_raw(),
+        )
         .unwrap();
 
     let bindings = [
@@ -173,9 +181,12 @@ fn render_text(
     // we must begin a frame first. Once a texture is loaded, we can use it until we destroy it.
     let texture = renderer
         .create_texture(
-            font.atlas_width(),
-            font.atlas_height(),
-            TextureFormat::R8Unorm,
+            &TextureOptions {
+                width: font.atlas_width(),
+                height: font.atlas_height(),
+                format: TextureFormat::R8Unorm,
+                mip_level_count: 1,
+            },
             font.atlas_data(),
         )
         .unwrap();

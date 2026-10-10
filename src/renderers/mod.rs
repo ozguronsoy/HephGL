@@ -101,9 +101,7 @@ pub trait Renderer {
     /// Creates a texture with the specified dimensions, format, and pixel data.
     fn create_texture(
         &mut self,
-        width: u32,
-        height: u32,
-        format: TextureFormat,
+        options: &TextureOptions,
         data: &[u8],
     ) -> RendererResult<Self::Texture>;
     /// Frees the resources allocated for the provided texture.
