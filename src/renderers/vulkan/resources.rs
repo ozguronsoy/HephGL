@@ -374,6 +374,7 @@ impl From<ShaderBindingType> for DescriptorType {
 impl From<TextureFormat> for ash::vk::Format {
     fn from(value: TextureFormat) -> Self {
         match value {
+            TextureFormat::R8Unorm => Self::R8_UNORM,
             TextureFormat::Rgba8Unorm => Self::R8G8B8A8_UNORM,
             TextureFormat::Rgba8Srgb => Self::R8G8B8A8_SRGB,
         }

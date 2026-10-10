@@ -2,7 +2,7 @@ use heph_gl::{
     renderers::{
         Renderer,
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType, TextureFormat},
-        settings::{GraphicsPipelineOptions, SamplerOptions},
+        settings::{ColorBlending, GraphicsPipelineOptions, SamplerOptions},
     },
     shader::Shader,
 };
@@ -18,6 +18,10 @@ type Vertex = [f32; 8];
 const IMAGE_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_diff_1k.jpg";
 const LATITUDE_SEGMENTS: usize = 32;
 const LONGITUDE_SEGMENTS: usize = 64;
+
+const TEXT: &str = "Rendering Textures!";
+const FONT_PATH: &str = "assets/liberation_sans/LiberationSans-Regular.ttf";
+const FONT_SIZE: f32 = 64.0;
 
 fn sphere_position(radius: f32, u: f32, v: f32) -> [f32; 3] {
     let theta = v * std::f32::consts::PI;
@@ -65,12 +69,14 @@ fn sphere_vertices(radius: f32) -> Vec<Vertex> {
     vertices
 }
 
-fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHandle) {
-    let device = get_best_device(renderer);
-    renderer.set_device(Some(&device), &[]).unwrap();
-    set_best_msaa(renderer);
-
-    // These shaders do not use resources.
+fn render_sphere(
+    renderer: &mut ExampleRenderer,
+    sampler: <ExampleRenderer as Renderer>::Sampler,
+) -> (
+    <ExampleRenderer as Renderer>::GraphicsPipeline,
+    <ExampleRenderer as Renderer>::Texture,
+    <ExampleRenderer as Renderer>::Buffer,
+) {
     let vert_shader =
         Shader::from_file(format!("{}/{}", SHADERS_DIR, "broken_brick_wall_vert.spv")).unwrap();
     let frag_shader =
@@ -81,11 +87,13 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
             &GraphicsPipelineOptions::default(),
         )
         .unwrap();
-    drop(vert_shader);
-    drop(frag_shader);
+
+    let image = image::open(IMAGE_PATH).unwrap().to_rgba8();
+    let width = image.width();
+    let height = image.height();
 
     let vertices = sphere_vertices(0.5);
-    let mut vertex_buffer = renderer
+    let vertex_buffer = renderer
         .create_buffer(
             vertices.len() * std::mem::size_of::<Vertex>(),
             BufferUsage::Vertex,
@@ -95,18 +103,9 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         .write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
         .unwrap();
 
-    let mut sampler = renderer.create_sampler(&SamplerOptions::default()).unwrap();
-
-    let image = image::open(IMAGE_PATH).unwrap().to_rgba8();
-    let width = image.width();
-    let height = image.height();
-
-    renderer.begin_frame().unwrap();
-    renderer.clear(RGB::default()).unwrap();
-
     // Creating a texture creates a GPU command to transfer the raw pixel data from CPU to GPU, thus
     // we must begin a frame first. Once a texture is loaded, we can use it until we destroy it.
-    let mut texture = renderer
+    let texture = renderer
         .create_texture(width, height, TextureFormat::Rgba8Srgb, image.as_raw())
         .unwrap();
 
@@ -133,14 +132,112 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         .record_graphics_command(&pipeline, &[&bindings], vertices.len() as u32, 1)
         .unwrap();
 
+    (pipeline, texture, vertex_buffer)
+}
+
+fn render_text(
+    renderer: &mut ExampleRenderer,
+    sampler: <ExampleRenderer as Renderer>::Sampler,
+) -> (
+    <ExampleRenderer as Renderer>::GraphicsPipeline,
+    <ExampleRenderer as Renderer>::Texture,
+    <ExampleRenderer as Renderer>::Buffer,
+) {
+    let vert_shader = Shader::from_file(format!("{}/{}", SHADERS_DIR, "text_vert.spv")).unwrap();
+    let frag_shader = Shader::from_file(format!("{}/{}", SHADERS_DIR, "text_frag.spv")).unwrap();
+    let pipeline = renderer
+        .create_graphics_pipeline(
+            &[&vert_shader, &frag_shader],
+            &GraphicsPipelineOptions {
+                blending: ColorBlending::Alpha,
+                depth_test: false,
+                depth_write: false,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    let font = heph_gl::text::Font::from_file(FONT_PATH, FONT_SIZE).unwrap();
+    let vertices = font.vertices(TEXT, [330.0, 50.0], [1280.0, 720.0], [1.0, 1.0, 1.0, 1.0]);
+    let vertex_buffer = renderer
+        .create_buffer(
+            vertices.len() * std::mem::size_of::<Vertex>(),
+            BufferUsage::Vertex,
+        )
+        .unwrap();
+    renderer
+        .write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
+        .unwrap();
+
+    // Creating a texture creates a GPU command to transfer the raw pixel data from CPU to GPU, thus
+    // we must begin a frame first. Once a texture is loaded, we can use it until we destroy it.
+    let texture = renderer
+        .create_texture(
+            font.atlas_width(),
+            font.atlas_height(),
+            TextureFormat::R8Unorm,
+            font.atlas_data(),
+        )
+        .unwrap();
+
+    let bindings = [
+        ResourceBinding {
+            binding: 0,
+            resource: ResourceBindingType::Buffer {
+                handle: vertex_buffer,
+                usage: BufferUsage::Vertex,
+                offset: 0,
+                size: vertex_buffer.size(),
+            },
+        },
+        ResourceBinding {
+            binding: 0,
+            resource: ResourceBindingType::Texture { handle: texture },
+        },
+        ResourceBinding {
+            binding: 1,
+            resource: ResourceBindingType::Sampler { handle: sampler },
+        },
+    ];
+    renderer
+        .record_graphics_command(&pipeline, &[&bindings], vertices.len() as u32, 1)
+        .unwrap();
+
+    (pipeline, texture, vertex_buffer)
+}
+
+fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHandle) {
+    let device = get_best_device(renderer);
+    renderer.set_device(Some(&device), &[]).unwrap();
+    set_best_msaa(renderer);
+
+    let mut sampler = renderer.create_sampler(&SamplerOptions::default()).unwrap();
+
+    renderer.begin_frame().unwrap();
+    renderer.clear(RGB::default()).unwrap();
+    let (
+        broken_brick_wall_pipeline,
+        mut broken_brick_wall_texture,
+        mut broken_brick_wall_vertex_buffer,
+    ) = render_sphere(renderer, sampler);
+    let (text_pipeline, mut text_texture, mut text_vertex_buffer) = render_text(renderer, sampler);
     renderer.end_frame().unwrap();
 
     // Cleanup.
     renderer.wait_idle().unwrap();
     renderer.destroy_sampler(&mut sampler).unwrap();
-    renderer.destroy_texture(&mut texture).unwrap();
-    renderer.destroy_buffer(&mut vertex_buffer).unwrap();
-    renderer.destroy_graphics_pipeline(&pipeline).unwrap();
+    renderer
+        .destroy_texture(&mut broken_brick_wall_texture)
+        .unwrap();
+    renderer
+        .destroy_buffer(&mut broken_brick_wall_vertex_buffer)
+        .unwrap();
+    renderer
+        .destroy_graphics_pipeline(&broken_brick_wall_pipeline)
+        .unwrap();
+    renderer.destroy_texture(&mut text_texture).unwrap();
+    renderer.destroy_buffer(&mut text_vertex_buffer).unwrap();
+    renderer.destroy_graphics_pipeline(&text_pipeline).unwrap();
 
     std::thread::sleep(std::time::Duration::from_secs(5));
     std::process::exit(0);

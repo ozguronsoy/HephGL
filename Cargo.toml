@@ -19,6 +19,7 @@ ash-window = "0.13.0"
 vk-mem = "0.5.0"
 const-str = "1.1.0"
 naga = { version = "30", features = ["spv-in", "wgsl-out", "hlsl-out", "msl-out"] }
+fontdue = "0.9.4"
 
 [dev-dependencies]
 bytemuck = "1.25.0"
