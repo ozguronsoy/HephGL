@@ -36,6 +36,7 @@ pub struct DeviceContext {
     pub supports_timeline_semaphore: bool,
     pub supports_dynamic_rendering: bool,
     pub supported_msaa_list: Vec<Msaa>,
+    pub max_sampler_anisotropy: Option<f32>,
 
     /// The bitmasks indicating the availability of thread contexts.
     /// `0` means the context at that index is available, `1` means it is

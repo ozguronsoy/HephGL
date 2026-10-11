@@ -171,6 +171,9 @@ pub struct SamplerOptions {
     pub address_mode_v: SamplerAddressMode,
     /// The addressing mode used for the W texture coordinate.
     pub address_mode_w: SamplerAddressMode,
+    /// The maximum anisotropy level, clamped to the current device's limit. Set this to `None` to
+    /// disable anisotropic filtering. The value must be finite and at least `1.0`.
+    pub max_anisotropy: Option<f32>,
 }
 
 impl Default for TextureOptions {

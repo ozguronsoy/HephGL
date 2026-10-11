@@ -543,11 +543,13 @@ impl Renderer for VulkanRenderer {
         let mut physical_device = None;
         let mut physical_device_api_version = Self::MIN_SUPPORTED_API_VERSION;
         let mut supported_msaa_list = Vec::default();
+        let mut max_sampler_anisotropy = 1.0;
         for pd in physical_devices {
             let properties = unsafe { instance.get_physical_device_properties(pd) };
             if properties.device_id == device.device_id {
                 physical_device = Some(pd);
                 physical_device_api_version = VulkanApiVersion(properties.api_version).into();
+                max_sampler_anisotropy = properties.limits.max_sampler_anisotropy;
 
                 let sample_counts = properties.limits.framebuffer_color_sample_counts
                     & properties.limits.framebuffer_depth_sample_counts;
@@ -592,9 +594,14 @@ impl Renderer for VulkanRenderer {
         if available_features.contains(&Feature::WideLines) {
             physical_features2.features.wide_lines = ash::vk::TRUE;
         }
-        if available_features.contains(&Feature::AnisotropicFiltering) {
-            physical_features2.features.sampler_anisotropy = ash::vk::TRUE;
-        }
+        let max_sampler_anisotropy =
+            match available_features.contains(&Feature::AnisotropicFiltering) {
+                true => {
+                    physical_features2.features.sampler_anisotropy = ash::vk::TRUE;
+                    Some(max_sampler_anisotropy)
+                }
+                false => None,
+            };
 
         let mut supports_timeline_semaphore = false;
         let mut supports_dynamic_rendering = false;
@@ -705,6 +712,7 @@ impl Renderer for VulkanRenderer {
             supports_timeline_semaphore,
             supports_dynamic_rendering,
             supported_msaa_list,
+            max_sampler_anisotropy,
 
             thread_context_masks: Mutex::new(std::array::from_fn(|_| ThreadContextMask::default())),
         });
@@ -1189,6 +1197,22 @@ impl Renderer for VulkanRenderer {
             .device_context
             .as_ref()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
+        let (anisotropy_enable, max_anisotropy) = match options.max_anisotropy {
+            Some(max_anisotropy) => {
+                if !max_anisotropy.is_finite() || max_anisotropy < 1.0 {
+                    return Err(RendererError::invalid_argument(
+                        "Maximum anisotropy must be finite and at least 1.0.",
+                    ));
+                }
+                let Some(max_sampler_anisotropy) = device_context.max_sampler_anisotropy else {
+                    return Err(RendererError::invalid_operation(
+                        "Anisotropic filtering is not enabled for this device.",
+                    ));
+                };
+                (true, max_anisotropy.min(max_sampler_anisotropy))
+            }
+            None => (false, 1.0),
+        };
         let create_info = ash::vk::SamplerCreateInfo::default()
             .mag_filter(options.mag_filter.into())
             .min_filter(options.min_filter.into())
@@ -1198,7 +1222,8 @@ impl Renderer for VulkanRenderer {
             .address_mode_w(options.address_mode_w.into())
             .min_lod(0.0)
             .max_lod(ash::vk::LOD_CLAMP_NONE)
-            .anisotropy_enable(false);
+            .anisotropy_enable(anisotropy_enable)
+            .max_anisotropy(max_anisotropy);
         let sampler = unsafe {
             device_context
                 .logical_device

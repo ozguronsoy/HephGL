@@ -1,8 +1,11 @@
 use heph_gl::{
+    graphics_device::Feature::AnisotropicFiltering,
     renderers::{
         Renderer,
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType, TextureFormat},
-        settings::{ColorBlending, GraphicsPipelineOptions, SamplerOptions, TextureOptions},
+        settings::{
+            ColorBlending, FeatureRequest, GraphicsPipelineOptions, SamplerOptions, TextureOptions,
+        },
     },
     shader::Shader,
 };
@@ -239,10 +242,23 @@ fn render_text(
 
 fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHandle) {
     let device = get_best_device(renderer);
-    renderer.set_device(Some(&device), &[]).unwrap();
+    renderer
+        .set_device(
+            Some(&device),
+            &[FeatureRequest::new(AnisotropicFiltering, false)],
+        )
+        .unwrap();
     set_best_msaa(renderer);
 
-    let mut sampler = renderer.create_sampler(&SamplerOptions::default()).unwrap();
+    let mut sampler = renderer
+        .create_sampler(&SamplerOptions {
+            max_anisotropy: match device.supported_features.contains(&AnisotropicFiltering) {
+                true => Some(16.0),
+                false => None,
+            },
+            ..Default::default()
+        })
+        .unwrap();
 
     renderer.begin_frame().unwrap();
     renderer.clear(RGB::default()).unwrap();
