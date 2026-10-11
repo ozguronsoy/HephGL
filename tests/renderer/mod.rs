@@ -1288,9 +1288,9 @@ where
         const IMAGE_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_diff_1k.jpg";
         const LATITUDE_SEGMENTS: usize = 32;
         const LONGITUDE_SEGMENTS: usize = 64;
-        const TEXT: &str = "Rendering Textures!";
+        const TEXT: &str = r#"ASCII#123 Ελληνικά üğışçö Σωκράτης"#;
         const FONT_PATH: &str = "assets/liberation_sans/LiberationSans-Regular.ttf";
-        const FONT_SIZE: f32 = 64.0;
+        const FONT_SIZE: f32 = 32.0;
 
         let sphere_position = |radius: f32, x_offset: f32, u: f32, v: f32| -> [f32; 3] {
             let theta = v * std::f32::consts::PI;
@@ -1440,7 +1440,8 @@ where
                 },
             ));
 
-            let font = heph_expect_success!(heph_gl::text::Font::from_file(FONT_PATH, FONT_SIZE));
+            let mut font =
+                heph_expect_success!(heph_gl::text::Font::from_file(FONT_PATH, FONT_SIZE, false));
             let vertices =
                 font.vertices(TEXT, [330.0, 50.0], [1280.0, 720.0], [1.0, 1.0, 1.0, 1.0]);
             let vertex_buffer = heph_expect_success!(renderer.create_buffer(
