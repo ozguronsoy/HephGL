@@ -12,7 +12,10 @@ use std::{
 use heph_gl::{
     Version,
     graphics_device::{
-        Feature::{self, ComputeShaders, OpticalFlow, RayTracing, VideoDecoding, VideoEncoding},
+        Feature::{
+            self, AnisotropicFiltering, ComputeShaders, OpticalFlow, RayTracing, VideoDecoding,
+            VideoEncoding,
+        },
         GraphicsDevice,
         Type::{Cpu, DiscreteGpu, IntegratedGpu, VirtualGpu},
     },
@@ -534,6 +537,7 @@ where
                         patch: 0,
                     },
                     vram: 0,
+                    max_sampler_anisotropy: 1.0,
                     supported_features: HashSet::default(),
                 }),
                 &features
@@ -1491,9 +1495,19 @@ where
             (pipeline, texture, vertex_buffer)
         };
 
-        let mut renderer = self.create_renderer_with_any_device(&[]);
+        let mut renderer = self
+            .create_renderer_with_any_device(&[FeatureRequest::new(AnisotropicFiltering, false)]);
+        let Some(device) = renderer.get_device() else {
+            panic!("Failed to get renderer device.");
+        };
 
-        let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
+        let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions {
+            max_anisotropy: match device.supported_features.contains(&AnisotropicFiltering) {
+                true => Some(device.max_sampler_anisotropy),
+                false => None,
+            },
+            ..Default::default()
+        }));
 
         heph_expect_success!(renderer.begin_frame());
         heph_expect_success!(renderer.clear(RGB::default()));
