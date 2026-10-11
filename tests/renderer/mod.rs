@@ -1441,7 +1441,7 @@ where
             ));
 
             let mut font =
-                heph_expect_success!(heph_gl::text::Font::from_file(FONT_PATH, FONT_SIZE));
+                heph_expect_success!(heph_gl::text::Font::from_file(FONT_PATH, FONT_SIZE, false));
             let vertices =
                 font.vertices(TEXT, [330.0, 50.0], [1280.0, 720.0], [1.0, 1.0, 1.0, 1.0]);
             let vertex_buffer = heph_expect_success!(renderer.create_buffer(

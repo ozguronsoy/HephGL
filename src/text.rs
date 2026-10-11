@@ -53,10 +53,14 @@ impl Font {
     const PADDING: usize = 1;
 
     /// Loads a font from a `.tff` file.
-    pub fn from_file<P: AsRef<Path>>(path: P, size: f32) -> Result<Self, TextError> {
+    pub fn from_file<P: AsRef<Path>>(
+        path: P,
+        size: f32,
+        load_all_chars: bool,
+    ) -> Result<Self, TextError> {
         let data = std::fs::read(path)?;
         let font = fontdue::Font::from_bytes(data, FontSettings::default())?;
-        Self::new(font, size)
+        Self::new(font, size, load_all_chars)
     }
 
     /// Gets the width of the glyph atlas in pixels.
@@ -131,7 +135,7 @@ impl Font {
         vertices
     }
 
-    fn new(font: fontdue::Font, size: f32) -> Result<Self, TextError> {
+    fn new(font: fontdue::Font, size: f32, load_all_chars: bool) -> Result<Self, TextError> {
         let mut new_font = Self {
             font,
             size,
@@ -146,8 +150,17 @@ impl Font {
         let mut row_height = 0;
         // Rasterize only ASCII characters since they are the most commonly used. Other unicode
         // characters will be rasterized lazily.
-        let rasterized_glyphs =
-            new_font.create_rasterized_glyphs('\x20'..='\x7E', &mut x, &mut y, &mut row_height);
+        let rasterized_glyphs = match load_all_chars {
+            true => new_font.create_rasterized_glyphs(
+                new_font.font.chars().keys().copied(),
+                &mut x,
+                &mut y,
+                &mut row_height,
+            ),
+            false => {
+                new_font.create_rasterized_glyphs('\x20'..='\x7E', &mut x, &mut y, &mut row_height)
+            }
+        };
 
         let used_height = y + row_height + Self::PADDING;
         new_font.atlas_height = used_height.next_power_of_two() as u32;
