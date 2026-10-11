@@ -75,6 +75,9 @@ pub struct GraphicsDevice {
     pub driver_version: Version,
     /// The total amount of dedicated VRAM in bytes.
     pub vram: u64,
+    /// The maximum supported sampler anisotropy level, or `None` if anisotropic filtering is not
+    /// supported.
+    pub max_sampler_anisotropy: Option<f32>,
     /// The set of features supported by this device.
     pub supported_features: HashSet<Feature>,
 }
@@ -206,6 +209,7 @@ mod tests {
                 patch: 0,
             },
             vram: 0,
+            max_sampler_anisotropy: None,
             supported_features: HashSet::default(),
         };
         assert_eq!(dev.vendor(), Vendor::Other);
@@ -292,6 +296,7 @@ mod tests {
                 patch: 0,
             },
             vram: 1024 * 1024 * 1024,
+            max_sampler_anisotropy: None,
             supported_features: HashSet::default(),
         };
 

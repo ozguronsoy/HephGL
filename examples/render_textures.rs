@@ -252,10 +252,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 
     let mut sampler = renderer
         .create_sampler(&SamplerOptions {
-            max_anisotropy: match device.supported_features.contains(&AnisotropicFiltering) {
-                true => Some(16.0),
-                false => None,
-            },
+            max_anisotropy: device.max_sampler_anisotropy,
             ..Default::default()
         })
         .unwrap();

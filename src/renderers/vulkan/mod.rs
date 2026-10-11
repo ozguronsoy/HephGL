@@ -374,9 +374,15 @@ impl Renderer for VulkanRenderer {
             if physical_features.wide_lines == ash::vk::TRUE {
                 supported_features.insert(crate::graphics_device::Feature::WideLines);
             }
-            if physical_features.sampler_anisotropy == ash::vk::TRUE {
-                supported_features.insert(crate::graphics_device::Feature::AnisotropicFiltering);
-            }
+            let max_sampler_anisotropy = match physical_features.sampler_anisotropy == ash::vk::TRUE
+            {
+                true => {
+                    supported_features
+                        .insert(crate::graphics_device::Feature::AnisotropicFiltering);
+                    Some(properties.limits.max_sampler_anisotropy)
+                }
+                false => None,
+            };
             for ext in extension_properties {
                 let name = unsafe { std::ffi::CStr::from_ptr(ext.extension_name.as_ptr()) };
                 if name.to_string_lossy() == "VK_KHR_ray_tracing_pipeline" {
@@ -417,6 +423,7 @@ impl Renderer for VulkanRenderer {
                 api_version: device_api_version,
                 driver_version: device_driver_version,
                 vram: device_vram,
+                max_sampler_anisotropy,
                 supported_features,
             });
         }
@@ -543,13 +550,11 @@ impl Renderer for VulkanRenderer {
         let mut physical_device = None;
         let mut physical_device_api_version = Self::MIN_SUPPORTED_API_VERSION;
         let mut supported_msaa_list = Vec::default();
-        let mut max_sampler_anisotropy = 1.0;
         for pd in physical_devices {
             let properties = unsafe { instance.get_physical_device_properties(pd) };
             if properties.device_id == device.device_id {
                 physical_device = Some(pd);
                 physical_device_api_version = VulkanApiVersion(properties.api_version).into();
-                max_sampler_anisotropy = properties.limits.max_sampler_anisotropy;
 
                 let sample_counts = properties.limits.framebuffer_color_sample_counts
                     & properties.limits.framebuffer_depth_sample_counts;
@@ -594,14 +599,9 @@ impl Renderer for VulkanRenderer {
         if available_features.contains(&Feature::WideLines) {
             physical_features2.features.wide_lines = ash::vk::TRUE;
         }
-        let max_sampler_anisotropy =
-            match available_features.contains(&Feature::AnisotropicFiltering) {
-                true => {
-                    physical_features2.features.sampler_anisotropy = ash::vk::TRUE;
-                    Some(max_sampler_anisotropy)
-                }
-                false => None,
-            };
+        if available_features.contains(&Feature::AnisotropicFiltering) {
+            physical_features2.features.sampler_anisotropy = ash::vk::TRUE;
+        }
 
         let mut supports_timeline_semaphore = false;
         let mut supports_dynamic_rendering = false;
@@ -712,7 +712,6 @@ impl Renderer for VulkanRenderer {
             supports_timeline_semaphore,
             supports_dynamic_rendering,
             supported_msaa_list,
-            max_sampler_anisotropy,
 
             thread_context_masks: Mutex::new(std::array::from_fn(|_| ThreadContextMask::default())),
         });
@@ -1204,7 +1203,9 @@ impl Renderer for VulkanRenderer {
                         "Maximum anisotropy must be finite and at least 1.0.",
                     ));
                 }
-                let Some(max_sampler_anisotropy) = device_context.max_sampler_anisotropy else {
+                let Some(max_sampler_anisotropy) =
+                    device_context.graphics_device.max_sampler_anisotropy
+                else {
                     return Err(RendererError::invalid_operation(
                         "Anisotropic filtering is not enabled for this device.",
                     ));
