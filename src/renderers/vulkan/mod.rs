@@ -374,15 +374,9 @@ impl Renderer for VulkanRenderer {
             if physical_features.wide_lines == ash::vk::TRUE {
                 supported_features.insert(crate::graphics_device::Feature::WideLines);
             }
-            let max_sampler_anisotropy = match physical_features.sampler_anisotropy == ash::vk::TRUE
-            {
-                true => {
-                    supported_features
-                        .insert(crate::graphics_device::Feature::AnisotropicFiltering);
-                    Some(properties.limits.max_sampler_anisotropy)
-                }
-                false => None,
-            };
+            if physical_features.sampler_anisotropy == ash::vk::TRUE {
+                supported_features.insert(crate::graphics_device::Feature::AnisotropicFiltering);
+            }
             for ext in extension_properties {
                 let name = unsafe { std::ffi::CStr::from_ptr(ext.extension_name.as_ptr()) };
                 if name.to_string_lossy() == "VK_KHR_ray_tracing_pipeline" {
@@ -423,7 +417,7 @@ impl Renderer for VulkanRenderer {
                 api_version: device_api_version,
                 driver_version: device_driver_version,
                 vram: device_vram,
-                max_sampler_anisotropy,
+                max_sampler_anisotropy: properties.limits.max_sampler_anisotropy,
                 supported_features,
             });
         }
@@ -1203,14 +1197,19 @@ impl Renderer for VulkanRenderer {
                         "Maximum anisotropy must be finite and at least 1.0.",
                     ));
                 }
-                let Some(max_sampler_anisotropy) =
-                    device_context.graphics_device.max_sampler_anisotropy
-                else {
+                if !device_context
+                    .graphics_device
+                    .supported_features
+                    .contains(&Feature::AnisotropicFiltering)
+                {
                     return Err(RendererError::invalid_operation(
-                        "Anisotropic filtering is not enabled for this device.",
+                        "Anisotropic filtering is not supported by this device.",
                     ));
-                };
-                (true, max_anisotropy.min(max_sampler_anisotropy))
+                }
+                (
+                    true,
+                    max_anisotropy.min(device_context.graphics_device.max_sampler_anisotropy),
+                )
             }
             None => (false, 1.0),
         };

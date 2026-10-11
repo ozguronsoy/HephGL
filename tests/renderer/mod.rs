@@ -537,7 +537,7 @@ where
                         patch: 0,
                     },
                     vram: 0,
-                    max_sampler_anisotropy: None,
+                    max_sampler_anisotropy: 1.0,
                     supported_features: HashSet::default(),
                 }),
                 &features
@@ -1502,7 +1502,10 @@ where
         };
 
         let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions {
-            max_anisotropy: device.max_sampler_anisotropy,
+            max_anisotropy: match device.supported_features.contains(&AnisotropicFiltering) {
+                true => Some(device.max_sampler_anisotropy),
+                false => None,
+            },
             ..Default::default()
         }));
 
