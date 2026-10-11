@@ -185,7 +185,7 @@ fn render_text(
         )
         .unwrap();
 
-    let font = heph_gl::text::Font::from_file(FONT_PATH, FONT_SIZE).unwrap();
+    let mut font = heph_gl::text::Font::from_file(FONT_PATH, FONT_SIZE).unwrap();
     let vertices = font.vertices(TEXT, [330.0, 50.0], [1280.0, 720.0], [1.0, 1.0, 1.0, 1.0]);
     let vertex_buffer = renderer
         .create_buffer(
