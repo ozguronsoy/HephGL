@@ -82,7 +82,7 @@ impl Font {
         viewport_size: [f32; 2],
         color: [f32; 4],
     ) -> Vec<TextVertex> {
-        self.extend_atlas(text);
+        self.expand_atlas(text);
 
         let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
         layout.reset(&LayoutSettings {
@@ -203,7 +203,7 @@ impl Font {
     }
 
     /// Adds missing characters to the glyph atlas.
-    fn extend_atlas(&mut self, text: &str) {
+    fn expand_atlas(&mut self, text: &str) {
         let last_glyph = self.glyphs.values().last().unwrap();
         let mut x = (last_glyph.uv_max[0] * self.atlas_width as f32) as usize + Self::PADDING;
         let mut y = (last_glyph.uv_min[1] * self.atlas_height as f32) as usize;
