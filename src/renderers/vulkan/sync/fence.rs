@@ -43,12 +43,13 @@ impl VulkanFrameSync for FenceFrameSync {
     }
     fn wait(&mut self, device: &ash::Device, frame_index: usize) -> RendererResult<()> {
         // No need to check if `frame_index` is out of bounds, `VulkanRenderer` should guarantee it.
-        let (fence, in_flight) = self.fences[frame_index];
-        if in_flight {
+        let (fence, in_flight) = &mut self.fences[frame_index];
+        if *in_flight {
             unsafe {
-                device.wait_for_fences(&[fence], true, Self::TIMEOUT_NS)?;
-                device.reset_fences(&[fence])?;
+                device.wait_for_fences(&[*fence], true, Self::TIMEOUT_NS)?;
+                device.reset_fences(&[*fence])?;
             }
+            *in_flight = false;
         }
         Ok(())
     }

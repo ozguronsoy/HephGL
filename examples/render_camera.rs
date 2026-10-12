@@ -96,9 +96,15 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         .unwrap();
 
     // The shader reads three mat4 values: model, view-projection, and normal.
-    let mut uniform_buffer = renderer
-        .create_buffer(std::mem::size_of::<[[f32; 16]; 3]>(), BufferUsage::Uniform)
-        .unwrap();
+    // Keep one buffer per frame in flight so updates do not overwrite data the GPU still reads.
+    let mut uniform_buffers = Vec::with_capacity(settings.frames_in_flight as usize);
+    for _ in 0..settings.frames_in_flight {
+        uniform_buffers.push(
+            renderer
+                .create_buffer(std::mem::size_of::<[[f32; 16]; 3]>(), BufferUsage::Uniform)
+                .unwrap(),
+        );
+    }
 
     let image = image::open(IMAGE_PATH).unwrap().to_rgba8();
     let width = image.width();
@@ -129,35 +135,6 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         .unwrap();
     renderer.end_frame().unwrap();
 
-    let bindings = [
-        ResourceBinding {
-            binding: 0,
-            resource: ResourceBindingType::Buffer {
-                handle: vertex_buffer,
-                usage: BufferUsage::Vertex,
-                offset: 0,
-                size: vertex_buffer.size(),
-            },
-        },
-        ResourceBinding {
-            binding: 0,
-            resource: ResourceBindingType::Texture { handle: texture },
-        },
-        ResourceBinding {
-            binding: 1,
-            resource: ResourceBindingType::Sampler { handle: sampler },
-        },
-        ResourceBinding {
-            binding: 2,
-            resource: ResourceBindingType::Buffer {
-                handle: uniform_buffer,
-                usage: BufferUsage::Uniform,
-                offset: 0,
-                size: uniform_buffer.size(),
-            },
-        },
-    ];
-
     let mut transform = Transform::default();
     let camera = Camera::new(Projection::Perspective {
         vertical_fov: std::f32::consts::FRAC_PI_3,
@@ -166,6 +143,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         far: 100.0,
     });
 
+    let mut frame_index = 0;
     let start = Instant::now();
     while start.elapsed() < ANIMATION_DURATION {
         renderer.begin_frame().unwrap();
@@ -189,14 +167,45 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
             camera.view_projection_matrix().unwrap().to_cols_array(),
             Mat4::from_mat3(transform.normal_matrix().unwrap()).to_cols_array(),
         ];
+        let uniform_buffer = uniform_buffers[frame_index];
         renderer
             .write_buffer(&uniform_buffer, bytemuck::cast_slice(&matrices))
             .unwrap();
+
+        let bindings = [
+            ResourceBinding {
+                binding: 0,
+                resource: ResourceBindingType::Buffer {
+                    handle: vertex_buffer,
+                    usage: BufferUsage::Vertex,
+                    offset: 0,
+                    size: vertex_buffer.size(),
+                },
+            },
+            ResourceBinding {
+                binding: 0,
+                resource: ResourceBindingType::Texture { handle: texture },
+            },
+            ResourceBinding {
+                binding: 1,
+                resource: ResourceBindingType::Sampler { handle: sampler },
+            },
+            ResourceBinding {
+                binding: 2,
+                resource: ResourceBindingType::Buffer {
+                    handle: uniform_buffer,
+                    usage: BufferUsage::Uniform,
+                    offset: 0,
+                    size: uniform_buffer.size(),
+                },
+            },
+        ];
         renderer
             .record_graphics_command(&pipeline, &[&bindings], vertices.len() as u32, 1)
             .unwrap();
 
         renderer.end_frame().unwrap();
+        frame_index = (frame_index + 1) % uniform_buffers.len();
     }
 
     // Cleanup.
@@ -204,7 +213,9 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     renderer.destroy_sampler(&mut sampler).unwrap();
     renderer.destroy_texture(&mut texture).unwrap();
     renderer.destroy_buffer(&mut vertex_buffer).unwrap();
-    renderer.destroy_buffer(&mut uniform_buffer).unwrap();
+    for uniform_buffer in &mut uniform_buffers {
+        renderer.destroy_buffer(uniform_buffer).unwrap();
+    }
     renderer.destroy_graphics_pipeline(&pipeline).unwrap();
 
     std::process::exit(0);
