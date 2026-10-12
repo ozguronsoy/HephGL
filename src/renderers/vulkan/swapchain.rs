@@ -146,7 +146,7 @@ impl VulkanRenderer {
                 .pre_transform(surface_capabilities.current_transform)
                 .composite_alpha(CompositeAlphaFlagsKHR::OPAQUE)
                 .present_mode(
-                    if self.settings.vsync && present_modes.contains(&PresentModeKHR::IMMEDIATE) {
+                    if !self.settings.vsync && present_modes.contains(&PresentModeKHR::IMMEDIATE) {
                         PresentModeKHR::IMMEDIATE
                     } else {
                         PresentModeKHR::FIFO
