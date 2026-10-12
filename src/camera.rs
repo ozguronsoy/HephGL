@@ -234,3 +234,420 @@ impl Default for Projection {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_and_default() {
+        let projection = Projection::Orthographic {
+            left: -2.0,
+            right: 2.0,
+            bottom: -1.0,
+            top: 1.0,
+            near: -5.0,
+            far: 5.0,
+        };
+        let camera = Camera::new(projection);
+        assert_eq!(camera.position, Vec3::ZERO);
+        assert_eq!(camera.rotation, Quat::IDENTITY);
+        assert_eq!(camera.projection, projection);
+        assert_eq!(camera.view_matrix().unwrap(), Mat4::IDENTITY);
+        assert_eq!(
+            camera.projection_matrix().unwrap(),
+            projection.matrix().unwrap()
+        );
+
+        let camera = Camera::default();
+        assert_eq!(camera, Camera::new(Projection::default()));
+        assert_eq!(
+            camera.projection,
+            Projection::Perspective {
+                vertical_fov: std::f32::consts::FRAC_PI_3,
+                aspect_ratio: 1.0,
+                near: 0.1,
+                far: 1000.0,
+            }
+        );
+        assert_eq!(camera.view_matrix().unwrap(), Mat4::IDENTITY);
+    }
+
+    #[test]
+    fn test_directions() {
+        for (rotation, forward, right, up) in [
+            (Quat::IDENTITY, Vec3::Z, Vec3::X, Vec3::Y),
+            (
+                Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
+                Vec3::X,
+                -Vec3::Z,
+                Vec3::Y,
+            ),
+            (
+                Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
+                -Vec3::Y,
+                Vec3::X,
+                Vec3::Z,
+            ),
+        ] {
+            let camera = Camera {
+                position: Vec3::new(3.0, -2.0, 5.0),
+                rotation,
+                ..Camera::default()
+            };
+            assert!(camera.forward().unwrap().abs_diff_eq(forward, 1e-6));
+            assert!(camera.right().unwrap().abs_diff_eq(right, 1e-6));
+            assert!(camera.up().unwrap().abs_diff_eq(up, 1e-6));
+        }
+    }
+
+    #[test]
+    fn test_look_at_and_view_matrix() {
+        let mut camera = Camera {
+            position: Vec3::new(3.0, -2.0, 5.0),
+            ..Camera::default()
+        };
+        let target = Vec3::new(7.0, 1.0, 5.0);
+        camera.look_at(&target, &Vec3::new(0.0, 2.0, 0.0)).unwrap();
+
+        assert!(camera.rotation.is_normalized());
+        assert!(
+            camera
+                .forward()
+                .unwrap()
+                .abs_diff_eq(Vec3::new(0.8, 0.6, 0.0), 1e-6)
+        );
+        assert!(camera.right().unwrap().abs_diff_eq(-Vec3::Z, 1e-6));
+        assert!(
+            camera
+                .up()
+                .unwrap()
+                .abs_diff_eq(Vec3::new(-0.6, 0.8, 0.0), 1e-6)
+        );
+
+        let view = camera.view_matrix().unwrap();
+        assert!(
+            view.transform_point3(camera.position)
+                .abs_diff_eq(Vec3::ZERO, 1e-5)
+        );
+        assert!(
+            view.transform_point3(target)
+                .abs_diff_eq(Vec3::new(0.0, 0.0, 5.0), 1e-5)
+        );
+        assert!(
+            view.transform_point3(Vec3::new(3.0, -2.0, 3.0))
+                .abs_diff_eq(Vec3::new(2.0, 0.0, 0.0), 1e-5)
+        );
+
+        let pose = Mat4::from_rotation_translation(camera.rotation, camera.position);
+        assert!((view * pose).abs_diff_eq(Mat4::IDENTITY, 1e-5));
+        assert!((pose * view).abs_diff_eq(Mat4::IDENTITY, 1e-5));
+    }
+
+    #[test]
+    fn test_look_at_invalid_directions() {
+        let mut camera = Camera {
+            rotation: Quat::from_rotation_y(0.5),
+            ..Camera::default()
+        };
+        let original = camera;
+        for (target, up) in [
+            (Vec3::ZERO, Vec3::Y),
+            (Vec3::new(f32::NAN, 0.0, 1.0), Vec3::Y),
+            (Vec3::new(0.0, f32::INFINITY, 1.0), Vec3::Y),
+            (Vec3::new(0.0, 0.0, f32::MIN_POSITIVE), Vec3::Y),
+            (Vec3::Z, Vec3::ZERO),
+            (Vec3::Z, Vec3::new(0.0, f32::NAN, 0.0)),
+            (Vec3::Z, Vec3::new(f32::NEG_INFINITY, 1.0, 0.0)),
+            (Vec3::Z, Vec3::Z),
+            (Vec3::Z, -Vec3::Z),
+        ] {
+            assert!(matches!(
+                camera.look_at(&target, &up),
+                Err(MathError::InvalidArgument(_))
+            ));
+            assert_eq!(camera, original);
+        }
+    }
+
+    #[test]
+    fn test_perspective_matrix() {
+        let matrix = Projection::Perspective {
+            vertical_fov: std::f32::consts::FRAC_PI_2,
+            aspect_ratio: 2.0,
+            near: 1.0,
+            far: 11.0,
+        }
+        .matrix()
+        .unwrap();
+
+        assert!(
+            matrix
+                .project_point3(Vec3::new(2.0, 1.0, 1.0))
+                .abs_diff_eq(Vec3::new(1.0, -1.0, 0.0), 1e-6)
+        );
+        assert!(
+            matrix
+                .project_point3(Vec3::new(0.0, 0.0, 11.0))
+                .abs_diff_eq(Vec3::Z, 1e-6)
+        );
+        assert!(
+            matrix
+                .project_point3(Vec3::new(1.0, 1.0, 2.0))
+                .abs_diff_eq(Vec3::new(0.25, -0.5, 0.55), 1e-6)
+        );
+        assert!(
+            matrix
+                .project_point3(Vec3::new(1.0, 1.0, 4.0))
+                .abs_diff_eq(Vec3::new(0.125, -0.25, 0.825), 1e-6)
+        );
+    }
+
+    #[test]
+    fn test_orthographic_matrix() {
+        let matrix = Projection::Orthographic {
+            left: -2.0,
+            right: 6.0,
+            bottom: -3.0,
+            top: 5.0,
+            near: -1.0,
+            far: 9.0,
+        }
+        .matrix()
+        .unwrap();
+
+        assert!(
+            matrix
+                .project_point3(Vec3::new(-2.0, -3.0, -1.0))
+                .abs_diff_eq(Vec3::new(-1.0, 1.0, 0.0), 1e-6)
+        );
+        assert!(
+            matrix
+                .project_point3(Vec3::new(6.0, 5.0, 9.0))
+                .abs_diff_eq(Vec3::new(1.0, -1.0, 1.0), 1e-6)
+        );
+        assert!(
+            matrix
+                .project_point3(Vec3::new(2.0, 1.0, 4.0))
+                .abs_diff_eq(Vec3::new(0.0, 0.0, 0.5), 1e-6)
+        );
+        assert_eq!(
+            matrix.project_point3(Vec3::new(4.0, 3.0, -1.0)).truncate(),
+            matrix.project_point3(Vec3::new(4.0, 3.0, 9.0)).truncate(),
+        );
+    }
+
+    #[test]
+    fn test_view_projection_matrix() {
+        let camera = Camera {
+            position: Vec3::new(3.0, 2.0, -1.0),
+            rotation: Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
+            projection: Projection::Perspective {
+                vertical_fov: std::f32::consts::FRAC_PI_2,
+                aspect_ratio: 2.0,
+                near: 1.0,
+                far: 11.0,
+            },
+        };
+        let matrix = camera.view_projection_matrix().unwrap();
+        assert!(
+            matrix
+                .project_point3(Vec3::new(7.0, 3.0, -3.0))
+                .abs_diff_eq(Vec3::new(0.25, -0.25, 0.825), 1e-6)
+        );
+    }
+
+    #[test]
+    fn test_invalid_position() {
+        for position in [
+            Vec3::new(f32::NAN, 0.0, 0.0),
+            Vec3::new(0.0, f32::INFINITY, 0.0),
+            Vec3::new(0.0, 0.0, f32::NEG_INFINITY),
+        ] {
+            let camera = Camera {
+                position,
+                ..Camera::default()
+            };
+            assert!(matches!(
+                camera.view_matrix(),
+                Err(MathError::InvalidArgument(_))
+            ));
+            assert!(matches!(
+                camera.view_projection_matrix(),
+                Err(MathError::InvalidArgument(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn test_invalid_rotation() {
+        for rotation in [
+            Quat::from_xyzw(0.0, 0.0, 0.0, 0.0),
+            Quat::from_xyzw(0.0, 0.0, 0.0, 2.0),
+            Quat::from_xyzw(f32::NAN, 0.0, 0.0, 1.0),
+            Quat::from_xyzw(0.0, f32::INFINITY, 0.0, 1.0),
+        ] {
+            let camera = Camera {
+                rotation,
+                ..Camera::default()
+            };
+            assert!(matches!(
+                camera.view_matrix(),
+                Err(MathError::InvalidArgument(_))
+            ));
+            assert!(matches!(
+                camera.view_projection_matrix(),
+                Err(MathError::InvalidArgument(_))
+            ));
+            assert!(matches!(
+                camera.forward(),
+                Err(MathError::InvalidArgument(_))
+            ));
+            assert!(matches!(camera.right(), Err(MathError::InvalidArgument(_))));
+            assert!(matches!(camera.up(), Err(MathError::InvalidArgument(_))));
+        }
+    }
+
+    #[test]
+    fn test_invalid_perspective_parameters() {
+        let valid = [std::f32::consts::FRAC_PI_2, 2.0, 1.0, 11.0];
+        let check_invalid = |[vertical_fov, aspect_ratio, near, far]: [f32; 4]| {
+            let projection = Projection::Perspective {
+                vertical_fov,
+                aspect_ratio,
+                near,
+                far,
+            };
+            assert!(matches!(
+                projection.matrix(),
+                Err(MathError::InvalidArgument(_))
+            ));
+            let camera = Camera::new(projection);
+            assert!(matches!(
+                camera.projection_matrix(),
+                Err(MathError::InvalidArgument(_))
+            ));
+            assert!(matches!(
+                camera.view_projection_matrix(),
+                Err(MathError::InvalidArgument(_))
+            ));
+        };
+
+        for (index, value) in [
+            (0, 0.0),
+            (0, -1.0),
+            (0, std::f32::consts::PI),
+            (0, 4.0),
+            (1, 0.0),
+            (1, -1.0),
+            (2, 0.0),
+            (2, -1.0),
+            (2, 11.0),
+            (2, 12.0),
+            (3, 1.0),
+            (3, 0.5),
+        ] {
+            let mut parameters = valid;
+            parameters[index] = value;
+            check_invalid(parameters);
+        }
+        for index in 0..valid.len() {
+            for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+                let mut parameters = valid;
+                parameters[index] = value;
+                check_invalid(parameters);
+            }
+        }
+    }
+
+    #[test]
+    fn test_invalid_orthographic_parameters() {
+        let valid = [-2.0, 6.0, -3.0, 5.0, -1.0, 9.0];
+        let check_invalid = |[left, right, bottom, top, near, far]: [f32; 6]| {
+            let projection = Projection::Orthographic {
+                left,
+                right,
+                bottom,
+                top,
+                near,
+                far,
+            };
+            assert!(matches!(
+                projection.matrix(),
+                Err(MathError::InvalidArgument(_))
+            ));
+        };
+
+        for (index, value) in [
+            (0, 6.0),
+            (0, 7.0),
+            (1, -2.0),
+            (1, -3.0),
+            (2, 5.0),
+            (2, 6.0),
+            (3, -3.0),
+            (3, -4.0),
+            (4, 9.0),
+            (4, 10.0),
+            (5, -1.0),
+            (5, -2.0),
+        ] {
+            let mut parameters = valid;
+            parameters[index] = value;
+            check_invalid(parameters);
+        }
+        for index in 0..valid.len() {
+            for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+                let mut parameters = valid;
+                parameters[index] = value;
+                check_invalid(parameters);
+            }
+        }
+    }
+
+    #[test]
+    fn test_matrix_overflow() {
+        let camera = Camera {
+            position: Vec3::new(f32::MAX, 0.0, f32::MAX),
+            rotation: Quat::from_rotation_y(std::f32::consts::FRAC_PI_4),
+            ..Camera::default()
+        };
+        assert!(matches!(
+            camera.view_matrix(),
+            Err(MathError::InvalidArgument(_))
+        ));
+
+        let camera = Camera {
+            position: Vec3::new(0.0, f32::MAX, 0.0),
+            ..Camera::default()
+        };
+        assert!(camera.view_matrix().unwrap().is_finite());
+        assert!(camera.projection_matrix().unwrap().is_finite());
+        assert!(matches!(
+            camera.view_projection_matrix(),
+            Err(MathError::InvalidArgument(_))
+        ));
+
+        for projection in [
+            Projection::Perspective {
+                vertical_fov: f32::MIN_POSITIVE,
+                aspect_ratio: 0.25,
+                near: 1.0,
+                far: 11.0,
+            },
+            Projection::Orthographic {
+                left: 0.0,
+                right: f32::MIN_POSITIVE * 0.25,
+                bottom: -1.0,
+                top: 1.0,
+                near: 0.0,
+                far: 1.0,
+            },
+        ] {
+            assert!(matches!(
+                projection.matrix(),
+                Err(MathError::InvalidArgument(_))
+            ));
+        }
+    }
+}
