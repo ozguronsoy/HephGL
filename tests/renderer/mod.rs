@@ -33,6 +33,7 @@ use heph_gl::{
         },
     },
     shader::Shader,
+    text::{Font, TextType, TextVertex},
     transform::Transform,
 };
 use libtest_mimic::{Arguments, Trial};
@@ -1450,12 +1451,17 @@ where
                 },
             ));
 
-            let mut font =
-                heph_expect_success!(heph_gl::text::Font::from_file(FONT_PATH, FONT_SIZE, false));
-            let vertices =
-                font.vertices(TEXT, [330.0, 50.0], [1280.0, 720.0], [1.0, 1.0, 1.0, 1.0]);
+            let mut font = heph_expect_success!(Font::from_file(FONT_PATH, FONT_SIZE, false));
+            let vertices = heph_expect_success!(font.vertices(
+                TEXT,
+                &Vec3::new(330.0, 50.0, 0.0),
+                [1.0, 1.0, 1.0, 1.0],
+                TextType::Screen {
+                    viewport_size: [1280.0, 720.0],
+                },
+            ));
             let vertex_buffer = heph_expect_success!(renderer.create_buffer(
-                vertices.len() * std::mem::size_of::<Vertex>(),
+                vertices.len() * std::mem::size_of::<TextVertex>(),
                 BufferUsage::Vertex,
             ));
             heph_expect_success!(

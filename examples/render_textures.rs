@@ -1,5 +1,6 @@
 use heph_gl::{
     graphics_device::Feature::AnisotropicFiltering,
+    math::Vec3,
     renderers::{
         Renderer,
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType, TextureFormat},
@@ -8,6 +9,7 @@ use heph_gl::{
         },
     },
     shader::Shader,
+    text::{Font, TextType, TextVertex},
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
@@ -16,6 +18,7 @@ use crate::utils::{ExampleRenderer, SHADERS_DIR, get_best_device, run_example, s
 
 mod utils;
 
+// [position.x, position.y, position.z, normal.x, normal.y, normal.z, tex_coord.u, tex_coord.v]
 type Vertex = [f32; 8];
 
 const IMAGE_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_diff_1k.jpg";
@@ -26,6 +29,8 @@ const TEXT: &str = "Rendering Textures!";
 const FONT_PATH: &str = "assets/liberation_sans/LiberationSans-Regular.ttf";
 const FONT_SIZE: f32 = 64.0;
 
+// Calculates the position of a point on a sphere given its radius, x offset, and spherical
+// coordinates (u, v).
 fn sphere_position(radius: f32, x_offset: f32, u: f32, v: f32) -> [f32; 3] {
     let theta = v * std::f32::consts::PI;
     let phi = u * std::f32::consts::TAU;
@@ -37,6 +42,9 @@ fn sphere_position(radius: f32, x_offset: f32, u: f32, v: f32) -> [f32; 3] {
     ]
 }
 
+// Calculates the sphere vertices for a given radius and x offset. The sphere is generated using
+// latitude and longitude segments, creating a grid of vertices that form the surface of the sphere.
+// Each vertex includes position, normal, and texture coordinates.
 fn sphere_vertices(radius: f32, x_offset: f32) -> Vec<Vertex> {
     let mut vertices = Vec::with_capacity(LATITUDE_SEGMENTS * LONGITUDE_SEGMENTS * 6);
 
@@ -188,11 +196,20 @@ fn render_text(
         )
         .unwrap();
 
-    let mut font = heph_gl::text::Font::from_file(FONT_PATH, FONT_SIZE, false).unwrap();
-    let vertices = font.vertices(TEXT, [330.0, 50.0], [1280.0, 720.0], [1.0, 1.0, 1.0, 1.0]);
+    let mut font = Font::from_file(FONT_PATH, FONT_SIZE, false).unwrap();
+    let vertices = font
+        .vertices(
+            TEXT,
+            &Vec3::new(330.0, 50.0, 0.0),
+            [1.0, 1.0, 1.0, 1.0],
+            TextType::Screen {
+                viewport_size: [1280.0, 720.0],
+            },
+        )
+        .unwrap();
     let vertex_buffer = renderer
         .create_buffer(
-            vertices.len() * std::mem::size_of::<Vertex>(),
+            vertices.len() * std::mem::size_of::<TextVertex>(),
             BufferUsage::Vertex,
         )
         .unwrap();
