@@ -26,6 +26,8 @@ const LATITUDE_SEGMENTS: usize = 32;
 const LONGITUDE_SEGMENTS: usize = 64;
 const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 
+// Calculates the position of a point on a sphere given its radius, x offset, and spherical
+// coordinates (u, v).
 fn sphere_vertex(u: f32, v: f32) -> Vertex {
     let theta = v * std::f32::consts::PI;
     let phi = u * std::f32::consts::TAU;
@@ -37,6 +39,9 @@ fn sphere_vertex(u: f32, v: f32) -> Vertex {
     [x, y, z, x, y, z, u, v]
 }
 
+// Calculates the sphere vertices for a given radius and x offset. The sphere is generated using
+// latitude and longitude segments, creating a grid of vertices that form the surface of the sphere.
+// Each vertex includes position, normal, and texture coordinates.
 fn sphere_vertices() -> Vec<Vertex> {
     let mut vertices = Vec::with_capacity(LATITUDE_SEGMENTS * LONGITUDE_SEGMENTS * 6);
     for y in 0..LATITUDE_SEGMENTS {
