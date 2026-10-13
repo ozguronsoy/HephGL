@@ -22,19 +22,19 @@ pub type TextVertex = [f32; 12];
 pub enum TextType {
     /// Generates textured quads in clip space from a position in pixels, with positive Y down.
     Screen {
-        /// The viewport width and height in pixels. Both values must be finite and positive.
+        /// The viewport width and height in pixels. Both values must be positive.
         viewport_size: [f32; 2],
     },
     /// Generates textured quads in local space, with positive X right and positive Y up.
     World {
-        /// The number of world units per font pixel. Must be finite and positive.
+        /// The number of world units per font pixel. Must be positive.
         scale: f32,
     },
     /// Generates solid glyphs with front faces, back faces, and side walls in local space.
     Extruded {
-        /// The number of world units per font pixel. Must be finite and positive.
+        /// The number of world units per font pixel. Must be positive.
         scale: f32,
-        /// The distance from the front face toward positive Z. Must be finite and positive.
+        /// The distance from the front face toward positive Z. Must be positive.
         depth: f32,
     },
 }
@@ -65,7 +65,7 @@ impl Font {
     const ATLAS_WIDTH: usize = 1024;
     const PADDING: usize = 1;
 
-    /// Loads a font from a `.ttf` or `.otf` file at a finite, positive size in pixels.
+    /// Loads a font from a `.ttf` or `.otf` file at a positive size in pixels.
     pub fn from_file<P: AsRef<Path>>(
         path: P,
         size: f32,
@@ -104,139 +104,26 @@ impl Font {
         color: [f32; 4],
         text_type: TextType,
     ) -> Result<Vec<TextVertex>, TextError> {
-        if !position.is_finite() || color.iter().any(|value| !value.is_finite()) {
-            return Err(TextError::invalid_argument(
-                "Text position and color must be finite.",
-            ));
-        }
-        match text_type {
-            TextType::Screen { viewport_size } => {
-                if viewport_size
-                    .iter()
-                    .any(|value| !value.is_finite() || *value <= 0.0)
-                    || !(0.0..=1.0).contains(&position.z)
-                {
-                    return Err(TextError::invalid_argument(
-                        "Screen text requires a finite, positive viewport and a depth between zero and one.",
-                    ));
-                }
-            }
-            TextType::World { scale } | TextType::Extruded { scale, .. } => {
-                if !scale.is_finite() || scale <= 0.0 {
-                    return Err(TextError::invalid_argument(
-                        "Text scale must be finite and positive.",
-                    ));
-                }
-            }
-        }
-        if let TextType::Extruded { depth, .. } = text_type {
-            if !depth.is_finite() || depth <= 0.0 {
-                return Err(TextError::invalid_argument(
-                    "Text depth must be finite and positive.",
-                ));
-            }
-        } else {
-            self.expand_atlas(text)?;
-        }
-
         let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
         layout.reset(&LayoutSettings::default());
         layout.append(&[&self.font], &TextStyle::new(text, self.size, 0));
 
-        let face = match text_type {
-            TextType::Extruded { .. } => Some(ttf_parser::Face::parse(&self.font_data, 0)?),
-            _ => None,
-        };
-        let mut vertices = Vec::with_capacity(layout.glyphs().len() * 6);
-        for positioned in layout.glyphs() {
-            if positioned.width == 0 || positioned.height == 0 {
-                continue;
+        match text_type {
+            TextType::Screen { viewport_size } => {
+                self.screen_vertices(text, &layout, position, color, viewport_size)
             }
-
-            if let (TextType::Extruded { scale, depth }, Some(face)) = (text_type, &face) {
-                let metrics = self
-                    .font
-                    .metrics_indexed(positioned.key.glyph_index, self.size);
-                let offset = Vec3::new(
-                    position.x + (positioned.x - metrics.xmin as f32) * scale,
-                    position.y
-                        - (positioned.y + (metrics.bounds.height + metrics.bounds.ymin).ceil())
-                            * scale,
-                    position.z,
-                );
-                vertices.extend(mesh::extrude(
-                    face,
-                    positioned.key.glyph_index,
-                    self.size / face.units_per_em() as f32 * scale,
-                    depth,
-                    &offset,
-                    color,
-                )?);
-                continue;
+            TextType::World { scale } => self.world_vertices(text, &layout, position, color, scale),
+            TextType::Extruded { scale, depth } => {
+                self.extruded_vertices(&layout, position, color, scale, depth)
             }
-
-            let Some(glyph) = self
-                .glyphs
-                .get(&positioned.parent)
-                .or_else(|| self.glyphs.get(&'?'))
-            else {
-                continue;
-            };
-
-            let mut x0 = positioned.x;
-            let mut y0 = positioned.y;
-            let mut x1 = x0 + positioned.width as f32;
-            let mut y1 = y0 + positioned.height as f32;
-
-            match text_type {
-                TextType::Screen { viewport_size } => {
-                    x0 = (position.x + x0) / viewport_size[0] * 2.0 - 1.0;
-                    x1 = (position.x + x1) / viewport_size[0] * 2.0 - 1.0;
-                    y0 = (position.y + y0) / viewport_size[1] * 2.0 - 1.0;
-                    y1 = (position.y + y1) / viewport_size[1] * 2.0 - 1.0;
-                }
-                TextType::World { scale } => {
-                    x0 = position.x + x0 * scale;
-                    x1 = position.x + x1 * scale;
-                    y0 = position.y - y0 * scale;
-                    y1 = position.y - y1 * scale;
-                }
-                TextType::Extruded { .. } => continue,
-            }
-
-            let u0 = glyph.x as f32 / self.atlas_width as f32;
-            let v0 = glyph.y as f32 / self.atlas_height as f32;
-            let u1 = (glyph.x + glyph.width) as f32 / self.atlas_width as f32;
-            let v1 = (glyph.y + glyph.height) as f32 / self.atlas_height as f32;
-            let vertex = |x, y, u, v| {
-                [
-                    x, y, position.z, 0.0, 0.0, -1.0, u, v, color[0], color[1], color[2], color[3],
-                ]
-            };
-            vertices.extend_from_slice(&[
-                vertex(x0, y0, u0, v0),
-                vertex(x1, y0, u1, v0),
-                vertex(x1, y1, u1, v1),
-                vertex(x0, y0, u0, v0),
-                vertex(x1, y1, u1, v1),
-                vertex(x0, y1, u0, v1),
-            ]);
         }
-
-        if vertices.iter().flatten().any(|value| !value.is_finite()) {
-            return Err(TextError::invalid_argument(
-                "Text parameters must produce finite vertices.",
-            ));
-        }
-        Ok(vertices)
     }
 
     fn new(font_data: Vec<u8>, size: f32, load_all_chars: bool) -> Result<Self, TextError> {
-        if !size.is_finite() || size <= 0.0 {
-            return Err(TextError::invalid_argument(
-                "Font size must be finite and positive.",
-            ));
+        if size <= 0.0 {
+            return Err(TextError::invalid_argument("Font size must be positive."));
         }
+
         let font = fontdue::Font::from_bytes(font_data.as_slice(), FontSettings::default())?;
         let mut new_font = Self {
             font,
@@ -381,6 +268,141 @@ impl Font {
             self.glyphs.insert(rasterized_glyph.character, *glyph);
             self.last_glyph = Some(rasterized_glyph.character);
         }
+    }
+
+    fn screen_vertices(
+        &mut self,
+        text: &str,
+        layout: &Layout,
+        position: &Vec3,
+        color: [f32; 4],
+        viewport_size: [f32; 2],
+    ) -> Result<Vec<TextVertex>, TextError> {
+        if viewport_size[0] <= 0.0
+            || viewport_size[1] <= 0.0
+            || position.z < 0.0
+            || position.z > 1.0
+        {
+            return Err(TextError::invalid_argument(
+                "Screen text requires a positive viewport and a depth between zero and one.",
+            ));
+        }
+        self.quad_vertices(text, layout, color, |x, y| {
+            [
+                (position.x + x) / viewport_size[0] * 2.0 - 1.0,
+                (position.y + y) / viewport_size[1] * 2.0 - 1.0,
+                position.z,
+            ]
+        })
+    }
+
+    fn world_vertices(
+        &mut self,
+        text: &str,
+        layout: &Layout,
+        position: &Vec3,
+        color: [f32; 4],
+        scale: f32,
+    ) -> Result<Vec<TextVertex>, TextError> {
+        if scale <= 0.0 {
+            return Err(TextError::invalid_argument("Text scale must be positive."));
+        }
+        self.quad_vertices(text, layout, color, |x, y| {
+            [position.x + x * scale, position.y - y * scale, position.z]
+        })
+    }
+
+    fn extruded_vertices(
+        &self,
+        layout: &Layout,
+        position: &Vec3,
+        color: [f32; 4],
+        scale: f32,
+        depth: f32,
+    ) -> Result<Vec<TextVertex>, TextError> {
+        if scale <= 0.0 {
+            return Err(TextError::invalid_argument("Text scale must be positive."));
+        }
+        if depth <= 0.0 {
+            return Err(TextError::invalid_argument("Text depth must be positive."));
+        }
+        let face = ttf_parser::Face::parse(&self.font_data, 0)?;
+        let mut vertices = Vec::with_capacity(layout.glyphs().len() * 6);
+        for positioned in layout.glyphs() {
+            if positioned.width == 0 || positioned.height == 0 {
+                continue;
+            }
+
+            let metrics = self
+                .font
+                .metrics_indexed(positioned.key.glyph_index, self.size);
+            let offset = Vec3::new(
+                position.x + (positioned.x - metrics.xmin as f32) * scale,
+                position.y
+                    - (positioned.y + (metrics.bounds.height + metrics.bounds.ymin).ceil()) * scale,
+                position.z,
+            );
+            vertices.extend(mesh::extrude(
+                &face,
+                positioned.key.glyph_index,
+                self.size / face.units_per_em() as f32 * scale,
+                depth,
+                &offset,
+                color,
+            )?);
+        }
+        Ok(vertices)
+    }
+
+    fn quad_vertices(
+        &mut self,
+        text: &str,
+        layout: &Layout,
+        color: [f32; 4],
+        transform_position: impl Fn(f32, f32) -> [f32; 3],
+    ) -> Result<Vec<TextVertex>, TextError> {
+        self.expand_atlas(text)?;
+        let mut vertices = Vec::with_capacity(layout.glyphs().len() * 6);
+        for positioned in layout.glyphs() {
+            if positioned.width == 0 || positioned.height == 0 {
+                continue;
+            }
+
+            let Some(glyph) = self
+                .glyphs
+                .get(&positioned.parent)
+                .or_else(|| self.glyphs.get(&'?'))
+            else {
+                continue;
+            };
+
+            let x0 = positioned.x;
+            let y0 = positioned.y;
+            let x1 = x0 + positioned.width as f32;
+            let y1 = y0 + positioned.height as f32;
+
+            let u0 = glyph.x as f32 / self.atlas_width as f32;
+            let v0 = glyph.y as f32 / self.atlas_height as f32;
+            let u1 = (glyph.x + glyph.width) as f32 / self.atlas_width as f32;
+            let v1 = (glyph.y + glyph.height) as f32 / self.atlas_height as f32;
+
+            let vertex = |x, y, u, v| {
+                let [x, y, z] = transform_position(x, y);
+                [
+                    x, y, z, 0.0, 0.0, -1.0, u, v, color[0], color[1], color[2], color[3],
+                ]
+            };
+            vertices.extend_from_slice(&[
+                vertex(x0, y0, u0, v0),
+                vertex(x1, y0, u1, v0),
+                vertex(x1, y1, u1, v1),
+                vertex(x0, y0, u0, v0),
+                vertex(x1, y1, u1, v1),
+                vertex(x0, y1, u0, v1),
+            ]);
+        }
+
+        Ok(vertices)
     }
 }
 
@@ -599,7 +621,7 @@ mod tests {
     #[test]
     fn test_invalid_text_parameters() {
         let mut font = Font::new(FONT_DATA.to_vec(), 32.0, false).unwrap();
-        for value in [0.0, -1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        for value in [0.0, -1.0] {
             for text_type in [
                 TextType::Screen {
                     viewport_size: [value, 600.0],
@@ -639,49 +661,8 @@ mod tests {
     }
 
     #[test]
-    fn test_nonfinite_position_and_color() {
-        let mut font = Font::new(FONT_DATA.to_vec(), 32.0, false).unwrap();
-        for text_type in [
-            TextType::Screen {
-                viewport_size: [800.0, 600.0],
-            },
-            TextType::World { scale: 0.025 },
-            TextType::Extruded {
-                scale: 0.025,
-                depth: 0.2,
-            },
-        ] {
-            for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-                for index in 0..3 {
-                    let mut position = Vec3::ZERO;
-                    position[index] = value;
-                    assert!(matches!(
-                        font.vertices("A", &position, [1.0; 4], text_type),
-                        Err(TextError::InvalidArgument(_))
-                    ));
-                }
-                for index in 0..4 {
-                    let mut color = [1.0; 4];
-                    color[index] = value;
-                    assert!(matches!(
-                        font.vertices("A", &Vec3::ZERO, color, text_type),
-                        Err(TextError::InvalidArgument(_))
-                    ));
-                }
-            }
-        }
-    }
-
-    #[test]
     fn test_invalid_font_size_and_data() {
-        for size in [
-            0.0,
-            -1.0,
-            1_000_000.0,
-            f32::NAN,
-            f32::INFINITY,
-            f32::NEG_INFINITY,
-        ] {
+        for size in [0.0, -1.0, 1_000_000.0] {
             assert!(matches!(
                 Font::new(FONT_DATA.to_vec(), size, false),
                 Err(TextError::InvalidArgument(_))
@@ -691,25 +672,5 @@ mod tests {
             Font::new(Vec::new(), 32.0, false),
             Err(TextError::Font(_))
         ));
-    }
-
-    #[test]
-    fn test_vertex_overflow() {
-        let mut font = Font::new(FONT_DATA.to_vec(), 32.0, false).unwrap();
-        for text_type in [
-            TextType::Screen {
-                viewport_size: [f32::MIN_POSITIVE, 600.0],
-            },
-            TextType::World { scale: f32::MAX },
-            TextType::Extruded {
-                scale: f32::MAX,
-                depth: 0.2,
-            },
-        ] {
-            assert!(matches!(
-                font.vertices("A", &Vec3::ZERO, [1.0; 4], text_type),
-                Err(TextError::InvalidArgument(_))
-            ));
-        }
     }
 }
