@@ -118,33 +118,38 @@ impl Font {
             last_row_height: 0,
         };
 
-        let mut x = Self::PADDING;
-        let mut y = Self::PADDING;
-        let mut row_height = 0;
-        let rasterized_glyphs = match options.load_all_characters {
-            true => {
-                let mut characters: Vec<char> = new_font.font.chars().keys().copied().collect();
-                // Sorting the characters ensures that the atlas generated is deterministic and
-                // consistent across different platforms and runs.
-                characters.sort_unstable();
-                new_font.create_rasterized_glyphs(characters, &mut x, &mut y, &mut row_height)
-            }
-            false => {
-                // Rasterize only ASCII characters since they are the most commonly used. Other
-                // unicode characters will be rasterized lazily.
-                new_font.create_rasterized_glyphs('\x20'..='\x7E', &mut x, &mut y, &mut row_height)
-            }
-        }?;
-
         if new_font.atlas_enabled() {
+            let mut x = Self::PADDING;
+            let mut y = Self::PADDING;
+            let mut row_height = 0;
+            let rasterized_glyphs = match options.load_all_characters {
+                true => {
+                    let mut characters: Vec<char> = new_font.font.chars().keys().copied().collect();
+                    // Sorting the characters ensures that the atlas generated is deterministic and
+                    // consistent across different platforms and runs.
+                    characters.sort_unstable();
+                    new_font.create_rasterized_glyphs(characters, &mut x, &mut y, &mut row_height)
+                }
+                false => {
+                    // Rasterize only ASCII characters since they are the most commonly used. Other
+                    // unicode characters will be rasterized lazily.
+                    new_font.create_rasterized_glyphs(
+                        '\x20'..='\x7E',
+                        &mut x,
+                        &mut y,
+                        &mut row_height,
+                    )
+                }
+            }?;
+
             let used_height = y + row_height + Self::PADDING;
             new_font.atlas_height = used_height.next_power_of_two() as u32;
             new_font.last_row_height = row_height;
             new_font
                 .atlas_data
                 .resize((new_font.atlas_width * new_font.atlas_height) as usize, 0);
+            new_font.fill_atlas(&rasterized_glyphs);
         }
-        new_font.fill_atlas(&rasterized_glyphs);
 
         Ok(new_font)
     }
@@ -175,7 +180,7 @@ impl Font {
                     "Font glyphs must fit within the atlas width.",
                 ));
             }
-            let (_, data) = self.font.rasterize(character, self.options.size);
+            let data = self.font.rasterize(character, self.options.size).1;
 
             if *x + metrics.width + Self::PADDING > Self::ATLAS_WIDTH {
                 // Current row is full, add a new row.
@@ -240,15 +245,13 @@ impl Font {
                 continue;
             }
 
-            if self.atlas_enabled() {
-                for row in 0..glyph.height {
-                    let src_start = row * glyph.width;
-                    let src_end = src_start + glyph.width;
-                    let dst_start = (glyph.y + row) * (self.atlas_width as usize) + glyph.x;
-                    let dst_end = dst_start + glyph.width;
-                    self.atlas_data[dst_start..dst_end]
-                        .copy_from_slice(&rasterized_glyph.data[src_start..src_end]);
-                }
+            for row in 0..glyph.height {
+                let src_start = row * glyph.width;
+                let src_end = src_start + glyph.width;
+                let dst_start = (glyph.y + row) * (self.atlas_width as usize) + glyph.x;
+                let dst_end = dst_start + glyph.width;
+                self.atlas_data[dst_start..dst_end]
+                    .copy_from_slice(&rasterized_glyph.data[src_start..src_end]);
             }
 
             self.glyphs.insert(rasterized_glyph.character, *glyph);
@@ -631,6 +634,35 @@ mod tests {
                         .is_empty()
                 );
             }
+        }
+    }
+
+    #[test]
+    fn test_disabled_text_types() {
+        let mut font = Font::new(
+            FONT_DATA.to_vec(),
+            &FontOptions {
+                enable_screen_text: false,
+                enable_world_text: false,
+                enable_extruded_text: false,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        for text_type in [
+            TextType::Screen {
+                viewport_size: [800.0, 600.0],
+            },
+            TextType::World { scale: 0.025 },
+            TextType::Extruded {
+                scale: 0.025,
+                depth: 0.2,
+            },
+        ] {
+            assert!(matches!(
+                font.vertices("A", &Vec3::ZERO, [1.0; 4], text_type),
+                Err(TextError::InvalidArgument(_))
+            ));
         }
     }
 
