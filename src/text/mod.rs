@@ -639,28 +639,107 @@ mod tests {
 
     #[test]
     fn test_disabled_text_types() {
-        let mut font = Font::new(
-            FONT_DATA.to_vec(),
-            &FontOptions {
-                enable_screen_text: false,
-                enable_world_text: false,
-                enable_extruded_text: false,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        for text_type in [
-            TextType::Screen {
-                viewport_size: [800.0, 600.0],
-            },
-            TextType::World { scale: 0.025 },
-            TextType::Extruded {
-                scale: 0.025,
-                depth: 0.2,
-            },
-        ] {
+        // Only screen text is enabled.
+        {
+            let mut font = Font::new(
+                FONT_DATA.to_vec(),
+                &FontOptions {
+                    enable_screen_text: true,
+                    enable_world_text: false,
+                    enable_extruded_text: false,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            assert!(font.atlas_enabled());
+            assert!(!font.atlas_data.is_empty());
+            assert!(font.data.is_empty());
             assert!(matches!(
-                font.vertices("A", &Vec3::ZERO, [1.0; 4], text_type),
+                font.vertices("A", &Vec3::ZERO, [1.0; 4], TextType::World { scale: 0.025 }),
+                Err(TextError::InvalidArgument(_))
+            ));
+            assert!(matches!(
+                font.vertices(
+                    "A",
+                    &Vec3::ZERO,
+                    [1.0; 4],
+                    TextType::Extruded {
+                        scale: 0.025,
+                        depth: 0.2
+                    }
+                ),
+                Err(TextError::InvalidArgument(_))
+            ));
+        }
+
+        // Only world text is enabled.
+        {
+            let mut font = Font::new(
+                FONT_DATA.to_vec(),
+                &FontOptions {
+                    enable_screen_text: false,
+                    enable_world_text: true,
+                    enable_extruded_text: false,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            assert!(font.atlas_enabled());
+            assert!(!font.atlas_data.is_empty());
+            assert!(font.data.is_empty());
+            assert!(matches!(
+                font.vertices(
+                    "A",
+                    &Vec3::ZERO,
+                    [1.0; 4],
+                    TextType::Screen {
+                        viewport_size: [800.0, 600.0]
+                    }
+                ),
+                Err(TextError::InvalidArgument(_))
+            ));
+            assert!(matches!(
+                font.vertices(
+                    "A",
+                    &Vec3::ZERO,
+                    [1.0; 4],
+                    TextType::Extruded {
+                        scale: 0.025,
+                        depth: 0.2
+                    }
+                ),
+                Err(TextError::InvalidArgument(_))
+            ));
+        }
+
+        // Only extruded text is enabled.
+        {
+            let mut font = Font::new(
+                FONT_DATA.to_vec(),
+                &FontOptions {
+                    enable_screen_text: false,
+                    enable_world_text: false,
+                    enable_extruded_text: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            assert!(!font.atlas_enabled());
+            assert!(font.atlas_data.is_empty());
+            assert!(!font.data.is_empty());
+            assert!(matches!(
+                font.vertices(
+                    "A",
+                    &Vec3::ZERO,
+                    [1.0; 4],
+                    TextType::Screen {
+                        viewport_size: [800.0, 600.0]
+                    }
+                ),
+                Err(TextError::InvalidArgument(_))
+            ));
+            assert!(matches!(
+                font.vertices("A", &Vec3::ZERO, [1.0; 4], TextType::World { scale: 0.025 }),
                 Err(TextError::InvalidArgument(_))
             ));
         }
