@@ -24,7 +24,7 @@ mod utils;
 
 const FONT_PATH: &str = "assets/liberation_sans/LiberationSans-Regular.ttf";
 const FONT_SIZE: f32 = 72.0;
-const ANIMATION_DURATION: Duration = Duration::from_secs(10);
+const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 
 fn create_pipeline(
     renderer: &mut ExampleRenderer,
