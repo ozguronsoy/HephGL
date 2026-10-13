@@ -33,6 +33,10 @@ use heph_gl::{
         },
     },
     shader::Shader,
+    text::{
+        Font, TextVertex,
+        options::{FontOptions, TextType},
+    },
     transform::Transform,
 };
 use libtest_mimic::{Arguments, Trial};
@@ -1459,8 +1463,6 @@ where
     }
 
     fn test_render_text(&self) {
-        use heph_gl::text::{Font, TextType, TextVertex};
-
         const FONT_PATH: &str = "assets/liberation_sans/LiberationSans-Regular.ttf";
         const FONT_SIZE: f32 = 72.0;
         const ANIMATION_DURATION: Duration = Duration::from_secs(10);
@@ -1544,7 +1546,16 @@ where
             &GraphicsPipelineOptions::default(),
         );
 
-        let mut font = heph_expect_success!(Font::from_file(FONT_PATH, FONT_SIZE, false));
+        let mut font = heph_expect_success!(Font::from_file(
+            FONT_PATH,
+            &FontOptions {
+                size: FONT_SIZE,
+                enable_screen_text: true,
+                enable_world_text: true,
+                enable_extruded_text: true,
+                ..Default::default()
+            }
+        ));
         let screen_vertices = heph_expect_success!(font.vertices(
             "Screen Text",
             &Vec3::new(460.0, 36.0, 0.0),

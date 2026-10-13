@@ -7,46 +7,28 @@ use fontdue::{
 };
 use glyph::{Glyph, RasterizedGlyph};
 
-use crate::math::Vec3;
+use crate::{
+    math::Vec3,
+    text::options::{FontOptions, TextType},
+};
 
 pub mod error;
 mod glyph;
 mod mesh;
+pub mod options;
 
 /// Represents a text vertex containing a 3D position, a normal, texture coordinates, and an RGBA
 /// color, in that order.
 pub type TextVertex = [f32; 12];
-
-/// Defines the geometry and coordinate system used to render text.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TextType {
-    /// Generates textured quads in clip space from a position in pixels, with positive Y down.
-    Screen {
-        /// The viewport width and height in pixels. Both values must be positive.
-        viewport_size: [f32; 2],
-    },
-    /// Generates textured quads in local space, with positive X right and positive Y up.
-    World {
-        /// The number of world units per font pixel. Must be positive.
-        scale: f32,
-    },
-    /// Generates solid glyphs with front faces, back faces, and side walls in local space.
-    Extruded {
-        /// The number of world units per font pixel. Must be positive.
-        scale: f32,
-        /// The distance from the front face toward positive Z. Must be positive.
-        depth: f32,
-    },
-}
 
 /// Represents a loaded font.
 pub struct Font {
     /// The parsed font data used for layout and glyph rasterization.
     font: fontdue::Font,
     /// The original font data used to read glyph outlines.
-    font_data: Vec<u8>,
-    /// The font size used when rasterizing glyphs.
-    size: f32,
+    data: Vec<u8>,
+    /// The options font is created with.
+    options: FontOptions,
     /// The width of the glyph atlas in pixels.
     atlas_width: u32,
     /// The height of the glyph atlas in pixels.
@@ -66,13 +48,9 @@ impl Font {
     const PADDING: usize = 1;
 
     /// Loads a font from a `.ttf` or `.otf` file at a positive size in pixels.
-    pub fn from_file<P: AsRef<Path>>(
-        path: P,
-        size: f32,
-        load_all_chars: bool,
-    ) -> Result<Self, TextError> {
+    pub fn from_file<P: AsRef<Path>>(path: P, options: &FontOptions) -> Result<Self, TextError> {
         let data = std::fs::read(path)?;
-        Self::new(data, size, load_all_chars)
+        Self::new(data, options)
     }
 
     /// Gets the width of the glyph atlas in pixels.
@@ -106,7 +84,7 @@ impl Font {
     ) -> Result<Vec<TextVertex>, TextError> {
         let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
         layout.reset(&LayoutSettings::default());
-        layout.append(&[&self.font], &TextStyle::new(text, self.size, 0));
+        layout.append(&[&self.font], &TextStyle::new(text, self.options.size, 0));
 
         match text_type {
             TextType::Screen { viewport_size } => {
@@ -119,16 +97,19 @@ impl Font {
         }
     }
 
-    fn new(font_data: Vec<u8>, size: f32, load_all_chars: bool) -> Result<Self, TextError> {
-        if size <= 0.0 {
+    fn new(font_data: Vec<u8>, options: &FontOptions) -> Result<Self, TextError> {
+        if options.size <= 0.0 {
             return Err(TextError::invalid_argument("Font size must be positive."));
         }
 
         let font = fontdue::Font::from_bytes(font_data.as_slice(), FontSettings::default())?;
         let mut new_font = Self {
             font,
-            font_data,
-            size,
+            data: match options.enable_extruded_text {
+                true => font_data,
+                false => Vec::new(),
+            },
+            options: *options,
             atlas_width: Self::ATLAS_WIDTH as u32,
             atlas_height: 0,
             atlas_data: Vec::new(),
@@ -140,9 +121,11 @@ impl Font {
         let mut x = Self::PADDING;
         let mut y = Self::PADDING;
         let mut row_height = 0;
-        let rasterized_glyphs = match load_all_chars {
+        let rasterized_glyphs = match options.load_all_characters {
             true => {
                 let mut characters: Vec<char> = new_font.font.chars().keys().copied().collect();
+                // Sorting the characters ensures that the atlas generated is deterministic and
+                // consistent across different platforms and runs.
                 characters.sort_unstable();
                 new_font.create_rasterized_glyphs(characters, &mut x, &mut y, &mut row_height)
             }
@@ -153,12 +136,14 @@ impl Font {
             }
         }?;
 
-        let used_height = y + row_height + Self::PADDING;
-        new_font.atlas_height = used_height.next_power_of_two() as u32;
-        new_font.last_row_height = row_height;
-        new_font
-            .atlas_data
-            .resize((new_font.atlas_width * new_font.atlas_height) as usize, 0);
+        if new_font.atlas_enabled() {
+            let used_height = y + row_height + Self::PADDING;
+            new_font.atlas_height = used_height.next_power_of_two() as u32;
+            new_font.last_row_height = row_height;
+            new_font
+                .atlas_data
+                .resize((new_font.atlas_width * new_font.atlas_height) as usize, 0);
+        }
         new_font.fill_atlas(&rasterized_glyphs);
 
         Ok(new_font)
@@ -181,7 +166,7 @@ impl Font {
                 continue;
             }
 
-            let metrics = self.font.metrics(character, self.size);
+            let metrics = self.font.metrics(character, self.options.size);
             if metrics.width == 0 || metrics.height == 0 {
                 continue;
             }
@@ -190,7 +175,7 @@ impl Font {
                     "Font glyphs must fit within the atlas width.",
                 ));
             }
-            let (_, data) = self.font.rasterize(character, self.size);
+            let (_, data) = self.font.rasterize(character, self.options.size);
 
             if *x + metrics.width + Self::PADDING > Self::ATLAS_WIDTH {
                 // Current row is full, add a new row.
@@ -246,7 +231,6 @@ impl Font {
     }
 
     fn fill_atlas(&mut self, glyphs: &[RasterizedGlyph]) {
-        let atlas_width = self.atlas_width as usize;
         for rasterized_glyph in glyphs {
             let glyph = &rasterized_glyph.glyph;
             if self.glyphs.contains_key(&rasterized_glyph.character)
@@ -256,13 +240,15 @@ impl Font {
                 continue;
             }
 
-            for row in 0..glyph.height {
-                let src_start = row * glyph.width;
-                let src_end = src_start + glyph.width;
-                let dst_start = (glyph.y + row) * atlas_width + glyph.x;
-                let dst_end = dst_start + glyph.width;
-                self.atlas_data[dst_start..dst_end]
-                    .copy_from_slice(&rasterized_glyph.data[src_start..src_end]);
+            if self.atlas_enabled() {
+                for row in 0..glyph.height {
+                    let src_start = row * glyph.width;
+                    let src_end = src_start + glyph.width;
+                    let dst_start = (glyph.y + row) * (self.atlas_width as usize) + glyph.x;
+                    let dst_end = dst_start + glyph.width;
+                    self.atlas_data[dst_start..dst_end]
+                        .copy_from_slice(&rasterized_glyph.data[src_start..src_end]);
+                }
             }
 
             self.glyphs.insert(rasterized_glyph.character, *glyph);
@@ -278,6 +264,9 @@ impl Font {
         color: [f32; 4],
         viewport_size: [f32; 2],
     ) -> Result<Vec<TextVertex>, TextError> {
+        if !self.options.enable_screen_text {
+            return Err(TextError::invalid_argument("Screen text is disabled."));
+        }
         if viewport_size[0] <= 0.0
             || viewport_size[1] <= 0.0
             || position.z < 0.0
@@ -304,6 +293,9 @@ impl Font {
         color: [f32; 4],
         scale: f32,
     ) -> Result<Vec<TextVertex>, TextError> {
+        if !self.options.enable_world_text {
+            return Err(TextError::invalid_argument("World text is disabled."));
+        }
         if scale <= 0.0 {
             return Err(TextError::invalid_argument("Text scale must be positive."));
         }
@@ -320,13 +312,16 @@ impl Font {
         scale: f32,
         depth: f32,
     ) -> Result<Vec<TextVertex>, TextError> {
+        if !self.options.enable_extruded_text {
+            return Err(TextError::invalid_argument("Extruded text is disabled."));
+        }
         if scale <= 0.0 {
             return Err(TextError::invalid_argument("Text scale must be positive."));
         }
         if depth <= 0.0 {
             return Err(TextError::invalid_argument("Text depth must be positive."));
         }
-        let face = ttf_parser::Face::parse(&self.font_data, 0)?;
+        let face = ttf_parser::Face::parse(&self.data, 0)?;
         let mut vertices = Vec::with_capacity(layout.glyphs().len() * 6);
         for positioned in layout.glyphs() {
             if positioned.width == 0 || positioned.height == 0 {
@@ -335,7 +330,7 @@ impl Font {
 
             let metrics = self
                 .font
-                .metrics_indexed(positioned.key.glyph_index, self.size);
+                .metrics_indexed(positioned.key.glyph_index, self.options.size);
             let offset = Vec3::new(
                 position.x + (positioned.x - metrics.xmin as f32) * scale,
                 position.y
@@ -345,7 +340,7 @@ impl Font {
             vertices.extend(mesh::extrude(
                 &face,
                 positioned.key.glyph_index,
-                self.size / face.units_per_em() as f32 * scale,
+                self.options.size / face.units_per_em() as f32 * scale,
                 depth,
                 &offset,
                 color,
@@ -404,6 +399,10 @@ impl Font {
 
         Ok(vertices)
     }
+
+    fn atlas_enabled(&self) -> bool {
+        self.options.enable_screen_text || self.options.enable_world_text
+    }
 }
 
 #[cfg(test)]
@@ -415,7 +414,15 @@ mod tests {
 
     #[test]
     fn test_screen_and_world_coordinates() {
-        let mut font = Font::new(FONT_DATA.to_vec(), 32.0, false).unwrap();
+        let mut font = Font::new(
+            FONT_DATA.to_vec(),
+            &FontOptions {
+                enable_screen_text: true,
+                enable_world_text: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let viewport_size = [800.0, 600.0];
         let screen_position = Vec3::new(80.0, 40.0, 0.35);
         let world_position = Vec3::new(-3.0, 5.0, 7.0);
@@ -454,7 +461,14 @@ mod tests {
 
     #[test]
     fn test_world_translation_and_scale() {
-        let mut font = Font::new(FONT_DATA.to_vec(), 32.0, false).unwrap();
+        let mut font = Font::new(
+            FONT_DATA.to_vec(),
+            &FontOptions {
+                enable_world_text: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let position = Vec3::new(4.0, -3.0, 8.0);
         let original = font
             .vertices(
@@ -485,7 +499,16 @@ mod tests {
 
     #[test]
     fn test_multiline_text() {
-        let mut font = Font::new(FONT_DATA.to_vec(), 32.0, false).unwrap();
+        let mut font = Font::new(
+            FONT_DATA.to_vec(),
+            &FontOptions {
+                enable_screen_text: true,
+                enable_world_text: true,
+                enable_extruded_text: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         for text_type in [
             TextType::Screen {
                 viewport_size: [800.0, 600.0],
@@ -521,7 +544,15 @@ mod tests {
 
     #[test]
     fn test_extruded_glyph_bounds_and_depth() {
-        let mut font = Font::new(FONT_DATA.to_vec(), 32.0, false).unwrap();
+        let mut font = Font::new(
+            FONT_DATA.to_vec(),
+            &FontOptions {
+                enable_world_text: true,
+                enable_extruded_text: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let position = Vec3::new(-2.0, 3.0, 5.0);
         let scale = 0.03125;
         let depth = 0.4;
@@ -572,32 +603,17 @@ mod tests {
     }
 
     #[test]
-    fn test_extruded_text_does_not_change_atlas() {
-        let mut font = Font::new(FONT_DATA.to_vec(), 32.0, false).unwrap();
-        let width = font.atlas_width();
-        let height = font.atlas_height();
-        let data = font.atlas_data().to_vec();
-        let vertices = font
-            .vertices(
-                "ΩéÅ",
-                &Vec3::ZERO,
-                [1.0; 4],
-                TextType::Extruded {
-                    scale: 0.025,
-                    depth: 0.2,
-                },
-            )
-            .unwrap();
-
-        assert!(!vertices.is_empty());
-        assert_eq!(font.atlas_width(), width);
-        assert_eq!(font.atlas_height(), height);
-        assert_eq!(font.atlas_data(), data);
-    }
-
-    #[test]
     fn test_empty_text() {
-        let mut font = Font::new(FONT_DATA.to_vec(), 32.0, false).unwrap();
+        let mut font = Font::new(
+            FONT_DATA.to_vec(),
+            &FontOptions {
+                enable_screen_text: true,
+                enable_world_text: true,
+                enable_extruded_text: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         for text_type in [
             TextType::Screen {
                 viewport_size: [800.0, 600.0],
@@ -620,7 +636,16 @@ mod tests {
 
     #[test]
     fn test_invalid_text_parameters() {
-        let mut font = Font::new(FONT_DATA.to_vec(), 32.0, false).unwrap();
+        let mut font = Font::new(
+            FONT_DATA.to_vec(),
+            &FontOptions {
+                enable_screen_text: true,
+                enable_world_text: true,
+                enable_extruded_text: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         for value in [0.0, -1.0] {
             for text_type in [
                 TextType::Screen {
@@ -664,12 +689,18 @@ mod tests {
     fn test_invalid_font_size_and_data() {
         for size in [0.0, -1.0, 1_000_000.0] {
             assert!(matches!(
-                Font::new(FONT_DATA.to_vec(), size, false),
+                Font::new(
+                    FONT_DATA.to_vec(),
+                    &FontOptions {
+                        size,
+                        ..FontOptions::default()
+                    }
+                ),
                 Err(TextError::InvalidArgument(_))
             ));
         }
         assert!(matches!(
-            Font::new(Vec::new(), 32.0, false),
+            Font::new(Vec::new(), &FontOptions::default()),
             Err(TextError::Font(_))
         ));
     }

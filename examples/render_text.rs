@@ -9,7 +9,10 @@ use heph_gl::{
         settings::{ColorBlending, GraphicsPipelineOptions, SamplerOptions, TextureOptions},
     },
     shader::Shader,
-    text::{Font, TextType, TextVertex},
+    text::{
+        Font, TextVertex,
+        options::{FontOptions, TextType},
+    },
     transform::Transform,
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -105,7 +108,17 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 
     // Load the font and generate vertex data for each text mesh. We only need to calculate the
     // vertices once since we aren't changing the text or font during the animation.
-    let mut font = Font::from_file(FONT_PATH, FONT_SIZE, false).unwrap();
+    let mut font = Font::from_file(
+        FONT_PATH,
+        &FontOptions {
+            size: FONT_SIZE,
+            enable_screen_text: true,
+            enable_world_text: true,
+            enable_extruded_text: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
     let screen_vertices = font
         .vertices(
             "Screen Text",
