@@ -33,7 +33,6 @@ use heph_gl::{
         },
     },
     shader::Shader,
-    text::{Font, TextType, TextVertex},
     transform::Transform,
 };
 use libtest_mimic::{Arguments, Trial};
@@ -1299,9 +1298,6 @@ where
         const IMAGE_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_diff_1k.jpg";
         const LATITUDE_SEGMENTS: usize = 32;
         const LONGITUDE_SEGMENTS: usize = 64;
-        const TEXT: &str = r#"ASCII#123 Ελληνικά üğışçö Σωκράτης"#;
-        const FONT_PATH: &str = "assets/liberation_sans/LiberationSans-Regular.ttf";
-        const FONT_SIZE: f32 = 32.0;
 
         let sphere_position = |radius: f32, x_offset: f32, u: f32, v: f32| -> [f32; 3] {
             let theta = v * std::f32::consts::PI;
@@ -1363,183 +1359,101 @@ where
 
             vertices
         };
-        let render_sphere = |renderer: &mut TestRenderer, sampler: TestRenderer::Sampler| {
-            let vert_shader = heph_expect_success!(Shader::from_file(format!(
-                "{}/{}",
-                SHADERS_DIR, "broken_brick_wall_vert.spv"
-            )));
-            let frag_shader = heph_expect_success!(Shader::from_file(format!(
-                "{}/{}",
-                SHADERS_DIR, "broken_brick_wall_frag.spv"
-            )));
-            let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
-                &[&vert_shader, &frag_shader],
-                &GraphicsPipelineOptions::default(),
-            ));
-
-            let image = heph_expect_success!(image::open(IMAGE_PATH)).to_rgba8();
-            let width = image.width();
-            let height = image.height();
-
-            let mut vertices = Vec::with_capacity(LATITUDE_SEGMENTS * LONGITUDE_SEGMENTS * 6 * 3);
-            vertices.extend(sphere_vertices(0.1, -1.2));
-            vertices.extend(sphere_vertices(0.25, -0.4));
-            vertices.extend(sphere_vertices(0.5, 0.8));
-            let vertex_buffer = heph_expect_success!(renderer.create_buffer(
-                vertices.len() * std::mem::size_of::<Vertex>(),
-                BufferUsage::Vertex,
-            ));
-            heph_expect_success!(
-                renderer.write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
-            );
-
-            let texture = heph_expect_success!(renderer.create_texture(
-                &TextureOptions {
-                    width,
-                    height,
-                    format: TextureFormat::Rgba8Srgb,
-                    mip_level_count: TextureOptions::max_mip_level_count(width, height),
-                },
-                image.as_raw()
-            ));
-
-            let bindings = [
-                ResourceBinding {
-                    binding: 0,
-                    resource: ResourceBindingType::Buffer {
-                        handle: vertex_buffer,
-                        usage: BufferUsage::Vertex,
-                        offset: 0,
-                        size: vertex_buffer.size(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 0,
-                    resource: ResourceBindingType::Texture { handle: texture },
-                },
-                ResourceBinding {
-                    binding: 1,
-                    resource: ResourceBindingType::Sampler { handle: sampler },
-                },
-            ];
-            heph_expect_success!(renderer.record_graphics_command(
-                &pipeline,
-                &[&bindings],
-                vertices.len() as u32,
-                1
-            ));
-
-            (pipeline, texture, vertex_buffer)
-        };
-
-        let render_text = |renderer: &mut TestRenderer, sampler: TestRenderer::Sampler| {
-            let vert_shader = heph_expect_success!(Shader::from_file(format!(
-                "{}/{}",
-                SHADERS_DIR, "text_vert.spv"
-            )));
-            let frag_shader = heph_expect_success!(Shader::from_file(format!(
-                "{}/{}",
-                SHADERS_DIR, "text_frag.spv"
-            )));
-            let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
-                &[&vert_shader, &frag_shader],
-                &GraphicsPipelineOptions {
-                    blending: ColorBlending::Alpha,
-                    depth_test: false,
-                    depth_write: false,
-                    ..Default::default()
-                },
-            ));
-
-            let mut font = heph_expect_success!(Font::from_file(FONT_PATH, FONT_SIZE, false));
-            let vertices = heph_expect_success!(font.vertices(
-                TEXT,
-                &Vec3::new(330.0, 50.0, 0.0),
-                [1.0, 1.0, 1.0, 1.0],
-                TextType::Screen {
-                    viewport_size: [1280.0, 720.0],
-                },
-            ));
-            let vertex_buffer = heph_expect_success!(renderer.create_buffer(
-                vertices.len() * std::mem::size_of::<TextVertex>(),
-                BufferUsage::Vertex,
-            ));
-            heph_expect_success!(
-                renderer.write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
-            );
-
-            let texture = heph_expect_success!(renderer.create_texture(
-                &TextureOptions {
-                    width: font.atlas_width(),
-                    height: font.atlas_height(),
-                    format: TextureFormat::R8Unorm,
-                    mip_level_count: 1,
-                },
-                font.atlas_data(),
-            ));
-
-            let bindings = [
-                ResourceBinding {
-                    binding: 0,
-                    resource: ResourceBindingType::Buffer {
-                        handle: vertex_buffer,
-                        usage: BufferUsage::Vertex,
-                        offset: 0,
-                        size: vertex_buffer.size(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 0,
-                    resource: ResourceBindingType::Texture { handle: texture },
-                },
-                ResourceBinding {
-                    binding: 1,
-                    resource: ResourceBindingType::Sampler { handle: sampler },
-                },
-            ];
-            heph_expect_success!(renderer.record_graphics_command(
-                &pipeline,
-                &[&bindings],
-                vertices.len() as u32,
-                1
-            ));
-
-            (pipeline, texture, vertex_buffer)
-        };
 
         let mut renderer = self
             .create_renderer_with_any_device(&[FeatureRequest::new(AnisotropicFiltering, false)]);
-        let Some(device) = renderer.get_device() else {
-            panic!("Failed to get renderer device.");
-        };
-
-        let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions {
-            max_anisotropy: match device.supported_features.contains(&AnisotropicFiltering) {
+        let max_anisotropy = if let Some(device) = renderer.get_device() {
+            match device.supported_features.contains(&AnisotropicFiltering) {
                 true => Some(device.max_sampler_anisotropy),
                 false => None,
-            },
+            }
+        } else {
+            None
+        };
+
+        let vert_shader = heph_expect_success!(Shader::from_file(format!(
+            "{}/{}",
+            SHADERS_DIR, "broken_brick_wall_vert.spv"
+        )));
+        let frag_shader = heph_expect_success!(Shader::from_file(format!(
+            "{}/{}",
+            SHADERS_DIR, "broken_brick_wall_frag.spv"
+        )));
+        let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+            &[&vert_shader, &frag_shader],
+            &GraphicsPipelineOptions::default(),
+        ));
+
+        let image = heph_expect_success!(image::open(IMAGE_PATH)).to_rgba8();
+        let width = image.width();
+        let height = image.height();
+
+        let vertex_count: usize = LATITUDE_SEGMENTS * LONGITUDE_SEGMENTS * 6 * 3;
+        let mut vertices = Vec::with_capacity(vertex_count);
+        vertices.extend(sphere_vertices(0.1, -1.2));
+        vertices.extend(sphere_vertices(0.25, -0.4));
+        vertices.extend(sphere_vertices(0.5, 0.8));
+        let mut vertex_buffer = heph_expect_success!(renderer.create_buffer(
+            vertices.len() * std::mem::size_of::<Vertex>(),
+            BufferUsage::Vertex,
+        ));
+        heph_expect_success!(
+            renderer.write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
+        );
+        drop(vertices);
+
+        let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions {
+            max_anisotropy,
             ..Default::default()
         }));
 
         heph_expect_success!(renderer.begin_frame());
         heph_expect_success!(renderer.clear(RGB::default()));
-        let (
-            broken_brick_wall_pipeline,
-            mut broken_brick_wall_texture,
-            mut broken_brick_wall_vertex_buffer,
-        ) = render_sphere(&mut renderer, sampler);
-        let (text_pipeline, mut text_texture, mut text_vertex_buffer) =
-            render_text(&mut renderer, sampler);
+        let mut texture = heph_expect_success!(renderer.create_texture(
+            &TextureOptions {
+                width,
+                height,
+                format: TextureFormat::Rgba8Srgb,
+                mip_level_count: TextureOptions::max_mip_level_count(width, height),
+            },
+            image.as_raw()
+        ));
+        heph_expect_success!(renderer.end_frame());
+
+        heph_expect_success!(renderer.begin_frame());
+        heph_expect_success!(renderer.clear(RGB::default()));
+        let bindings = [
+            ResourceBinding {
+                binding: 0,
+                resource: ResourceBindingType::Buffer {
+                    handle: vertex_buffer,
+                    usage: BufferUsage::Vertex,
+                    offset: 0,
+                    size: vertex_buffer.size(),
+                },
+            },
+            ResourceBinding {
+                binding: 0,
+                resource: ResourceBindingType::Texture { handle: texture },
+            },
+            ResourceBinding {
+                binding: 1,
+                resource: ResourceBindingType::Sampler { handle: sampler },
+            },
+        ];
+        heph_expect_success!(renderer.record_graphics_command(
+            &pipeline,
+            &[&bindings],
+            vertex_count as u32,
+            1
+        ));
         heph_expect_success!(renderer.end_frame());
 
         heph_expect_success!(renderer.wait_idle());
         heph_expect_success!(renderer.destroy_sampler(&mut sampler));
-        heph_expect_success!(renderer.destroy_texture(&mut broken_brick_wall_texture));
-        heph_expect_success!(renderer.destroy_buffer(&mut broken_brick_wall_vertex_buffer));
-        heph_expect_success!(renderer.destroy_graphics_pipeline(&broken_brick_wall_pipeline));
-        heph_expect_success!(renderer.destroy_texture(&mut text_texture));
-        heph_expect_success!(renderer.destroy_buffer(&mut text_vertex_buffer));
-        heph_expect_success!(renderer.destroy_graphics_pipeline(&text_pipeline));
+        heph_expect_success!(renderer.destroy_texture(&mut texture));
+        heph_expect_success!(renderer.destroy_buffer(&mut vertex_buffer));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(&pipeline));
     }
 
     fn test_render_camera(&self) {

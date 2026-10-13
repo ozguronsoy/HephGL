@@ -1,15 +1,11 @@
 use heph_gl::{
     graphics_device::Feature::AnisotropicFiltering,
-    math::Vec3,
     renderers::{
         Renderer,
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType, TextureFormat},
-        settings::{
-            ColorBlending, FeatureRequest, GraphicsPipelineOptions, SamplerOptions, TextureOptions,
-        },
+        settings::{FeatureRequest, GraphicsPipelineOptions, SamplerOptions, TextureOptions},
     },
     shader::Shader,
-    text::{Font, TextType, TextVertex},
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
@@ -24,10 +20,6 @@ type Vertex = [f32; 8];
 const IMAGE_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_diff_1k.jpg";
 const LATITUDE_SEGMENTS: usize = 32;
 const LONGITUDE_SEGMENTS: usize = 64;
-
-const TEXT: &str = "Rendering Textures!";
-const FONT_PATH: &str = "assets/liberation_sans/LiberationSans-Regular.ttf";
-const FONT_SIZE: f32 = 64.0;
 
 // Calculates the position of a point on a sphere given its radius, x offset, and spherical
 // coordinates (u, v).
@@ -96,14 +88,16 @@ fn sphere_vertices(radius: f32, x_offset: f32) -> Vec<Vertex> {
     vertices
 }
 
-fn render_sphere(
-    renderer: &mut ExampleRenderer,
-    sampler: <ExampleRenderer as Renderer>::Sampler,
-) -> (
-    <ExampleRenderer as Renderer>::GraphicsPipeline,
-    <ExampleRenderer as Renderer>::Texture,
-    <ExampleRenderer as Renderer>::Buffer,
-) {
+fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHandle) {
+    let device = get_best_device(renderer);
+    renderer
+        .set_device(
+            Some(&device),
+            &[FeatureRequest::new(AnisotropicFiltering, false)],
+        )
+        .unwrap();
+    set_best_msaa(renderer);
+
     let vert_shader =
         Shader::from_file(format!("{}/{}", SHADERS_DIR, "broken_brick_wall_vert.spv")).unwrap();
     let frag_shader =
@@ -114,17 +108,21 @@ fn render_sphere(
             &GraphicsPipelineOptions::default(),
         )
         .unwrap();
+    drop(vert_shader);
+    drop(frag_shader);
 
     let image = image::open(IMAGE_PATH).unwrap().to_rgba8();
     let width = image.width();
     let height = image.height();
 
-    let mut vertices = Vec::with_capacity(LATITUDE_SEGMENTS * LONGITUDE_SEGMENTS * 6 * 3);
+    // Generate the sphere vertices for three spheres, write them to a GPU buffer, and then drop the
+    // CPU-side vertices to free memory.
+    let vertex_count: usize = LATITUDE_SEGMENTS * LONGITUDE_SEGMENTS * 6 * 3;
+    let mut vertices = Vec::with_capacity(vertex_count);
     vertices.extend(sphere_vertices(0.1, -1.2));
     vertices.extend(sphere_vertices(0.25, -0.4));
     vertices.extend(sphere_vertices(0.5, 0.8));
-
-    let vertex_buffer = renderer
+    let mut vertex_buffer = renderer
         .create_buffer(
             vertices.len() * std::mem::size_of::<Vertex>(),
             BufferUsage::Vertex,
@@ -133,139 +131,7 @@ fn render_sphere(
     renderer
         .write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
         .unwrap();
-
-    // Creating a texture creates a GPU command to transfer the raw pixel data from CPU to GPU, thus
-    // we must begin a frame first. Once a texture is loaded, we can use it until we destroy it.
-    let texture = renderer
-        .create_texture(
-            &TextureOptions {
-                width,
-                height,
-                format: TextureFormat::Rgba8Srgb,
-                mip_level_count: TextureOptions::max_mip_level_count(width, height),
-            },
-            image.as_raw(),
-        )
-        .unwrap();
-
-    let bindings = [
-        ResourceBinding {
-            binding: 0,
-            resource: ResourceBindingType::Buffer {
-                handle: vertex_buffer,
-                usage: BufferUsage::Vertex,
-                offset: 0,
-                size: vertex_buffer.size(),
-            },
-        },
-        ResourceBinding {
-            binding: 0,
-            resource: ResourceBindingType::Texture { handle: texture },
-        },
-        ResourceBinding {
-            binding: 1,
-            resource: ResourceBindingType::Sampler { handle: sampler },
-        },
-    ];
-    renderer
-        .record_graphics_command(&pipeline, &[&bindings], vertices.len() as u32, 1)
-        .unwrap();
-
-    (pipeline, texture, vertex_buffer)
-}
-
-fn render_text(
-    renderer: &mut ExampleRenderer,
-    sampler: <ExampleRenderer as Renderer>::Sampler,
-) -> (
-    <ExampleRenderer as Renderer>::GraphicsPipeline,
-    <ExampleRenderer as Renderer>::Texture,
-    <ExampleRenderer as Renderer>::Buffer,
-) {
-    let vert_shader = Shader::from_file(format!("{}/{}", SHADERS_DIR, "text_vert.spv")).unwrap();
-    let frag_shader = Shader::from_file(format!("{}/{}", SHADERS_DIR, "text_frag.spv")).unwrap();
-    let pipeline = renderer
-        .create_graphics_pipeline(
-            &[&vert_shader, &frag_shader],
-            &GraphicsPipelineOptions {
-                blending: ColorBlending::Alpha,
-                depth_test: false,
-                depth_write: false,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-    let mut font = Font::from_file(FONT_PATH, FONT_SIZE, false).unwrap();
-    let vertices = font
-        .vertices(
-            TEXT,
-            &Vec3::new(330.0, 50.0, 0.0),
-            [1.0, 1.0, 1.0, 1.0],
-            TextType::Screen {
-                viewport_size: [1280.0, 720.0],
-            },
-        )
-        .unwrap();
-    let vertex_buffer = renderer
-        .create_buffer(
-            vertices.len() * std::mem::size_of::<TextVertex>(),
-            BufferUsage::Vertex,
-        )
-        .unwrap();
-    renderer
-        .write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
-        .unwrap();
-
-    // Creating a texture creates a GPU command to transfer the raw pixel data from CPU to GPU, thus
-    // we must begin a frame first. Once a texture is loaded, we can use it until we destroy it.
-    let texture = renderer
-        .create_texture(
-            &TextureOptions {
-                width: font.atlas_width(),
-                height: font.atlas_height(),
-                format: TextureFormat::R8Unorm,
-                mip_level_count: 1,
-            },
-            font.atlas_data(),
-        )
-        .unwrap();
-
-    let bindings = [
-        ResourceBinding {
-            binding: 0,
-            resource: ResourceBindingType::Buffer {
-                handle: vertex_buffer,
-                usage: BufferUsage::Vertex,
-                offset: 0,
-                size: vertex_buffer.size(),
-            },
-        },
-        ResourceBinding {
-            binding: 0,
-            resource: ResourceBindingType::Texture { handle: texture },
-        },
-        ResourceBinding {
-            binding: 1,
-            resource: ResourceBindingType::Sampler { handle: sampler },
-        },
-    ];
-    renderer
-        .record_graphics_command(&pipeline, &[&bindings], vertices.len() as u32, 1)
-        .unwrap();
-
-    (pipeline, texture, vertex_buffer)
-}
-
-fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHandle) {
-    let device = get_best_device(renderer);
-    renderer
-        .set_device(
-            Some(&device),
-            &[FeatureRequest::new(AnisotropicFiltering, false)],
-        )
-        .unwrap();
-    set_best_msaa(renderer);
+    drop(vertices);
 
     let mut sampler = renderer
         .create_sampler(&SamplerOptions {
@@ -277,31 +143,56 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         })
         .unwrap();
 
+    // Creating a texture creates a GPU command to transfer the raw pixel data from CPU to GPU, thus
+    // we must begin a frame first. Once a texture is loaded, we can use it until we destroy it.
     renderer.begin_frame().unwrap();
     renderer.clear(RGB::default()).unwrap();
-    let (
-        broken_brick_wall_pipeline,
-        mut broken_brick_wall_texture,
-        mut broken_brick_wall_vertex_buffer,
-    ) = render_sphere(renderer, sampler);
-    let (text_pipeline, mut text_texture, mut text_vertex_buffer) = render_text(renderer, sampler);
+    let mut texture = renderer
+        .create_texture(
+            &TextureOptions {
+                width,
+                height,
+                format: TextureFormat::Rgba8Srgb,
+                mip_level_count: TextureOptions::max_mip_level_count(width, height),
+            },
+            image.as_raw(),
+        )
+        .unwrap();
+    renderer.end_frame().unwrap();
+
+    // Render the spheres with the texture applied.
+    renderer.begin_frame().unwrap();
+    renderer.clear(RGB::default()).unwrap();
+    let bindings = [
+        ResourceBinding {
+            binding: 0,
+            resource: ResourceBindingType::Buffer {
+                handle: vertex_buffer,
+                usage: BufferUsage::Vertex,
+                offset: 0,
+                size: vertex_buffer.size(),
+            },
+        },
+        ResourceBinding {
+            binding: 0,
+            resource: ResourceBindingType::Texture { handle: texture },
+        },
+        ResourceBinding {
+            binding: 1,
+            resource: ResourceBindingType::Sampler { handle: sampler },
+        },
+    ];
+    renderer
+        .record_graphics_command(&pipeline, &[&bindings], vertex_count as u32, 1)
+        .unwrap();
     renderer.end_frame().unwrap();
 
     // Cleanup.
     renderer.wait_idle().unwrap();
     renderer.destroy_sampler(&mut sampler).unwrap();
-    renderer
-        .destroy_texture(&mut broken_brick_wall_texture)
-        .unwrap();
-    renderer
-        .destroy_buffer(&mut broken_brick_wall_vertex_buffer)
-        .unwrap();
-    renderer
-        .destroy_graphics_pipeline(&broken_brick_wall_pipeline)
-        .unwrap();
-    renderer.destroy_texture(&mut text_texture).unwrap();
-    renderer.destroy_buffer(&mut text_vertex_buffer).unwrap();
-    renderer.destroy_graphics_pipeline(&text_pipeline).unwrap();
+    renderer.destroy_texture(&mut texture).unwrap();
+    renderer.destroy_buffer(&mut vertex_buffer).unwrap();
+    renderer.destroy_graphics_pipeline(&pipeline).unwrap();
 
     std::thread::sleep(std::time::Duration::from_secs(5));
     std::process::exit(0);
