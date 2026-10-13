@@ -17,6 +17,9 @@ pub enum TextType {
         scale: f32,
         /// The distance from the front face toward positive Z. Must be positive.
         depth: f32,
+        /// The tolerance divider for curve approximation. Greater values result in more accurate
+        /// curves. Must be a positive number.
+        curve_tolerance_divider: f32,
     },
 }
 

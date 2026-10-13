@@ -145,6 +145,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
             TextType::Extruded {
                 scale: 0.018,
                 depth: 0.35,
+                curve_tolerance_divider: 512.0,
             },
         )
         .unwrap();

@@ -18,6 +18,7 @@ pub(super) fn extrude(
     glyph_index: u16,
     scale: f32,
     depth: f32,
+    curve_tolerance_divider: f32,
     offset: &Vec3,
     color: [f32; 4],
 ) -> Result<Vec<TextVertex>, TextError> {
@@ -31,7 +32,7 @@ pub(super) fn extrude(
 
     extrude_path(
         &outline.finish(),
-        face.units_per_em() as f32 / 512.0,
+        face.units_per_em() as f32 / curve_tolerance_divider,
         scale,
         depth,
         offset,
@@ -314,12 +315,13 @@ mod tests {
         let scale = 1.0 / face.units_per_em() as f32;
         for character in ['O', 'B', 'i', 'é', 'Ж'] {
             let glyph = face.glyph_index(character).unwrap();
-            let vertices = extrude(&face, glyph.0, scale, 0.2, &Vec3::ZERO, [1.0; 4]).unwrap();
+            let vertices =
+                extrude(&face, glyph.0, scale, 0.2, 512.0, &Vec3::ZERO, [1.0; 4]).unwrap();
             assert_closed_mesh(&vertices);
         }
         let space = face.glyph_index(' ').unwrap();
         assert!(
-            extrude(&face, space.0, scale, 0.2, &Vec3::ZERO, [1.0; 4])
+            extrude(&face, space.0, scale, 0.2, 512.0, &Vec3::ZERO, [1.0; 4])
                 .unwrap()
                 .is_empty()
         );

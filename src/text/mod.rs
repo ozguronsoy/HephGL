@@ -91,9 +91,18 @@ impl Font {
                 self.screen_vertices(text, &layout, position, color, viewport_size)
             }
             TextType::World { scale } => self.world_vertices(text, &layout, position, color, scale),
-            TextType::Extruded { scale, depth } => {
-                self.extruded_vertices(&layout, position, color, scale, depth)
-            }
+            TextType::Extruded {
+                scale,
+                depth,
+                curve_tolerance_divider,
+            } => self.extruded_vertices(
+                &layout,
+                position,
+                color,
+                scale,
+                depth,
+                curve_tolerance_divider,
+            ),
         }
     }
 
@@ -314,6 +323,7 @@ impl Font {
         color: [f32; 4],
         scale: f32,
         depth: f32,
+        curve_tolerance_divider: f32,
     ) -> Result<Vec<TextVertex>, TextError> {
         if !self.options.enable_extruded_text {
             return Err(TextError::invalid_argument("Extruded text is disabled."));
@@ -323,6 +333,11 @@ impl Font {
         }
         if depth <= 0.0 {
             return Err(TextError::invalid_argument("Text depth must be positive."));
+        }
+        if !curve_tolerance_divider.is_finite() || curve_tolerance_divider <= 0.0 {
+            return Err(TextError::invalid_argument(
+                "Curve tolerance divider must be finite and positive.",
+            ));
         }
         let face = ttf_parser::Face::parse(&self.data, 0)?;
         let mut vertices = Vec::with_capacity(layout.glyphs().len() * 6);
@@ -345,6 +360,7 @@ impl Font {
                 positioned.key.glyph_index,
                 self.options.size / face.units_per_em() as f32 * scale,
                 depth,
+                curve_tolerance_divider,
                 &offset,
                 color,
             )?);
@@ -520,6 +536,7 @@ mod tests {
             TextType::Extruded {
                 scale: 0.025,
                 depth: 0.2,
+                curve_tolerance_divider: 512.0,
             },
         ] {
             let single = font
@@ -559,13 +576,23 @@ mod tests {
         let position = Vec3::new(-2.0, 3.0, 5.0);
         let scale = 0.03125;
         let depth = 0.4;
+        let curve_tolerance_divider = 512.0;
         let color = [0.2, 0.4, 0.6, 0.8];
         for text in ["A", "g", "é", "Å", "j"] {
             let planar = font
                 .vertices(text, &position, color, TextType::World { scale })
                 .unwrap();
             let extruded = font
-                .vertices(text, &position, color, TextType::Extruded { scale, depth })
+                .vertices(
+                    text,
+                    &position,
+                    color,
+                    TextType::Extruded {
+                        scale,
+                        depth,
+                        curve_tolerance_divider,
+                    },
+                )
                 .unwrap();
             assert_eq!(planar.len(), 6);
             assert!(extruded.len() > 12);
@@ -625,6 +652,7 @@ mod tests {
             TextType::Extruded {
                 scale: 0.025,
                 depth: 0.2,
+                curve_tolerance_divider: 512.0,
             },
         ] {
             for text in ["", " \t\r\n "] {
@@ -665,7 +693,8 @@ mod tests {
                     [1.0; 4],
                     TextType::Extruded {
                         scale: 0.025,
-                        depth: 0.2
+                        depth: 0.2,
+                        curve_tolerance_divider: 512.0
                     }
                 ),
                 Err(TextError::InvalidArgument(_))
@@ -705,7 +734,8 @@ mod tests {
                     [1.0; 4],
                     TextType::Extruded {
                         scale: 0.025,
-                        depth: 0.2
+                        depth: 0.2,
+                        curve_tolerance_divider: 512.0
                     }
                 ),
                 Err(TextError::InvalidArgument(_))
@@ -769,10 +799,12 @@ mod tests {
                 TextType::Extruded {
                     scale: value,
                     depth: 0.2,
+                    curve_tolerance_divider: 512.0,
                 },
                 TextType::Extruded {
                     scale: 0.025,
                     depth: value,
+                    curve_tolerance_divider: 512.0,
                 },
             ] {
                 assert!(matches!(
@@ -789,6 +821,21 @@ mod tests {
                     [1.0; 4],
                     TextType::Screen {
                         viewport_size: [800.0, 600.0]
+                    },
+                ),
+                Err(TextError::InvalidArgument(_))
+            ));
+        }
+        for curve_tolerance_divider in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+            assert!(matches!(
+                font.vertices(
+                    "A",
+                    &Vec3::ZERO,
+                    [1.0; 4],
+                    TextType::Extruded {
+                        scale: 0.025,
+                        depth: 0.2,
+                        curve_tolerance_divider,
                     },
                 ),
                 Err(TextError::InvalidArgument(_))
