@@ -11,5 +11,9 @@ layout(location = 0) out vec4 out_color;
 void main()
 {
     float coverage = texture(sampler2D(font_texture, font_sampler), frag_uv).r;
+    if (coverage * frag_color.w <= 0.001)
+    {
+        discard;
+    }
     out_color = vec4(frag_color.xyz, frag_color.w * coverage);
 }
