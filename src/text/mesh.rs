@@ -13,52 +13,6 @@ struct Outline {
     open: bool,
 }
 
-impl Outline {
-    fn new() -> Self {
-        Self {
-            builder: Path::builder(),
-            open: false,
-        }
-    }
-
-    fn finish(mut self) -> Path {
-        if self.open {
-            self.builder.end(true);
-        }
-        self.builder.build()
-    }
-}
-
-impl ttf_parser::OutlineBuilder for Outline {
-    fn move_to(&mut self, x: f32, y: f32) {
-        if self.open {
-            self.builder.end(true);
-        }
-        self.builder.begin(point(x, y));
-        self.open = true;
-    }
-
-    fn line_to(&mut self, x: f32, y: f32) {
-        self.builder.line_to(point(x, y));
-    }
-
-    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
-        self.builder.quadratic_bezier_to(point(x1, y1), point(x, y));
-    }
-
-    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
-        self.builder
-            .cubic_bezier_to(point(x1, y1), point(x2, y2), point(x, y));
-    }
-
-    fn close(&mut self) {
-        if self.open {
-            self.builder.end(true);
-            self.open = false;
-        }
-    }
-}
-
 pub(super) fn extrude(
     face: &ttf_parser::Face<'_>,
     glyph_index: u16,
@@ -169,6 +123,51 @@ fn extrude_path(
     }
 
     Ok(vertices)
+}
+
+impl Outline {
+    fn new() -> Self {
+        Self {
+            builder: Path::builder(),
+            open: false,
+        }
+    }
+
+    fn finish(mut self) -> Path {
+        if self.open {
+            self.builder.end(true);
+        }
+        self.builder.build()
+    }
+}
+impl ttf_parser::OutlineBuilder for Outline {
+    fn move_to(&mut self, x: f32, y: f32) {
+        if self.open {
+            self.builder.end(true);
+        }
+        self.builder.begin(point(x, y));
+        self.open = true;
+    }
+
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.builder.line_to(point(x, y));
+    }
+
+    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+        self.builder.quadratic_bezier_to(point(x1, y1), point(x, y));
+    }
+
+    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+        self.builder
+            .cubic_bezier_to(point(x1, y1), point(x2, y2), point(x, y));
+    }
+
+    fn close(&mut self) {
+        if self.open {
+            self.builder.end(true);
+            self.open = false;
+        }
+    }
 }
 
 #[cfg(test)]
