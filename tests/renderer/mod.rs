@@ -751,39 +751,49 @@ where
 
     fn test_workers_begin_before_main(&self) {
         const THREAD_COUNT: usize = 10;
+        const N_FRAMES: usize = 10;
+        const FRAMES_IN_FLIGHT: usize = 1;
 
         let mut renderer = self.create_renderer_with_any_device(&[]);
         let renderer_handle = RendererHandle::from(&mut renderer);
 
+        heph_expect_success!(renderer.set_settings(Settings {
+            frames_in_flight: FRAMES_IN_FLIGHT,
+            ..Default::default()
+        }));
+
         std::thread::scope(|s| {
             let (ready_tx, ready_rx) = std::sync::mpsc::channel();
             let (begin_tx, begin_rx) = std::sync::mpsc::channel();
-            let finish_barrier = std::sync::Arc::new(std::sync::Barrier::new(THREAD_COUNT + 1));
 
             for _ in 0..THREAD_COUNT {
                 let ready_tx = ready_tx.clone();
                 let begin_tx = begin_tx.clone();
-                let finish_barrier = finish_barrier.clone();
                 s.spawn(move || {
                     let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
                     heph_expect_success!(ready_tx.send(()));
-                    heph_expect_success!(renderer_worker.begin_frame());
-                    heph_expect_success!(begin_tx.send(()));
-                    finish_barrier.wait();
-                    heph_expect_success!(renderer_worker.end_frame());
+                    for _ in 0..N_FRAMES {
+                        heph_expect_success!(renderer_worker.begin_frame());
+                        heph_expect_success!(begin_tx.send(()));
+                        heph_expect_success!(renderer_worker.end_frame());
+                    }
                 });
             }
 
             for _ in 0..THREAD_COUNT {
                 heph_expect_success!(ready_rx.recv_timeout(Duration::from_secs(1)));
             }
-            let early_begin_result = begin_rx.recv_timeout(Duration::from_secs(1)).ok();
-            heph_expect_success!(renderer.begin_frame());
-            for _ in usize::from(early_begin_result.is_some())..THREAD_COUNT {
-                heph_expect_success!(begin_rx.recv_timeout(Duration::from_secs(1)));
+            let mut early_begin_result = None;
+            for frame in 0..N_FRAMES {
+                if frame == 0 {
+                    early_begin_result = begin_rx.recv_timeout(Duration::from_secs(1)).ok();
+                }
+                heph_expect_success!(renderer.begin_frame());
+                for _ in usize::from(frame == 0 && early_begin_result.is_some())..THREAD_COUNT {
+                    heph_expect_success!(begin_rx.recv_timeout(Duration::from_secs(1)));
+                }
+                heph_expect_success!(renderer.end_frame());
             }
-            finish_barrier.wait();
-            heph_expect_success!(renderer.end_frame());
 
             assert!(
                 early_begin_result.is_none(),
@@ -1089,7 +1099,7 @@ where
             }
 
             heph_expect_success!(renderer.begin_frame());
-            
+
             let mut cleanup_data = Vec::with_capacity(n_threads);
             for _ in 0..n_threads {
                 let (buffer_a, buffer_b, buffer_c, a_data, b_data) =
