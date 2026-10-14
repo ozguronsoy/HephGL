@@ -73,9 +73,9 @@ const THREAD_CONTEXT_COUNT: usize = {
 const THREAD_CONTEXT_MASK_COUNT: usize =
     THREAD_CONTEXT_COUNT.div_ceil(THREAD_CONTEXT_MASK_BIT_SIZE);
 /// The index reserved for the main thread.
-const MAIN_THREAD_CONTEXT_INDEX: usize = THREAD_CONTEXT_COUNT - 1;
+pub const MAIN_THREAD_CONTEXT_INDEX: usize = THREAD_CONTEXT_COUNT - 1;
 /// The index of the mask that contains the index reserved for the main thread.
-const MAIN_THREAD_CONTEXT_MASK_INDEX: usize =
+pub const MAIN_THREAD_CONTEXT_MASK_INDEX: usize =
     MAIN_THREAD_CONTEXT_INDEX / THREAD_CONTEXT_MASK_BIT_SIZE;
 // static asserts
 #[cfg(not(test))]

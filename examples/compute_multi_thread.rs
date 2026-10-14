@@ -133,6 +133,8 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
             });
         }
 
+        renderer.begin_frame().unwrap();
+
         // Wait for threads to finish recording commands and receive the resources.
         let mut cleanup_data = Vec::with_capacity(N_THREADS);
         for _ in 0..N_THREADS {
@@ -140,7 +142,6 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
             cleanup_data.push((thread, buffer_a, buffer_b, buffer_c, data_a, data_b));
         }
 
-        renderer.begin_frame().unwrap();
         renderer.end_frame().unwrap();
 
         // Wait for GPU to finish processing.

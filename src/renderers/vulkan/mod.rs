@@ -38,7 +38,10 @@ use crate::{
         ResourceBinding, Settings,
         resources::ResourceBindingType,
         settings::{GraphicsPipelineOptions, Msaa, SamplerOptions, TextureOptions},
-        thread_context::{ThreadContextIndex, ThreadContextMask, is_thread_context_active},
+        thread_context::{
+            MAIN_THREAD_CONTEXT_INDEX, ThreadContextIndex, ThreadContextMask,
+            is_thread_context_active,
+        },
         version::DriverVersion,
         vulkan::{
             device::DeviceContext,
@@ -1597,8 +1600,23 @@ impl Renderer for VulkanRenderer {
                     .swapchain_context
                     .image_avaliable_semaphore_index = device_context.current_frame_index;
             }
+        } else {
+            let wait_main_thread_begin = |queue_context: &QueueContext| -> RendererResult<()> {
+                let main_frame = &queue_context.frames[device_context.current_frame_index]
+                    .thread_contexts[MAIN_THREAD_CONTEXT_INDEX];
+                let (state_mutex, cv) = &main_frame.sync_state;
+                let mut state = state_mutex.lock()?;
+                while *state != FrameState::Started {
+                    state = cv.wait(state)?;
+                }
+                Ok(())
+            };
+            wait_main_thread_begin(&device_context.graphics_queue_context)?;
+            wait_main_thread_begin(&device_context.transfer_queue_context)?;
+            if let Some(compute_queue_context) = &device_context.compute_queue_context {
+                wait_main_thread_begin(compute_queue_context)?;
+            }
         }
-        // TODO: Wait for main thread to call this function first.
 
         let rendering = device_context
             .rendering
@@ -1609,7 +1627,7 @@ impl Renderer for VulkanRenderer {
          -> RendererResult<()> {
             let current_frame = &mut queue_context.frames[device_context.current_frame_index]
                 .thread_contexts[thread_context_index];
-            let (state_mutex, _) = &current_frame.sync_state;
+            let (state_mutex, cv) = &current_frame.sync_state;
             let mut state = state_mutex.lock()?;
             if *state != FrameState::Idle {
                 return Err(RendererError::invalid_operation(
@@ -1727,6 +1745,7 @@ impl Renderer for VulkanRenderer {
                 }
             }
             *state = FrameState::Started;
+            cv.notify_all();
             Ok(())
         };
         begin_queue(&mut device_context.graphics_queue_context, true)?;
@@ -1756,7 +1775,7 @@ impl Renderer for VulkanRenderer {
          -> RendererResult<()> {
             let current_frame = &mut queue_context.frames[device_context.current_frame_index]
                 .thread_contexts[thread_context_index];
-            let (state_mutex, condvar) = &current_frame.sync_state;
+            let (state_mutex, cv) = &current_frame.sync_state;
             let mut state = state_mutex.lock()?;
             if *state != FrameState::Started {
                 return Err(RendererError::invalid_operation(
@@ -1791,7 +1810,7 @@ impl Renderer for VulkanRenderer {
                     .end_command_buffer(current_frame.command_buffer)?;
             }
             *state = FrameState::Finished;
-            condvar.notify_one();
+            cv.notify_one();
             Ok(())
         };
         end_queue(&mut device_context.graphics_queue_context, true)?;
@@ -1828,7 +1847,7 @@ impl Renderer for VulkanRenderer {
                         .thread_contexts[thread_context_index];
 
                     // Wait for the worker thread to signal the frame is finished.
-                    let (state_mutex, condvar) = &current_frame.sync_state;
+                    let (state_mutex, cv) = &current_frame.sync_state;
                     let mut state = state_mutex.lock()?;
                     if *state == FrameState::Idle {
                         return Err(RendererError::invalid_operation(
@@ -1836,7 +1855,7 @@ impl Renderer for VulkanRenderer {
                         ));
                     }
                     while *state != FrameState::Finished {
-                        state = condvar.wait(state)?;
+                        state = cv.wait(state)?;
                     }
                     *state = FrameState::Idle;
 
