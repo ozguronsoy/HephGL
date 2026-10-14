@@ -159,7 +159,7 @@ impl Renderer for VulkanRenderer {
                 }
                 queue_context
                     .frames
-                    .resize_with(self.settings.frames_in_flight as usize, Frame::default);
+                    .resize_with(self.settings.frames_in_flight, Frame::default);
                 Ok(())
             };
             resize_frames(&mut device_context.graphics_queue_context)?;

@@ -158,7 +158,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     let mut extruded_vertex_buffer = create_vertex_buffer(renderer, &extruded_vertices);
 
     // Each world-space object needs its own matrices for every frame in flight.
-    let mut uniform_buffers = Vec::with_capacity(settings.frames_in_flight as usize);
+    let mut uniform_buffers = Vec::with_capacity(settings.frames_in_flight);
     for _ in 0..settings.frames_in_flight {
         uniform_buffers.push([
             renderer

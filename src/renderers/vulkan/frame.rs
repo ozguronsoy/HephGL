@@ -64,7 +64,6 @@ impl VulkanRenderer {
             .device_context
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
-        let fif = self.settings.frames_in_flight as usize;
         let thread_context_index = Self::thread_context_index()?;
 
         let create_command_pool =
@@ -81,7 +80,7 @@ impl VulkanRenderer {
                 Ok(())
             };
 
-        for frame_index in 0..fif {
+        for frame_index in 0..self.settings.frames_in_flight {
             create_command_pool(&mut device_context.graphics_queue_context, frame_index)?;
             create_command_pool(&mut device_context.transfer_queue_context, frame_index)?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
@@ -100,7 +99,6 @@ impl VulkanRenderer {
             .device_context
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
-        let fif = self.settings.frames_in_flight as usize;
         let thread_context_index = Self::thread_context_index()?;
 
         let allocate_buffers =
@@ -118,7 +116,7 @@ impl VulkanRenderer {
                 Ok(())
             };
 
-        for frame_index in 0..fif {
+        for frame_index in 0..self.settings.frames_in_flight {
             allocate_buffers(&mut device_context.graphics_queue_context, frame_index)?;
             allocate_buffers(&mut device_context.transfer_queue_context, frame_index)?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
@@ -140,7 +138,6 @@ impl VulkanRenderer {
             .device_context
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
-        let fif = self.settings.frames_in_flight as usize;
         let thread_context_index = Self::thread_context_index()?;
 
         let pool_sizes = [
@@ -173,7 +170,7 @@ impl VulkanRenderer {
                 }
             };
 
-        for frame_index in 0..fif {
+        for frame_index in 0..self.settings.frames_in_flight {
             allocate_pool(&mut device_context.graphics_queue_context, frame_index)?;
             allocate_pool(&mut device_context.transfer_queue_context, frame_index)?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
@@ -190,7 +187,6 @@ impl VulkanRenderer {
             .device_context
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
-        let fif = self.settings.frames_in_flight as usize;
         let thread_context_index = Self::thread_context_index()?;
 
         let destroy_command_pool = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
@@ -201,7 +197,7 @@ impl VulkanRenderer {
             );
             frame.thread_contexts[thread_context_index].command_pool = CommandPool::default();
         };
-        for frame_index in 0..fif {
+        for frame_index in 0..self.settings.frames_in_flight {
             destroy_command_pool(&mut device_context.graphics_queue_context, frame_index);
             destroy_command_pool(&mut device_context.transfer_queue_context, frame_index);
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
@@ -218,7 +214,6 @@ impl VulkanRenderer {
             .device_context
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
-        let fif = self.settings.frames_in_flight as usize;
         let thread_context_index = Self::thread_context_index()?;
 
         let destroy_command_buffer = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
@@ -230,7 +225,7 @@ impl VulkanRenderer {
             frame.thread_contexts[thread_context_index].command_buffer = CommandBuffer::default();
         };
 
-        for frame_index in 0..fif {
+        for frame_index in 0..self.settings.frames_in_flight {
             destroy_command_buffer(&mut device_context.graphics_queue_context, frame_index);
             destroy_command_buffer(&mut device_context.transfer_queue_context, frame_index);
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
@@ -247,7 +242,6 @@ impl VulkanRenderer {
             .device_context
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
-        let fif = self.settings.frames_in_flight as usize;
         let thread_context_index = Self::thread_context_index()?;
 
         let destroy_desc_pool = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
@@ -259,7 +253,7 @@ impl VulkanRenderer {
             frame.thread_contexts[thread_context_index].descriptor_pool = DescriptorPool::default();
         };
 
-        for frame_index in 0..fif {
+        for frame_index in 0..self.settings.frames_in_flight {
             destroy_desc_pool(&mut device_context.graphics_queue_context, frame_index);
             destroy_desc_pool(&mut device_context.transfer_queue_context, frame_index);
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
@@ -276,7 +270,6 @@ impl VulkanRenderer {
             .device_context
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
-        let fif = self.settings.frames_in_flight as usize;
         let thread_context_index = Self::thread_context_index()?;
 
         let destroy_transfer_buffers = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
@@ -291,7 +284,7 @@ impl VulkanRenderer {
             }
         };
 
-        for frame_index in 0..fif {
+        for frame_index in 0..self.settings.frames_in_flight {
             destroy_transfer_buffers(&mut device_context.graphics_queue_context, frame_index);
             destroy_transfer_buffers(&mut device_context.transfer_queue_context, frame_index);
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {

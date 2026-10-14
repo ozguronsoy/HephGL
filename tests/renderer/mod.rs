@@ -1643,7 +1643,7 @@ where
         let mut world_vertex_buffer = create_vertex_buffer(&mut renderer, &world_vertices);
         let mut extruded_vertex_buffer = create_vertex_buffer(&mut renderer, &extruded_vertices);
 
-        let mut uniform_buffers = Vec::with_capacity(settings.frames_in_flight as usize);
+        let mut uniform_buffers = Vec::with_capacity(settings.frames_in_flight);
         for _ in 0..settings.frames_in_flight {
             uniform_buffers.push([
                 heph_expect_success!(
@@ -1887,7 +1887,7 @@ where
         );
 
         // Each frame in flight needs its own matrix buffer while the GPU reads earlier frames.
-        let mut uniform_buffers = Vec::with_capacity(settings.frames_in_flight as usize);
+        let mut uniform_buffers = Vec::with_capacity(settings.frames_in_flight);
         for _ in 0..settings.frames_in_flight {
             uniform_buffers.push(heph_expect_success!(
                 renderer.create_buffer(std::mem::size_of::<[[f32; 16]; 3]>(), BufferUsage::Uniform)
