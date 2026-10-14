@@ -102,7 +102,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 
     // The shader reads three mat4 values: model, view-projection, and normal.
     // Keep one buffer per frame in flight so updates do not overwrite data the GPU still reads.
-    let mut uniform_buffers = Vec::with_capacity(settings.frames_in_flight as usize);
+    let mut uniform_buffers = Vec::with_capacity(settings.frames_in_flight);
     for _ in 0..settings.frames_in_flight {
         uniform_buffers.push(
             renderer

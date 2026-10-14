@@ -97,7 +97,7 @@ impl VulkanRenderer {
             ),
         )?;
         let thread_context_index = Self::thread_context_index()?;
-        let current_frame = &compute_queue_context.frames[self.current_frame_index as usize]
+        let current_frame = &compute_queue_context.frames[device_context.current_frame_index]
             .thread_contexts[thread_context_index];
         let descriptor_pool = current_frame.descriptor_pool;
 
@@ -226,7 +226,7 @@ impl VulkanRenderer {
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
         let graphics_queue_context = &device_context.graphics_queue_context;
         let thread_context_index = Self::thread_context_index()?;
-        let current_frame = &graphics_queue_context.frames[self.current_frame_index as usize]
+        let current_frame = &graphics_queue_context.frames[device_context.current_frame_index]
             .thread_contexts[thread_context_index];
         let descriptor_pool = current_frame.descriptor_pool;
 

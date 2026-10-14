@@ -65,6 +65,7 @@ impl VulkanRenderer {
             .device_context
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
+        let frames_in_flight = self.settings.frames_in_flight as u32;
 
         let surface_capabilities = unsafe {
             window_surface_loader.get_physical_device_surface_capabilities(
@@ -108,11 +109,8 @@ impl VulkanRenderer {
 
         // `0` means there is no limit for number of images.
         let requested_image_count = match surface_capabilities.max_image_count == 0 {
-            true => self
-                .settings
-                .frames_in_flight
-                .max(surface_capabilities.min_image_count),
-            false => self.settings.frames_in_flight.clamp(
+            true => frames_in_flight.max(surface_capabilities.min_image_count),
+            false => frames_in_flight.clamp(
                 surface_capabilities.min_image_count,
                 surface_capabilities.max_image_count,
             ),
@@ -125,10 +123,10 @@ impl VulkanRenderer {
             false => (1, ash::vk::ImageViewType::TYPE_2D),
         };
 
-        if requested_image_count < self.settings.frames_in_flight {
+        if requested_image_count < frames_in_flight {
             return Err(RendererError::Fail(format!(
                 "Failed to create `{}` amount of frames.",
-                self.settings.frames_in_flight
+                frames_in_flight
             )));
         }
 
