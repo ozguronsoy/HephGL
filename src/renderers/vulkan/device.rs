@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+
 use crate::{
     graphics_device::GraphicsDevice,
     renderers::{
@@ -38,10 +40,12 @@ pub struct DeviceContext {
     pub supported_msaa_list: Vec<Msaa>,
 
     pub current_frame_index: usize,
+    pub current_frame_index_sync: Mutex<()>,
+
     /// The bitmasks indicating the availability of thread contexts.
     /// `0` means the context at that index is available, `1` means it is
     /// currently in use.
-    pub thread_context_masks: std::sync::Mutex<ThreadContextMaskArray>,
+    pub thread_context_masks: Mutex<ThreadContextMaskArray>,
 }
 
 impl VulkanRenderer {

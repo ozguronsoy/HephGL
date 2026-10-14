@@ -751,8 +751,8 @@ where
 
     fn test_workers_begin_before_main(&self) {
         const THREAD_COUNT: usize = 10;
-        const N_FRAMES: usize = 10;
-        const FRAMES_IN_FLIGHT: usize = 1;
+        const N_FRAMES: usize = 25;
+        const FRAMES_IN_FLIGHT: usize = 3;
 
         let mut renderer = self.create_renderer_with_any_device(&[]);
         let renderer_handle = RendererHandle::from(&mut renderer);

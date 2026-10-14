@@ -708,6 +708,8 @@ impl Renderer for VulkanRenderer {
             supported_msaa_list,
 
             current_frame_index: 0,
+            current_frame_index_sync: Mutex::new(()),
+
             thread_context_masks: Mutex::new(std::array::from_fn(|_| ThreadContextMask::default())),
         });
 
@@ -1601,20 +1603,42 @@ impl Renderer for VulkanRenderer {
                     .image_avaliable_semaphore_index = device_context.current_frame_index;
             }
         } else {
-            let wait_main_thread_begin = |queue_context: &QueueContext| -> RendererResult<()> {
-                let main_frame = &queue_context.frames[device_context.current_frame_index]
-                    .thread_contexts[MAIN_THREAD_CONTEXT_INDEX];
-                let (state_mutex, cv) = &main_frame.sync_state;
-                let mut state = state_mutex.lock()?;
-                while *state != FrameState::Started {
+            // The worker thread might be one frame ahead of the main thread. Wait for main to
+            // consume the previous frame, releasing the index lock while waiting so main can
+            // finish. Reacquiring the lock ensures `current_frame_index` has also been updated
+            // before we wait for main to begin the next frame.
+            let mut _mutex_guard = device_context.current_frame_index_sync.lock()?;
+            let (state_mutex, cv) = &device_context.graphics_queue_context.frames
+                [device_context.current_frame_index]
+                .thread_contexts[thread_context_index]
+                .sync_state;
+            let mut state = state_mutex.lock()?;
+            if *state == FrameState::Finished {
+                drop(_mutex_guard);
+                while *state == FrameState::Finished {
                     state = cv.wait(state)?;
                 }
-                Ok(())
-            };
-            wait_main_thread_begin(&device_context.graphics_queue_context)?;
-            wait_main_thread_begin(&device_context.transfer_queue_context)?;
+                drop(state);
+                _mutex_guard = device_context.current_frame_index_sync.lock()?;
+            }
+
+            // Wait for the main thread to begin the current frame before we can start recording
+            // commands.
+            let wait_main_thread_begin_current_frame =
+                |queue_context: &QueueContext| -> RendererResult<()> {
+                    let main_frame = &queue_context.frames[device_context.current_frame_index]
+                        .thread_contexts[MAIN_THREAD_CONTEXT_INDEX];
+                    let (state_mutex, cv) = &main_frame.sync_state;
+                    let mut state = state_mutex.lock()?;
+                    while *state != FrameState::Started {
+                        state = cv.wait(state)?;
+                    }
+                    Ok(())
+                };
+            wait_main_thread_begin_current_frame(&device_context.graphics_queue_context)?;
+            wait_main_thread_begin_current_frame(&device_context.transfer_queue_context)?;
             if let Some(compute_queue_context) = &device_context.compute_queue_context {
-                wait_main_thread_begin(compute_queue_context)?;
+                wait_main_thread_begin_current_frame(compute_queue_context)?;
             }
         }
 
@@ -1770,6 +1794,11 @@ impl Renderer for VulkanRenderer {
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
 
+        let _mutex_guard = match is_in_main_thread {
+            true => Some(device_context.current_frame_index_sync.lock()?),
+            false => None,
+        };
+
         let mut end_queue = |queue_context: &mut QueueContext,
                              is_graphics: bool|
          -> RendererResult<()> {
@@ -1858,6 +1887,7 @@ impl Renderer for VulkanRenderer {
                         state = cv.wait(state)?;
                     }
                     *state = FrameState::Idle;
+                    cv.notify_one();
 
                     if current_frame.recorded {
                         command_buffers.push(current_frame.command_buffer);
