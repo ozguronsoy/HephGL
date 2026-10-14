@@ -1,6 +1,5 @@
 use std::{collections::HashMap, path::Path};
 
-pub use error::TextError;
 use fontdue::{
     FontSettings,
     layout::{CoordinateSystem, Layout, LayoutSettings, TextStyle},
@@ -8,11 +7,12 @@ use fontdue::{
 use glyph::{Glyph, RasterizedGlyph};
 
 use crate::{
+    Error, Result,
     math::Vec3,
     text::options::{FontOptions, TextType},
 };
 
-pub mod error;
+mod error;
 mod glyph;
 mod mesh;
 pub mod options;
@@ -48,7 +48,7 @@ impl Font {
     const PADDING: usize = 1;
 
     /// Loads a font from a `.ttf` or `.otf` file at a positive size in pixels.
-    pub fn from_file<P: AsRef<Path>>(path: P, options: &FontOptions) -> Result<Self, TextError> {
+    pub fn from_file<P: AsRef<Path>>(path: P, options: &FontOptions) -> Result<Self> {
         let data = std::fs::read(path)?;
         Self::new(data, options)
     }
@@ -81,7 +81,7 @@ impl Font {
         position: &Vec3,
         color: [f32; 4],
         text_type: TextType,
-    ) -> Result<Vec<TextVertex>, TextError> {
+    ) -> Result<Vec<TextVertex>> {
         let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
         layout.reset(&LayoutSettings::default());
         layout.append(&[&self.font], &TextStyle::new(text, self.options.size, 0));
@@ -106,9 +106,9 @@ impl Font {
         }
     }
 
-    fn new(font_data: Vec<u8>, options: &FontOptions) -> Result<Self, TextError> {
+    fn new(font_data: Vec<u8>, options: &FontOptions) -> Result<Self> {
         if options.size <= 0.0 {
-            return Err(TextError::invalid_argument("Font size must be positive."));
+            return Err(Error::invalid_argument("Font size must be positive."));
         }
 
         let font = fontdue::Font::from_bytes(font_data.as_slice(), FontSettings::default())?;
@@ -169,7 +169,7 @@ impl Font {
         x: &mut usize,
         y: &mut usize,
         row_height: &mut usize,
-    ) -> Result<Vec<RasterizedGlyph>, TextError>
+    ) -> Result<Vec<RasterizedGlyph>>
     where
         T: IntoIterator<Item = char>,
     {
@@ -185,7 +185,7 @@ impl Font {
                 continue;
             }
             if metrics.width > Self::ATLAS_WIDTH - Self::PADDING * 2 {
-                return Err(TextError::invalid_argument(
+                return Err(Error::invalid_argument(
                     "Font glyphs must fit within the atlas width.",
                 ));
             }
@@ -216,7 +216,7 @@ impl Font {
     }
 
     /// Adds missing characters to the glyph atlas.
-    fn expand_atlas(&mut self, text: &str) -> Result<(), TextError> {
+    fn expand_atlas(&mut self, text: &str) -> Result<()> {
         let last_glyph = match self.last_glyph {
             Some(last_glyph) => &self.glyphs[&last_glyph],
             None => &Glyph {
@@ -275,16 +275,16 @@ impl Font {
         position: &Vec3,
         color: [f32; 4],
         viewport_size: [f32; 2],
-    ) -> Result<Vec<TextVertex>, TextError> {
+    ) -> Result<Vec<TextVertex>> {
         if !self.options.enable_screen_text {
-            return Err(TextError::invalid_argument("Screen text is disabled."));
+            return Err(Error::invalid_argument("Screen text is disabled."));
         }
         if viewport_size[0] <= 0.0
             || viewport_size[1] <= 0.0
             || position.z < 0.0
             || position.z > 1.0
         {
-            return Err(TextError::invalid_argument(
+            return Err(Error::invalid_argument(
                 "Screen text requires a positive viewport and a depth between zero and one.",
             ));
         }
@@ -304,12 +304,12 @@ impl Font {
         position: &Vec3,
         color: [f32; 4],
         scale: f32,
-    ) -> Result<Vec<TextVertex>, TextError> {
+    ) -> Result<Vec<TextVertex>> {
         if !self.options.enable_world_text {
-            return Err(TextError::invalid_argument("World text is disabled."));
+            return Err(Error::invalid_argument("World text is disabled."));
         }
         if scale <= 0.0 {
-            return Err(TextError::invalid_argument("Text scale must be positive."));
+            return Err(Error::invalid_argument("Text scale must be positive."));
         }
         self.quad_vertices(text, layout, color, |x, y| {
             [position.x + x * scale, position.y - y * scale, position.z]
@@ -324,18 +324,18 @@ impl Font {
         scale: f32,
         depth: f32,
         curve_tolerance_divider: f32,
-    ) -> Result<Vec<TextVertex>, TextError> {
+    ) -> Result<Vec<TextVertex>> {
         if !self.options.enable_extruded_text {
-            return Err(TextError::invalid_argument("Extruded text is disabled."));
+            return Err(Error::invalid_argument("Extruded text is disabled."));
         }
         if scale <= 0.0 {
-            return Err(TextError::invalid_argument("Text scale must be positive."));
+            return Err(Error::invalid_argument("Text scale must be positive."));
         }
         if depth <= 0.0 {
-            return Err(TextError::invalid_argument("Text depth must be positive."));
+            return Err(Error::invalid_argument("Text depth must be positive."));
         }
         if !curve_tolerance_divider.is_finite() || curve_tolerance_divider <= 0.0 {
-            return Err(TextError::invalid_argument(
+            return Err(Error::invalid_argument(
                 "Curve tolerance divider must be finite and positive.",
             ));
         }
@@ -374,7 +374,7 @@ impl Font {
         layout: &Layout,
         color: [f32; 4],
         transform_position: impl Fn(f32, f32) -> [f32; 3],
-    ) -> Result<Vec<TextVertex>, TextError> {
+    ) -> Result<Vec<TextVertex>> {
         self.expand_atlas(text)?;
         let mut vertices = Vec::with_capacity(layout.glyphs().len() * 6);
         for positioned in layout.glyphs() {
@@ -684,7 +684,7 @@ mod tests {
             assert!(font.data.is_empty());
             assert!(matches!(
                 font.vertices("A", &Vec3::ZERO, [1.0; 4], TextType::World { scale: 0.025 }),
-                Err(TextError::InvalidArgument(_))
+                Err(Error::InvalidArgument(_))
             ));
             assert!(matches!(
                 font.vertices(
@@ -697,7 +697,7 @@ mod tests {
                         curve_tolerance_divider: 512.0
                     }
                 ),
-                Err(TextError::InvalidArgument(_))
+                Err(Error::InvalidArgument(_))
             ));
         }
 
@@ -725,7 +725,7 @@ mod tests {
                         viewport_size: [800.0, 600.0]
                     }
                 ),
-                Err(TextError::InvalidArgument(_))
+                Err(Error::InvalidArgument(_))
             ));
             assert!(matches!(
                 font.vertices(
@@ -738,7 +738,7 @@ mod tests {
                         curve_tolerance_divider: 512.0
                     }
                 ),
-                Err(TextError::InvalidArgument(_))
+                Err(Error::InvalidArgument(_))
             ));
         }
 
@@ -766,11 +766,11 @@ mod tests {
                         viewport_size: [800.0, 600.0]
                     }
                 ),
-                Err(TextError::InvalidArgument(_))
+                Err(Error::InvalidArgument(_))
             ));
             assert!(matches!(
                 font.vertices("A", &Vec3::ZERO, [1.0; 4], TextType::World { scale: 0.025 }),
-                Err(TextError::InvalidArgument(_))
+                Err(Error::InvalidArgument(_))
             ));
         }
     }
@@ -809,7 +809,7 @@ mod tests {
             ] {
                 assert!(matches!(
                     font.vertices("A", &Vec3::ZERO, [1.0; 4], text_type),
-                    Err(TextError::InvalidArgument(_))
+                    Err(Error::InvalidArgument(_))
                 ));
             }
         }
@@ -823,7 +823,7 @@ mod tests {
                         viewport_size: [800.0, 600.0]
                     },
                 ),
-                Err(TextError::InvalidArgument(_))
+                Err(Error::InvalidArgument(_))
             ));
         }
         for curve_tolerance_divider in [0.0, -1.0, f32::NAN, f32::INFINITY] {
@@ -838,7 +838,7 @@ mod tests {
                         curve_tolerance_divider,
                     },
                 ),
-                Err(TextError::InvalidArgument(_))
+                Err(Error::InvalidArgument(_))
             ));
         }
     }
@@ -854,12 +854,12 @@ mod tests {
                         ..FontOptions::default()
                     }
                 ),
-                Err(TextError::InvalidArgument(_))
+                Err(Error::InvalidArgument(_))
             ));
         }
         assert!(matches!(
             Font::new(Vec::new(), &FontOptions::default()),
-            Err(TextError::Font(_))
+            Err(Error::Font(_))
         ));
     }
 }

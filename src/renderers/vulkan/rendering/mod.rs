@@ -5,9 +5,9 @@ mod render_pass_rendering;
 use ash::vk::CommandBuffer;
 
 use crate::{
+    Error, Result,
     renderers::{
-        Renderer, RendererResult,
-        error::RendererError,
+        Renderer,
         settings::{GraphicsPipelineOptions, Settings},
         vulkan::{
             VulkanRenderer,
@@ -27,7 +27,7 @@ pub trait VulkanRendering {
         settings: &Settings,
         device: &ash::Device,
         swapchain_context: &SwapchainContext,
-    ) -> RendererResult<Self>
+    ) -> Result<Self>
     where
         Self: Sized;
     /// Creates a graphics pipeline using the provided shaders.
@@ -36,35 +36,35 @@ pub trait VulkanRendering {
         device: &ash::Device,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
-    ) -> RendererResult<<VulkanRenderer as Renderer>::GraphicsPipeline>;
+    ) -> Result<<VulkanRenderer as Renderer>::GraphicsPipeline>;
     /// Destroys the graphics pipeline.
     fn destroy_graphics_pipeline(
         &mut self,
         device: &ash::Device,
         pipeline: &<VulkanRenderer as Renderer>::GraphicsPipeline,
-    ) -> RendererResult<()>;
+    ) -> Result<()>;
     /// Starts rendering the frame.
     fn begin(
         &mut self,
         device: &ash::Device,
         command_buffer: CommandBuffer,
         swapchain_context: &SwapchainContext,
-    ) -> RendererResult<()>;
+    ) -> Result<()>;
     /// Ends rendering the frame.
-    fn end(&mut self, device: &ash::Device, command_buffer: CommandBuffer) -> RendererResult<()>;
+    fn end(&mut self, device: &ash::Device, command_buffer: CommandBuffer) -> Result<()>;
     /// Frees the resources.
-    fn destroy(&mut self, device: &ash::Device) -> RendererResult<()>;
+    fn destroy(&mut self, device: &ash::Device) -> Result<()>;
 }
 
 impl VulkanRenderer {
     /// Creates rendering resources for the current device.
-    pub(super) fn create_rendering(&mut self) -> RendererResult<()> {
+    pub(super) fn create_rendering(&mut self) -> Result<()> {
         self.destroy_rendering()?;
 
         let device_context = self
             .device_context
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
 
         if device_context.supports_dynamic_rendering {
             device_context.rendering = Some(Box::new(DynamicRendering::new(
@@ -84,11 +84,11 @@ impl VulkanRenderer {
     }
 
     /// Destroys the rendering resources.
-    pub(super) fn destroy_rendering(&mut self) -> RendererResult<()> {
+    pub(super) fn destroy_rendering(&mut self) -> Result<()> {
         let device_context = self
             .device_context
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
         if let Some(mut rendering) = device_context.rendering.take() {
             rendering.destroy(&device_context.logical_device)?;
         }

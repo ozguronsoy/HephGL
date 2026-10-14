@@ -1,7 +1,6 @@
-use crate::renderers::{
-    RendererResult,
-    error::RendererError,
-    vulkan::{THREAD_CONTEXT_INDEX, VulkanRenderer},
+use crate::{
+    Error, Result,
+    renderers::vulkan::{THREAD_CONTEXT_INDEX, VulkanRenderer},
 };
 
 impl VulkanRenderer {
@@ -12,18 +11,18 @@ impl VulkanRenderer {
 
     /// Checks whether the call is being made from the main thread. If not,
     /// returns an error.
-    pub(super) fn main_thread_only(&self) -> RendererResult<()> {
+    pub(super) fn main_thread_only(&self) -> Result<()> {
         if self.is_in_main_thread() {
             Ok(())
         } else {
-            Err(RendererError::invalid_operation(
+            Err(Error::invalid_operation(
                 "This action can only be performed in the main thread.",
             ))
         }
     }
 
     /// Gets the current thread's context index.
-    pub(super) fn thread_context_index() -> RendererResult<usize> {
+    pub(super) fn thread_context_index() -> Result<usize> {
         THREAD_CONTEXT_INDEX.with(|index| index.try_get())
     }
 
@@ -32,9 +31,9 @@ impl VulkanRenderer {
     /// ### Important
     /// This function must be run **once per worker thread** that will be
     /// recording commands.
-    pub(super) fn initialize_thread(&mut self) -> RendererResult<()> {
+    pub(super) fn initialize_thread(&mut self) -> Result<()> {
         if let Ok(current_thread_index) = Self::thread_context_index() {
-            return Err(RendererError::InvalidOperation(format!(
+            return Err(Error::InvalidOperation(format!(
                 "Current thread ({}) already has a worker.",
                 current_thread_index
             )));
@@ -43,7 +42,7 @@ impl VulkanRenderer {
         let device_context = self
             .device_context
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
 
         crate::renderers::thread_context::register(
             &THREAD_CONTEXT_INDEX,
@@ -60,7 +59,7 @@ impl VulkanRenderer {
 
     /// Frees and destroys all per-frame execution resources allocated during
     /// `initialize_frames`.
-    pub(super) fn uninitialize_thread(&mut self) -> RendererResult<()> {
+    pub(super) fn uninitialize_thread(&mut self) -> Result<()> {
         if Self::thread_context_index().is_err() {
             // Err means the index is set to `INVALID_THREAD_CONTEXT_INDEX`, which means the
             // thread is already uninitialized.
@@ -77,7 +76,7 @@ impl VulkanRenderer {
         let device_context = self
             .device_context
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
 
         crate::renderers::thread_context::unregister(
             &THREAD_CONTEXT_INDEX,

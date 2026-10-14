@@ -2,6 +2,8 @@ use std::path::Path;
 
 use naga::ShaderStage;
 
+use crate::{Error, Result};
+
 #[derive(Clone, Copy)]
 pub(crate) enum ShaderBindingType {
     UniformBuffer,
@@ -41,15 +43,9 @@ pub struct Shader {
     pub(crate) metadata: ShaderMetadata,
 }
 
-#[derive(Debug)]
-pub enum ShaderError {
-    UnsupportedShaderLanguage,
-    Fail(String),
-}
-
 impl Shader {
     /// Loads the shader from a file.
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, ShaderError> {
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let data = std::fs::read(path.as_ref())?;
         let mut shader = Self {
             file_path: path.as_ref().to_string_lossy().into_owned(),
@@ -76,11 +72,11 @@ impl Shader {
         (max_group + 1) as usize
     }
 
-    fn extract_metadata(&mut self) -> Result<(), ShaderError> {
+    fn extract_metadata(&mut self) -> Result<()> {
         let module =
             naga::front::spv::parse_u8_slice(&self.data, &naga::front::spv::Options::default())?;
         if module.entry_points.len() != 1 || module.entry_points[0].name != "main" {
-            return Err(ShaderError::fail(
+            return Err(Error::fail(
                 "Shader must contain exactly one entry point named main.",
             ));
         }
@@ -111,7 +107,7 @@ impl Shader {
                         (scalar.kind, scalar.width, components)
                     }
                     _ => {
-                        return Err(ShaderError::fail("Unsupported vertex input type."));
+                        return Err(Error::fail("Unsupported vertex input type."));
                     }
                 };
 
@@ -165,33 +161,27 @@ impl Shader {
     }
 
     /// Checks whether the entered shader is written in a supported language.
-    fn verify_shader_language(&self) -> Result<(), ShaderError> {
+    fn verify_shader_language(&self) -> Result<()> {
         const SPIRV_MAGIC: u32 = 0x0723_0203;
         if self.data.len() < 4 {
-            return Err(ShaderError::UnsupportedShaderLanguage);
+            return Err(Error::UnsupportedShaderLanguage);
         }
         let magic = u32::from_le_bytes(self.data[..4].try_into().unwrap());
         if magic != SPIRV_MAGIC {
-            Err(ShaderError::UnsupportedShaderLanguage)
+            Err(Error::UnsupportedShaderLanguage)
         } else {
             Ok(())
         }
     }
 }
 
-impl From<std::io::Error> for ShaderError {
-    fn from(value: std::io::Error) -> Self {
-        Self::Fail(value.to_string())
-    }
-}
-impl From<naga::front::spv::Error> for ShaderError {
-    fn from(value: naga::front::spv::Error) -> Self {
-        Self::Fail(value.to_string())
-    }
-}
-impl ShaderError {
-    fn fail(msg: impl Into<String>) -> Self {
-        Self::Fail(msg.into())
+mod error {
+    use crate::Error;
+
+    impl From<naga::front::spv::Error> for Error {
+        fn from(value: naga::front::spv::Error) -> Self {
+            Self::fail(value.to_string())
+        }
     }
 }
 
@@ -211,11 +201,14 @@ mod tests {
         }
 
         {
-            assert!(Shader::from_file("shaders/addition.comp").is_err());
+            assert!(matches!(
+                Shader::from_file("shaders/addition.comp"),
+                Err(Error::UnsupportedShaderLanguage)
+            ));
         }
 
         {
-            assert!(Shader::from_file("").is_err());
+            assert!(matches!(Shader::from_file(""), Err(Error::Io(_))));
         }
     }
 }

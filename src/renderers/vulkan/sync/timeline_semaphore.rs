@@ -3,7 +3,7 @@ use ash::vk::{
     SemaphoreWaitInfo, SubmitInfo, TimelineSemaphoreSubmitInfo,
 };
 
-use crate::renderers::{RendererResult, error::RendererError, vulkan::sync::VulkanFrameSync};
+use crate::{Error, Result, renderers::vulkan::sync::VulkanFrameSync};
 
 /// Implements frame synchronization using a timeline semaphore.
 pub struct TimelineSemaphoreFrameSync {
@@ -16,7 +16,7 @@ pub struct TimelineSemaphoreFrameSync {
 }
 
 impl VulkanFrameSync for TimelineSemaphoreFrameSync {
-    fn new(device: &ash::Device, frames_in_flight: usize) -> RendererResult<Self>
+    fn new(device: &ash::Device, frames_in_flight: usize) -> Result<Self>
     where
         Self: Sized,
     {
@@ -37,12 +37,12 @@ impl VulkanFrameSync for TimelineSemaphoreFrameSync {
         frame_index: usize,
         queue: Queue,
         submits: &[SubmitInfo],
-    ) -> RendererResult<()> {
+    ) -> Result<()> {
         // TODO: Recreate the semaphore and use that.
         let next_value = self
             .new_value
             .checked_add(1)
-            .ok_or(RendererError::fail("Timeline semaphore counter exhausted."))?;
+            .ok_or(Error::fail("Timeline semaphore counter exhausted."))?;
 
         let semaphores = [self.semaphore];
         let values = [self.new_value];
@@ -63,7 +63,7 @@ impl VulkanFrameSync for TimelineSemaphoreFrameSync {
 
         Ok(())
     }
-    fn wait(&mut self, device: &ash::Device, frame_index: usize) -> RendererResult<()> {
+    fn wait(&mut self, device: &ash::Device, frame_index: usize) -> Result<()> {
         let value = self.frame_values[frame_index];
         if value == 0 {
             // Frame is not submitted.
@@ -80,7 +80,7 @@ impl VulkanFrameSync for TimelineSemaphoreFrameSync {
         }
         Ok(())
     }
-    fn destroy(&mut self, device: &ash::Device) -> RendererResult<()> {
+    fn destroy(&mut self, device: &ash::Device) -> Result<()> {
         for frame_index in 0..self.frame_values.len() {
             self.wait(device, frame_index)?;
         }

@@ -1,6 +1,6 @@
 use std::{cell::Cell, thread::LocalKey};
 
-use crate::renderers::{RendererError, RendererResult};
+use crate::{Error, Result};
 
 /// Dummy trait for selecting the optimal ThreadContextMask type.
 #[cfg(not(test))]
@@ -96,10 +96,10 @@ impl ThreadContextIndex {
     }
 
     /// Gets the index if vaild, otherwise returns an error.
-    pub fn try_get(&self) -> RendererResult<usize> {
+    pub fn try_get(&self) -> Result<usize> {
         let index = self.0.get();
         if index == INVALID_THREAD_CONTEXT_INDEX {
-            Err(RendererError::invalid_operation(
+            Err(Error::invalid_operation(
                 "Current thread is not initialized.",
             ))
         } else {
@@ -114,7 +114,7 @@ pub fn register(
     index: &'static LocalKey<ThreadContextIndex>,
     masks: &mut ThreadContextMaskArray,
     is_main_thread: bool,
-) -> RendererResult<()> {
+) -> Result<()> {
     index.with(|index| {
         if is_main_thread {
             masks[MAIN_THREAD_CONTEXT_MASK_INDEX] |=
@@ -152,7 +152,7 @@ pub fn register(
 
         index.0.set(new_index);
         if new_index == INVALID_THREAD_CONTEXT_INDEX {
-            Err(RendererError::Fail(
+            Err(Error::Fail(
                 "Failed to initialize frames: maximum threads reached".to_string(),
             ))
         } else {
@@ -194,9 +194,7 @@ mod tests {
     fn test_thread_context_index() {
         let index = ThreadContextIndex::new();
         assert_eq!(index.0.get(), INVALID_THREAD_CONTEXT_INDEX);
-        let try_get = index.try_get();
-        assert!(try_get.is_err());
-        assert_eq!(try_get.err().unwrap(), RendererError::invalid_operation(""));
+        assert!(matches!(index.try_get(), Err(Error::InvalidOperation(_))));
     }
 
     #[test]

@@ -5,8 +5,8 @@ use lyon_tessellation::{
     path::{Path, math::Point, math::point, path::Builder},
 };
 
-use super::{TextError, TextVertex};
-use crate::math::Vec3;
+use super::TextVertex;
+use crate::{Result, math::Vec3};
 
 struct Outline {
     builder: Builder,
@@ -21,7 +21,7 @@ pub(super) fn extrude(
     curve_tolerance_divider: f32,
     offset: &Vec3,
     color: [f32; 4],
-) -> Result<Vec<TextVertex>, TextError> {
+) -> Result<Vec<TextVertex>> {
     let mut outline = Outline::new();
     if face
         .outline_glyph(ttf_parser::GlyphId(glyph_index), &mut outline)
@@ -47,7 +47,7 @@ fn extrude_path(
     depth: f32,
     offset: &Vec3,
     color: [f32; 4],
-) -> Result<Vec<TextVertex>, TextError> {
+) -> Result<Vec<TextVertex>> {
     let mut geometry = VertexBuffers::<Point, u32>::new();
     FillTessellator::new().tessellate_path(
         path,

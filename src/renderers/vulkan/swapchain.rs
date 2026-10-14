@@ -5,7 +5,7 @@ use ash::vk::{
 };
 use vk_mem::Alloc;
 
-use crate::renderers::{RendererResult, error::RendererError, vulkan::VulkanRenderer};
+use crate::{Error, Result, renderers::vulkan::VulkanRenderer};
 
 /// Represents the Vulkan swapchain and its associated resources required for presentation.
 pub struct SwapchainContext {
@@ -49,22 +49,20 @@ impl SwapchainContext {
 impl VulkanRenderer {
     /// Creates the swapchain, images, image views, semaphores, and the depth buffer for the
     /// renderer.
-    pub(super) fn create_swapchain(&mut self) -> RendererResult<()> {
+    pub(super) fn create_swapchain(&mut self) -> Result<()> {
         self.destroy_swapchain()?;
 
-        let window_surface_loader =
-            self.window_surface_loader
-                .as_ref()
-                .ok_or(RendererError::invalid_operation(
-                    "Renderer is not initialized.",
-                ))?;
-        let window_surface = self.window_surface.ok_or(RendererError::invalid_operation(
-            "Renderer is not initialized.",
-        ))?;
+        let window_surface_loader = self
+            .window_surface_loader
+            .as_ref()
+            .ok_or(Error::invalid_operation("Renderer is not initialized."))?;
+        let window_surface = self
+            .window_surface
+            .ok_or(Error::invalid_operation("Renderer is not initialized."))?;
         let device_context = self
             .device_context
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
         let frames_in_flight = self.settings.frames_in_flight as u32;
 
         let surface_capabilities = unsafe {
@@ -82,7 +80,7 @@ impl VulkanRenderer {
         if !present_modes.contains(&PresentModeKHR::FIFO)
             && !present_modes.contains(&PresentModeKHR::IMMEDIATE)
         {
-            return Err(RendererError::fail(
+            return Err(Error::fail(
                 "Current device does not support rendering to the target window.",
             ));
         }
@@ -124,7 +122,7 @@ impl VulkanRenderer {
         };
 
         if requested_image_count < frames_in_flight {
-            return Err(RendererError::Fail(format!(
+            return Err(Error::Fail(format!(
                 "Failed to create `{}` amount of frames.",
                 frames_in_flight
             )));
@@ -205,7 +203,7 @@ impl VulkanRenderer {
             .supported_msaa_list
             .contains(&self.settings.msaa)
         {
-            return Err(RendererError::invalid_argument(
+            return Err(Error::invalid_argument(
                 "Requested MSAA sample count is not supported by the selected device.",
             ));
         }
@@ -309,11 +307,11 @@ impl VulkanRenderer {
     }
 
     /// Destroys the swapchain, images, image views, semaphores, and the depth buffer.
-    pub(super) fn destroy_swapchain(&mut self) -> RendererResult<()> {
+    pub(super) fn destroy_swapchain(&mut self) -> Result<()> {
         let device_context = self
             .device_context
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
 
         if device_context.swapchain_context.depth_image_view.is_null() {
             // There is no swapchain to destroy.
@@ -332,9 +330,7 @@ impl VulkanRenderer {
                     .swapchain_context
                     .depth_image_allocation
                     .as_mut()
-                    .ok_or(RendererError::invalid_operation(
-                        "Failed to destroy the swapchain.",
-                    ))?,
+                    .ok_or(Error::invalid_operation("Failed to destroy the swapchain."))?,
             );
             device_context.swapchain_context.depth_image = ash::vk::Image::null();
             device_context.swapchain_context.depth_image_allocation = None;

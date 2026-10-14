@@ -1,4 +1,7 @@
-use crate::math::{Mat3, Mat4, MathError, Quat, Vec3, Vec4, orthographic, perspective};
+use crate::{
+    Error, Result,
+    math::{Mat3, Mat4, Quat, Vec3, Vec4, orthographic, perspective},
+};
 
 /// Defines how a camera projects view-space positions into clip space.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -56,47 +59,45 @@ impl Camera {
     }
 
     /// Rotates the camera to face a world-space target using the provided world-space up direction.
-    pub fn look_at(&mut self, target: &Vec3, up: &Vec3) -> Result<(), MathError> {
+    pub fn look_at(&mut self, target: &Vec3, up: &Vec3) -> Result<()> {
         let forward = (target - self.position).try_normalize().ok_or_else(|| {
-            MathError::invalid_argument("Camera target direction must be finite and nonzero.")
+            Error::invalid_argument("Camera target direction must be finite and nonzero.")
         })?;
         let up = up.try_normalize().ok_or_else(|| {
-            MathError::invalid_argument("Camera up direction must be finite and nonzero.")
+            Error::invalid_argument("Camera up direction must be finite and nonzero.")
         })?;
         let right = up.cross(forward).try_normalize().ok_or_else(|| {
-            MathError::invalid_argument(
+            Error::invalid_argument(
                 "Camera up direction must not be parallel to its target direction.",
             )
         })?;
         let up = forward.cross(right).try_normalize().ok_or_else(|| {
-            MathError::invalid_argument("Camera directions must form a normalized basis.")
+            Error::invalid_argument("Camera directions must form a normalized basis.")
         })?;
         if !right.is_normalized() || !up.is_normalized() || !forward.is_normalized() {
-            return Err(MathError::invalid_argument(
+            return Err(Error::invalid_argument(
                 "Camera directions must form a normalized basis.",
             ));
         }
         let rotation = Quat::from_mat3(&Mat3::from_cols(right, up, forward));
         let rotation = Vec4::from(rotation).try_normalize().ok_or_else(|| {
-            MathError::invalid_argument("Camera directions must produce a normalized rotation.")
+            Error::invalid_argument("Camera directions must produce a normalized rotation.")
         })?;
         self.rotation = Quat::from_vec4(rotation);
         Ok(())
     }
 
     /// Calculates the matrix that transforms world-space positions into camera space.
-    pub fn view_matrix(&self) -> Result<Mat4, MathError> {
+    pub fn view_matrix(&self) -> Result<Mat4> {
         if !self.position.is_finite() {
-            return Err(MathError::invalid_argument(
-                "Camera position must be finite.",
-            ));
+            return Err(Error::invalid_argument("Camera position must be finite."));
         }
         self.validate_rotation()?;
         let inverse_rotation = self.rotation.conjugate();
         let matrix =
             Mat4::from_rotation_translation(inverse_rotation, inverse_rotation * -self.position);
         if !matrix.is_finite() {
-            return Err(MathError::invalid_argument(
+            return Err(Error::invalid_argument(
                 "Camera parameters must produce a finite view matrix.",
             ));
         }
@@ -105,15 +106,15 @@ impl Camera {
 
     /// Calculates the camera's projection matrix. See `Projection::matrix` for parameter
     /// constraints.
-    pub fn projection_matrix(&self) -> Result<Mat4, MathError> {
+    pub fn projection_matrix(&self) -> Result<Mat4> {
         self.projection.matrix()
     }
 
     /// Calculates `projection * view`, transforming world-space positions into clip space.
-    pub fn view_projection_matrix(&self) -> Result<Mat4, MathError> {
+    pub fn view_projection_matrix(&self) -> Result<Mat4> {
         let matrix = self.projection_matrix()? * self.view_matrix()?;
         if !matrix.is_finite() {
-            return Err(MathError::invalid_argument(
+            return Err(Error::invalid_argument(
                 "Camera parameters must produce a finite view-projection matrix.",
             ));
         }
@@ -121,26 +122,26 @@ impl Camera {
     }
 
     /// Gets the camera's forward direction in world space.
-    pub fn forward(&self) -> Result<Vec3, MathError> {
+    pub fn forward(&self) -> Result<Vec3> {
         self.validate_rotation()?;
         Ok(self.rotation * Vec3::Z)
     }
 
     /// Gets the camera's right direction in world space.
-    pub fn right(&self) -> Result<Vec3, MathError> {
+    pub fn right(&self) -> Result<Vec3> {
         self.validate_rotation()?;
         Ok(self.rotation * Vec3::X)
     }
 
     /// Gets the camera's up direction in world space.
-    pub fn up(&self) -> Result<Vec3, MathError> {
+    pub fn up(&self) -> Result<Vec3> {
         self.validate_rotation()?;
         Ok(self.rotation * Vec3::Y)
     }
 
-    fn validate_rotation(&self) -> Result<(), MathError> {
+    fn validate_rotation(&self) -> Result<()> {
         if !self.rotation.is_normalized() {
-            return Err(MathError::invalid_argument(
+            return Err(Error::invalid_argument(
                 "Camera rotation must be normalized.",
             ));
         }
@@ -155,7 +156,7 @@ impl Default for Camera {
 
 impl Projection {
     /// Calculates the projection matrix for the renderer's Vulkan clip-space convention.
-    pub fn matrix(&self) -> Result<Mat4, MathError> {
+    pub fn matrix(&self) -> Result<Mat4> {
         let mut matrix = match *self {
             Self::Perspective {
                 vertical_fov,
@@ -167,17 +168,17 @@ impl Projection {
                     || vertical_fov <= 0.0
                     || vertical_fov >= std::f32::consts::PI
                 {
-                    return Err(MathError::invalid_argument(
+                    return Err(Error::invalid_argument(
                         "Vertical field of view must be finite and between 0 and pi radians.",
                     ));
                 }
                 if !aspect_ratio.is_finite() || aspect_ratio <= 0.0 {
-                    return Err(MathError::invalid_argument(
+                    return Err(Error::invalid_argument(
                         "Aspect ratio must be finite and positive.",
                     ));
                 }
                 if !near.is_finite() || !far.is_finite() || near <= 0.0 || far <= near {
-                    return Err(MathError::invalid_argument(
+                    return Err(Error::invalid_argument(
                         "Perspective clipping planes must be finite and satisfy 0 < near < far.",
                     ));
                 }
@@ -198,12 +199,12 @@ impl Projection {
                     || right <= left
                     || top <= bottom
                 {
-                    return Err(MathError::invalid_argument(
+                    return Err(Error::invalid_argument(
                         "Orthographic bounds must be finite and satisfy left < right and bottom < top.",
                     ));
                 }
                 if !near.is_finite() || !far.is_finite() || far <= near {
-                    return Err(MathError::invalid_argument(
+                    return Err(Error::invalid_argument(
                         "Orthographic clipping planes must be finite and satisfy near < far.",
                     ));
                 }
@@ -217,7 +218,7 @@ impl Projection {
         matrix.z_axis.y = -matrix.z_axis.y;
         matrix.w_axis.y = -matrix.w_axis.y;
         if !matrix.is_finite() {
-            return Err(MathError::invalid_argument(
+            return Err(Error::invalid_argument(
                 "Projection parameters must produce a finite matrix.",
             ));
         }
@@ -364,7 +365,7 @@ mod tests {
         ] {
             assert!(matches!(
                 camera.look_at(&target, &up),
-                Err(MathError::InvalidArgument(_))
+                Err(Error::InvalidArgument(_))
             ));
             assert_eq!(camera, original);
         }
@@ -470,11 +471,11 @@ mod tests {
             };
             assert!(matches!(
                 camera.view_matrix(),
-                Err(MathError::InvalidArgument(_))
+                Err(Error::InvalidArgument(_))
             ));
             assert!(matches!(
                 camera.view_projection_matrix(),
-                Err(MathError::InvalidArgument(_))
+                Err(Error::InvalidArgument(_))
             ));
         }
     }
@@ -493,18 +494,15 @@ mod tests {
             };
             assert!(matches!(
                 camera.view_matrix(),
-                Err(MathError::InvalidArgument(_))
+                Err(Error::InvalidArgument(_))
             ));
             assert!(matches!(
                 camera.view_projection_matrix(),
-                Err(MathError::InvalidArgument(_))
+                Err(Error::InvalidArgument(_))
             ));
-            assert!(matches!(
-                camera.forward(),
-                Err(MathError::InvalidArgument(_))
-            ));
-            assert!(matches!(camera.right(), Err(MathError::InvalidArgument(_))));
-            assert!(matches!(camera.up(), Err(MathError::InvalidArgument(_))));
+            assert!(matches!(camera.forward(), Err(Error::InvalidArgument(_))));
+            assert!(matches!(camera.right(), Err(Error::InvalidArgument(_))));
+            assert!(matches!(camera.up(), Err(Error::InvalidArgument(_))));
         }
     }
 
@@ -520,16 +518,16 @@ mod tests {
             };
             assert!(matches!(
                 projection.matrix(),
-                Err(MathError::InvalidArgument(_))
+                Err(Error::InvalidArgument(_))
             ));
             let camera = Camera::new(projection);
             assert!(matches!(
                 camera.projection_matrix(),
-                Err(MathError::InvalidArgument(_))
+                Err(Error::InvalidArgument(_))
             ));
             assert!(matches!(
                 camera.view_projection_matrix(),
-                Err(MathError::InvalidArgument(_))
+                Err(Error::InvalidArgument(_))
             ));
         };
 
@@ -574,7 +572,7 @@ mod tests {
             };
             assert!(matches!(
                 projection.matrix(),
-                Err(MathError::InvalidArgument(_))
+                Err(Error::InvalidArgument(_))
             ));
         };
 
@@ -614,7 +612,7 @@ mod tests {
         };
         assert!(matches!(
             camera.view_matrix(),
-            Err(MathError::InvalidArgument(_))
+            Err(Error::InvalidArgument(_))
         ));
 
         let camera = Camera {
@@ -625,7 +623,7 @@ mod tests {
         assert!(camera.projection_matrix().unwrap().is_finite());
         assert!(matches!(
             camera.view_projection_matrix(),
-            Err(MathError::InvalidArgument(_))
+            Err(Error::InvalidArgument(_))
         ));
 
         for projection in [
@@ -646,7 +644,7 @@ mod tests {
         ] {
             assert!(matches!(
                 projection.matrix(),
-                Err(MathError::InvalidArgument(_))
+                Err(Error::InvalidArgument(_))
             ));
         }
     }

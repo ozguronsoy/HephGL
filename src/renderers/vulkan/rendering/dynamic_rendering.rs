@@ -14,9 +14,9 @@ use ash::vk::{
 };
 
 use crate::{
+    Error, Result,
     renderers::{
-        Renderer, RendererResult,
-        error::RendererError,
+        Renderer,
         settings::{GraphicsPipelineOptions, Msaa, Settings},
         vulkan::{
             VulkanRenderer,
@@ -44,7 +44,7 @@ impl VulkanRendering for DynamicRendering {
         settings: &Settings,
         _: &ash::Device,
         swapchain_context: &SwapchainContext,
-    ) -> RendererResult<Self>
+    ) -> Result<Self>
     where
         Self: Sized,
     {
@@ -62,7 +62,7 @@ impl VulkanRendering for DynamicRendering {
         device: &ash::Device,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
-    ) -> RendererResult<<VulkanRenderer as Renderer>::GraphicsPipeline> {
+    ) -> Result<<VulkanRenderer as Renderer>::GraphicsPipeline> {
         // Create shader stage infos.
         let mut shader_modules = ShaderModules {
             device,
@@ -73,7 +73,7 @@ impl VulkanRendering for DynamicRendering {
         for shader in shaders {
             let (prefix, code, suffix) = unsafe { shader.data.align_to::<u32>() };
             if !prefix.is_empty() || !suffix.is_empty() {
-                return Err(RendererError::fail(format!(
+                return Err(Error::fail(format!(
                     "Shader data from '{}' is not valid SPIR-V (not 4-byte aligned).",
                     shader.file_path
                 )));
@@ -81,7 +81,7 @@ impl VulkanRendering for DynamicRendering {
 
             let stage = VulkanRenderer::convert_shader_stage(shader.metadata.stage)?;
             if stage == ShaderStageFlags::COMPUTE {
-                return Err(RendererError::invalid_argument(
+                return Err(Error::invalid_argument(
                     "Compute shaders cannot be used in a graphics pipeline.",
                 ));
             }
@@ -124,7 +124,7 @@ impl VulkanRendering for DynamicRendering {
                         })
                 {
                     if existing_binding.descriptor_type != descriptor_type {
-                        return Err(RendererError::invalid_argument(format!(
+                        return Err(Error::invalid_argument(format!(
                             "Shader binding {} in group {} has conflicting types.",
                             binding.binding, binding.group
                         )));
@@ -167,7 +167,7 @@ impl VulkanRendering for DynamicRendering {
         let vertex_shader = shaders
             .iter()
             .find(|shader| shader.metadata.stage == naga::ShaderStage::Vertex)
-            .ok_or(RendererError::invalid_argument(
+            .ok_or(Error::invalid_argument(
                 "Graphics pipeline requires a vertex shader.",
             ))?;
         let mut offset = 0;
@@ -184,9 +184,7 @@ impl VulkanRendering for DynamicRendering {
                 (naga::ScalarKind::Float, 4, 3) => ash::vk::Format::R32G32B32_SFLOAT,
                 (naga::ScalarKind::Float, 4, 4) => ash::vk::Format::R32G32B32A32_SFLOAT,
                 _ => {
-                    return Err(RendererError::invalid_argument(
-                        "Unsupported vertex format.",
-                    ));
+                    return Err(Error::invalid_argument("Unsupported vertex format."));
                 }
             };
 
@@ -278,7 +276,7 @@ impl VulkanRendering for DynamicRendering {
         &mut self,
         device: &ash::Device,
         pipeline: &<VulkanRenderer as Renderer>::GraphicsPipeline,
-    ) -> RendererResult<()> {
+    ) -> Result<()> {
         unsafe {
             device.destroy_pipeline(pipeline.pipeline, None);
             device.destroy_pipeline_layout(pipeline.layout, None);
@@ -293,7 +291,7 @@ impl VulkanRendering for DynamicRendering {
         device: &ash::Device,
         command_buffer: CommandBuffer,
         swapchain_context: &SwapchainContext,
-    ) -> RendererResult<()> {
+    ) -> Result<()> {
         let color_attachment_info = if self.msaa == Msaa::X1 {
             RenderingAttachmentInfo::default()
                 .image_view(swapchain_context.image_views[swapchain_context.current_image_index])
@@ -339,13 +337,13 @@ impl VulkanRendering for DynamicRendering {
         }
         Ok(())
     }
-    fn end(&mut self, device: &ash::Device, command_buffer: CommandBuffer) -> RendererResult<()> {
+    fn end(&mut self, device: &ash::Device, command_buffer: CommandBuffer) -> Result<()> {
         unsafe {
             device.cmd_end_rendering(command_buffer);
         }
         Ok(())
     }
-    fn destroy(&mut self, _: &ash::Device) -> RendererResult<()> {
+    fn destroy(&mut self, _: &ash::Device) -> Result<()> {
         Ok(())
     }
 }

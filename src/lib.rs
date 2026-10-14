@@ -1,4 +1,7 @@
+pub use crate::error::{Error, Result};
+
 pub mod camera;
+pub mod error;
 pub mod graphics_device;
 pub mod math;
 pub mod renderers;
