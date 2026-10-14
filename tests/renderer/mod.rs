@@ -105,6 +105,7 @@ define_renderer_test_flags!(
     test_end_without_begin,
     test_calling_main_thread_only_fn_from_worker_thread,
     test_multiple_workers_per_thread,
+    test_workers_begin_before_main,
     test_excess_threads,
     test_single_threaded_compute_discrete_gpu,
     test_single_threaded_compute_integrated_gpu,
@@ -287,6 +288,7 @@ where
                     test_calling_main_thread_only_fn_from_worker_thread
                 ),
                 create_trial!(versioned_test_suite, test_multiple_workers_per_thread),
+                create_trial!(versioned_test_suite, test_workers_begin_before_main),
                 create_trial!(versioned_test_suite, test_excess_threads),
                 create_trial!(
                     versioned_test_suite,
@@ -591,7 +593,7 @@ where
             std::thread::scope(|s| {
                 let b1 = std::sync::Arc::new(std::sync::Barrier::new(2));
                 let b2 = b1.clone();
-                let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);
+                let renderer_handle = RendererHandle::from(&mut renderer);
                 s.spawn(move || {
                     let _renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
                     b2.wait();
@@ -691,7 +693,7 @@ where
 
     fn test_calling_main_thread_only_fn_from_worker_thread(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[]);
-        let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);
+        let renderer_handle = RendererHandle::from(&mut renderer);
         std::thread::scope(|s| {
             s.spawn(move || {
                 let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
@@ -726,7 +728,7 @@ where
 
     fn test_multiple_workers_per_thread(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[]);
-        let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);
+        let renderer_handle = RendererHandle::from(&mut renderer);
 
         std::thread::scope(|s| {
             s.spawn(move || {
@@ -747,12 +749,51 @@ where
         });
     }
 
+    fn test_workers_begin_before_main(&self) {
+        let mut renderer = self.create_renderer_with_any_device(&[]);
+        let renderer_handle = RendererHandle::from(&mut renderer);
+
+        std::thread::scope(|s| {
+            let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+            let (begin_tx, begin_rx) = std::sync::mpsc::channel();
+            let (finish_tx, finish_rx) = std::sync::mpsc::channel();
+            let (end_tx, end_rx) = std::sync::mpsc::channel();
+
+            s.spawn(move || {
+                let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
+                heph_expect_success!(ready_tx.send(()));
+                heph_expect_success!(renderer_worker.begin_frame());
+                heph_expect_success!(begin_tx.send(true));
+                heph_expect_success!(finish_rx.recv());
+                heph_expect_success!(renderer_worker.end_frame());
+                heph_expect_success!(end_tx.send(true));
+            });
+
+            heph_expect_success!(ready_rx.recv_timeout(Duration::from_secs(1)));
+            let early_begin_result = begin_rx.recv_timeout(Duration::from_secs(1)).ok();
+            heph_expect_success!(renderer.begin_frame());
+            let _ = early_begin_result.unwrap_or_else(|| {
+                begin_rx
+                    .recv_timeout(Duration::from_secs(1))
+                    .unwrap_or(false)
+            });
+            finish_tx.send(()).unwrap();
+            heph_expect_success!(renderer.end_frame());
+            let _ = end_rx.recv_timeout(Duration::from_secs(1)).unwrap_or(false);
+
+            assert!(
+                early_begin_result.is_none(),
+                "worker begin_frame returned before the main thread began its frame"
+            );
+        });
+    }
+
     fn test_excess_threads(&self) {
         // This should exceed `RENDERER_MAX_CONCURRENT_THREADS`.
         let thread_count = heph_gl::renderers::max_concurrent_threads() + 1;
 
         let mut renderer = self.create_renderer_with_any_device(&[]);
-        let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);
+        let renderer_handle = RendererHandle::from(&mut renderer);
         let fail_count = AtomicUsize::new(0);
         std::thread::scope(|s| {
             let barrier = std::sync::Arc::new(std::sync::Barrier::new(thread_count));
@@ -964,7 +1005,7 @@ where
         std::thread::scope(|s| {
             let (tx, rx) = std::sync::mpsc::channel();
             let barrier = std::sync::Arc::new(std::sync::Barrier::new(n_threads + 1));
-            let renderer_handle = RendererHandle::<TestRenderer>::from(&mut renderer);
+            let renderer_handle = RendererHandle::from(&mut renderer);
 
             for thread_id in 0..n_threads {
                 let tx = tx.clone();
