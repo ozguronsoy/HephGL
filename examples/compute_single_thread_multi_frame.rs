@@ -39,7 +39,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     renderer.wait_idle().unwrap();
     renderer
         .set_settings(Settings {
-            frames_in_flight: FRAMES_IN_FLIGHT as u32,
+            frames_in_flight: FRAMES_IN_FLIGHT,
             ..Default::default()
         })
         .unwrap();

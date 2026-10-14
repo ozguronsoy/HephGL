@@ -60,7 +60,6 @@ thread_local! {
 /// The Vulkan implementation of the `Renderer` trait.
 pub struct VulkanRenderer {
     settings: Settings,
-    current_frame_index: u32,
 
     entry: Option<ash::Entry>,
     instance: Option<ash::Instance>,
@@ -87,7 +86,6 @@ impl Renderer for VulkanRenderer {
     fn new() -> Self {
         Self {
             settings: Settings::default(),
-            current_frame_index: 0,
 
             entry: None,
             instance: None,
@@ -135,7 +133,6 @@ impl Renderer for VulkanRenderer {
 
         if self.device_context.is_some() {
             let temp_settings = self.settings;
-            let temp_current_frame_index = self.current_frame_index;
 
             self.destroy_rendering()?;
             self.destroy_swapchain()?;
@@ -143,16 +140,15 @@ impl Renderer for VulkanRenderer {
             self.uninitialize_thread()?;
 
             self.settings = settings;
-            self.current_frame_index = 0;
 
             let device_context = self.device_context.as_mut().unwrap();
+
             let mut resize_frames = |queue_context: &mut QueueContext| -> RendererResult<()> {
                 let masks = device_context.thread_context_masks.lock()?;
 
                 for mask in masks.iter() {
                     if *mask != 0 {
                         self.settings = temp_settings;
-                        self.current_frame_index = temp_current_frame_index;
                         return Err(RendererError::invalid_operation(
                             "All worker threads must be uninitialized before changing the settings.",
                         ));
@@ -163,19 +159,20 @@ impl Renderer for VulkanRenderer {
                     .resize_with(self.settings.frames_in_flight as usize, Frame::default);
                 Ok(())
             };
-
             resize_frames(&mut device_context.graphics_queue_context)?;
             resize_frames(&mut device_context.transfer_queue_context)?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 resize_frames(compute_queue_context)?;
             }
+
+            device_context.current_frame_index = 0;
+
             self.create_frame_sync()?;
             self.initialize_thread()?;
             self.create_swapchain()?;
             self.create_rendering()?;
         } else {
             self.settings = settings;
-            self.current_frame_index = 0;
         }
 
         Ok(())
@@ -707,6 +704,7 @@ impl Renderer for VulkanRenderer {
             supports_dynamic_rendering,
             supported_msaa_list,
 
+            current_frame_index: 0,
             thread_context_masks: Mutex::new(std::array::from_fn(|_| ThreadContextMask::default())),
         });
 
@@ -877,7 +875,7 @@ impl Renderer for VulkanRenderer {
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
         let current_frame = &mut device_context.transfer_queue_context.frames
-            [self.current_frame_index as usize]
+            [device_context.current_frame_index]
             .thread_contexts[thread_context_index];
 
         let staging_buffer_info = ash::vk::BufferCreateInfo::default()
@@ -1379,7 +1377,7 @@ impl Renderer for VulkanRenderer {
             ),
         )?;
         let thread_context_index = Self::thread_context_index()?;
-        let current_frame = &mut compute_queue_context.frames[self.current_frame_index as usize]
+        let current_frame = &mut compute_queue_context.frames[device_context.current_frame_index]
             .thread_contexts[thread_context_index];
 
         unsafe {
@@ -1481,10 +1479,9 @@ impl Renderer for VulkanRenderer {
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
         let graphics_queue_context = &mut device_context.graphics_queue_context;
-        let current_frame_index = self.current_frame_index as usize;
         let thread_context_index = Self::thread_context_index()?;
-        let current_frame = &mut graphics_queue_context.frames[current_frame_index].thread_contexts
-            [thread_context_index];
+        let current_frame = &mut graphics_queue_context.frames[device_context.current_frame_index]
+            .thread_contexts[thread_context_index];
         unsafe {
             device_context.logical_device.cmd_bind_pipeline(
                 current_frame.command_buffer,
@@ -1558,7 +1555,6 @@ impl Renderer for VulkanRenderer {
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
-        let current_frame_index = self.current_frame_index as usize;
 
         // Wait for current frame to finish.
         if is_in_main_thread {
@@ -1567,7 +1563,10 @@ impl Renderer for VulkanRenderer {
                     .frame_sync
                     .as_mut()
                     .ok_or(RendererError::invalid_operation("Device is not set."))?;
-                frame_sync.wait(&device_context.logical_device, current_frame_index)
+                frame_sync.wait(
+                    &device_context.logical_device,
+                    device_context.current_frame_index,
+                )
             };
             wait_frame_sync(&mut device_context.graphics_queue_context)?;
             wait_frame_sync(&mut device_context.transfer_queue_context)?;
@@ -1587,14 +1586,16 @@ impl Renderer for VulkanRenderer {
                         .acquire_next_image(
                             device_context.swapchain_context.swapchain,
                             1e9 as u64,
-                            device_context.swapchain_context.semaphores[current_frame_index].0,
+                            device_context.swapchain_context.semaphores
+                                [device_context.current_frame_index]
+                                .0,
                             ash::vk::Fence::null(),
                         )?
                         .0 as usize
                 };
                 device_context
                     .swapchain_context
-                    .image_avaliable_semaphore_index = current_frame_index;
+                    .image_avaliable_semaphore_index = device_context.current_frame_index;
             }
         }
         // TODO: Wait for main thread to call this function first.
@@ -1606,8 +1607,8 @@ impl Renderer for VulkanRenderer {
         let mut begin_queue = |queue_context: &mut QueueContext,
                                is_graphics: bool|
          -> RendererResult<()> {
-            let current_frame = &mut queue_context.frames[current_frame_index].thread_contexts
-                [thread_context_index];
+            let current_frame = &mut queue_context.frames[device_context.current_frame_index]
+                .thread_contexts[thread_context_index];
             let (state_mutex, _) = &current_frame.sync_state;
             let mut state = state_mutex.lock()?;
             if *state != FrameState::Idle {
@@ -1743,7 +1744,6 @@ impl Renderer for VulkanRenderer {
             .device_context
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
-        let current_frame_index = self.current_frame_index as usize;
         let thread_context_index = Self::thread_context_index()?;
         let image_index = device_context.swapchain_context.current_image_index;
         let rendering = device_context
@@ -1754,8 +1754,8 @@ impl Renderer for VulkanRenderer {
         let mut end_queue = |queue_context: &mut QueueContext,
                              is_graphics: bool|
          -> RendererResult<()> {
-            let current_frame = &mut queue_context.frames[current_frame_index].thread_contexts
-                [thread_context_index];
+            let current_frame = &mut queue_context.frames[device_context.current_frame_index]
+                .thread_contexts[thread_context_index];
             let (state_mutex, condvar) = &current_frame.sync_state;
             let mut state = state_mutex.lock()?;
             if *state != FrameState::Started {
@@ -1823,7 +1823,8 @@ impl Renderer for VulkanRenderer {
                 let add_command_buffer = |queue_context: &mut QueueContext,
                                           command_buffers: &mut Vec<ash::vk::CommandBuffer>|
                  -> RendererResult<()> {
-                    let current_frame = &mut queue_context.frames[current_frame_index]
+                    let current_frame = &mut queue_context.frames
+                        [device_context.current_frame_index]
                         .thread_contexts[thread_context_index];
 
                     // Wait for the worker thread to signal the frame is finished.
@@ -1878,7 +1879,7 @@ impl Renderer for VulkanRenderer {
                         .ok_or(RendererError::invalid_operation("Device is not set."))?;
                     frame_sync.submit(
                         &device_context.logical_device,
-                        current_frame_index,
+                        device_context.current_frame_index,
                         queue_context.queue,
                         &[submit_info],
                     )?;
@@ -1921,8 +1922,8 @@ impl Renderer for VulkanRenderer {
                     .image_avaliable_semaphore_index = SwapchainContext::INVALID_INDEX;
             }
 
-            self.current_frame_index =
-                (self.current_frame_index + 1) % self.settings.frames_in_flight;
+            device_context.current_frame_index =
+                (device_context.current_frame_index + 1) % self.settings.frames_in_flight;
         }
 
         Ok(())
@@ -1947,8 +1948,8 @@ impl Renderer for VulkanRenderer {
             .as_mut()
             .ok_or(RendererError::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
-        let current_frame_index = self.current_frame_index as usize;
-        let current_frame = &mut device_context.graphics_queue_context.frames[current_frame_index]
+        let current_frame = &mut device_context.graphics_queue_context.frames
+            [device_context.current_frame_index]
             .thread_contexts[thread_context_index];
 
         {

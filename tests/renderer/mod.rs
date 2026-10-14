@@ -821,7 +821,7 @@ where
     fn test_single_threaded_compute(
         &self,
         target_device_type: heph_gl::graphics_device::Type,
-        frames_in_flight: u32,
+        frames_in_flight: usize,
         n_frames: usize,
     ) {
         const DATA_COUNT: usize = 256;

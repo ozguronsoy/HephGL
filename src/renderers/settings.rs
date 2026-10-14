@@ -90,7 +90,7 @@ pub enum SamplerAddressMode {
 pub struct Settings {
     /// The maximum number of frames that can be processed concurrently by the
     /// CPU and GPU.
-    pub frames_in_flight: u32,
+    pub frames_in_flight: usize,
     /// Indicates whether the vsync is enabled.
     pub vsync: bool,
     /// Indicates whether stereoscopic 3D rendering is enabled.
