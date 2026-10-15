@@ -11,8 +11,6 @@ use heph_gl::{
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
 
-use crate::utils::{ExampleRenderer, SHADERS_DIR, get_best_device, run_example, set_best_msaa};
-
 mod utils;
 
 type Vertex = [f32; 10];
@@ -51,15 +49,19 @@ fn cube_vertices(offset: [f32; 3], color: [f32; 4]) -> [Vertex; 8] {
     })
 }
 
-fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHandle) {
-    let device = get_best_device(renderer);
+fn example(
+    renderer: &mut utils::renderer::ExampleRenderer,
+    _: RawWindowHandle,
+    _: RawDisplayHandle,
+) {
+    let device = utils::renderer::get_best_device(renderer);
     renderer.set_device(Some(&device), &[]).unwrap();
-    set_best_msaa(renderer);
+    utils::renderer::set_best_msaa(renderer);
 
     let vert_shader =
-        Shader::from_file(format!("{}/shapes/{}", SHADERS_DIR, "cube_vert.spv")).unwrap();
+        Shader::from_file(format!("{}/shapes/{}", utils::SHADERS_DIR, "cube_vert.spv")).unwrap();
     let frag_shader =
-        Shader::from_file(format!("{}/shapes/{}", SHADERS_DIR, "cube_frag.spv")).unwrap();
+        Shader::from_file(format!("{}/shapes/{}", utils::SHADERS_DIR, "cube_frag.spv")).unwrap();
     let pipeline = renderer
         .create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
@@ -172,5 +174,5 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 fn main() {
     const EXAMPLE_NAME: &str = "Render Moving Cubes";
     const INIT_RENDERER: bool = true;
-    run_example(EXAMPLE_NAME, INIT_RENDERER, example);
+    utils::run_example(EXAMPLE_NAME, INIT_RENDERER, example);
 }

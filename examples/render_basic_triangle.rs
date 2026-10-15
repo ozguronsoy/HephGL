@@ -5,24 +5,28 @@ use heph_gl::{
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
 
-use crate::utils::{ExampleRenderer, SHADERS_DIR, get_best_device, run_example, set_best_msaa};
-
 mod utils;
 
-fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHandle) {
-    let device = get_best_device(renderer);
+fn example(
+    renderer: &mut utils::renderer::ExampleRenderer,
+    _: RawWindowHandle,
+    _: RawDisplayHandle,
+) {
+    let device = utils::renderer::get_best_device(renderer);
     renderer.set_device(Some(&device), &[]).unwrap();
-    set_best_msaa(renderer);
+    utils::renderer::set_best_msaa(renderer);
 
     // These shaders do not use resources.
     let vert_shader = Shader::from_file(format!(
         "{}/shapes/{}",
-        SHADERS_DIR, "basic_triangle_vert.spv"
+        utils::SHADERS_DIR,
+        "basic_triangle_vert.spv"
     ))
     .unwrap();
     let frag_shader = Shader::from_file(format!(
         "{}/shapes/{}",
-        SHADERS_DIR, "basic_triangle_frag.spv"
+        utils::SHADERS_DIR,
+        "basic_triangle_frag.spv"
     ))
     .unwrap();
     let pipeline = renderer
@@ -56,5 +60,5 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 fn main() {
     const EXAMPLE_NAME: &str = "Render Basic Triangle";
     const INIT_RENDERER: bool = true;
-    run_example(EXAMPLE_NAME, INIT_RENDERER, example);
+    utils::run_example(EXAMPLE_NAME, INIT_RENDERER, example);
 }

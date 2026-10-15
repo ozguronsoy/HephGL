@@ -8,14 +8,16 @@ use heph_gl::{
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
 
-use crate::utils::{ExampleRenderer, SHADERS_DIR, get_best_device, run_example, set_best_msaa};
-
 mod utils;
 
-fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHandle) {
-    let device = get_best_device(renderer);
+fn example(
+    renderer: &mut utils::renderer::ExampleRenderer,
+    _: RawWindowHandle,
+    _: RawDisplayHandle,
+) {
+    let device = utils::renderer::get_best_device(renderer);
     renderer.set_device(Some(&device), &[]).unwrap();
-    set_best_msaa(renderer);
+    utils::renderer::set_best_msaa(renderer);
 
     // These shaders do not have any input.
     let vertex_shader_infos = [
@@ -26,12 +28,17 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     ];
     let mut pipelines = Vec::with_capacity(vertex_shader_infos.len());
     {
-        let frag_shader =
-            Shader::from_file(format!("{}/shapes/{}", SHADERS_DIR, "shape_frag.spv")).unwrap();
+        let frag_shader = Shader::from_file(format!(
+            "{}/shapes/{}",
+            utils::SHADERS_DIR,
+            "shape_frag.spv"
+        ))
+        .unwrap();
         for (vertex_shader_name, topology, draw_count) in vertex_shader_infos {
             let vertex_shader = Shader::from_file(format!(
                 "{}/shapes/{}_vert.spv",
-                SHADERS_DIR, vertex_shader_name
+                utils::SHADERS_DIR,
+                vertex_shader_name
             ))
             .unwrap();
             pipelines.push((
@@ -74,5 +81,5 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 fn main() {
     const EXAMPLE_NAME: &str = "Render Shapes";
     const INIT_RENDERER: bool = true;
-    run_example(EXAMPLE_NAME, INIT_RENDERER, example);
+    utils::run_example(EXAMPLE_NAME, INIT_RENDERER, example);
 }

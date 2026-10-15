@@ -15,8 +15,6 @@ use heph_gl::{
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
 
-use crate::utils::{ExampleRenderer, SHADERS_DIR, get_best_device, run_example, set_best_msaa};
-
 mod utils;
 
 type Vertex = [f32; 8];
@@ -62,24 +60,33 @@ fn sphere_vertices() -> Vec<Vertex> {
     vertices
 }
 
-fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHandle) {
-    let device = get_best_device(renderer);
+fn example(
+    renderer: &mut utils::renderer::ExampleRenderer,
+    _: RawWindowHandle,
+    _: RawDisplayHandle,
+) {
+    let device = utils::renderer::get_best_device(renderer);
     renderer
         .set_device(
             Some(&device),
             &[FeatureRequest::new(AnisotropicFiltering, false)],
         )
         .unwrap();
-    set_best_msaa(renderer);
+    utils::renderer::set_best_msaa(renderer);
 
     let mut settings = *renderer.get_settings();
     settings.frames_in_flight = 3;
     settings.vsync = true;
     renderer.set_settings(settings).unwrap();
 
-    let vert_shader = Shader::from_file(format!("{}/{}", SHADERS_DIR, "camera_vert.spv")).unwrap();
-    let frag_shader =
-        Shader::from_file(format!("{}/{}", SHADERS_DIR, "broken_brick_wall_frag.spv")).unwrap();
+    let vert_shader =
+        Shader::from_file(format!("{}/{}", utils::SHADERS_DIR, "camera_vert.spv")).unwrap();
+    let frag_shader = Shader::from_file(format!(
+        "{}/{}",
+        utils::SHADERS_DIR,
+        "broken_brick_wall_frag.spv"
+    ))
+    .unwrap();
     let pipeline = renderer
         .create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
@@ -229,5 +236,5 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 fn main() {
     const EXAMPLE_NAME: &str = "Render Camera";
     const INIT_RENDERER: bool = true;
-    run_example(EXAMPLE_NAME, INIT_RENDERER, example);
+    utils::run_example(EXAMPLE_NAME, INIT_RENDERER, example);
 }

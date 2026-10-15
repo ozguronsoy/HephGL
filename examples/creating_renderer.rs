@@ -7,12 +7,10 @@ use heph_gl::{
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
-use crate::utils::{ExampleRenderer, run_example};
-
 mod utils;
 
 fn example(
-    renderer: &mut ExampleRenderer,
+    renderer: &mut utils::renderer::ExampleRenderer,
     window_handle: RawWindowHandle,
     display_handle: RawDisplayHandle,
 ) {
@@ -31,7 +29,7 @@ fn example(
         // library of your choice (e.g., Winit, SDL).
         window_handle,
         display_handle,
-        api_version: ExampleRenderer::LATEST_API_VERSION,
+        api_version: utils::renderer::ExampleRenderer::LATEST_API_VERSION,
     };
     renderer.initialize(&init_options).unwrap();
 
@@ -45,7 +43,10 @@ fn example(
     // instead of `DEFAULT_DEVICE`.
     let requested_features = [FeatureRequest::new(ComputeShaders, false)];
     renderer
-        .set_device(ExampleRenderer::DEFAULT_DEVICE, &requested_features)
+        .set_device(
+            utils::renderer::ExampleRenderer::DEFAULT_DEVICE,
+            &requested_features,
+        )
         .unwrap();
 
     // Renderer is now ready to use!
@@ -56,5 +57,5 @@ fn example(
 fn main() {
     const EXAMPLE_NAME: &str = "Creating Renderer";
     const INIT_RENDERER: bool = false;
-    run_example(EXAMPLE_NAME, INIT_RENDERER, example);
+    utils::run_example(EXAMPLE_NAME, INIT_RENDERER, example);
 }

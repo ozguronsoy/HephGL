@@ -18,8 +18,6 @@ use heph_gl::{
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
 
-use crate::utils::{ExampleRenderer, SHADERS_DIR, get_best_device, run_example, set_best_msaa};
-
 mod utils;
 
 const FONT_PATH: &str = "assets/liberation_sans/LiberationSans-Regular.ttf";
@@ -27,22 +25,24 @@ const FONT_SIZE: f32 = 72.0;
 const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 
 fn create_pipeline(
-    renderer: &mut ExampleRenderer,
+    renderer: &mut utils::renderer::ExampleRenderer,
     vertex_shader: &str,
     fragment_shader: &str,
     options: &GraphicsPipelineOptions,
-) -> <ExampleRenderer as Renderer>::GraphicsPipeline {
-    let vert_shader = Shader::from_file(format!("{}/{}", SHADERS_DIR, vertex_shader)).unwrap();
-    let frag_shader = Shader::from_file(format!("{}/{}", SHADERS_DIR, fragment_shader)).unwrap();
+) -> <utils::renderer::ExampleRenderer as Renderer>::GraphicsPipeline {
+    let vert_shader =
+        Shader::from_file(format!("{}/{}", utils::SHADERS_DIR, vertex_shader)).unwrap();
+    let frag_shader =
+        Shader::from_file(format!("{}/{}", utils::SHADERS_DIR, fragment_shader)).unwrap();
     renderer
         .create_graphics_pipeline(&[&vert_shader, &frag_shader], options)
         .unwrap()
 }
 
 fn create_vertex_buffer(
-    renderer: &mut ExampleRenderer,
+    renderer: &mut utils::renderer::ExampleRenderer,
     vertices: &[TextVertex],
-) -> <ExampleRenderer as Renderer>::Buffer {
+) -> <utils::renderer::ExampleRenderer as Renderer>::Buffer {
     let buffer = renderer
         .create_buffer(std::mem::size_of_val(vertices), BufferUsage::Vertex)
         .unwrap();
@@ -69,10 +69,14 @@ fn center_vertices(vertices: &mut [TextVertex]) {
     }
 }
 
-fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHandle) {
-    let device = get_best_device(renderer);
+fn example(
+    renderer: &mut utils::renderer::ExampleRenderer,
+    _: RawWindowHandle,
+    _: RawDisplayHandle,
+) {
+    let device = utils::renderer::get_best_device(renderer);
     renderer.set_device(Some(&device), &[]).unwrap();
-    set_best_msaa(renderer);
+    utils::renderer::set_best_msaa(renderer);
 
     let mut settings = *renderer.get_settings();
     settings.frames_in_flight = 3;
@@ -350,5 +354,5 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 fn main() {
     const EXAMPLE_NAME: &str = "Render Text";
     const INIT_RENDERER: bool = true;
-    run_example(EXAMPLE_NAME, INIT_RENDERER, example);
+    utils::run_example(EXAMPLE_NAME, INIT_RENDERER, example);
 }
