@@ -9,12 +9,12 @@ layout(location = 1) out vec3 frag_normal;
 layout(location = 2) out vec2 frag_uv;
 
 const float ASPECT_RATIO = 16.0 / 9.0;
-const float ROTATION_X_DEGREES = 180.0;
-const float ROTATION_Y_DEGREES = -50.0;
+const float ROTATION_X_DEGREES = 0.0;
+const float ROTATION_Y_DEGREES = 0.0;
 const float ROTATION_Z_DEGREES = 0.0;
 
 // Match the sphere vertex count and centers in render_textures.rs.
-const int SPHERE_VERTEX_COUNT = 128 * 256 * 6;
+const int SPHERE_VERTEX_COUNT = 512 * 1024 * 6;
 const float SPHERE_CENTERS_X[3] = float[](-1.2, -0.4, 0.8);
 
 void main()

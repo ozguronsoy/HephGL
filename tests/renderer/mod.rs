@@ -1369,8 +1369,8 @@ where
         const DISPLACEMENT_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_disp_1k.png";
         const ARM_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_arm_1k.exr";
         const NORMAL_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_nor_gl_1k.exr";
-        const LATITUDE_SEGMENTS: usize = 128;
-        const LONGITUDE_SEGMENTS: usize = 256;
+        const LATITUDE_SEGMENTS: usize = 512;
+        const LONGITUDE_SEGMENTS: usize = 1024;
         // The equatorial circumference is twice the pole-to-pole distance, so repeat the square
         // maps twice.
         const TEXTURE_REPEATS_U: f32 = 2.0;
@@ -1543,12 +1543,11 @@ where
         let arm = load_exr(ARM_PATH, ["R", "G", "B"]);
         let normal = load_exr(NORMAL_PATH, ["R", "G", "B"]);
         let material = MaterialProperties {
-            displacement_scale: 0.15,
-            displacement_bias: -0.02,
+            displacement_scale: 0.1,
             ..Default::default()
         };
         let lighting = Lighting {
-            direction: Vec3::new(0.3, 0.65, 1.0),
+            direction: Vec3::new(0.3, 0.4, 1.0),
             intensity: 2.0,
             ambient: RGB::new(0.45, 0.15, 0.15),
             ..Default::default()
