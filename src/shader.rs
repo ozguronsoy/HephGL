@@ -46,10 +46,19 @@ pub struct Shader {
 impl Shader {
     /// Loads the shader from a file.
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let data = std::fs::read(path.as_ref())?;
+        let mut shader = Self::from_bytes(std::fs::read(path.as_ref())?)?;
+        shader.file_path = path.as_ref().to_string_lossy().into_owned();
+        Ok(shader)
+    }
+
+    /// Loads the shader from raw bytes.
+    pub fn from_bytes<T>(data: T) -> Result<Self>
+    where
+        T: Into<Vec<u8>>,
+    {
         let mut shader = Self {
-            file_path: path.as_ref().to_string_lossy().into_owned(),
-            data,
+            file_path: String::default(),
+            data: data.into(),
             metadata: ShaderMetadata {
                 entry_name: String::default(),
                 stage: ShaderStage::Vertex,
@@ -193,9 +202,7 @@ mod tests {
     fn test_from_file() {
         {
             const SHADER_PATH: &str = "shaders/addition.spv";
-            let result = Shader::from_file(SHADER_PATH);
-            assert!(result.is_ok());
-            let shader = result.unwrap();
+            let shader = Shader::from_file(SHADER_PATH).unwrap();
             assert_eq!(shader.file_path, SHADER_PATH);
             assert!(!shader.data.is_empty());
         }
@@ -210,5 +217,13 @@ mod tests {
         {
             assert!(matches!(Shader::from_file(""), Err(Error::Io(_))));
         }
+    }
+
+    #[test]
+    fn test_from_bytes() {
+        const SHADER_DATA: &[u8] = include_bytes!("../shaders/addition.spv");
+        let shader = Shader::from_bytes(SHADER_DATA).unwrap();
+        assert!(shader.file_path.is_empty());
+        assert!(!shader.data.is_empty());
     }
 }
