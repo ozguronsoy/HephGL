@@ -21,6 +21,8 @@ use heph_gl::{
         GraphicsDevice,
         Type::{Cpu, DiscreteGpu, IntegratedGpu, VirtualGpu},
     },
+    light::Lighting,
+    material::MaterialProperties,
     math::{Mat4, Quat, Vec3},
     renderers::{
         Renderer,
@@ -28,7 +30,8 @@ use heph_gl::{
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType, TextureFormat},
         settings::{
             ColorBlending, CullingMode, FeatureRequest, FrontFace, GraphicsPipelineOptions,
-            InitializeOptions, PrimitiveTopology, SamplerOptions, Settings, TextureOptions,
+            InitializeOptions, PrimitiveTopology, SamplerAddressMode, SamplerOptions, Settings,
+            TextureOptions,
         },
     },
     shader::Shader,
@@ -47,7 +50,7 @@ use crate::{heph_expect_err, heph_expect_success};
 pub static TEST_ENV: LazyLock<Mutex<TestEnv>> = LazyLock::new(|| Mutex::new(TestEnv::default()));
 macro_rules! test_env {
     () => {
-        TEST_ENV.lock().unwrap()
+        heph_expect_success!(TEST_ENV.lock())
     };
 }
 
@@ -208,7 +211,9 @@ where
                                     "{} was expected to panic",
                                     stringify!($tfn)
                                 );
-                                let panic = result.err().unwrap();
+                                let panic = heph_expect_success!(
+                                    result.err().ok_or("Expected a panic.")
+                                );
                                 let panic_msg = panic.downcast_ref::<&str>()
                                                     .copied()
                                                     .or_else(||
@@ -388,7 +393,10 @@ where
             result.is_some(),
             "Renderer successfully set the graphics device, but `get_device()` returned `None`."
         );
-        assert_eq!(target_device.unwrap(), result.unwrap());
+        assert_eq!(
+            heph_expect_success!(target_device.ok_or("Failed to find the target device.")),
+            heph_expect_success!(result.ok_or("Failed to get renderer device."))
+        );
 
         Some(renderer)
     }
@@ -407,7 +415,10 @@ where
             result.is_some(),
             "Renderer successfully set the graphics device, but `get_device()` returned `None`."
         );
-        assert_eq!(result.unwrap(), devices.first().unwrap());
+        assert_eq!(
+            heph_expect_success!(result.ok_or("Failed to get renderer device.")),
+            heph_expect_success!(devices.first().ok_or("No device found."))
+        );
 
         renderer
     }
@@ -812,7 +823,7 @@ where
                         }
                         barrier.wait();
                     } else {
-                        let _worker = result.unwrap();
+                        let _worker = heph_expect_success!(result);
                         barrier.wait();
                     }
                 });
@@ -840,7 +851,9 @@ where
             create_renderer_result.is_some(),
             "The test should be skipped if device of the target type does not exist."
         );
-        let mut renderer = create_renderer_result.unwrap();
+        let mut renderer = heph_expect_success!(
+            create_renderer_result.ok_or("No device of the target type found.")
+        );
 
         let settings = Settings {
             frames_in_flight,
@@ -999,7 +1012,9 @@ where
             create_renderer_result.is_some(),
             "The test should be skipped if device of the target type does not exist."
         );
-        let mut renderer = create_renderer_result.unwrap();
+        let mut renderer = heph_expect_success!(
+            create_renderer_result.ok_or("No device of the target type found.")
+        );
 
         let shader_path = SHADERS_DIR.to_owned() + "/addition.spv";
         let shader = heph_expect_success!(Shader::from_file(shader_path));
@@ -1153,7 +1168,9 @@ where
             let msaa = heph_expect_success!(renderer.supported_msaa_list()).last();
             assert!(msaa.is_some());
             heph_expect_success!(renderer.set_settings(Settings {
-                msaa: *msaa.unwrap(),
+                msaa: *heph_expect_success!(
+                    msaa.ok_or("Failed to get a supported MSAA sample count.")
+                ),
                 ..Default::default()
             }));
         }
@@ -1347,13 +1364,82 @@ where
 
     fn test_render_textures(&self) {
         type Vertex = [f32; 8];
+        type HeightMap = image::ImageBuffer<image::Luma<u16>, Vec<u16>>;
         const IMAGE_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_diff_1k.jpg";
-        const LATITUDE_SEGMENTS: usize = 32;
-        const LONGITUDE_SEGMENTS: usize = 64;
+        const DISPLACEMENT_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_disp_1k.png";
+        const ARM_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_arm_1k.exr";
+        const NORMAL_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_nor_gl_1k.exr";
+        const LATITUDE_SEGMENTS: usize = 128;
+        const LONGITUDE_SEGMENTS: usize = 256;
+        // The equatorial circumference is twice the pole-to-pole distance, so repeat the square
+        // maps twice.
+        const TEXTURE_REPEATS_U: f32 = 2.0;
 
+        let load_exr = |path: &str, channel_names: [&str; 3]| -> image::RgbaImage {
+            let layer = heph_expect_success!(exr::prelude::read_first_flat_layer_from_file(path))
+                .layer_data;
+            let mut channels = channel_names.map(|name| {
+                heph_expect_success!(
+                    layer
+                        .channel_data
+                        .list
+                        .iter()
+                        .find(|channel| channel.name == *name)
+                        .ok_or("Missing EXR channel.")
+                )
+                .sample_data
+                .values_as_f32()
+            });
+            image::RgbaImage::from_fn(
+                layer.size.width() as u32,
+                layer.size.height() as u32,
+                |_, _| {
+                    let [r, g, b] = std::array::from_fn(|i| {
+                        (heph_expect_success!(channels[i].next().ok_or("Missing EXR sample."))
+                            .clamp(0.0, 1.0)
+                            * 255.0)
+                            .round() as u8
+                    });
+                    image::Rgba([r, g, b, 255])
+                },
+            )
+        };
+        let displace_vertices =
+            |vertices: &mut [Vertex], displacement: &HeightMap, material: &MaterialProperties| {
+                for vertex in vertices {
+                    let u = vertex[6];
+                    let v = vertex[7];
+                    let u = if v == 0.0 || v == 1.0 { 0.0 } else { u };
+                    let x = u.rem_euclid(1.0) * displacement.width() as f32 - 0.5;
+                    let y = (v * displacement.height() as f32 - 0.5)
+                        .clamp(0.0, (displacement.height() - 1) as f32);
+                    let x0 = (x.floor() as i32).rem_euclid(displacement.width() as i32) as u32;
+                    let x1 = (x0 + 1) % displacement.width();
+                    let y0 = y.floor() as u32;
+                    let y1 = (y0 + 1).min(displacement.height() - 1);
+                    let tx = x - x.floor();
+                    let ty = y - y.floor();
+                    let top = displacement.get_pixel(x0, y0)[0] as f32 * (1.0 - tx)
+                        + displacement.get_pixel(x1, y0)[0] as f32 * tx;
+                    let bottom = displacement.get_pixel(x0, y1)[0] as f32 * (1.0 - tx)
+                        + displacement.get_pixel(x1, y1)[0] as f32 * tx;
+
+                    let height = (top * (1.0 - ty) + bottom * ty) / u16::MAX as f32;
+                    let offset = height * material.displacement_scale + material.displacement_bias;
+                    for axis in 0..3 {
+                        vertex[axis] += vertex[axis + 3] * offset;
+                    }
+                }
+            };
         let sphere_position = |radius: f32, x_offset: f32, u: f32, v: f32| -> [f32; 3] {
+            if v == 0.0 {
+                return [x_offset, radius, 0.0];
+            }
+            if v == 1.0 {
+                return [x_offset, -radius, 0.0];
+            }
             let theta = v * std::f32::consts::PI;
-            let phi = u * std::f32::consts::TAU;
+            let phi = u.rem_euclid(1.0) * std::f32::consts::TAU;
             let sin_theta = theta.sin();
             [
                 x_offset + radius * sin_theta * phi.cos(),
@@ -1397,14 +1483,28 @@ where
                         p11[1] / radius,
                         p11[2] / radius,
                     ];
+                    let texture_u0 = u0 * TEXTURE_REPEATS_U;
+                    let texture_u1 = u1 * TEXTURE_REPEATS_U;
 
                     vertices.extend_from_slice(&[
-                        [p00[0], p00[1], p00[2], n00[0], n00[1], n00[2], u0, v0],
-                        [p10[0], p10[1], p10[2], n10[0], n10[1], n10[2], u1, v0],
-                        [p11[0], p11[1], p11[2], n11[0], n11[1], n11[2], u1, v1],
-                        [p00[0], p00[1], p00[2], n00[0], n00[1], n00[2], u0, v0],
-                        [p11[0], p11[1], p11[2], n11[0], n11[1], n11[2], u1, v1],
-                        [p01[0], p01[1], p01[2], n01[0], n01[1], n01[2], u0, v1],
+                        [
+                            p00[0], p00[1], p00[2], n00[0], n00[1], n00[2], texture_u0, v0,
+                        ],
+                        [
+                            p10[0], p10[1], p10[2], n10[0], n10[1], n10[2], texture_u1, v0,
+                        ],
+                        [
+                            p11[0], p11[1], p11[2], n11[0], n11[1], n11[2], texture_u1, v1,
+                        ],
+                        [
+                            p00[0], p00[1], p00[2], n00[0], n00[1], n00[2], texture_u0, v0,
+                        ],
+                        [
+                            p11[0], p11[1], p11[2], n11[0], n11[1], n11[2], texture_u1, v1,
+                        ],
+                        [
+                            p01[0], p01[1], p01[2], n01[0], n01[1], n01[2], texture_u0, v1,
+                        ],
                     ]);
                 }
             }
@@ -1425,26 +1525,96 @@ where
 
         let vert_shader = heph_expect_success!(Shader::from_file(format!(
             "{}/{}",
-            SHADERS_DIR, "broken_brick_wall_vert.spv"
+            SHADERS_DIR, "broken_brick_wall_material_vert.spv"
         )));
         let frag_shader = heph_expect_success!(Shader::from_file(format!(
             "{}/{}",
-            SHADERS_DIR, "broken_brick_wall_frag.spv"
+            SHADERS_DIR, "broken_brick_wall_material_frag.spv"
         )));
         let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions::default(),
         ));
+        drop(vert_shader);
+        drop(frag_shader);
 
         let image = heph_expect_success!(image::open(IMAGE_PATH)).to_rgba8();
-        let width = image.width();
-        let height = image.height();
+        let displacement = heph_expect_success!(image::open(DISPLACEMENT_PATH)).to_luma16();
+        let arm = load_exr(ARM_PATH, ["R", "G", "B"]);
+        let normal = load_exr(NORMAL_PATH, ["R", "G", "B"]);
+        let material = MaterialProperties {
+            displacement_scale: 0.15,
+            displacement_bias: -0.02,
+            ..Default::default()
+        };
+        let lighting = Lighting {
+            direction: Vec3::new(0.3, 0.65, 1.0),
+            intensity: 2.0,
+            ambient: RGB::new(0.45, 0.15, 0.15),
+            ..Default::default()
+        };
 
+        let uniforms = [
+            [
+                material.base_color.r,
+                material.base_color.g,
+                material.base_color.b,
+                material.base_color.a,
+            ],
+            [
+                material.roughness,
+                material.metallicness,
+                material.normal_scale,
+                0.0,
+            ],
+            [
+                lighting.direction.x,
+                lighting.direction.y,
+                lighting.direction.z,
+                0.0,
+            ],
+            [
+                lighting.color.r,
+                lighting.color.g,
+                lighting.color.b,
+                lighting.intensity,
+            ],
+            [
+                lighting.ambient.r,
+                lighting.ambient.g,
+                lighting.ambient.b,
+                0.0,
+            ],
+            [0.0, 0.0, -1.0, 0.0],
+        ];
+        let mut uniform_buffer = heph_expect_success!(
+            renderer.create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
+        );
+        heph_expect_success!(
+            renderer.write_buffer(&uniform_buffer, bytemuck::cast_slice(&uniforms))
+        );
+
+        // Displace a unit sphere before scaling it, so all three sizes have the same relative
+        // relief.
+        let mut sphere = sphere_vertices(1.0, 0.0);
+        displace_vertices(&mut sphere, &displacement, &material);
         let vertex_count: usize = LATITUDE_SEGMENTS * LONGITUDE_SEGMENTS * 6 * 3;
         let mut vertices = Vec::with_capacity(vertex_count);
-        vertices.extend(sphere_vertices(0.1, -1.2));
-        vertices.extend(sphere_vertices(0.25, -0.4));
-        vertices.extend(sphere_vertices(0.5, 0.8));
+        for (radius, x_offset) in [(0.1, -1.2), (0.25, -0.4), (0.5, 0.8)] {
+            vertices.extend(sphere.iter().map(|vertex| {
+                [
+                    vertex[0] * radius + x_offset,
+                    vertex[1] * radius,
+                    vertex[2] * radius,
+                    vertex[3],
+                    vertex[4],
+                    vertex[5],
+                    vertex[6],
+                    vertex[7],
+                ]
+            }));
+        }
+        drop(sphere);
         let mut vertex_buffer = heph_expect_success!(renderer.create_buffer(
             vertices.len() * std::mem::size_of::<Vertex>(),
             BufferUsage::Vertex,
@@ -1455,23 +1625,46 @@ where
         drop(vertices);
 
         let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions {
+            address_mode_u: SamplerAddressMode::Repeat,
             max_anisotropy,
             ..Default::default()
         }));
 
+        // Creating a texture creates a GPU command to transfer the raw pixel data from CPU to GPU,
+        // thus we must begin a frame first. Once a texture is loaded, we can use it until
+        // we destroy it.
         heph_expect_success!(renderer.begin_frame());
         heph_expect_success!(renderer.clear(RGB::default()));
         let mut texture = heph_expect_success!(renderer.create_texture(
             &TextureOptions {
-                width,
-                height,
+                width: image.width(),
+                height: image.height(),
                 format: TextureFormat::Rgba8Srgb,
-                mip_level_count: TextureOptions::max_mip_level_count(width, height),
+                mip_level_count: TextureOptions::max_mip_level_count(image.width(), image.height()),
             },
-            image.as_raw()
+            image.as_raw(),
+        ));
+        let mut arm_texture = heph_expect_success!(renderer.create_texture(
+            &TextureOptions {
+                width: arm.width(),
+                height: arm.height(),
+                format: TextureFormat::Rgba8Unorm,
+                mip_level_count: TextureOptions::max_mip_level_count(arm.width(), arm.height()),
+            },
+            arm.as_raw(),
+        ));
+        let mut normal_texture = heph_expect_success!(renderer.create_texture(
+            &TextureOptions {
+                width: image.width(),
+                height: image.height(),
+                format: TextureFormat::Rgba8Unorm,
+                mip_level_count: TextureOptions::max_mip_level_count(image.width(), image.height()),
+            },
+            normal.as_raw(),
         ));
         heph_expect_success!(renderer.end_frame());
 
+        // Render the displaced spheres with the color, ARM, and normal maps applied.
         heph_expect_success!(renderer.begin_frame());
         heph_expect_success!(renderer.clear(RGB::default()));
         let bindings = [
@@ -1492,18 +1685,43 @@ where
                 binding: 1,
                 resource: ResourceBindingType::Sampler { handle: sampler },
             },
+            ResourceBinding {
+                binding: 2,
+                resource: ResourceBindingType::Texture {
+                    handle: arm_texture,
+                },
+            },
+            ResourceBinding {
+                binding: 3,
+                resource: ResourceBindingType::Texture {
+                    handle: normal_texture,
+                },
+            },
+            ResourceBinding {
+                binding: 4,
+                resource: ResourceBindingType::Buffer {
+                    handle: uniform_buffer,
+                    usage: BufferUsage::Uniform,
+                    offset: 0,
+                    size: uniform_buffer.size(),
+                },
+            },
         ];
         heph_expect_success!(renderer.record_graphics_command(
             &pipeline,
             &[&bindings],
             vertex_count as u32,
-            1
+            1,
         ));
         heph_expect_success!(renderer.end_frame());
 
+        // Cleanup.
         heph_expect_success!(renderer.wait_idle());
         heph_expect_success!(renderer.destroy_sampler(&mut sampler));
         heph_expect_success!(renderer.destroy_texture(&mut texture));
+        heph_expect_success!(renderer.destroy_texture(&mut arm_texture));
+        heph_expect_success!(renderer.destroy_texture(&mut normal_texture));
+        heph_expect_success!(renderer.destroy_buffer(&mut uniform_buffer));
         heph_expect_success!(renderer.destroy_buffer(&mut vertex_buffer));
         heph_expect_success!(renderer.destroy_graphics_pipeline(&pipeline));
     }
