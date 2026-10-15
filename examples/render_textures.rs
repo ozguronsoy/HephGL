@@ -61,25 +61,6 @@ fn load_exr(path: &str, channel_names: [&str; 3]) -> image::RgbaImage {
     )
 }
 
-// Bilinearly sample the 16-bit height map. Wrap U around the sphere and clamp V at its poles.
-fn sample_height(image: &HeightMap, u: f32, v: f32) -> f32 {
-    // All vertices at a pole share one position, so they must also share one displacement.
-    let u = if v == 0.0 || v == 1.0 { 0.0 } else { u };
-    let x = u.rem_euclid(1.0) * image.width() as f32 - 0.5;
-    let y = (v * image.height() as f32 - 0.5).clamp(0.0, (image.height() - 1) as f32);
-    let x0 = (x.floor() as i32).rem_euclid(image.width() as i32) as u32;
-    let x1 = (x0 + 1) % image.width();
-    let y0 = y.floor() as u32;
-    let y1 = (y0 + 1).min(image.height() - 1);
-    let tx = x - x.floor();
-    let ty = y - y.floor();
-    let top =
-        image.get_pixel(x0, y0)[0] as f32 * (1.0 - tx) + image.get_pixel(x1, y0)[0] as f32 * tx;
-    let bottom =
-        image.get_pixel(x0, y1)[0] as f32 * (1.0 - tx) + image.get_pixel(x1, y1)[0] as f32 * tx;
-    (top * (1.0 - ty) + bottom * ty) / u16::MAX as f32
-}
-
 // Move each vertex along its original sphere normal before uploading the mesh.
 fn displace_vertices(
     vertices: &mut [Vertex],
@@ -87,7 +68,24 @@ fn displace_vertices(
     material: &MaterialProperties,
 ) {
     for vertex in vertices {
-        let height = sample_height(displacement, vertex[6], vertex[7]);
+        let u = vertex[6];
+        let v = vertex[7];
+        let u = if v == 0.0 || v == 1.0 { 0.0 } else { u };
+        let x = u.rem_euclid(1.0) * displacement.width() as f32 - 0.5;
+        let y =
+            (v * displacement.height() as f32 - 0.5).clamp(0.0, (displacement.height() - 1) as f32);
+        let x0 = (x.floor() as i32).rem_euclid(displacement.width() as i32) as u32;
+        let x1 = (x0 + 1) % displacement.width();
+        let y0 = y.floor() as u32;
+        let y1 = (y0 + 1).min(displacement.height() - 1);
+        let tx = x - x.floor();
+        let ty = y - y.floor();
+        let top = displacement.get_pixel(x0, y0)[0] as f32 * (1.0 - tx)
+            + displacement.get_pixel(x1, y0)[0] as f32 * tx;
+        let bottom = displacement.get_pixel(x0, y1)[0] as f32 * (1.0 - tx)
+            + displacement.get_pixel(x1, y1)[0] as f32 * tx;
+
+        let height = (top * (1.0 - ty) + bottom * ty) / u16::MAX as f32;
         let offset = height * material.displacement_scale + material.displacement_bias;
         for axis in 0..3 {
             vertex[axis] += vertex[axis + 3] * offset;
@@ -216,21 +214,17 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     let arm = load_exr(ARM_PATH, ["R", "G", "B"]);
     let normal = load_exr(NORMAL_PATH, ["R", "G", "B"]);
     let material = MaterialProperties {
-        // Multiply the ARM map's metallicness by one; the brick map's blue channel is zero.
-        metalicness: 1.0,
-        displacement_scale: 0.2,
+        displacement_scale: 0.15,
         displacement_bias: -0.02,
         ..Default::default()
     };
     let lighting = Lighting {
-        direction: Vec3::new(0.5, -0.7, 1.0),
+        direction: Vec3::new(0.3, 0.65, 1.0),
         intensity: 2.0,
-        ambient: RGB::new(0.15, 0.15, 0.15),
+        ambient: RGB::new(0.45, 0.15, 0.15),
         ..Default::default()
     };
 
-    // Match the fragment shader's six vec4 values. Displacement is applied to vertices below.
-    // The projection is orthographic, so the direction toward the viewer is always negative Z.
     let uniforms = [
         [
             material.base_color.r,
@@ -328,7 +322,6 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
             image.as_raw(),
         )
         .unwrap();
-    // ARM stores ambient occlusion, roughness, and metallicness in its R, G, and B channels.
     let mut arm_texture = renderer
         .create_texture(
             &TextureOptions {
