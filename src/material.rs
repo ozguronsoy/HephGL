@@ -8,7 +8,7 @@ pub struct MaterialProperties {
     /// The roughness, between zero and one.
     pub roughness: f32,
     /// The metallicness, between zero and one. Higher values produce more metallic reflections.
-    pub metalicness: f32,
+    pub metallicness: f32,
     /// The nonnegative multiplier for the normal map's tangent-space X and Y components.
     pub normal_scale: f32,
     /// The displacement multiplier in local-space units. Positive values move vertices outward.
@@ -22,7 +22,7 @@ impl Default for MaterialProperties {
         Self {
             base_color: RGBA::new(1.0, 1.0, 1.0, 1.0),
             roughness: 1.0,
-            metalicness: 0.0,
+            metallicness: 0.0,
             normal_scale: 1.0,
             displacement_scale: 1.0,
             displacement_bias: 0.0,

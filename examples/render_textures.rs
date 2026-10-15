@@ -234,7 +234,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         ],
         [
             material.roughness,
-            material.metalicness,
+            material.metallicness,
             material.normal_scale,
             0.0,
         ],
