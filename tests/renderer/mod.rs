@@ -1525,11 +1525,11 @@ where
 
         let vert_shader = heph_expect_success!(Shader::from_file(format!(
             "{}/{}",
-            SHADERS_DIR, "broken_brick_wall_material_vert.spv"
+            SHADERS_DIR, "broken_brick_wall_vert.spv"
         )));
         let frag_shader = heph_expect_success!(Shader::from_file(format!(
             "{}/{}",
-            SHADERS_DIR, "broken_brick_wall_material_frag.spv"
+            SHADERS_DIR, "broken_brick_wall_frag.spv"
         )));
         let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
@@ -2023,41 +2023,165 @@ where
 
     fn test_render_camera(&self) {
         type Vertex = [f32; 8];
+        type HeightMap = image::ImageBuffer<image::Luma<u16>, Vec<u16>>;
         const IMAGE_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_diff_1k.jpg";
-        const LATITUDE_SEGMENTS: usize = 32;
-        const LONGITUDE_SEGMENTS: usize = 64;
+        const DISPLACEMENT_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_disp_1k.png";
+        const ARM_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_arm_1k.exr";
+        const NORMAL_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_nor_gl_1k.exr";
+        const LATITUDE_SEGMENTS: usize = 512;
+        const LONGITUDE_SEGMENTS: usize = 1024;
+        // The equatorial circumference is twice the pole-to-pole distance, so repeat the square
+        // maps twice.
+        const TEXTURE_REPEATS_U: f32 = 2.0;
         const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 
-        let sphere_vertex = |u: f32, v: f32| -> Vertex {
-            let theta = v * std::f32::consts::PI;
-            let phi = u * std::f32::consts::TAU;
-            let x = theta.sin() * phi.cos();
-            let y = theta.cos();
-            let z = theta.sin() * phi.sin();
-            [x, y, z, x, y, z, u, v]
+        let load_exr = |path: &str, channel_names: [&str; 3]| -> image::RgbaImage {
+            let layer = heph_expect_success!(exr::prelude::read_first_flat_layer_from_file(path))
+                .layer_data;
+            let mut channels = channel_names.map(|name| {
+                heph_expect_success!(
+                    layer
+                        .channel_data
+                        .list
+                        .iter()
+                        .find(|channel| channel.name == *name)
+                        .ok_or("Missing EXR channel.")
+                )
+                .sample_data
+                .values_as_f32()
+            });
+            image::RgbaImage::from_fn(
+                layer.size.width() as u32,
+                layer.size.height() as u32,
+                |_, _| {
+                    let [r, g, b] = std::array::from_fn(|i| {
+                        (heph_expect_success!(channels[i].next().ok_or("Missing EXR sample."))
+                            .clamp(0.0, 1.0)
+                            * 255.0)
+                            .round() as u8
+                    });
+                    image::Rgba([r, g, b, 255])
+                },
+            )
         };
-        let sphere_vertices = || -> Vec<Vertex> {
+        let displace_vertices =
+            |vertices: &mut [Vertex], displacement: &HeightMap, material: &MaterialProperties| {
+                for vertex in vertices {
+                    let u = vertex[6];
+                    let v = vertex[7];
+                    let u = if v == 0.0 || v == 1.0 { 0.0 } else { u };
+                    let x = u.rem_euclid(1.0) * displacement.width() as f32 - 0.5;
+                    let y = (v * displacement.height() as f32 - 0.5)
+                        .clamp(0.0, (displacement.height() - 1) as f32);
+                    let x0 = (x.floor() as i32).rem_euclid(displacement.width() as i32) as u32;
+                    let x1 = (x0 + 1) % displacement.width();
+                    let y0 = y.floor() as u32;
+                    let y1 = (y0 + 1).min(displacement.height() - 1);
+                    let tx = x - x.floor();
+                    let ty = y - y.floor();
+                    let top = displacement.get_pixel(x0, y0)[0] as f32 * (1.0 - tx)
+                        + displacement.get_pixel(x1, y0)[0] as f32 * tx;
+                    let bottom = displacement.get_pixel(x0, y1)[0] as f32 * (1.0 - tx)
+                        + displacement.get_pixel(x1, y1)[0] as f32 * tx;
+
+                    let height = (top * (1.0 - ty) + bottom * ty) / u16::MAX as f32;
+                    let offset = height * material.displacement_scale + material.displacement_bias;
+                    for axis in 0..3 {
+                        vertex[axis] += vertex[axis + 3] * offset;
+                    }
+                }
+            };
+        let sphere_position = |radius: f32, x_offset: f32, u: f32, v: f32| -> [f32; 3] {
+            if v == 0.0 {
+                return [x_offset, radius, 0.0];
+            }
+            if v == 1.0 {
+                return [x_offset, -radius, 0.0];
+            }
+            let theta = v * std::f32::consts::PI;
+            let phi = u.rem_euclid(1.0) * std::f32::consts::TAU;
+            let sin_theta = theta.sin();
+            [
+                x_offset + radius * sin_theta * phi.cos(),
+                radius * theta.cos(),
+                radius * sin_theta * phi.sin(),
+            ]
+        };
+        let sphere_vertices = |radius: f32, x_offset: f32| -> Vec<Vertex> {
             let mut vertices = Vec::with_capacity(LATITUDE_SEGMENTS * LONGITUDE_SEGMENTS * 6);
+
             for y in 0..LATITUDE_SEGMENTS {
                 let v0 = y as f32 / LATITUDE_SEGMENTS as f32;
                 let v1 = (y + 1) as f32 / LATITUDE_SEGMENTS as f32;
+
                 for x in 0..LONGITUDE_SEGMENTS {
                     let u0 = x as f32 / LONGITUDE_SEGMENTS as f32;
                     let u1 = (x + 1) as f32 / LONGITUDE_SEGMENTS as f32;
 
-                    let p00 = sphere_vertex(u0, v0);
-                    let p10 = sphere_vertex(u1, v0);
-                    let p01 = sphere_vertex(u0, v1);
-                    let p11 = sphere_vertex(u1, v1);
+                    let p00 = sphere_position(radius, x_offset, u0, v0);
+                    let p10 = sphere_position(radius, x_offset, u1, v0);
+                    let p01 = sphere_position(radius, x_offset, u0, v1);
+                    let p11 = sphere_position(radius, x_offset, u1, v1);
 
-                    vertices.extend_from_slice(&[p00, p10, p11, p00, p11, p01]);
+                    let n00 = [
+                        (p00[0] - x_offset) / radius,
+                        p00[1] / radius,
+                        p00[2] / radius,
+                    ];
+                    let n10 = [
+                        (p10[0] - x_offset) / radius,
+                        p10[1] / radius,
+                        p10[2] / radius,
+                    ];
+                    let n01 = [
+                        (p01[0] - x_offset) / radius,
+                        p01[1] / radius,
+                        p01[2] / radius,
+                    ];
+                    let n11 = [
+                        (p11[0] - x_offset) / radius,
+                        p11[1] / radius,
+                        p11[2] / radius,
+                    ];
+                    let texture_u0 = u0 * TEXTURE_REPEATS_U;
+                    let texture_u1 = u1 * TEXTURE_REPEATS_U;
+
+                    vertices.extend_from_slice(&[
+                        [
+                            p00[0], p00[1], p00[2], n00[0], n00[1], n00[2], texture_u0, v0,
+                        ],
+                        [
+                            p10[0], p10[1], p10[2], n10[0], n10[1], n10[2], texture_u1, v0,
+                        ],
+                        [
+                            p11[0], p11[1], p11[2], n11[0], n11[1], n11[2], texture_u1, v1,
+                        ],
+                        [
+                            p00[0], p00[1], p00[2], n00[0], n00[1], n00[2], texture_u0, v0,
+                        ],
+                        [
+                            p11[0], p11[1], p11[2], n11[0], n11[1], n11[2], texture_u1, v1,
+                        ],
+                        [
+                            p01[0], p01[1], p01[2], n01[0], n01[1], n01[2], texture_u0, v1,
+                        ],
+                    ]);
                 }
             }
+
             vertices
         };
 
         let mut renderer = self
             .create_renderer_with_any_device(&[FeatureRequest::new(AnisotropicFiltering, false)]);
+        let max_anisotropy = if let Some(device) = renderer.get_device() {
+            match device.supported_features.contains(&AnisotropicFiltering) {
+                true => Some(device.max_sampler_anisotropy),
+                false => None,
+            }
+        } else {
+            None
+        };
         let Some(&msaa) = heph_expect_success!(renderer.supported_msaa_list()).last() else {
             panic!("Failed to get a supported MSAA sample count.");
         };
@@ -2084,16 +2208,84 @@ where
         drop(vert_shader);
         drop(frag_shader);
 
-        let vertices = sphere_vertices();
+        let image = heph_expect_success!(image::open(IMAGE_PATH)).to_rgba8();
+        let displacement = heph_expect_success!(image::open(DISPLACEMENT_PATH)).to_luma16();
+        let arm = load_exr(ARM_PATH, ["R", "G", "B"]);
+        let normal = load_exr(NORMAL_PATH, ["R", "G", "B"]);
+        let material = MaterialProperties {
+            // Use the metallicness stored in the ARM map without reducing it.
+            metallicness: 1.0,
+            displacement_scale: 0.1,
+            ..Default::default()
+        };
+        let lighting = Lighting {
+            direction: Vec3::new(0.3, 0.4, 1.0),
+            intensity: 2.0,
+            ambient: RGB::new(0.45, 0.15, 0.15),
+            ..Default::default()
+        };
+        let camera = Camera::new(Projection::Perspective {
+            vertical_fov: std::f32::consts::FRAC_PI_3,
+            aspect_ratio: 16.0 / 9.0,
+            near: 0.1,
+            far: 100.0,
+        });
+
+        // Apply displacement in local space before animating the sphere's transform.
+        let mut vertices = sphere_vertices(1.0, 0.0);
+        displace_vertices(&mut vertices, &displacement, &material);
+        let vertex_count = vertices.len();
         let mut vertex_buffer = heph_expect_success!(renderer.create_buffer(
-            vertices.len() * std::mem::size_of::<Vertex>(),
+            vertex_count * std::mem::size_of::<Vertex>(),
             BufferUsage::Vertex,
         ));
         heph_expect_success!(
             renderer.write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
         );
+        drop(vertices);
 
-        // Each frame in flight needs its own matrix buffer while the GPU reads earlier frames.
+        let uniforms = [
+            [
+                material.base_color.r,
+                material.base_color.g,
+                material.base_color.b,
+                material.base_color.a,
+            ],
+            [
+                material.roughness,
+                material.metallicness,
+                material.normal_scale,
+                0.0,
+            ],
+            [
+                lighting.direction.x,
+                lighting.direction.y,
+                lighting.direction.z,
+                0.0,
+            ],
+            [
+                lighting.color.r,
+                lighting.color.g,
+                lighting.color.b,
+                lighting.intensity,
+            ],
+            [
+                lighting.ambient.r,
+                lighting.ambient.g,
+                lighting.ambient.b,
+                0.0,
+            ],
+            [camera.position.x, camera.position.y, camera.position.z, 1.0],
+        ];
+        let mut material_buffer = heph_expect_success!(
+            renderer.create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
+        );
+        heph_expect_success!(
+            renderer.write_buffer(&material_buffer, bytemuck::cast_slice(&uniforms))
+        );
+
+        // The shader reads three mat4 values: model, view-projection, and normal.
+        // Keep one buffer per frame in flight so updates do not overwrite data the GPU still reads.
         let mut uniform_buffers = Vec::with_capacity(settings.frames_in_flight);
         for _ in 0..settings.frames_in_flight {
             uniform_buffers.push(heph_expect_success!(
@@ -2101,40 +2293,48 @@ where
             ));
         }
 
-        let image = heph_expect_success!(image::open(IMAGE_PATH)).to_rgba8();
-        let width = image.width();
-        let height = image.height();
-        let Some(device) = renderer.get_device() else {
-            panic!("Failed to get renderer device.");
-        };
         let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions {
-            max_anisotropy: match device.supported_features.contains(&AnisotropicFiltering) {
-                true => Some(device.max_sampler_anisotropy),
-                false => None,
-            },
+            address_mode_u: SamplerAddressMode::Repeat,
+            max_anisotropy,
             ..Default::default()
         }));
 
+        // Upload the color, ARM, and normal textures to the GPU.
         heph_expect_success!(renderer.begin_frame());
         heph_expect_success!(renderer.clear(RGB::default()));
         let mut texture = heph_expect_success!(renderer.create_texture(
             &TextureOptions {
-                width,
-                height,
+                width: image.width(),
+                height: image.height(),
                 format: TextureFormat::Rgba8Srgb,
-                mip_level_count: TextureOptions::max_mip_level_count(width, height),
+                mip_level_count: TextureOptions::max_mip_level_count(image.width(), image.height()),
             },
             image.as_raw(),
+        ));
+        let mut arm_texture = heph_expect_success!(renderer.create_texture(
+            &TextureOptions {
+                width: arm.width(),
+                height: arm.height(),
+                format: TextureFormat::Rgba8Unorm,
+                mip_level_count: TextureOptions::max_mip_level_count(arm.width(), arm.height()),
+            },
+            arm.as_raw(),
+        ));
+        let mut normal_texture = heph_expect_success!(renderer.create_texture(
+            &TextureOptions {
+                width: normal.width(),
+                height: normal.height(),
+                format: TextureFormat::Rgba8Unorm,
+                mip_level_count: TextureOptions::max_mip_level_count(
+                    normal.width(),
+                    normal.height()
+                ),
+            },
+            normal.as_raw(),
         ));
         heph_expect_success!(renderer.end_frame());
 
         let mut transform = Transform::default();
-        let camera = Camera::new(Projection::Perspective {
-            vertical_fov: std::f32::consts::FRAC_PI_3,
-            aspect_ratio: 16.0 / 9.0,
-            near: 0.1,
-            far: 100.0,
-        });
 
         let mut frame_index = 0;
         let start = Instant::now();
@@ -2144,14 +2344,18 @@ where
 
             let progress =
                 (start.elapsed().as_secs_f32() / ANIMATION_DURATION.as_secs_f32()).min(1.0);
+
+            // Move right (+X), up (+Y), and forward (+Z).
             transform.translation = Vec3::new(
                 -1.2 + progress * 5.6,
                 -0.5 + progress * 3.2,
                 3.5 + progress * 21.5,
             );
+
             let angle = progress * 1.5 * std::f32::consts::TAU;
             transform.rotation = Quat::from_rotation_x(angle) * Quat::from_rotation_y(angle);
 
+            // Matrices are uploaded by columns, in the same order as the shader's uniform block.
             let matrices = [
                 heph_expect_success!(transform.matrix()).to_cols_array(),
                 heph_expect_success!(camera.view_projection_matrix()).to_cols_array(),
@@ -2182,6 +2386,27 @@ where
                 },
                 ResourceBinding {
                     binding: 2,
+                    resource: ResourceBindingType::Texture {
+                        handle: arm_texture,
+                    },
+                },
+                ResourceBinding {
+                    binding: 3,
+                    resource: ResourceBindingType::Texture {
+                        handle: normal_texture,
+                    },
+                },
+                ResourceBinding {
+                    binding: 4,
+                    resource: ResourceBindingType::Buffer {
+                        handle: material_buffer,
+                        usage: BufferUsage::Uniform,
+                        offset: 0,
+                        size: material_buffer.size(),
+                    },
+                },
+                ResourceBinding {
+                    binding: 5,
                     resource: ResourceBindingType::Buffer {
                         handle: uniform_buffer,
                         usage: BufferUsage::Uniform,
@@ -2193,16 +2418,21 @@ where
             heph_expect_success!(renderer.record_graphics_command(
                 &pipeline,
                 &[&bindings],
-                vertices.len() as u32,
+                vertex_count as u32,
                 1,
             ));
+
             heph_expect_success!(renderer.end_frame());
             frame_index = (frame_index + 1) % uniform_buffers.len();
         }
 
+        // Cleanup.
         heph_expect_success!(renderer.wait_idle());
         heph_expect_success!(renderer.destroy_sampler(&mut sampler));
         heph_expect_success!(renderer.destroy_texture(&mut texture));
+        heph_expect_success!(renderer.destroy_texture(&mut arm_texture));
+        heph_expect_success!(renderer.destroy_texture(&mut normal_texture));
+        heph_expect_success!(renderer.destroy_buffer(&mut material_buffer));
         heph_expect_success!(renderer.destroy_buffer(&mut vertex_buffer));
         for uniform_buffer in &mut uniform_buffers {
             heph_expect_success!(renderer.destroy_buffer(uniform_buffer));

@@ -3,11 +3,16 @@ use std::time::{Duration, Instant};
 use heph_gl::{
     camera::{Camera, Projection},
     graphics_device::Feature::AnisotropicFiltering,
+    light::Lighting,
+    material::MaterialProperties,
     math::{Mat4, Quat, Vec3},
     renderers::{
         Renderer,
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType, TextureFormat},
-        settings::{FeatureRequest, GraphicsPipelineOptions, SamplerOptions, TextureOptions},
+        settings::{
+            FeatureRequest, GraphicsPipelineOptions, SamplerAddressMode, SamplerOptions,
+            TextureOptions,
+        },
     },
     shader::Shader,
     transform::Transform,
@@ -17,48 +22,11 @@ use renkrs::RGB;
 
 mod utils;
 
-type Vertex = [f32; 8];
-
 const IMAGE_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_diff_1k.jpg";
-const LATITUDE_SEGMENTS: usize = 32;
-const LONGITUDE_SEGMENTS: usize = 64;
+const DISPLACEMENT_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_disp_1k.png";
+const ARM_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_arm_1k.exr";
+const NORMAL_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_nor_gl_1k.exr";
 const ANIMATION_DURATION: Duration = Duration::from_secs(5);
-
-// Calculates the position of a point on a sphere given its radius, x offset, and spherical
-// coordinates (u, v).
-fn sphere_vertex(u: f32, v: f32) -> Vertex {
-    let theta = v * std::f32::consts::PI;
-    let phi = u * std::f32::consts::TAU;
-    let x = theta.sin() * phi.cos();
-    let y = theta.cos();
-    let z = theta.sin() * phi.sin();
-
-    // On a unit sphere, each position is also its outward normal.
-    [x, y, z, x, y, z, u, v]
-}
-
-// Calculates the sphere vertices for a given radius and x offset. The sphere is generated using
-// latitude and longitude segments, creating a grid of vertices that form the surface of the sphere.
-// Each vertex includes position, normal, and texture coordinates.
-fn sphere_vertices() -> Vec<Vertex> {
-    let mut vertices = Vec::with_capacity(LATITUDE_SEGMENTS * LONGITUDE_SEGMENTS * 6);
-    for y in 0..LATITUDE_SEGMENTS {
-        let v0 = y as f32 / LATITUDE_SEGMENTS as f32;
-        let v1 = (y + 1) as f32 / LATITUDE_SEGMENTS as f32;
-        for x in 0..LONGITUDE_SEGMENTS {
-            let u0 = x as f32 / LONGITUDE_SEGMENTS as f32;
-            let u1 = (x + 1) as f32 / LONGITUDE_SEGMENTS as f32;
-
-            let p00 = sphere_vertex(u0, v0);
-            let p10 = sphere_vertex(u1, v0);
-            let p01 = sphere_vertex(u0, v1);
-            let p11 = sphere_vertex(u1, v1);
-
-            vertices.extend_from_slice(&[p00, p10, p11, p00, p11, p01]);
-        }
-    }
-    vertices
-}
 
 fn example(
     renderer: &mut utils::renderer::ExampleRenderer,
@@ -96,15 +64,82 @@ fn example(
     drop(vert_shader);
     drop(frag_shader);
 
-    let vertices = sphere_vertices();
+    let image = image::open(IMAGE_PATH).unwrap().to_rgba8();
+    let displacement = image::open(DISPLACEMENT_PATH).unwrap().to_luma16();
+    let arm = utils::load_exr(ARM_PATH, ["R", "G", "B"]);
+    let normal = utils::load_exr(NORMAL_PATH, ["R", "G", "B"]);
+    let material = MaterialProperties {
+        // Use the metallicness stored in the ARM map without reducing it.
+        metallicness: 1.0,
+        displacement_scale: 0.1,
+        ..Default::default()
+    };
+    let lighting = Lighting {
+        direction: Vec3::new(0.3, 0.4, 1.0),
+        intensity: 2.0,
+        ambient: RGB::new(0.45, 0.15, 0.15),
+        ..Default::default()
+    };
+    let camera = Camera::new(Projection::Perspective {
+        vertical_fov: std::f32::consts::FRAC_PI_3,
+        aspect_ratio: 16.0 / 9.0,
+        near: 0.1,
+        far: 100.0,
+    });
+
+    // Apply displacement in local space before animating the sphere's transform.
+    let mut vertices = utils::renderer::sphere_vertices(1.0, 0.0);
+    utils::renderer::displace_vertices(&mut vertices, &displacement, &material);
+    let vertex_count = vertices.len();
     let mut vertex_buffer = renderer
         .create_buffer(
-            vertices.len() * std::mem::size_of::<Vertex>(),
+            vertex_count * std::mem::size_of::<utils::renderer::SphereVertex>(),
             BufferUsage::Vertex,
         )
         .unwrap();
     renderer
         .write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
+        .unwrap();
+    drop(vertices);
+
+    let uniforms = [
+        [
+            material.base_color.r,
+            material.base_color.g,
+            material.base_color.b,
+            material.base_color.a,
+        ],
+        [
+            material.roughness,
+            material.metallicness,
+            material.normal_scale,
+            0.0,
+        ],
+        [
+            lighting.direction.x,
+            lighting.direction.y,
+            lighting.direction.z,
+            0.0,
+        ],
+        [
+            lighting.color.r,
+            lighting.color.g,
+            lighting.color.b,
+            lighting.intensity,
+        ],
+        [
+            lighting.ambient.r,
+            lighting.ambient.g,
+            lighting.ambient.b,
+            0.0,
+        ],
+        [camera.position.x, camera.position.y, camera.position.z, 1.0],
+    ];
+    let mut material_buffer = renderer
+        .create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
+        .unwrap();
+    renderer
+        .write_buffer(&material_buffer, bytemuck::cast_slice(&uniforms))
         .unwrap();
 
     // The shader reads three mat4 values: model, view-projection, and normal.
@@ -118,11 +153,9 @@ fn example(
         );
     }
 
-    let image = image::open(IMAGE_PATH).unwrap().to_rgba8();
-    let width = image.width();
-    let height = image.height();
     let mut sampler = renderer
         .create_sampler(&SamplerOptions {
+            address_mode_u: SamplerAddressMode::Repeat,
             max_anisotropy: match device.supported_features.contains(&AnisotropicFiltering) {
                 true => Some(device.max_sampler_anisotropy),
                 false => None,
@@ -131,29 +164,48 @@ fn example(
         })
         .unwrap();
 
-    // Upload the texture to the GPU.
+    // Upload the color, ARM, and normal textures to the GPU.
     renderer.begin_frame().unwrap();
     renderer.clear(RGB::default()).unwrap();
     let mut texture = renderer
         .create_texture(
             &TextureOptions {
-                width,
-                height,
+                width: image.width(),
+                height: image.height(),
                 format: TextureFormat::Rgba8Srgb,
-                mip_level_count: TextureOptions::max_mip_level_count(width, height),
+                mip_level_count: TextureOptions::max_mip_level_count(image.width(), image.height()),
             },
             image.as_raw(),
+        )
+        .unwrap();
+    let mut arm_texture = renderer
+        .create_texture(
+            &TextureOptions {
+                width: arm.width(),
+                height: arm.height(),
+                format: TextureFormat::Rgba8Unorm,
+                mip_level_count: TextureOptions::max_mip_level_count(arm.width(), arm.height()),
+            },
+            arm.as_raw(),
+        )
+        .unwrap();
+    let mut normal_texture = renderer
+        .create_texture(
+            &TextureOptions {
+                width: normal.width(),
+                height: normal.height(),
+                format: TextureFormat::Rgba8Unorm,
+                mip_level_count: TextureOptions::max_mip_level_count(
+                    normal.width(),
+                    normal.height(),
+                ),
+            },
+            normal.as_raw(),
         )
         .unwrap();
     renderer.end_frame().unwrap();
 
     let mut transform = Transform::default();
-    let camera = Camera::new(Projection::Perspective {
-        vertical_fov: std::f32::consts::FRAC_PI_3,
-        aspect_ratio: 16.0 / 9.0,
-        near: 0.1,
-        far: 100.0,
-    });
 
     let mut frame_index = 0;
     let start = Instant::now();
@@ -204,6 +256,27 @@ fn example(
             },
             ResourceBinding {
                 binding: 2,
+                resource: ResourceBindingType::Texture {
+                    handle: arm_texture,
+                },
+            },
+            ResourceBinding {
+                binding: 3,
+                resource: ResourceBindingType::Texture {
+                    handle: normal_texture,
+                },
+            },
+            ResourceBinding {
+                binding: 4,
+                resource: ResourceBindingType::Buffer {
+                    handle: material_buffer,
+                    usage: BufferUsage::Uniform,
+                    offset: 0,
+                    size: material_buffer.size(),
+                },
+            },
+            ResourceBinding {
+                binding: 5,
                 resource: ResourceBindingType::Buffer {
                     handle: uniform_buffer,
                     usage: BufferUsage::Uniform,
@@ -213,7 +286,7 @@ fn example(
             },
         ];
         renderer
-            .record_graphics_command(&pipeline, &[&bindings], vertices.len() as u32, 1)
+            .record_graphics_command(&pipeline, &[&bindings], vertex_count as u32, 1)
             .unwrap();
 
         renderer.end_frame().unwrap();
@@ -224,6 +297,9 @@ fn example(
     renderer.wait_idle().unwrap();
     renderer.destroy_sampler(&mut sampler).unwrap();
     renderer.destroy_texture(&mut texture).unwrap();
+    renderer.destroy_texture(&mut arm_texture).unwrap();
+    renderer.destroy_texture(&mut normal_texture).unwrap();
+    renderer.destroy_buffer(&mut material_buffer).unwrap();
     renderer.destroy_buffer(&mut vertex_buffer).unwrap();
     for uniform_buffer in &mut uniform_buffers {
         renderer.destroy_buffer(uniform_buffer).unwrap();

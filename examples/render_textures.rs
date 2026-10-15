@@ -40,13 +40,13 @@ fn example(
     let vert_shader = Shader::from_file(format!(
         "{}/{}",
         utils::SHADERS_DIR,
-        "broken_brick_wall_material_vert.spv"
+        "broken_brick_wall_vert.spv"
     ))
     .unwrap();
     let frag_shader = Shader::from_file(format!(
         "{}/{}",
         utils::SHADERS_DIR,
-        "broken_brick_wall_material_frag.spv"
+        "broken_brick_wall_frag.spv"
     ))
     .unwrap();
     let pipeline = renderer
