@@ -1,12 +1,10 @@
-use heph_gl::{
-    graphics_device::{
-        GraphicsDevice,
-        Type::{DiscreteGpu, IntegratedGpu},
-    },
-    renderers::{
-        settings::{InitializeOptions, Msaa, Settings},
-        *,
-    },
+#![allow(dead_code)]
+
+pub mod renderer;
+
+use heph_gl::renderers::{
+    Renderer,
+    settings::{self, InitializeOptions, Settings},
 };
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use winit::{
@@ -17,20 +15,10 @@ use winit::{
     window::{Window, WindowId},
 };
 
-#[cfg(feature = "vulkan")]
-pub type ExampleRenderer = vulkan::VulkanRenderer;
-
-#[cfg(not(any(
-    feature = "vulkan",
-    feature = "directx",
-    feature = "metal",
-    feature = "opengl"
-)))]
-pub type ExampleRenderer = vulkan_renderer::VulkanRenderer;
+use crate::utils::renderer::ExampleRenderer;
 
 pub type ExampleFn = fn(&mut ExampleRenderer, RawWindowHandle, RawDisplayHandle) -> ();
 
-#[allow(dead_code)]
 pub const SHADERS_DIR: &str = "shaders";
 
 struct App {
@@ -114,40 +102,30 @@ impl ApplicationHandler for App {
     }
 }
 
-#[allow(dead_code)]
-pub fn get_best_device(renderer: &ExampleRenderer) -> GraphicsDevice {
-    let devices = renderer.enumerate_devices().unwrap();
-    let mut device = devices.iter().find(|d| d.device_type == DiscreteGpu);
-    if device.is_none() {
-        device = devices.iter().find(|d| d.device_type == IntegratedGpu);
-    }
-    if device.is_none() {
-        device = devices.first();
-    }
-    device.unwrap().clone()
-}
-
-#[allow(dead_code)]
-pub fn set_best_msaa(renderer: &mut ExampleRenderer) {
-    let supported_msaa_list = renderer.supported_msaa_list().unwrap();
-    let msaa = if supported_msaa_list.contains(&Msaa::X64) {
-        Msaa::X64
-    } else if supported_msaa_list.contains(&Msaa::X32) {
-        Msaa::X32
-    } else if supported_msaa_list.contains(&Msaa::X16) {
-        Msaa::X16
-    } else if supported_msaa_list.contains(&Msaa::X8) {
-        Msaa::X8
-    } else if supported_msaa_list.contains(&Msaa::X4) {
-        Msaa::X4
-    } else if supported_msaa_list.contains(&Msaa::X2) {
-        Msaa::X2
-    } else {
-        Msaa::X1
-    };
-    let mut settings = *renderer.get_settings();
-    settings.msaa = msaa;
-    renderer.set_settings(settings).unwrap();
+pub fn load_exr(path: &str, channel_names: [&str; 3]) -> image::RgbaImage {
+    let layer = exr::prelude::read_first_flat_layer_from_file(path)
+        .unwrap()
+        .layer_data;
+    let mut channels = channel_names.map(|name| {
+        layer
+            .channel_data
+            .list
+            .iter()
+            .find(|channel| channel.name == *name)
+            .unwrap()
+            .sample_data
+            .values_as_f32()
+    });
+    image::RgbaImage::from_fn(
+        layer.size.width() as u32,
+        layer.size.height() as u32,
+        |_, _| {
+            let [r, g, b] = std::array::from_fn(|i| {
+                (channels[i].next().unwrap().clamp(0.0, 1.0) * 255.0).round() as u8
+            });
+            image::Rgba([r, g, b, 255])
+        },
+    )
 }
 
 pub fn run_example(name: &str, init_renderer: bool, example: ExampleFn) {

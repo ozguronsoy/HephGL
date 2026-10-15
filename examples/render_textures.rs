@@ -1,107 +1,54 @@
 use heph_gl::{
     graphics_device::Feature::AnisotropicFiltering,
+    light::Lighting,
+    material::MaterialProperties,
+    math::Vec3,
     renderers::{
         Renderer,
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType, TextureFormat},
-        settings::{FeatureRequest, GraphicsPipelineOptions, SamplerOptions, TextureOptions},
+        settings::{
+            FeatureRequest, GraphicsPipelineOptions, SamplerAddressMode, SamplerOptions,
+            TextureOptions,
+        },
     },
     shader::Shader,
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
 
-use crate::utils::{ExampleRenderer, SHADERS_DIR, get_best_device, run_example, set_best_msaa};
-
 mod utils;
 
-// [position.x, position.y, position.z, normal.x, normal.y, normal.z, tex_coord.u, tex_coord.v]
-type Vertex = [f32; 8];
-
 const IMAGE_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_diff_1k.jpg";
-const LATITUDE_SEGMENTS: usize = 32;
-const LONGITUDE_SEGMENTS: usize = 64;
+const DISPLACEMENT_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_disp_1k.png";
+const ARM_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_arm_1k.exr";
+const NORMAL_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_nor_gl_1k.exr";
 
-// Calculates the position of a point on a sphere given its radius, x offset, and spherical
-// coordinates (u, v).
-fn sphere_position(radius: f32, x_offset: f32, u: f32, v: f32) -> [f32; 3] {
-    let theta = v * std::f32::consts::PI;
-    let phi = u * std::f32::consts::TAU;
-    let sin_theta = theta.sin();
-    [
-        x_offset + radius * sin_theta * phi.cos(),
-        radius * theta.cos(),
-        radius * sin_theta * phi.sin(),
-    ]
-}
-
-// Calculates the sphere vertices for a given radius and x offset. The sphere is generated using
-// latitude and longitude segments, creating a grid of vertices that form the surface of the sphere.
-// Each vertex includes position, normal, and texture coordinates.
-fn sphere_vertices(radius: f32, x_offset: f32) -> Vec<Vertex> {
-    let mut vertices = Vec::with_capacity(LATITUDE_SEGMENTS * LONGITUDE_SEGMENTS * 6);
-
-    for y in 0..LATITUDE_SEGMENTS {
-        let v0 = y as f32 / LATITUDE_SEGMENTS as f32;
-        let v1 = (y + 1) as f32 / LATITUDE_SEGMENTS as f32;
-
-        for x in 0..LONGITUDE_SEGMENTS {
-            let u0 = x as f32 / LONGITUDE_SEGMENTS as f32;
-            let u1 = (x + 1) as f32 / LONGITUDE_SEGMENTS as f32;
-
-            let p00 = sphere_position(radius, x_offset, u0, v0);
-            let p10 = sphere_position(radius, x_offset, u1, v0);
-            let p01 = sphere_position(radius, x_offset, u0, v1);
-            let p11 = sphere_position(radius, x_offset, u1, v1);
-
-            let n00 = [
-                (p00[0] - x_offset) / radius,
-                p00[1] / radius,
-                p00[2] / radius,
-            ];
-            let n10 = [
-                (p10[0] - x_offset) / radius,
-                p10[1] / radius,
-                p10[2] / radius,
-            ];
-            let n01 = [
-                (p01[0] - x_offset) / radius,
-                p01[1] / radius,
-                p01[2] / radius,
-            ];
-            let n11 = [
-                (p11[0] - x_offset) / radius,
-                p11[1] / radius,
-                p11[2] / radius,
-            ];
-
-            vertices.extend_from_slice(&[
-                [p00[0], p00[1], p00[2], n00[0], n00[1], n00[2], u0, v0],
-                [p10[0], p10[1], p10[2], n10[0], n10[1], n10[2], u1, v0],
-                [p11[0], p11[1], p11[2], n11[0], n11[1], n11[2], u1, v1],
-                [p00[0], p00[1], p00[2], n00[0], n00[1], n00[2], u0, v0],
-                [p11[0], p11[1], p11[2], n11[0], n11[1], n11[2], u1, v1],
-                [p01[0], p01[1], p01[2], n01[0], n01[1], n01[2], u0, v1],
-            ]);
-        }
-    }
-
-    vertices
-}
-
-fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHandle) {
-    let device = get_best_device(renderer);
+fn example(
+    renderer: &mut utils::renderer::ExampleRenderer,
+    _: RawWindowHandle,
+    _: RawDisplayHandle,
+) {
+    let device = utils::renderer::get_best_device(renderer);
     renderer
         .set_device(
             Some(&device),
             &[FeatureRequest::new(AnisotropicFiltering, false)],
         )
         .unwrap();
-    set_best_msaa(renderer);
+    utils::renderer::set_best_msaa(renderer);
 
-    let vert_shader =
-        Shader::from_file(format!("{}/{}", SHADERS_DIR, "broken_brick_wall_vert.spv")).unwrap();
-    let frag_shader =
-        Shader::from_file(format!("{}/{}", SHADERS_DIR, "broken_brick_wall_frag.spv")).unwrap();
+    let vert_shader = Shader::from_file(format!(
+        "{}/{}",
+        utils::SHADERS_DIR,
+        "broken_brick_wall_vert.spv"
+    ))
+    .unwrap();
+    let frag_shader = Shader::from_file(format!(
+        "{}/{}",
+        utils::SHADERS_DIR,
+        "broken_brick_wall_frag.spv"
+    ))
+    .unwrap();
     let pipeline = renderer
         .create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
@@ -112,19 +59,83 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     drop(frag_shader);
 
     let image = image::open(IMAGE_PATH).unwrap().to_rgba8();
-    let width = image.width();
-    let height = image.height();
+    let displacement = image::open(DISPLACEMENT_PATH).unwrap().to_luma16();
+    let arm = utils::load_exr(ARM_PATH, ["R", "G", "B"]);
+    let normal = utils::load_exr(NORMAL_PATH, ["R", "G", "B"]);
+    let material = MaterialProperties {
+        displacement_scale: 0.1,
+        ..Default::default()
+    };
+    let lighting = Lighting {
+        direction: Vec3::new(0.3, 0.4, 1.0),
+        intensity: 2.0,
+        ambient: RGB::new(0.45, 0.15, 0.15),
+        ..Default::default()
+    };
 
-    // Generate the sphere vertices for three spheres, write them to a GPU buffer, and then drop the
-    // CPU-side vertices to free memory.
-    let vertex_count: usize = LATITUDE_SEGMENTS * LONGITUDE_SEGMENTS * 6 * 3;
+    let uniforms = [
+        [
+            material.base_color.r,
+            material.base_color.g,
+            material.base_color.b,
+            material.base_color.a,
+        ],
+        [
+            material.roughness,
+            material.metallicness,
+            material.normal_scale,
+            0.0,
+        ],
+        [
+            lighting.direction.x,
+            lighting.direction.y,
+            lighting.direction.z,
+            0.0,
+        ],
+        [
+            lighting.color.r,
+            lighting.color.g,
+            lighting.color.b,
+            lighting.intensity,
+        ],
+        [
+            lighting.ambient.r,
+            lighting.ambient.g,
+            lighting.ambient.b,
+            0.0,
+        ],
+        [0.0, 0.0, -1.0, 0.0],
+    ];
+    let mut uniform_buffer = renderer
+        .create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
+        .unwrap();
+    renderer
+        .write_buffer(&uniform_buffer, bytemuck::cast_slice(&uniforms))
+        .unwrap();
+
+    // Displace a unit sphere before scaling it, so all three sizes have the same relative relief.
+    let mut sphere = utils::renderer::sphere_vertices(1.0, 0.0);
+    utils::renderer::displace_vertices(&mut sphere, &displacement, &material);
+    let vertex_count: usize = utils::renderer::sphere_vertex_count();
     let mut vertices = Vec::with_capacity(vertex_count);
-    vertices.extend(sphere_vertices(0.1, -1.2));
-    vertices.extend(sphere_vertices(0.25, -0.4));
-    vertices.extend(sphere_vertices(0.5, 0.8));
+    for (radius, x_offset) in [(0.1, -1.2), (0.25, -0.4), (0.5, 0.8)] {
+        vertices.extend(sphere.iter().map(|vertex| {
+            [
+                vertex[0] * radius + x_offset,
+                vertex[1] * radius,
+                vertex[2] * radius,
+                vertex[3],
+                vertex[4],
+                vertex[5],
+                vertex[6],
+                vertex[7],
+            ]
+        }));
+    }
+    drop(sphere);
     let mut vertex_buffer = renderer
         .create_buffer(
-            vertices.len() * std::mem::size_of::<Vertex>(),
+            vertices.len() * std::mem::size_of::<utils::renderer::SphereVertex>(),
             BufferUsage::Vertex,
         )
         .unwrap();
@@ -135,6 +146,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 
     let mut sampler = renderer
         .create_sampler(&SamplerOptions {
+            address_mode_u: SamplerAddressMode::Repeat,
             max_anisotropy: match device.supported_features.contains(&AnisotropicFiltering) {
                 true => Some(device.max_sampler_anisotropy),
                 false => None,
@@ -150,17 +162,39 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     let mut texture = renderer
         .create_texture(
             &TextureOptions {
-                width,
-                height,
+                width: image.width(),
+                height: image.height(),
                 format: TextureFormat::Rgba8Srgb,
-                mip_level_count: TextureOptions::max_mip_level_count(width, height),
+                mip_level_count: TextureOptions::max_mip_level_count(image.width(), image.height()),
             },
             image.as_raw(),
         )
         .unwrap();
+    let mut arm_texture = renderer
+        .create_texture(
+            &TextureOptions {
+                width: arm.width(),
+                height: arm.height(),
+                format: TextureFormat::Rgba8Unorm,
+                mip_level_count: TextureOptions::max_mip_level_count(arm.width(), arm.height()),
+            },
+            arm.as_raw(),
+        )
+        .unwrap();
+    let mut normal_texture = renderer
+        .create_texture(
+            &TextureOptions {
+                width: image.width(),
+                height: image.height(),
+                format: TextureFormat::Rgba8Unorm,
+                mip_level_count: TextureOptions::max_mip_level_count(image.width(), image.height()),
+            },
+            normal.as_raw(),
+        )
+        .unwrap();
     renderer.end_frame().unwrap();
 
-    // Render the spheres with the texture applied.
+    // Render the displaced spheres with the color, ARM, and normal maps applied.
     renderer.begin_frame().unwrap();
     renderer.clear(RGB::default()).unwrap();
     let bindings = [
@@ -181,6 +215,27 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
             binding: 1,
             resource: ResourceBindingType::Sampler { handle: sampler },
         },
+        ResourceBinding {
+            binding: 2,
+            resource: ResourceBindingType::Texture {
+                handle: arm_texture,
+            },
+        },
+        ResourceBinding {
+            binding: 3,
+            resource: ResourceBindingType::Texture {
+                handle: normal_texture,
+            },
+        },
+        ResourceBinding {
+            binding: 4,
+            resource: ResourceBindingType::Buffer {
+                handle: uniform_buffer,
+                usage: BufferUsage::Uniform,
+                offset: 0,
+                size: uniform_buffer.size(),
+            },
+        },
     ];
     renderer
         .record_graphics_command(&pipeline, &[&bindings], vertex_count as u32, 1)
@@ -191,6 +246,9 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     renderer.wait_idle().unwrap();
     renderer.destroy_sampler(&mut sampler).unwrap();
     renderer.destroy_texture(&mut texture).unwrap();
+    renderer.destroy_texture(&mut arm_texture).unwrap();
+    renderer.destroy_texture(&mut normal_texture).unwrap();
+    renderer.destroy_buffer(&mut uniform_buffer).unwrap();
     renderer.destroy_buffer(&mut vertex_buffer).unwrap();
     renderer.destroy_graphics_pipeline(&pipeline).unwrap();
 
@@ -201,5 +259,5 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 fn main() {
     const EXAMPLE_NAME: &str = "Render Textures";
     const INIT_RENDERER: bool = true;
-    run_example(EXAMPLE_NAME, INIT_RENDERER, example);
+    utils::run_example(EXAMPLE_NAME, INIT_RENDERER, example);
 }

@@ -943,6 +943,7 @@ dependencies = [
  "ash-window",
  "bytemuck",
  "const-str",
+ "exr",
  "fontdue",
  "glam",
  "image",

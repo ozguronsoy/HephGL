@@ -9,8 +9,6 @@ use heph_gl::{
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
-use crate::utils::{ExampleRenderer, SHADERS_DIR, get_best_device, run_example};
-
 mod utils;
 
 const N_THREADS: usize = 10;
@@ -28,14 +26,18 @@ fn create_data(thread_index: usize) -> (Vec<f32>, Vec<f32>) {
 }
 
 // This example processes multiple additions in a single frame.
-fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHandle) {
-    let device = get_best_device(renderer);
+fn example(
+    renderer: &mut utils::renderer::ExampleRenderer,
+    _: RawWindowHandle,
+    _: RawDisplayHandle,
+) {
+    let device = utils::renderer::get_best_device(renderer);
     let features = [FeatureRequest::new(ComputeShaders, true)];
     renderer.set_device(Some(&device), &features).unwrap();
 
     // This shader takes one set of resources with 3 bindings (2 input buffers, and
     // an output buffer).
-    let shader = Shader::from_file(format!("{}/{}", SHADERS_DIR, "/addition.spv")).unwrap();
+    let shader = Shader::from_file(format!("{}/{}", utils::SHADERS_DIR, "/addition.spv")).unwrap();
     let pipeline = renderer.create_compute_pipeline(&shader).unwrap();
     drop(shader);
 
@@ -44,7 +46,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         let barrier = std::sync::Arc::new(std::sync::Barrier::new(N_THREADS + 1));
 
         // Share the renderer across threads.
-        let renderer_handle = RendererHandle::<ExampleRenderer>::from(&mut *renderer);
+        let renderer_handle = RendererHandle::from(&mut *renderer);
         for thread_index in 0..N_THREADS {
             let tx = tx.clone();
             let barrier = barrier.clone();
@@ -177,5 +179,5 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 fn main() {
     const EXAMPLE_NAME: &str = "Compute (Multi Thread)";
     const INIT_RENDERER: bool = true;
-    run_example(EXAMPLE_NAME, INIT_RENDERER, example);
+    utils::run_example(EXAMPLE_NAME, INIT_RENDERER, example);
 }

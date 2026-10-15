@@ -8,8 +8,6 @@ use heph_gl::{
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
-use crate::utils::{ExampleRenderer, SHADERS_DIR, get_best_device, run_example};
-
 mod utils;
 
 const BUFFER_LEN: usize = 256;
@@ -25,14 +23,18 @@ fn create_random_data() -> (Vec<f32>, Vec<f32>) {
     (a_data, b_data)
 }
 
-fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHandle) {
-    let device = get_best_device(renderer);
+fn example(
+    renderer: &mut utils::renderer::ExampleRenderer,
+    _: RawWindowHandle,
+    _: RawDisplayHandle,
+) {
+    let device = utils::renderer::get_best_device(renderer);
     let features = [FeatureRequest::new(ComputeShaders, true)];
     renderer.set_device(Some(&device), &features).unwrap();
 
     // This shader takes one set of resources with 3 bindings (2 input buffers, and
     // an output buffer).
-    let shader = Shader::from_file(format!("{}/{}", SHADERS_DIR, "/addition.spv")).unwrap();
+    let shader = Shader::from_file(format!("{}/{}", utils::SHADERS_DIR, "/addition.spv")).unwrap();
     let pipeline = renderer.create_compute_pipeline(&shader).unwrap();
     drop(shader);
 
@@ -120,5 +122,5 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 fn main() {
     const EXAMPLE_NAME: &str = "Compute (Single Thread / Single Frame)";
     const INIT_RENDERER: bool = true;
-    run_example(EXAMPLE_NAME, INIT_RENDERER, example);
+    utils::run_example(EXAMPLE_NAME, INIT_RENDERER, example);
 }
