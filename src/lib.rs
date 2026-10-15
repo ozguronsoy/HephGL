@@ -3,6 +3,8 @@ pub use crate::error::{Error, Result};
 pub mod camera;
 pub mod error;
 pub mod graphics_device;
+pub mod light;
+pub mod material;
 pub mod math;
 pub mod renderers;
 pub mod shader;
