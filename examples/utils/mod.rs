@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub mod renderer;
 
 use heph_gl::renderers::{
@@ -17,7 +19,6 @@ use crate::utils::renderer::ExampleRenderer;
 
 pub type ExampleFn = fn(&mut ExampleRenderer, RawWindowHandle, RawDisplayHandle) -> ();
 
-#[allow(dead_code)]
 pub const SHADERS_DIR: &str = "shaders";
 
 struct App {
@@ -101,7 +102,6 @@ impl ApplicationHandler for App {
     }
 }
 
-#[allow(dead_code)]
 pub fn load_exr(path: &str, channel_names: [&str; 3]) -> image::RgbaImage {
     let layer = exr::prelude::read_first_flat_layer_from_file(path)
         .unwrap()

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use heph_gl::{
     graphics_device::{
         GraphicsDevice,
@@ -127,7 +129,6 @@ pub fn displace_vertices(
     }
 }
 
-#[allow(dead_code)]
 pub fn get_best_device(renderer: &ExampleRenderer) -> GraphicsDevice {
     let devices = renderer.enumerate_devices().unwrap();
     let mut device = devices.iter().find(|d| d.device_type == DiscreteGpu);
@@ -140,7 +141,6 @@ pub fn get_best_device(renderer: &ExampleRenderer) -> GraphicsDevice {
     device.unwrap().clone()
 }
 
-#[allow(dead_code)]
 pub fn set_best_msaa(renderer: &mut ExampleRenderer) {
     let supported_msaa_list = renderer.supported_msaa_list().unwrap();
     let msaa = if supported_msaa_list.contains(&Msaa::X64) {
