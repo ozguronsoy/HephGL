@@ -26,13 +26,15 @@ type HeightMap = image::ImageBuffer<image::Luma<u16>, Vec<u16>>;
 
 const IMAGE_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_diff_1k.jpg";
 const DISPLACEMENT_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_disp_1k.png";
-const ROUGHNESS_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_rough_1k.exr";
+const ARM_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_arm_1k.exr";
 const NORMAL_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_nor_gl_1k.exr";
 const LATITUDE_SEGMENTS: usize = 128;
 const LONGITUDE_SEGMENTS: usize = 256;
+// The equatorial circumference is twice the pole-to-pole distance, so repeat the square maps twice.
+const TEXTURE_REPEATS_U: f32 = 2.0;
 
-// The roughness EXR has a single Y channel; the normal EXR has R, G, and B channels. Decode their
-// floating-point values and convert to the renderer's linear 8-bit format without sRGB conversion.
+// Decode the EXR channels and convert their floating-point values to the renderer's linear 8-bit
+// format without sRGB conversion.
 fn load_exr(path: &str, channel_names: [&str; 3]) -> image::RgbaImage {
     let layer = exr::prelude::read_first_flat_layer_from_file(path)
         .unwrap()
@@ -151,14 +153,28 @@ fn sphere_vertices(radius: f32, x_offset: f32) -> Vec<Vertex> {
                 p11[1] / radius,
                 p11[2] / radius,
             ];
+            let texture_u0 = u0 * TEXTURE_REPEATS_U;
+            let texture_u1 = u1 * TEXTURE_REPEATS_U;
 
             vertices.extend_from_slice(&[
-                [p00[0], p00[1], p00[2], n00[0], n00[1], n00[2], u0, v0],
-                [p10[0], p10[1], p10[2], n10[0], n10[1], n10[2], u1, v0],
-                [p11[0], p11[1], p11[2], n11[0], n11[1], n11[2], u1, v1],
-                [p00[0], p00[1], p00[2], n00[0], n00[1], n00[2], u0, v0],
-                [p11[0], p11[1], p11[2], n11[0], n11[1], n11[2], u1, v1],
-                [p01[0], p01[1], p01[2], n01[0], n01[1], n01[2], u0, v1],
+                [
+                    p00[0], p00[1], p00[2], n00[0], n00[1], n00[2], texture_u0, v0,
+                ],
+                [
+                    p10[0], p10[1], p10[2], n10[0], n10[1], n10[2], texture_u1, v0,
+                ],
+                [
+                    p11[0], p11[1], p11[2], n11[0], n11[1], n11[2], texture_u1, v1,
+                ],
+                [
+                    p00[0], p00[1], p00[2], n00[0], n00[1], n00[2], texture_u0, v0,
+                ],
+                [
+                    p11[0], p11[1], p11[2], n11[0], n11[1], n11[2], texture_u1, v1,
+                ],
+                [
+                    p01[0], p01[1], p01[2], n01[0], n01[1], n01[2], texture_u0, v1,
+                ],
             ]);
         }
     }
@@ -197,10 +213,13 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
 
     let image = image::open(IMAGE_PATH).unwrap().to_rgba8();
     let displacement = image::open(DISPLACEMENT_PATH).unwrap().to_luma16();
-    let roughness = load_exr(ROUGHNESS_PATH, ["Y", "Y", "Y"]);
+    let arm = load_exr(ARM_PATH, ["R", "G", "B"]);
     let normal = load_exr(NORMAL_PATH, ["R", "G", "B"]);
     let material = MaterialProperties {
-        displacement_scale: 0.1,
+        // Multiply the ARM map's metallicness by one; the brick map's blue channel is zero.
+        metalicness: 1.0,
+        displacement_scale: 0.2,
+        displacement_bias: -0.02,
         ..Default::default()
     };
     let lighting = Lighting {
@@ -252,14 +271,26 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         .write_buffer(&uniform_buffer, bytemuck::cast_slice(&uniforms))
         .unwrap();
 
-    // Generate the sphere vertices for three spheres, write them to a GPU buffer, and then drop the
-    // CPU-side vertices to free memory.
+    // Displace a unit sphere before scaling it, so all three sizes have the same relative relief.
+    let mut sphere = sphere_vertices(1.0, 0.0);
+    displace_vertices(&mut sphere, &displacement, &material);
     let vertex_count: usize = LATITUDE_SEGMENTS * LONGITUDE_SEGMENTS * 6 * 3;
     let mut vertices = Vec::with_capacity(vertex_count);
-    vertices.extend(sphere_vertices(0.1, -1.2));
-    vertices.extend(sphere_vertices(0.25, -0.4));
-    vertices.extend(sphere_vertices(0.5, 0.8));
-    displace_vertices(&mut vertices, &displacement, &material);
+    for (radius, x_offset) in [(0.1, -1.2), (0.25, -0.4), (0.5, 0.8)] {
+        vertices.extend(sphere.iter().map(|vertex| {
+            [
+                vertex[0] * radius + x_offset,
+                vertex[1] * radius,
+                vertex[2] * radius,
+                vertex[3],
+                vertex[4],
+                vertex[5],
+                vertex[6],
+                vertex[7],
+            ]
+        }));
+    }
+    drop(sphere);
     let mut vertex_buffer = renderer
         .create_buffer(
             vertices.len() * std::mem::size_of::<Vertex>(),
@@ -297,15 +328,16 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
             image.as_raw(),
         )
         .unwrap();
-    let mut roughness_texture = renderer
+    // ARM stores ambient occlusion, roughness, and metallicness in its R, G, and B channels.
+    let mut arm_texture = renderer
         .create_texture(
             &TextureOptions {
-                width: image.width(),
-                height: image.height(),
+                width: arm.width(),
+                height: arm.height(),
                 format: TextureFormat::Rgba8Unorm,
-                mip_level_count: TextureOptions::max_mip_level_count(image.width(), image.height()),
+                mip_level_count: TextureOptions::max_mip_level_count(arm.width(), arm.height()),
             },
-            roughness.as_raw(),
+            arm.as_raw(),
         )
         .unwrap();
     let mut normal_texture = renderer
@@ -321,7 +353,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         .unwrap();
     renderer.end_frame().unwrap();
 
-    // Render the displaced spheres with the color, roughness, and normal maps applied.
+    // Render the displaced spheres with the color, ARM, and normal maps applied.
     renderer.begin_frame().unwrap();
     renderer.clear(RGB::default()).unwrap();
     let bindings = [
@@ -345,7 +377,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
         ResourceBinding {
             binding: 2,
             resource: ResourceBindingType::Texture {
-                handle: roughness_texture,
+                handle: arm_texture,
             },
         },
         ResourceBinding {
@@ -373,7 +405,7 @@ fn example(renderer: &mut ExampleRenderer, _: RawWindowHandle, _: RawDisplayHand
     renderer.wait_idle().unwrap();
     renderer.destroy_sampler(&mut sampler).unwrap();
     renderer.destroy_texture(&mut texture).unwrap();
-    renderer.destroy_texture(&mut roughness_texture).unwrap();
+    renderer.destroy_texture(&mut arm_texture).unwrap();
     renderer.destroy_texture(&mut normal_texture).unwrap();
     renderer.destroy_buffer(&mut uniform_buffer).unwrap();
     renderer.destroy_buffer(&mut vertex_buffer).unwrap();

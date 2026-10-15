@@ -2,7 +2,7 @@
 
 layout(set = 0, binding = 0) uniform texture2D image_texture;
 layout(set = 0, binding = 1) uniform sampler image_sampler;
-layout(set = 0, binding = 2) uniform texture2D roughness_texture;
+layout(set = 0, binding = 2) uniform texture2D arm_texture;
 layout(set = 0, binding = 3) uniform texture2D normal_texture;
 layout(set = 0, binding = 4, std140) uniform MaterialData
 {
@@ -62,8 +62,10 @@ vec3 surface_normal()
 void main()
 {
     vec4 base_color = texture(sampler2D(image_texture, image_sampler), frag_uv) * material.base_color;
-    float roughness = texture(sampler2D(roughness_texture, image_sampler), frag_uv).r * material.parameters.x;
-    float metallicness = clamp(material.parameters.y, 0.0, 1.0);
+    // ARM packs ambient occlusion, roughness, and metallicness into R, G, and B.
+    vec3 arm = texture(sampler2D(arm_texture, image_sampler), frag_uv).rgb;
+    float roughness = arm.g * material.parameters.x;
+    float metallicness = clamp(arm.b * material.parameters.y, 0.0, 1.0);
     // The floor keeps a perfectly smooth material's GGX highlight finite.
     roughness = clamp(roughness, 0.045, 1.0);
 
@@ -76,7 +78,8 @@ void main()
     float normal_dot_half = clamp(dot(normal, half_direction), 0.0, 1.0);
     float view_dot_half = clamp(dot(view_direction, half_direction), 0.0, 1.0);
 
-    vec3 color = material.ambient_color.rgb * base_color.rgb;
+    // Ambient occlusion attenuates indirect light, leaving the directional light unaffected.
+    vec3 color = material.ambient_color.rgb * base_color.rgb * arm.r;
     if (normal_dot_view > 0.0 && normal_dot_light > 0.0)
     {
         // GGX distribution, correlated Smith visibility, and Schlick Fresnel.
