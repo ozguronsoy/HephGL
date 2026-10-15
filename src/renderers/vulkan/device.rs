@@ -1,10 +1,10 @@
 use std::sync::Mutex;
 
 use crate::{
+    Error, Result,
     graphics_device::GraphicsDevice,
     renderers::{
-        Renderer, RendererResult,
-        error::RendererError,
+        Renderer,
         settings::Msaa,
         thread_context::ThreadContextMaskArray,
         vulkan::{
@@ -53,25 +53,19 @@ impl VulkanRenderer {
     pub(super) fn get_device_queue_families(
         &self,
         device: &GraphicsDevice,
-    ) -> RendererResult<Vec<QueueFamily>> {
+    ) -> Result<Vec<QueueFamily>> {
         let instance = self
             .instance
             .as_ref()
-            .ok_or(RendererError::invalid_operation(
-                "Renderer is not initialized",
-            ))?;
-        let window_surface_loader =
-            self.window_surface_loader
-                .as_ref()
-                .ok_or(RendererError::invalid_operation(
-                    "Renderer is not initialize.",
-                ))?;
-        let window_surface =
-            self.window_surface
-                .as_ref()
-                .ok_or(RendererError::invalid_operation(
-                    "Renderer is not initialize.",
-                ))?;
+            .ok_or(Error::invalid_operation("Renderer is not initialized"))?;
+        let window_surface_loader = self
+            .window_surface_loader
+            .as_ref()
+            .ok_or(Error::invalid_operation("Renderer is not initialize."))?;
+        let window_surface = self
+            .window_surface
+            .as_ref()
+            .ok_or(Error::invalid_operation("Renderer is not initialize."))?;
 
         let physical_devices = unsafe { instance.enumerate_physical_devices()? };
 
@@ -105,7 +99,7 @@ impl VulkanRenderer {
         }
 
         if queue_families.is_empty() {
-            Err(RendererError::fail("Requested device is not available."))
+            Err(Error::fail("Requested device is not available."))
         } else {
             Ok(queue_families)
         }
@@ -113,7 +107,7 @@ impl VulkanRenderer {
 
     /// Frees the resources used by the graphics device, and sets the currently
     /// active device to `None`.
-    pub(super) fn uninitialize_device(&mut self) -> RendererResult<()> {
+    pub(super) fn uninitialize_device(&mut self) -> Result<()> {
         if self.device_context.is_some() {
             self.wait_idle()?;
             self.destroy_rendering()?;

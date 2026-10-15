@@ -31,11 +31,10 @@ use renkrs::RGB;
 use vk_mem::Alloc;
 
 use crate::{
-    HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Version,
+    Error, HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Result, Version,
     graphics_device::{Feature, GraphicsDevice},
     renderers::{
-        BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererError, RendererResult,
-        ResourceBinding, Settings,
+        BufferUsage, FeatureRequest, InitializeOptions, Renderer, ResourceBinding, Settings,
         resources::ResourceBindingType,
         settings::{GraphicsPipelineOptions, Msaa, SamplerOptions, TextureOptions},
         thread_context::{
@@ -104,13 +103,13 @@ impl Renderer for VulkanRenderer {
         }
     }
 
-    fn latest_api_version(&self) -> RendererResult<Version> {
+    fn latest_api_version(&self) -> Result<Version> {
         if let Some(latest_api_version) = self.latest_api_version.get() {
             // Use the cached version.
             return Ok(latest_api_version);
         }
 
-        let enumerate_instance_version = |entry: &ash::Entry| -> RendererResult<Version> {
+        let enumerate_instance_version = |entry: &ash::Entry| -> Result<Version> {
             Ok(match unsafe { entry.try_enumerate_instance_version()? } {
                 Some(v) => VulkanApiVersion(v).into(),
                 None => Self::MIN_SUPPORTED_API_VERSION,
@@ -131,7 +130,7 @@ impl Renderer for VulkanRenderer {
         &self.settings
     }
 
-    fn set_settings(&mut self, settings: Settings) -> RendererResult<()> {
+    fn set_settings(&mut self, settings: Settings) -> Result<()> {
         self.main_thread_only()?;
 
         if self.device_context.is_some() {
@@ -146,13 +145,13 @@ impl Renderer for VulkanRenderer {
 
             let device_context = self.device_context.as_mut().unwrap();
 
-            let mut resize_frames = |queue_context: &mut QueueContext| -> RendererResult<()> {
+            let mut resize_frames = |queue_context: &mut QueueContext| -> Result<()> {
                 let masks = device_context.thread_context_masks.lock()?;
 
                 for mask in masks.iter() {
                     if *mask != 0 {
                         self.settings = temp_settings;
-                        return Err(RendererError::invalid_operation(
+                        return Err(Error::invalid_operation(
                             "All worker threads must be uninitialized before changing the settings.",
                         ));
                     }
@@ -181,10 +180,10 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn initialize(&mut self, options: &InitializeOptions) -> RendererResult<()> {
+    fn initialize(&mut self, options: &InitializeOptions) -> Result<()> {
         self.main_thread_only()?;
         if self.entry.is_some() || self.instance.is_some() {
-            return Err(RendererError::invalid_operation(
+            return Err(Error::invalid_operation(
                 "VulkanRenderer is already initialized",
             ));
         }
@@ -197,7 +196,7 @@ impl Renderer for VulkanRenderer {
             None => self.latest_api_version()?,
         };
         if !self.is_api_version_supported(requested_api_version)? {
-            return Err(RendererError::InvalidArgument(format!(
+            return Err(Error::InvalidArgument(format!(
                 "Requested Vulkan API version is not supported (requested: `{}`, min: `{}`, max: `{}`).",
                 requested_api_version,
                 Self::MIN_SUPPORTED_API_VERSION,
@@ -281,7 +280,7 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn uninitialize(&mut self) -> RendererResult<()> {
+    fn uninitialize(&mut self) -> Result<()> {
         self.main_thread_only()?;
         self.uninitialize_device()?;
 
@@ -307,13 +306,11 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn enumerate_devices(&self) -> RendererResult<Vec<GraphicsDevice>> {
+    fn enumerate_devices(&self) -> Result<Vec<GraphicsDevice>> {
         let instance = self
             .instance
             .as_ref()
-            .ok_or(RendererError::invalid_operation(
-                "Renderer is not initialized",
-            ))?;
+            .ok_or(Error::invalid_operation("Renderer is not initialized"))?;
 
         let mut devices = Vec::<GraphicsDevice>::new();
         let physical_devices = unsafe { instance.enumerate_physical_devices()? };
@@ -435,7 +432,7 @@ impl Renderer for VulkanRenderer {
         &mut self,
         device: Option<&GraphicsDevice>,
         requested_features: &[FeatureRequest],
-    ) -> RendererResult<()> {
+    ) -> Result<()> {
         self.main_thread_only()?;
         if self.device_context.is_some() {
             self.uninitialize_device()?;
@@ -448,16 +445,14 @@ impl Renderer for VulkanRenderer {
                 devices = self.enumerate_devices()?;
                 devices
                     .first()
-                    .ok_or(RendererError::fail("No active graphics device found."))?
+                    .ok_or(Error::fail("No active graphics device found."))?
             }
         };
 
         let instance = self
             .instance
             .as_ref()
-            .ok_or(RendererError::invalid_operation(
-                "Renderer is not initialized",
-            ))?;
+            .ok_or(Error::invalid_operation("Renderer is not initialized"))?;
 
         // Create logical device and queues.
 
@@ -469,9 +464,7 @@ impl Renderer for VulkanRenderer {
             {
                 available_features.push(requested_feature.feature);
             } else if requested_feature.required {
-                return Err(RendererError::UnsupportedRequiredFeature(
-                    requested_feature.feature,
-                ));
+                return Err(Error::UnsupportedRequiredFeature(requested_feature.feature));
             }
         }
 
@@ -488,9 +481,7 @@ impl Renderer for VulkanRenderer {
             .iter()
             .find(|f| f.queue_flags.contains(QueueFlags::GRAPHICS) && f.present_supported)
             .ok_or_else(|| {
-                RendererError::invalid_operation(
-                    "No queue family supports both graphics and presentation.",
-                )
+                Error::invalid_operation("No queue family supports both graphics and presentation.")
             })?;
         request_queue(graphics_family.index, graphics_family.queue_count);
 
@@ -504,7 +495,7 @@ impl Renderer for VulkanRenderer {
                         && !f.queue_flags.contains(QueueFlags::GRAPHICS)
                         && !f.queue_flags.contains(QueueFlags::COMPUTE)
                 })
-                .ok_or(RendererError::fail(
+                .ok_or(Error::fail(
                     "Asynchronous transfer is not supported by this device.",
                 ))?
         } else {
@@ -569,14 +560,14 @@ impl Renderer for VulkanRenderer {
             }
         }
         if physical_device_api_version < Self::MIN_SUPPORTED_API_VERSION {
-            return Err(RendererError::InvalidArgument(format!(
+            return Err(Error::InvalidArgument(format!(
                 "Device Vulkan API version is not supported (device: `{}`, min: `{}`).",
                 physical_device_api_version,
                 Self::MIN_SUPPORTED_API_VERSION
             )));
         }
         let physical_device = physical_device.ok_or_else(|| {
-            RendererError::InvalidArgument(format!(
+            Error::InvalidArgument(format!(
                 "Graphics device with the id {:#06X} not found.",
                 device.device_id
             ))
@@ -721,19 +712,19 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn supported_msaa_list(&self) -> RendererResult<&Vec<Msaa>> {
+    fn supported_msaa_list(&self) -> Result<&Vec<Msaa>> {
         let device_context = self
             .device_context
             .as_ref()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
         Ok(&device_context.supported_msaa_list)
     }
 
-    fn create_buffer(&self, size: usize, usage: BufferUsage) -> RendererResult<Self::Buffer> {
+    fn create_buffer(&self, size: usize, usage: BufferUsage) -> Result<Self::Buffer> {
         let device_context = self
             .device_context
             .as_ref()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
 
         let vk_usage = match usage {
             BufferUsage::Storage => BufferUsageFlags::STORAGE_BUFFER,
@@ -764,15 +755,15 @@ impl Renderer for VulkanRenderer {
         })
     }
 
-    fn write_buffer(&self, buffer: &Self::Buffer, data: &[u8]) -> RendererResult<()> {
+    fn write_buffer(&self, buffer: &Self::Buffer, data: &[u8]) -> Result<()> {
         if data.len() > buffer.size {
-            return Err(RendererError::fail("Data exceeds buffer size!"));
+            return Err(Error::fail("Data exceeds buffer size!"));
         }
 
         let device_context = self
             .device_context
             .as_ref()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
 
         unsafe {
             let alloc_info = device_context
@@ -788,17 +779,15 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn read_buffer(&self, buffer: &Self::Buffer, dest: &mut [u8]) -> RendererResult<()> {
+    fn read_buffer(&self, buffer: &Self::Buffer, dest: &mut [u8]) -> Result<()> {
         if dest.len() > buffer.size {
-            return Err(RendererError::fail(
-                "Destination slice is larger than buffer!",
-            ));
+            return Err(Error::fail("Destination slice is larger than buffer!"));
         }
 
         let device_context = self
             .device_context
             .as_ref()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
 
         unsafe {
             let alloc_info = device_context
@@ -814,11 +803,11 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn destroy_buffer(&self, buffer: &mut Self::Buffer) -> RendererResult<()> {
+    fn destroy_buffer(&self, buffer: &mut Self::Buffer) -> Result<()> {
         let device_context = self
             .device_context
             .as_ref()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
 
         unsafe {
             device_context
@@ -830,13 +819,9 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn create_texture(
-        &mut self,
-        options: &TextureOptions,
-        data: &[u8],
-    ) -> RendererResult<Self::Texture> {
+    fn create_texture(&mut self, options: &TextureOptions, data: &[u8]) -> Result<Self::Texture> {
         if options.width == 0 || options.height == 0 {
-            return Err(RendererError::invalid_argument(
+            return Err(Error::invalid_argument(
                 "Texture dimensions must be greater than zero.",
             ));
         }
@@ -844,25 +829,21 @@ impl Renderer for VulkanRenderer {
         let expected_size = (options.width as usize)
             .checked_mul(options.height as usize)
             .and_then(|size| size.checked_mul(options.format.bytes_per_pixel()))
-            .ok_or(RendererError::invalid_argument(
-                "Texture dimensions are too large.",
-            ))?;
+            .ok_or(Error::invalid_argument("Texture dimensions are too large."))?;
         if data.len() != expected_size {
-            return Err(RendererError::invalid_argument(format!(
+            return Err(Error::invalid_argument(format!(
                 "Texture data size does not match texture dimensions. Expected {expected_size} bytes, got {}.",
                 data.len()
             )));
         }
 
         if options.mip_level_count == 0 {
-            return Err(RendererError::invalid_argument(
-                "Mip level count cannot be zero.",
-            ));
+            return Err(Error::invalid_argument("Mip level count cannot be zero."));
         }
         let max_mip_level_count =
             TextureOptions::max_mip_level_count(options.width, options.height);
         if options.mip_level_count > max_mip_level_count {
-            return Err(RendererError::InvalidArgument(format!(
+            return Err(Error::InvalidArgument(format!(
                 "Requested mip level count `{}` is greater than the maximum possible count this texture can have `{}`.",
                 options.mip_level_count, max_mip_level_count
             )));
@@ -871,13 +852,11 @@ impl Renderer for VulkanRenderer {
         let instance = self
             .instance
             .as_ref()
-            .ok_or(RendererError::invalid_operation(
-                "Renderer is not initialized",
-            ))?;
+            .ok_or(Error::invalid_operation("Renderer is not initialized"))?;
         let device_context = self
             .device_context
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
         let current_frame = &mut device_context.transfer_queue_context.frames
             [device_context.current_frame_index]
@@ -933,7 +912,7 @@ impl Renderer for VulkanRenderer {
             .optimal_tiling_features
             .contains(required_features)
         {
-            return Err(RendererError::invalid_argument(
+            return Err(Error::invalid_argument(
                 "The texture does not support multiple mip levels.",
             ));
         }
@@ -1166,11 +1145,11 @@ impl Renderer for VulkanRenderer {
         })
     }
 
-    fn destroy_texture(&self, texture: &mut Self::Texture) -> RendererResult<()> {
+    fn destroy_texture(&self, texture: &mut Self::Texture) -> Result<()> {
         let device_context = self
             .device_context
             .as_ref()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
 
         unsafe {
             device_context
@@ -1188,15 +1167,15 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn create_sampler(&self, options: &SamplerOptions) -> RendererResult<Self::Sampler> {
+    fn create_sampler(&self, options: &SamplerOptions) -> Result<Self::Sampler> {
         let device_context = self
             .device_context
             .as_ref()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
         let (anisotropy_enable, max_anisotropy) = match options.max_anisotropy {
             Some(max_anisotropy) => {
                 if !max_anisotropy.is_finite() || max_anisotropy < 1.0 {
-                    return Err(RendererError::invalid_argument(
+                    return Err(Error::invalid_argument(
                         "Maximum anisotropy must be finite and at least 1.0.",
                     ));
                 }
@@ -1205,7 +1184,7 @@ impl Renderer for VulkanRenderer {
                     .supported_features
                     .contains(&Feature::AnisotropicFiltering)
                 {
-                    return Err(RendererError::invalid_operation(
+                    return Err(Error::invalid_operation(
                         "Anisotropic filtering is not supported by this device.",
                     ));
                 }
@@ -1235,11 +1214,11 @@ impl Renderer for VulkanRenderer {
         Ok(VulkanSampler { sampler })
     }
 
-    fn destroy_sampler(&self, sampler: &mut Self::Sampler) -> RendererResult<()> {
+    fn destroy_sampler(&self, sampler: &mut Self::Sampler) -> Result<()> {
         let device_context = self
             .device_context
             .as_ref()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
         unsafe {
             device_context
                 .logical_device
@@ -1249,7 +1228,7 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn create_compute_pipeline(&self, shader: &Shader) -> RendererResult<Self::ComputePipeline> {
+    fn create_compute_pipeline(&self, shader: &Shader) -> Result<Self::ComputePipeline> {
         struct ShaderModuleGuard<'a> {
             module: ash::vk::ShaderModule,
             device_context: &'a DeviceContext,
@@ -1267,11 +1246,11 @@ impl Renderer for VulkanRenderer {
         let device_context = self
             .device_context
             .as_ref()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
 
         let (prefix, code_u32, suffix) = unsafe { shader.data.align_to::<u32>() };
         if !prefix.is_empty() || !suffix.is_empty() {
-            return Err(RendererError::Fail(format!(
+            return Err(Error::Fail(format!(
                 "Shader data from '{}' is not valid SPIR-V (not 4-byte aligned).",
                 shader.file_path
             )));
@@ -1342,11 +1321,11 @@ impl Renderer for VulkanRenderer {
         })
     }
 
-    fn destroy_compute_pipeline(&self, pipeline: &Self::ComputePipeline) -> RendererResult<()> {
+    fn destroy_compute_pipeline(&self, pipeline: &Self::ComputePipeline) -> Result<()> {
         let device_context = self
             .device_context
             .as_ref()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
 
         unsafe {
             device_context
@@ -1369,18 +1348,20 @@ impl Renderer for VulkanRenderer {
         pipeline: &Self::ComputePipeline,
         binding_sets: &[&[ResourceBinding<Self::Buffer, Self::Texture, Self::Sampler>]],
         group_count: (u32, u32, u32),
-    ) -> RendererResult<()> {
+    ) -> Result<()> {
         let mapped_sets = self.create_compute_resource_sets(pipeline, binding_sets)?;
 
         let device_context = self
             .device_context
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
-        let compute_queue_context = device_context.compute_queue_context.as_mut().ok_or(
-            RendererError::invalid_operation(
-                "Device is not initialized with the `ComputeShaders` feature.",
-            ),
-        )?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
+        let compute_queue_context =
+            device_context
+                .compute_queue_context
+                .as_mut()
+                .ok_or(Error::invalid_operation(
+                    "Device is not initialized with the `ComputeShaders` feature.",
+                ))?;
         let thread_context_index = Self::thread_context_index()?;
         let current_frame = &mut compute_queue_context.frames[device_context.current_frame_index]
             .thread_contexts[thread_context_index];
@@ -1417,30 +1398,27 @@ impl Renderer for VulkanRenderer {
         &mut self,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
-    ) -> RendererResult<Self::GraphicsPipeline> {
+    ) -> Result<Self::GraphicsPipeline> {
         let device_context = self
             .device_context
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
         let rendering = device_context
             .rendering
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
         rendering.create_graphics_pipeline(&device_context.logical_device, shaders, options)
     }
 
-    fn destroy_graphics_pipeline(
-        &mut self,
-        pipeline: &Self::GraphicsPipeline,
-    ) -> RendererResult<()> {
+    fn destroy_graphics_pipeline(&mut self, pipeline: &Self::GraphicsPipeline) -> Result<()> {
         let device_context = self
             .device_context
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
         let rendering = device_context
             .rendering
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
         rendering.destroy_graphics_pipeline(&device_context.logical_device, pipeline)
     }
 
@@ -1450,7 +1428,7 @@ impl Renderer for VulkanRenderer {
         binding_sets: &[&[ResourceBinding<Self::Buffer, Self::Texture, Self::Sampler>]],
         draw_count: u32,
         instance_count: u32,
-    ) -> RendererResult<()> {
+    ) -> Result<()> {
         let mapped_sets = self.create_graphics_resource_sets(pipeline, binding_sets)?;
         let vertex_bindings = binding_sets
             .iter()
@@ -1482,7 +1460,7 @@ impl Renderer for VulkanRenderer {
         let device_context = self
             .device_context
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
         let graphics_queue_context = &mut device_context.graphics_queue_context;
         let thread_context_index = Self::thread_context_index()?;
         let current_frame = &mut graphics_queue_context.frames[device_context.current_frame_index]
@@ -1505,7 +1483,7 @@ impl Renderer for VulkanRenderer {
             }
             for (binding, handle, offset, size) in vertex_bindings {
                 if offset + size > handle.size {
-                    return Err(RendererError::invalid_argument(
+                    return Err(Error::invalid_argument(
                         "Buffer overflow when binding vertex buffer.",
                     ));
                 }
@@ -1520,7 +1498,7 @@ impl Renderer for VulkanRenderer {
 
             if !index_bindings.is_empty() {
                 if index_bindings.len() > 1 {
-                    return Err(RendererError::invalid_argument(
+                    return Err(Error::invalid_argument(
                         "Only one index buffer can be bound per draw.",
                     ));
                 }
@@ -1553,21 +1531,21 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn begin_frame(&mut self) -> RendererResult<()> {
+    fn begin_frame(&mut self) -> Result<()> {
         let is_in_main_thread = self.is_in_main_thread();
         let device_context = self
             .device_context
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
 
         // Wait for current frame to finish.
         if is_in_main_thread {
-            let wait_frame_sync = |queue_context: &mut QueueContext| -> RendererResult<()> {
+            let wait_frame_sync = |queue_context: &mut QueueContext| -> Result<()> {
                 let frame_sync = queue_context
                     .frame_sync
                     .as_mut()
-                    .ok_or(RendererError::invalid_operation("Device is not set."))?;
+                    .ok_or(Error::invalid_operation("Device is not set."))?;
                 frame_sync.wait(
                     &device_context.logical_device,
                     device_context.current_frame_index,
@@ -1625,7 +1603,7 @@ impl Renderer for VulkanRenderer {
             // Wait for the main thread to begin the current frame before we can start recording
             // commands.
             let wait_main_thread_begin_current_frame =
-                |queue_context: &QueueContext| -> RendererResult<()> {
+                |queue_context: &QueueContext| -> Result<()> {
                     let main_frame = &queue_context.frames[device_context.current_frame_index]
                         .thread_contexts[MAIN_THREAD_CONTEXT_INDEX];
                     let (state_mutex, cv) = &main_frame.sync_state;
@@ -1645,16 +1623,14 @@ impl Renderer for VulkanRenderer {
         let rendering = device_context
             .rendering
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
-        let mut begin_queue = |queue_context: &mut QueueContext,
-                               is_graphics: bool|
-         -> RendererResult<()> {
+            .ok_or(Error::invalid_operation("Device is not set."))?;
+        let mut begin_queue = |queue_context: &mut QueueContext, is_graphics: bool| -> Result<()> {
             let current_frame = &mut queue_context.frames[device_context.current_frame_index]
                 .thread_contexts[thread_context_index];
             let (state_mutex, cv) = &current_frame.sync_state;
             let mut state = state_mutex.lock()?;
             if *state != FrameState::Idle {
-                return Err(RendererError::invalid_operation(
+                return Err(Error::invalid_operation(
                     "Invalid frame state, did you forget to call `end_frame`?",
                 ));
             }
@@ -1781,33 +1757,31 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn end_frame(&mut self) -> RendererResult<()> {
+    fn end_frame(&mut self) -> Result<()> {
         let is_in_main_thread = self.is_in_main_thread();
         let device_context = self
             .device_context
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
         let image_index = device_context.swapchain_context.current_image_index;
         let rendering = device_context
             .rendering
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
 
         let _mutex_guard = match is_in_main_thread {
             true => Some(device_context.current_frame_index_sync.lock()?),
             false => None,
         };
 
-        let mut end_queue = |queue_context: &mut QueueContext,
-                             is_graphics: bool|
-         -> RendererResult<()> {
+        let mut end_queue = |queue_context: &mut QueueContext, is_graphics: bool| -> Result<()> {
             let current_frame = &mut queue_context.frames[device_context.current_frame_index]
                 .thread_contexts[thread_context_index];
             let (state_mutex, cv) = &current_frame.sync_state;
             let mut state = state_mutex.lock()?;
             if *state != FrameState::Started {
-                return Err(RendererError::invalid_operation(
+                return Err(Error::invalid_operation(
                     "Cannot end a frame that hasn't started yet.",
                 ));
             }
@@ -1870,7 +1844,7 @@ impl Renderer for VulkanRenderer {
 
                 let add_command_buffer = |queue_context: &mut QueueContext,
                                           command_buffers: &mut Vec<ash::vk::CommandBuffer>|
-                 -> RendererResult<()> {
+                 -> Result<()> {
                     let current_frame = &mut queue_context.frames
                         [device_context.current_frame_index]
                         .thread_contexts[thread_context_index];
@@ -1879,7 +1853,7 @@ impl Renderer for VulkanRenderer {
                     let (state_mutex, cv) = &current_frame.sync_state;
                     let mut state = state_mutex.lock()?;
                     if *state == FrameState::Idle {
-                        return Err(RendererError::invalid_operation(
+                        return Err(Error::invalid_operation(
                             "Invalid frame state, did you forget to call `begin_frame`?",
                         ));
                     }
@@ -1912,7 +1886,7 @@ impl Renderer for VulkanRenderer {
             let submit_commands = |queue_context: &mut QueueContext,
                                    command_buffers: &Vec<ash::vk::CommandBuffer>,
                                    is_graphics: bool|
-             -> RendererResult<()> {
+             -> Result<()> {
                 if !command_buffers.is_empty() {
                     let submit_info = match is_graphics {
                         true => SubmitInfo::default()
@@ -1925,7 +1899,7 @@ impl Renderer for VulkanRenderer {
                     let frame_sync = queue_context
                         .frame_sync
                         .as_mut()
-                        .ok_or(RendererError::invalid_operation("Device is not set."))?;
+                        .ok_or(Error::invalid_operation("Device is not set."))?;
                     frame_sync.submit(
                         &device_context.logical_device,
                         device_context.current_frame_index,
@@ -1978,12 +1952,12 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn wait_idle(&self) -> RendererResult<()> {
+    fn wait_idle(&self) -> Result<()> {
         self.main_thread_only()?;
         let device_context = self
             .device_context
             .as_ref()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
 
         unsafe {
             device_context.logical_device.device_wait_idle()?;
@@ -1991,11 +1965,11 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn clear(&mut self, color: RGB<f32>) -> RendererResult<()> {
+    fn clear(&mut self, color: RGB<f32>) -> Result<()> {
         let device_context = self
             .device_context
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
         let current_frame = &mut device_context.graphics_queue_context.frames
             [device_context.current_frame_index]
@@ -2004,9 +1978,7 @@ impl Renderer for VulkanRenderer {
         {
             let state = current_frame.sync_state.0.lock()?;
             if *state != FrameState::Started {
-                return Err(RendererError::invalid_operation(
-                    "Cannot clear outside of a frame.",
-                ));
+                return Err(Error::invalid_operation("Cannot clear outside of a frame."));
             }
         }
 

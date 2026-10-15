@@ -3,9 +3,9 @@ use ash::vk::{
 };
 
 use crate::{
+    Error, Result,
     renderers::{
-        GpuBuffer, Renderer, RendererResult,
-        error::RendererError,
+        GpuBuffer, Renderer,
         resources::{BufferUsage, GpuTexture, ResourceBinding, ResourceBindingType, TextureFormat},
         settings::TextureOptions,
         vulkan::VulkanRenderer,
@@ -81,7 +81,7 @@ impl VulkanRenderer {
         &self,
         pipeline: &<VulkanRenderer as Renderer>::ComputePipeline,
         binding_sets: &[&[ResourceBinding<VulkanBuffer, VulkanTexture, VulkanSampler>]],
-    ) -> RendererResult<Vec<DescriptorSet>> {
+    ) -> Result<Vec<DescriptorSet>> {
         if binding_sets.is_empty() {
             return Ok(Vec::new());
         }
@@ -90,12 +90,14 @@ impl VulkanRenderer {
         let device_context = self
             .device_context
             .as_ref()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
-        let compute_queue_context = device_context.compute_queue_context.as_ref().ok_or(
-            RendererError::invalid_operation(
-                "Device is not initialized with `ComputeShaders` feature.",
-            ),
-        )?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
+        let compute_queue_context =
+            device_context
+                .compute_queue_context
+                .as_ref()
+                .ok_or(Error::invalid_operation(
+                    "Device is not initialized with `ComputeShaders` feature.",
+                ))?;
         let thread_context_index = Self::thread_context_index()?;
         let current_frame = &compute_queue_context.frames[device_context.current_frame_index]
             .thread_contexts[thread_context_index];
@@ -122,14 +124,14 @@ impl VulkanRenderer {
                         size,
                     } => {
                         if offset + size > handle.size {
-                            return Err(RendererError::invalid_argument(
+                            return Err(Error::invalid_argument(
                                 "Buffer overflow when binding resources.",
                             ));
                         }
                         match usage {
                             BufferUsage::Storage | BufferUsage::Uniform => {}
                             _ => {
-                                return Err(RendererError::invalid_argument(
+                                return Err(Error::invalid_argument(
                                     "Invalid buffer usage for descriptor resource binding.",
                                 ));
                             }
@@ -214,7 +216,7 @@ impl VulkanRenderer {
         &self,
         pipeline: &<VulkanRenderer as Renderer>::GraphicsPipeline,
         binding_sets: &[&[ResourceBinding<VulkanBuffer, VulkanTexture, VulkanSampler>]],
-    ) -> RendererResult<Vec<DescriptorSet>> {
+    ) -> Result<Vec<DescriptorSet>> {
         if pipeline.descriptor_layouts.is_empty() {
             return Ok(Vec::new());
         }
@@ -223,7 +225,7 @@ impl VulkanRenderer {
         let device_context = self
             .device_context
             .as_ref()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
         let graphics_queue_context = &device_context.graphics_queue_context;
         let thread_context_index = Self::thread_context_index()?;
         let current_frame = &graphics_queue_context.frames[device_context.current_frame_index]
@@ -270,7 +272,7 @@ impl VulkanRenderer {
                         ..
                     } => {
                         if offset + size > handle.size {
-                            return Err(RendererError::invalid_argument(
+                            return Err(Error::invalid_argument(
                                 "Buffer overflow when binding resources.",
                             ));
                         }
@@ -352,12 +354,12 @@ impl VulkanRenderer {
 
     pub(super) fn convert_shader_stage(
         stage: naga::ShaderStage,
-    ) -> RendererResult<ash::vk::ShaderStageFlags> {
+    ) -> Result<ash::vk::ShaderStageFlags> {
         match stage {
             naga::ShaderStage::Compute => Ok(ash::vk::ShaderStageFlags::COMPUTE),
             naga::ShaderStage::Vertex => Ok(ash::vk::ShaderStageFlags::VERTEX),
             naga::ShaderStage::Fragment => Ok(ash::vk::ShaderStageFlags::FRAGMENT),
-            _ => Err(RendererError::invalid_argument("Invalid shader stage.")),
+            _ => Err(Error::invalid_argument("Invalid shader stage.")),
         }
     }
 }

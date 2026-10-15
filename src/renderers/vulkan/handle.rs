@@ -1,10 +1,13 @@
-use crate::renderers::{
-    RendererResult, concurrency::RendererHandle, concurrency::RendererWorker,
-    concurrency::RendererWorkerFactory, vulkan::VulkanRenderer,
+use crate::{
+    Result,
+    renderers::{
+        concurrency::{RendererHandle, RendererWorker, RendererWorkerFactory},
+        vulkan::VulkanRenderer,
+    },
 };
 
 impl RendererWorkerFactory<VulkanRenderer> for RendererHandle<VulkanRenderer> {
-    fn spawn_worker(&self) -> RendererResult<RendererWorker<VulkanRenderer>> {
+    fn spawn_worker(&self) -> Result<RendererWorker<VulkanRenderer>> {
         let renderer = unsafe { &mut *(self.p_renderer as *mut VulkanRenderer) };
         renderer.initialize_thread()?;
         Ok(RendererWorker::<VulkanRenderer> {

@@ -11,7 +11,7 @@ use std::{
 };
 
 use heph_gl::{
-    Version,
+    Error, Version,
     camera::{Camera, Projection},
     graphics_device::{
         Feature::{
@@ -25,7 +25,6 @@ use heph_gl::{
     renderers::{
         Renderer,
         concurrency::{RendererHandle, RendererWorkerFactory},
-        error::RendererError,
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType, TextureFormat},
         settings::{
             ColorBlending, CullingMode, FeatureRequest, FrontFace, GraphicsPipelineOptions,
@@ -437,7 +436,7 @@ where
             heph_expect_success!(renderer.initialize(&init_options));
             heph_expect_err!(
                 renderer.initialize(&init_options),
-                RendererError::invalid_operation("")
+                Error::invalid_operation("")
             );
             heph_expect_success!(renderer.uninitialize());
         }
@@ -453,7 +452,7 @@ where
             };
             heph_expect_err!(
                 renderer.initialize(&init_options),
-                RendererError::invalid_argument("")
+                Error::invalid_argument("")
             );
         }
 
@@ -468,7 +467,7 @@ where
             };
             heph_expect_err!(
                 renderer.initialize(&init_options),
-                RendererError::invalid_argument("")
+                Error::invalid_argument("")
             );
         }
 
@@ -556,7 +555,7 @@ where
                 }),
                 &features
             ),
-            RendererError::fail("")
+            Error::fail("")
         );
 
         for feature in &mut features {
@@ -564,7 +563,7 @@ where
         }
         heph_expect_err!(
             renderer.set_device(None, &features),
-            RendererError::UnsupportedRequiredFeature(Feature::RayTracing)
+            Error::UnsupportedRequiredFeature(Feature::RayTracing)
         );
     }
 
@@ -602,7 +601,7 @@ where
                 b1.wait();
                 heph_expect_err!(
                     renderer.set_settings(settings),
-                    RendererError::invalid_operation("")
+                    Error::invalid_operation("")
                 );
                 b1.wait();
             });
@@ -683,12 +682,12 @@ where
     fn test_begin_twice(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[]);
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_err!(renderer.begin_frame(), RendererError::invalid_operation(""));
+        heph_expect_err!(renderer.begin_frame(), Error::invalid_operation(""));
     }
 
     fn test_end_without_begin(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[]);
-        heph_expect_err!(renderer.end_frame(), RendererError::invalid_operation(""));
+        heph_expect_err!(renderer.end_frame(), Error::invalid_operation(""));
     }
 
     fn test_calling_main_thread_only_fn_from_worker_thread(&self) {
@@ -699,7 +698,7 @@ where
                 let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
                 heph_expect_err!(
                     renderer_worker.set_settings(Settings::default()),
-                    RendererError::invalid_operation("")
+                    Error::invalid_operation("")
                 );
                 heph_expect_err!(
                     renderer_worker.initialize(&InitializeOptions {
@@ -708,20 +707,14 @@ where
                         display_handle: dummy_display_handle!(),
                         api_version: TestRenderer::LATEST_API_VERSION,
                     }),
-                    RendererError::invalid_operation("")
+                    Error::invalid_operation("")
                 );
-                heph_expect_err!(
-                    renderer_worker.uninitialize(),
-                    RendererError::invalid_operation("")
-                );
+                heph_expect_err!(renderer_worker.uninitialize(), Error::invalid_operation(""));
                 heph_expect_err!(
                     renderer_worker.set_device(None, &[]),
-                    RendererError::invalid_operation("")
+                    Error::invalid_operation("")
                 );
-                heph_expect_err!(
-                    renderer_worker.wait_idle(),
-                    RendererError::invalid_operation("")
-                );
+                heph_expect_err!(renderer_worker.wait_idle(), Error::invalid_operation(""));
             });
         });
     }
@@ -741,10 +734,7 @@ where
         std::thread::scope(|s| {
             s.spawn(move || {
                 let _w1 = heph_expect_success!(renderer_handle.spawn_worker());
-                heph_expect_err!(
-                    renderer_handle.spawn_worker(),
-                    RendererError::invalid_operation("")
-                );
+                heph_expect_err!(renderer_handle.spawn_worker(), Error::invalid_operation(""));
             });
         });
     }
@@ -817,7 +807,7 @@ where
                 s.spawn(move || {
                     let result = renderer_handle.spawn_worker();
                     if let Err(e) = result {
-                        if e == RendererError::fail("") {
+                        if e == Error::fail("") {
                             fail_count_ref.fetch_add(1, Ordering::Relaxed);
                         }
                         barrier.wait();

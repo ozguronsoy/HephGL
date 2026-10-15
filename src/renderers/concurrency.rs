@@ -1,4 +1,4 @@
-use crate::renderers::{Renderer, RendererResult};
+use crate::{Result, renderers::Renderer};
 
 /// An opaque handle used for sharing the [`Renderer`] instance safely across threads.
 pub struct RendererHandle<T: Renderer> {
@@ -12,14 +12,14 @@ pub struct RendererWorker<T: Renderer> {
     /// Raw pointer to the renderer instance.
     pub(super) p_renderer: usize,
     /// The function used to release the thread-local resources.
-    pub(super) uninitialize: fn(&mut T) -> RendererResult<()>,
+    pub(super) uninitialize: fn(&mut T) -> Result<()>,
     pub(super) _marker: std::marker::PhantomData<T>,
 }
 
 /// A factory for generating thread-specific rendering workers.
 pub trait RendererWorkerFactory<T: Renderer> {
     /// Creates a [`RendererWorker`] for the current thread.
-    fn spawn_worker(&self) -> RendererResult<RendererWorker<T>>;
+    fn spawn_worker(&self) -> Result<RendererWorker<T>>;
 }
 
 impl<T: Renderer> Copy for RendererHandle<T> {}

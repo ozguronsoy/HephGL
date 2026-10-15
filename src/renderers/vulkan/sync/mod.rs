@@ -3,10 +3,9 @@ pub mod timeline_semaphore;
 
 use ash::vk::{Queue, SubmitInfo};
 
-use crate::renderers::{
-    RendererResult,
-    error::RendererError,
-    vulkan::{
+use crate::{
+    Error, Result,
+    renderers::vulkan::{
         VulkanRenderer,
         queue::QueueContext,
         sync::{fence::FenceFrameSync, timeline_semaphore::TimelineSemaphoreFrameSync},
@@ -16,7 +15,7 @@ use crate::renderers::{
 /// Provides frame synchronization operations.
 pub trait VulkanFrameSync {
     /// Creates the resources required for frame synchronization.
-    fn new(device: &ash::Device, frames_in_flight: usize) -> RendererResult<Self>
+    fn new(device: &ash::Device, frames_in_flight: usize) -> Result<Self>
     where
         Self: Sized;
     /// Submits the command buffers to the queue.
@@ -26,24 +25,24 @@ pub trait VulkanFrameSync {
         frame_index: usize,
         queue: Queue,
         submits: &[SubmitInfo],
-    ) -> RendererResult<()>;
+    ) -> Result<()>;
     /// Waits for GPU to finish processing the frame.
-    fn wait(&mut self, device: &ash::Device, frame_index: usize) -> RendererResult<()>;
+    fn wait(&mut self, device: &ash::Device, frame_index: usize) -> Result<()>;
     /// Frees the allocated resources.
-    fn destroy(&mut self, device: &ash::Device) -> RendererResult<()>;
+    fn destroy(&mut self, device: &ash::Device) -> Result<()>;
 }
 
 impl VulkanRenderer {
     /// Creates frame synchronization resources for each queue.
-    pub(super) fn create_frame_sync(&mut self) -> RendererResult<()> {
+    pub(super) fn create_frame_sync(&mut self) -> Result<()> {
         self.destroy_frame_sync()?;
 
         let device_context = self
             .device_context
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
 
-        let create_queue_frame_sync = |queue_context: &mut QueueContext| -> RendererResult<()> {
+        let create_queue_frame_sync = |queue_context: &mut QueueContext| -> Result<()> {
             if device_context.supports_timeline_semaphore {
                 queue_context.frame_sync = Some(Box::new(TimelineSemaphoreFrameSync::new(
                     &device_context.logical_device,
@@ -67,13 +66,13 @@ impl VulkanRenderer {
     }
 
     /// Destroys the frame synchronization resources of each queue.
-    pub(super) fn destroy_frame_sync(&mut self) -> RendererResult<()> {
+    pub(super) fn destroy_frame_sync(&mut self) -> Result<()> {
         let device_context = self
             .device_context
             .as_mut()
-            .ok_or(RendererError::invalid_operation("Device is not set."))?;
+            .ok_or(Error::invalid_operation("Device is not set."))?;
 
-        let destroy_queue_frame_sync = |queue_context: &mut QueueContext| -> RendererResult<()> {
+        let destroy_queue_frame_sync = |queue_context: &mut QueueContext| -> Result<()> {
             if let Some(mut frame_sync) = queue_context.frame_sync.take() {
                 frame_sync.destroy(&device_context.logical_device)?;
             }
