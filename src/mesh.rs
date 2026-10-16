@@ -7,6 +7,7 @@ use std::{
 use crate::{
     Error, Result,
     math::{Mat3, Mat4, Vec3},
+    renderers::settings::PrimitiveTopology,
 };
 
 /// Represents a mesh vertex containing a 3D position, a 3D normal, and a 2D texture coordinates, in
@@ -166,15 +167,12 @@ impl Mesh {
                     ]);
                 }
 
+                let topology = gltf_primitive.mode().try_into()?;
                 if let Some(indices) = reader.read_indices() {
                     primitive.indices = indices.into_u32().collect();
-                    // A reflection reverses triangle winding; swap two indices to preserve front
-                    // faces.
-                    if transform.determinant() < 0.0 {
-                        for triangle in primitive.indices.as_chunks_mut::<3>().0 {
-                            triangle.swap(1, 2);
-                        }
-                    }
+                    Self::swap_triangle_winding(&transform, topology, &mut primitive.indices);
+                } else {
+                    Self::swap_triangle_winding(&transform, topology, &mut primitive.vertices);
                 }
 
                 mesh.primitives.push(primitive);
@@ -182,6 +180,34 @@ impl Mesh {
         }
 
         Ok(mesh)
+    }
+
+    fn swap_triangle_winding<T: Copy>(
+        transform: &Mat4,
+        topology: PrimitiveTopology,
+        elements: &mut Vec<T>,
+    ) {
+        if transform.determinant() >= 0.0 {
+            return;
+        }
+
+        match topology {
+            PrimitiveTopology::TriangleList => {
+                for triangle in elements.as_chunks_mut::<3>().0 {
+                    triangle.swap(1, 2);
+                }
+            }
+            PrimitiveTopology::TriangleStrip => {
+                if elements.len() >= 3 {
+                    // A leading degenerate triangle shifts the strip parity, reversing the
+                    // winding of every original triangle without changing its vertices.
+                    elements.insert(0, elements[0]);
+                }
+            }
+            PrimitiveTopology::PointList
+            | PrimitiveTopology::LineList
+            | PrimitiveTopology::LineStrip => {}
+        }
     }
 }
 
@@ -191,6 +217,25 @@ mod error {
     impl From<gltf::Error> for Error {
         fn from(value: gltf::Error) -> Self {
             Self::fail(value.to_string())
+        }
+    }
+}
+
+mod primitive_topology {
+    use super::*;
+
+    impl TryFrom<gltf::mesh::Mode> for PrimitiveTopology {
+        type Error = crate::error::Error;
+
+        fn try_from(value: gltf::mesh::Mode) -> Result<Self> {
+            match value {
+                gltf::mesh::Mode::Points => Ok(PrimitiveTopology::PointList),
+                gltf::mesh::Mode::Lines => Ok(PrimitiveTopology::LineList),
+                gltf::mesh::Mode::LineStrip => Ok(PrimitiveTopology::LineStrip),
+                gltf::mesh::Mode::Triangles => Ok(PrimitiveTopology::TriangleList),
+                gltf::mesh::Mode::TriangleStrip => Ok(PrimitiveTopology::TriangleStrip),
+                _ => Err(Error::fail("Unsupported mesh primitive topology.")),
+            }
         }
     }
 }
@@ -227,5 +272,112 @@ mod tests {
             ],
         };
         assert_eq!(mesh.flattened_indices(), vec![0, 2, 4, 6]);
+    }
+
+    #[test]
+    fn test_swap_triangle_winding() {
+        let reflection = Mat4::from_scale(Vec3::new(1.0, 1.0, -1.0));
+
+        for topology in [
+            PrimitiveTopology::PointList,
+            PrimitiveTopology::LineList,
+            PrimitiveTopology::LineStrip,
+            PrimitiveTopology::TriangleList,
+            PrimitiveTopology::TriangleStrip,
+        ] {
+            let mut indices = vec![0u32, 1, 2, 3, 4, 5];
+            Mesh::swap_triangle_winding(&Mat4::IDENTITY, topology, &mut indices);
+            assert_eq!(indices, vec![0, 1, 2, 3, 4, 5]);
+        }
+
+        for topology in [
+            PrimitiveTopology::PointList,
+            PrimitiveTopology::LineList,
+            PrimitiveTopology::LineStrip,
+        ] {
+            let mut indices = vec![0u32, 1, 2, 3, 4, 5];
+            Mesh::swap_triangle_winding(&reflection, topology, &mut indices);
+            assert_eq!(indices, vec![0, 1, 2, 3, 4, 5]);
+        }
+
+        {
+            let mut indices = vec![0u32, 1, 2, 3, 4, 5];
+            Mesh::swap_triangle_winding(&reflection, PrimitiveTopology::TriangleList, &mut indices);
+            assert_eq!(indices, vec![0, 2, 1, 3, 5, 4]);
+        }
+
+        // Decode the strip to check that every original triangle has reversed winding.
+        // Ignore degenerate triangles and normalize cyclic rotations for comparison.
+        let strip_triangles = |indices: &[u32]| {
+            indices
+                .windows(3)
+                .enumerate()
+                .filter_map(|(i, window)| {
+                    let [a, b, c] = [window[0], window[1], window[2]];
+                    if a == b || b == c || a == c {
+                        return None;
+                    }
+                    let mut triangle = if i % 2 == 0 { [a, b, c] } else { [b, a, c] };
+                    while triangle[0] > triangle[1] || triangle[0] > triangle[2] {
+                        triangle.rotate_left(1);
+                    }
+                    Some(triangle)
+                })
+                .collect::<Vec<_>>()
+        };
+        for count in 0..=8 {
+            let mut indices: Vec<u32> = (0..count).collect();
+            let original = indices.clone();
+            let mut expected = strip_triangles(&indices);
+            for triangle in &mut expected {
+                triangle.swap(1, 2);
+            }
+            Mesh::swap_triangle_winding(
+                &reflection,
+                PrimitiveTopology::TriangleStrip,
+                &mut indices,
+            );
+            assert_eq!(strip_triangles(&indices), expected);
+            if count < 3 {
+                assert_eq!(indices, original);
+            }
+        }
+
+        // Non-indexed geometry must move the complete vertex, including its normal and UV.
+        let mut vertices: Vec<MeshVertex> = vec![[1.0; 8], [2.0; 8], [3.0; 8]];
+        Mesh::swap_triangle_winding(&reflection, PrimitiveTopology::TriangleList, &mut vertices);
+        assert_eq!(vertices, vec![[1.0; 8], [3.0; 8], [2.0; 8]]);
+    }
+
+    #[test]
+    fn test_primitive_topology_try_from() {
+        assert!(matches!(
+            PrimitiveTopology::try_from(gltf::mesh::Mode::Points),
+            Ok(PrimitiveTopology::PointList)
+        ));
+        assert!(matches!(
+            PrimitiveTopology::try_from(gltf::mesh::Mode::Lines),
+            Ok(PrimitiveTopology::LineList)
+        ));
+        assert!(matches!(
+            PrimitiveTopology::try_from(gltf::mesh::Mode::LineStrip),
+            Ok(PrimitiveTopology::LineStrip)
+        ));
+        assert!(matches!(
+            PrimitiveTopology::try_from(gltf::mesh::Mode::Triangles),
+            Ok(PrimitiveTopology::TriangleList)
+        ));
+        assert!(matches!(
+            PrimitiveTopology::try_from(gltf::mesh::Mode::TriangleStrip),
+            Ok(PrimitiveTopology::TriangleStrip)
+        ));
+        assert!(matches!(
+            PrimitiveTopology::try_from(gltf::mesh::Mode::LineLoop),
+            Err(Error::Fail(_))
+        ));
+        assert!(matches!(
+            PrimitiveTopology::try_from(gltf::mesh::Mode::TriangleFan),
+            Err(Error::Fail(_))
+        ));
     }
 }
