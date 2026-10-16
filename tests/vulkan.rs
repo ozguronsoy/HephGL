@@ -2,7 +2,9 @@ use std::process::ExitCode;
 
 use heph_gl::{Version, renderers::vulkan::VulkanRenderer};
 
-use crate::renderer::{RendererTestFlags, RendererTests, RendererVersionedTestSuite};
+use crate::renderer::{
+    RendererTests, flags::RendererTestFlags, versioned_test_suite::RendererVersionedTestSuite,
+};
 
 mod renderer;
 mod utils;
