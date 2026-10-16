@@ -67,8 +67,8 @@ fn example(
     drop(frag_shader);
 
     let mesh = Mesh::from_file(MESH_PATH).unwrap();
-    let mut vertices = mesh.vertices;
-    let indices = mesh.indices;
+    let mut vertices = mesh.flattened_vertices();
+    let indices = mesh.flattened_indices();
 
     let mut min = Vec3::from_slice(&vertices[0][..3]);
     let mut max = min;

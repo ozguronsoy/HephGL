@@ -18,13 +18,53 @@ enum MeshFileType {
     Gltf,
 }
 
+/// One part of a 3D shape, described by points and references that connect them.
+// TODO: We use too many vectors here. Refactor this to have begin/end iterators, so we can store
+// all indices and vertices in two vectors.
+#[derive(Default, Clone)]
+struct Primitive {
+    vertices: Vec<MeshVertex>,
+    indices: Vec<u32>,
+}
+
+/// Represents a 3D shape assembled from parts, with each part describing points on its surface and
+/// how they connect.
 #[derive(Default, Clone)]
 pub struct Mesh {
-    pub vertices: Vec<MeshVertex>,
-    pub indices: Vec<u32>,
+    primitives: Vec<Primitive>,
 }
 
 impl Mesh {
+    /// Gets the vertices of each primitive.
+    pub fn vertices(&self) -> Vec<&Vec<MeshVertex>> {
+        self.primitives.iter().map(|p| &p.vertices).collect()
+    }
+
+    /// Gets the flattened vertices.
+    pub fn flattened_vertices(&self) -> Vec<MeshVertex> {
+        self.primitives
+            .iter()
+            .flat_map(|p| p.vertices.clone())
+            .collect()
+    }
+
+    /// Gets the indices of each primitive.
+    pub fn indices(&self) -> Vec<&Vec<u32>> {
+        self.primitives.iter().map(|p| &p.indices).collect()
+    }
+
+    /// Gets the flattened indices.
+    pub fn flattened_indices(&self) -> Vec<u32> {
+        let mut flattened_indices =
+            Vec::with_capacity(self.primitives.iter().map(|p| p.indices.len()).sum());
+        let mut vertex_offset = 0;
+        for primitive in &self.primitives {
+            flattened_indices.extend(primitive.indices.iter().map(|index| vertex_offset + index));
+            vertex_offset += primitive.vertices.len() as u32;
+        }
+        flattened_indices
+    }
+
     /// Loads the mesh from a file.
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
@@ -94,8 +134,13 @@ impl Mesh {
             let transform = coordinate_conversion * node_transform;
             let normal_transform = Mat3::from_mat4(transform).inverse().transpose();
 
-            for primitive in gltf_mesh.primitives() {
-                let reader = primitive.reader(|buffer| Some(buffers[buffer.index()].as_slice()));
+            let gltf_primitives = gltf_mesh.primitives();
+            mesh.primitives.reserve(gltf_primitives.len());
+            for gltf_primitive in gltf_primitives {
+                let mut primitive = Primitive::default();
+
+                let reader =
+                    gltf_primitive.reader(|buffer| Some(buffers[buffer.index()].as_slice()));
                 let positions = reader
                     .read_positions()
                     .ok_or(Error::fail("Failed to read the mesh primitive positions."))?;
@@ -108,35 +153,31 @@ impl Mesh {
                         "Failed to read the primitive texture coordinates.",
                     ))?
                     .into_f32();
-                let vertex_offset = mesh.vertices.len() as u32;
 
+                primitive.vertices.reserve(positions.len());
                 for ((position, normal), uv) in positions.zip(normals).zip(tex_coords) {
                     // Bake node transforms so the lid, body, handles, and lock keep their
                     // placement.
                     let position = transform.transform_point3(Vec3::from_array(position));
                     let normal = (normal_transform * Vec3::from_array(normal)).normalize();
-                    mesh.vertices.push([
+                    primitive.vertices.push([
                         position.x, position.y, position.z, normal.x, normal.y, normal.z, uv[0],
                         uv[1],
                     ]);
                 }
 
-                // Each primitive's indices start at zero. Rebase them into the combined vertex
-                // buffer and convert them to the u32 index format used by the
-                // renderer.
-                let mut primitive_indices: Vec<u32> = reader
-                    .read_indices()
-                    .ok_or(Error::io("Failed to read the primitive indices."))?
-                    .into_u32()
-                    .map(|index| vertex_offset + index)
-                    .collect();
-                // A reflection reverses triangle winding; swap two indices to preserve front faces.
-                if transform.determinant() < 0.0 {
-                    for triangle in primitive_indices.as_chunks_mut::<3>().0 {
-                        triangle.swap(1, 2);
+                if let Some(indices) = reader.read_indices() {
+                    primitive.indices = indices.into_u32().collect();
+                    // A reflection reverses triangle winding; swap two indices to preserve front
+                    // faces.
+                    if transform.determinant() < 0.0 {
+                        for triangle in primitive.indices.as_chunks_mut::<3>().0 {
+                            triangle.swap(1, 2);
+                        }
                     }
                 }
-                mesh.indices.extend(primitive_indices);
+
+                mesh.primitives.push(primitive);
             }
         }
 
@@ -169,5 +210,22 @@ mod tests {
             const FILE_PATH: &str = "assets/treasure_chest/treasure_chest_diff_4k.jpg";
             assert!(matches!(Mesh::from_file(FILE_PATH), Err(Error::Io(_))));
         }
+    }
+
+    #[test]
+    fn test_flattened_indices_rebase_each_primitive() {
+        let mesh = Mesh {
+            primitives: vec![
+                Primitive {
+                    vertices: vec![[0.0; 8]; 3],
+                    indices: vec![0, 2],
+                },
+                Primitive {
+                    vertices: vec![[0.0; 8]; 4],
+                    indices: vec![1, 3],
+                },
+            ],
+        };
+        assert_eq!(mesh.flattened_indices(), vec![0, 2, 4, 6]);
     }
 }
