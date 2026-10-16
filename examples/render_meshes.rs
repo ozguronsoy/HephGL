@@ -1,14 +1,12 @@
-use std::{
-    path::Path,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use heph_gl::{
     camera::{Camera, Projection},
     graphics_device::Feature::AnisotropicFiltering,
     light::Lighting,
     material::MaterialProperties,
-    math::{Mat3, Mat4, Quat, Vec3},
+    math::{Mat4, Quat, Vec3},
+    mesh::Mesh,
     renderers::{
         Renderer,
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType, TextureFormat},
@@ -25,7 +23,6 @@ use renkrs::RGB;
 
 mod utils;
 
-// [position.x, position.y, position.z, normal.x, normal.y, normal.z, tex_coord.u, tex_coord.v]
 type Vertex = [f32; 8];
 
 const MESH_PATH: &str = "assets/treasure_chest/treasure_chest_4k.gltf";
@@ -33,77 +30,6 @@ const IMAGE_PATH: &str = "assets/treasure_chest/treasure_chest_diff_4k.jpg";
 const ARM_PATH: &str = "assets/treasure_chest/treasure_chest_arm_4k.jpg";
 const NORMAL_PATH: &str = "assets/treasure_chest/treasure_chest_nor_gl_4k.jpg";
 const ANIMATION_DURATION: Duration = Duration::from_secs(5);
-
-// This chest contains indexed triangles with positions, normals, and UVs. Its five parts share
-// one material, so we can combine them into one vertex buffer and one index buffer.
-fn load_mesh(path: &str) -> (Vec<Vertex>, Vec<u32>) {
-    let path = Path::new(path);
-    let gltf = gltf::Gltf::open(path).unwrap();
-    let directory = path.parent().unwrap();
-
-    let buffers: Vec<Vec<u8>> = gltf
-        .buffers()
-        .map(|buffer| match buffer.source() {
-            gltf::buffer::Source::Uri(uri) => std::fs::read(directory.join(uri)).unwrap(),
-            gltf::buffer::Source::Bin => gltf.blob.as_ref().unwrap().clone(),
-        })
-        .collect();
-
-    let mut vertices = Vec::new();
-    let mut indices = Vec::new();
-    let scene = gltf.default_scene().unwrap();
-    let mut nodes: Vec<_> = scene.nodes().map(|node| (node, Mat4::IDENTITY)).collect();
-    let coordinate_conversion = Mat4::from_scale(Vec3::new(1.0, 1.0, -1.0));
-
-    while let Some((node, parent_transform)) = nodes.pop() {
-        let node_transform =
-            parent_transform * Mat4::from_cols_array_2d(&node.transform().matrix());
-        for child in node.children() {
-            nodes.push((child, node_transform));
-        }
-
-        let Some(mesh) = node.mesh() else {
-            continue;
-        };
-        let transform = coordinate_conversion * node_transform;
-        let normal_transform = Mat3::from_mat4(transform).inverse().transpose();
-
-        for primitive in mesh.primitives() {
-            let reader = primitive.reader(|buffer| Some(buffers[buffer.index()].as_slice()));
-            let positions = reader.read_positions().unwrap();
-            let normals = reader.read_normals().unwrap();
-            let tex_coords = reader.read_tex_coords(0).unwrap().into_f32();
-            let vertex_offset = vertices.len() as u32;
-
-            for ((position, normal), uv) in positions.zip(normals).zip(tex_coords) {
-                // Bake node transforms so the lid, body, handles, and lock keep their placement.
-                let position = transform.transform_point3(Vec3::from_array(position));
-                let normal = (normal_transform * Vec3::from_array(normal)).normalize();
-                vertices.push([
-                    position.x, position.y, position.z, normal.x, normal.y, normal.z, uv[0], uv[1],
-                ]);
-            }
-
-            // Each primitive's indices start at zero. Rebase them into the combined vertex buffer
-            // and convert them to the u32 index format used by the renderer.
-            let mut primitive_indices: Vec<u32> = reader
-                .read_indices()
-                .unwrap()
-                .into_u32()
-                .map(|index| vertex_offset + index)
-                .collect();
-            // A reflection reverses triangle winding; swap two indices to preserve front faces.
-            if transform.determinant() < 0.0 {
-                for triangle in primitive_indices.as_chunks_mut::<3>().0 {
-                    triangle.swap(1, 2);
-                }
-            }
-            indices.extend(primitive_indices);
-        }
-    }
-
-    (vertices, indices)
-}
 
 fn example(
     renderer: &mut utils::renderer::ExampleRenderer,
@@ -132,9 +58,7 @@ fn example(
         .create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
-                // Match the converted triangle winding after the camera's projection flips Y.
                 front_face: FrontFace::Clockwise,
-                // The chest's material is double-sided; the default disables face culling.
                 ..Default::default()
             },
         )
@@ -142,7 +66,10 @@ fn example(
     drop(vert_shader);
     drop(frag_shader);
 
-    let (mut vertices, indices) = load_mesh(MESH_PATH);
+    let mesh = Mesh::from_file(MESH_PATH).unwrap();
+    let mut vertices = mesh.vertices;
+    let indices = mesh.indices;
+
     let mut min = Vec3::from_slice(&vertices[0][..3]);
     let mut max = min;
     for vertex in &vertices {

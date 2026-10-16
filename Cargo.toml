@@ -22,6 +22,7 @@ naga = { version = "30", features = ["spv-in", "wgsl-out", "hlsl-out", "msl-out"
 fontdue = "0.9.4"
 ttf-parser = "0.25.1"
 lyon_tessellation = "1.0"
+gltf = { version = "1.4.1", default-features = false, features = ["utils"] }
 
 [dev-dependencies]
 bytemuck = "1.25.0"
@@ -31,7 +32,6 @@ rand = "0.10.2"
 paste = "1.0.15"
 image = "0.25.10"
 exr = "1.74.2"
-gltf = { version = "1.4.1", default-features = false, features = ["utils"] }
 
 [features]
 default = ["vulkan"]
