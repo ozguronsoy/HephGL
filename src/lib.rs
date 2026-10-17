@@ -6,6 +6,7 @@ pub mod graphics_device;
 pub mod light;
 pub mod material;
 pub mod math;
+pub mod mesh;
 pub mod renderers;
 pub mod shader;
 pub mod text;
