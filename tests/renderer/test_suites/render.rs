@@ -6,6 +6,7 @@ use heph_gl::{
     light::Lighting,
     material::MaterialProperties,
     math::{Mat4, Quat, Vec3},
+    mesh::{Mesh, MeshVertexAttribute},
     renderers::{
         Renderer,
         concurrency::{RendererHandle, RendererWorkerFactory},
@@ -1004,6 +1005,318 @@ where
         heph_expect_success!(renderer.destroy_texture(&mut normal_texture));
         heph_expect_success!(renderer.destroy_buffer(&mut material_buffer));
         heph_expect_success!(renderer.destroy_buffer(&mut vertex_buffer));
+        for uniform_buffer in &mut uniform_buffers {
+            heph_expect_success!(renderer.destroy_buffer(uniform_buffer));
+        }
+        heph_expect_success!(renderer.destroy_graphics_pipeline(&pipeline));
+    }
+
+    pub(crate) fn test_render_meshes(&self) {
+        const MESH_PATH: &str = "assets/treasure_chest/treasure_chest_4k.gltf";
+        const IMAGE_PATH: &str = "assets/treasure_chest/treasure_chest_diff_4k.jpg";
+        const ARM_PATH: &str = "assets/treasure_chest/treasure_chest_arm_4k.jpg";
+        const NORMAL_PATH: &str = "assets/treasure_chest/treasure_chest_nor_gl_4k.jpg";
+        const ANIMATION_DURATION: Duration = Duration::from_secs(5);
+
+        let mut renderer = self
+            .create_renderer_with_any_device(&[FeatureRequest::new(AnisotropicFiltering, false)]);
+        let max_anisotropy = if let Some(device) = renderer.get_device() {
+            match device.supported_features.contains(&AnisotropicFiltering) {
+                true => Some(device.max_sampler_anisotropy),
+                false => None,
+            }
+        } else {
+            None
+        };
+        let Some(&msaa) = heph_expect_success!(renderer.supported_msaa_list()).last() else {
+            panic!("Failed to get a supported MSAA sample count.");
+        };
+        let settings = Settings {
+            frames_in_flight: 3,
+            vsync: true,
+            msaa,
+            ..Default::default()
+        };
+        heph_expect_success!(renderer.set_settings(settings));
+
+        let vert_shader = heph_expect_success!(Shader::from_file(format!(
+            "{}/{}",
+            SHADERS_DIR, "camera_vert.spv"
+        )));
+        let frag_shader = heph_expect_success!(Shader::from_file(format!(
+            "{}/{}",
+            SHADERS_DIR, "mesh_frag.spv"
+        )));
+        let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+            &[&vert_shader, &frag_shader],
+            &GraphicsPipelineOptions {
+                front_face: FrontFace::Clockwise,
+                ..Default::default()
+            },
+        ));
+        drop(vert_shader);
+        drop(frag_shader);
+
+        let mesh = Mesh::from_file(
+            MESH_PATH,
+            &[
+                MeshVertexAttribute::Position,
+                MeshVertexAttribute::Normal,
+                MeshVertexAttribute::TextureCoordinates(0),
+            ],
+        );
+        let mesh = heph_expect_success!(mesh);
+        let mut vertices = mesh.flattened_vertices();
+        let indices = mesh.flattened_indices();
+
+        let mut min = Vec3::from_slice(&vertices[..3]);
+        let mut max = min;
+        for vertex in vertices.chunks_exact(mesh.vertex_component_count()) {
+            let position = Vec3::from_slice(&vertex[..3]);
+            min = min.min(position);
+            max = max.max(position);
+        }
+        let center = (min + max) * 0.5;
+        for vertex in vertices.chunks_exact_mut(mesh.vertex_component_count()) {
+            vertex[0] -= center.x;
+            vertex[1] -= center.y;
+            vertex[2] -= center.z;
+        }
+        let mut transform = Transform::new(
+            Vec3::ZERO,
+            Quat::IDENTITY,
+            Vec3::splat(2.0 / (max - min).max_element()),
+        );
+
+        let mut vertex_buffer = heph_expect_success!(renderer.create_buffer(
+            vertices.len() * std::mem::size_of::<f32>(),
+            BufferUsage::Vertex,
+        ));
+        heph_expect_success!(
+            renderer.write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
+        );
+        drop(vertices);
+
+        let index_count = indices.len() as u32;
+        let mut index_buffer = heph_expect_success!(renderer.create_buffer(
+            indices.len() * std::mem::size_of::<u32>(),
+            BufferUsage::Index,
+        ));
+        heph_expect_success!(renderer.write_buffer(&index_buffer, bytemuck::cast_slice(&indices)));
+        drop(indices);
+
+        let image = heph_expect_success!(image::open(IMAGE_PATH)).to_rgba8();
+        let arm = heph_expect_success!(image::open(ARM_PATH)).to_rgba8();
+        let normal = heph_expect_success!(image::open(NORMAL_PATH)).to_rgba8();
+
+        let material = mesh.materials()[0];
+        let lighting = Lighting {
+            direction: Vec3::new(0.5, -0.8, 1.0),
+            intensity: 3.0,
+            ambient: RGB::new(0.15, 0.15, 0.15),
+            ..Default::default()
+        };
+        let mut camera = Camera::new(Projection::Perspective {
+            vertical_fov: std::f32::consts::FRAC_PI_3,
+            aspect_ratio: 16.0 / 9.0,
+            near: 0.1,
+            far: 100.0,
+        });
+        camera.position = Vec3::new(1.6, 1.0, -3.0);
+        heph_expect_success!(camera.look_at(&Vec3::ZERO, &Vec3::Y));
+
+        let uniforms = [
+            [
+                material.base_color.r,
+                material.base_color.g,
+                material.base_color.b,
+                material.base_color.a,
+            ],
+            [
+                material.roughness,
+                material.metallicness,
+                material.normal_scale,
+                0.0,
+            ],
+            [
+                lighting.direction.x,
+                lighting.direction.y,
+                lighting.direction.z,
+                0.0,
+            ],
+            [
+                lighting.color.r,
+                lighting.color.g,
+                lighting.color.b,
+                lighting.intensity,
+            ],
+            [
+                lighting.ambient.r,
+                lighting.ambient.g,
+                lighting.ambient.b,
+                0.0,
+            ],
+            [camera.position.x, camera.position.y, camera.position.z, 1.0],
+        ];
+        let mut material_buffer = heph_expect_success!(
+            renderer.create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
+        );
+        heph_expect_success!(
+            renderer.write_buffer(&material_buffer, bytemuck::cast_slice(&uniforms))
+        );
+
+        let mut uniform_buffers = Vec::with_capacity(settings.frames_in_flight);
+        for _ in 0..settings.frames_in_flight {
+            uniform_buffers.push(heph_expect_success!(
+                renderer.create_buffer(std::mem::size_of::<[[f32; 16]; 3]>(), BufferUsage::Uniform)
+            ));
+        }
+        let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions {
+            address_mode_u: SamplerAddressMode::Repeat,
+            address_mode_v: SamplerAddressMode::Repeat,
+            max_anisotropy,
+            ..Default::default()
+        }));
+
+        heph_expect_success!(renderer.begin_frame());
+        heph_expect_success!(renderer.clear(RGB::default()));
+        let mut texture =
+            heph_expect_success!(renderer.create_texture(
+                &TextureOptions {
+                    width: image.width(),
+                    height: image.height(),
+                    format: TextureFormat::Rgba8Srgb,
+                    mip_level_count: TextureOptions::max_mip_level_count(
+                        image.width(),
+                        image.height(),
+                    ),
+                },
+                image.as_raw(),
+            ));
+        let mut arm_texture = heph_expect_success!(renderer.create_texture(
+            &TextureOptions {
+                width: arm.width(),
+                height: arm.height(),
+                format: TextureFormat::Rgba8Unorm,
+                mip_level_count: TextureOptions::max_mip_level_count(arm.width(), arm.height()),
+            },
+            arm.as_raw(),
+        ));
+        let mut normal_texture = heph_expect_success!(renderer.create_texture(
+            &TextureOptions {
+                width: normal.width(),
+                height: normal.height(),
+                format: TextureFormat::Rgba8Unorm,
+                mip_level_count: TextureOptions::max_mip_level_count(
+                    normal.width(),
+                    normal.height(),
+                ),
+            },
+            normal.as_raw(),
+        ));
+        heph_expect_success!(renderer.end_frame());
+
+        let mut frame_index = 0;
+        let start = Instant::now();
+        loop {
+            heph_expect_success!(renderer.begin_frame());
+            heph_expect_success!(renderer.clear(RGB::default()));
+
+            let progress =
+                (start.elapsed().as_secs_f32() / ANIMATION_DURATION.as_secs_f32()).min(1.0);
+            transform.rotation = Quat::from_rotation_y(progress * std::f32::consts::TAU);
+            let matrices = [
+                heph_expect_success!(transform.matrix()).to_cols_array(),
+                heph_expect_success!(camera.view_projection_matrix()).to_cols_array(),
+                Mat4::from_mat3(heph_expect_success!(transform.normal_matrix())).to_cols_array(),
+            ];
+
+            let uniform_buffer = uniform_buffers[frame_index];
+            heph_expect_success!(
+                renderer.write_buffer(&uniform_buffer, bytemuck::cast_slice(&matrices))
+            );
+
+            let bindings = [
+                ResourceBinding {
+                    binding: 0,
+                    resource: ResourceBindingType::Buffer {
+                        handle: vertex_buffer,
+                        usage: BufferUsage::Vertex,
+                        offset: 0,
+                        size: vertex_buffer.size(),
+                    },
+                },
+                ResourceBinding {
+                    binding: 0,
+                    resource: ResourceBindingType::Buffer {
+                        handle: index_buffer,
+                        usage: BufferUsage::Index,
+                        offset: 0,
+                        size: index_buffer.size(),
+                    },
+                },
+                ResourceBinding {
+                    binding: 0,
+                    resource: ResourceBindingType::Texture { handle: texture },
+                },
+                ResourceBinding {
+                    binding: 1,
+                    resource: ResourceBindingType::Sampler { handle: sampler },
+                },
+                ResourceBinding {
+                    binding: 2,
+                    resource: ResourceBindingType::Texture {
+                        handle: arm_texture,
+                    },
+                },
+                ResourceBinding {
+                    binding: 3,
+                    resource: ResourceBindingType::Texture {
+                        handle: normal_texture,
+                    },
+                },
+                ResourceBinding {
+                    binding: 4,
+                    resource: ResourceBindingType::Buffer {
+                        handle: material_buffer,
+                        usage: BufferUsage::Uniform,
+                        offset: 0,
+                        size: material_buffer.size(),
+                    },
+                },
+                ResourceBinding {
+                    binding: 5,
+                    resource: ResourceBindingType::Buffer {
+                        handle: uniform_buffer,
+                        usage: BufferUsage::Uniform,
+                        offset: 0,
+                        size: uniform_buffer.size(),
+                    },
+                },
+            ];
+            heph_expect_success!(renderer.record_graphics_command(
+                &pipeline,
+                &[&bindings],
+                index_count,
+                1
+            ));
+
+            heph_expect_success!(renderer.end_frame());
+
+            frame_index = (frame_index + 1) % uniform_buffers.len();
+            if progress == 1.0 {
+                break;
+            }
+        }
+
+        heph_expect_success!(renderer.wait_idle());
+        heph_expect_success!(renderer.destroy_sampler(&mut sampler));
+        heph_expect_success!(renderer.destroy_texture(&mut texture));
+        heph_expect_success!(renderer.destroy_texture(&mut arm_texture));
+        heph_expect_success!(renderer.destroy_texture(&mut normal_texture));
+        heph_expect_success!(renderer.destroy_buffer(&mut material_buffer));
+        heph_expect_success!(renderer.destroy_buffer(&mut vertex_buffer));
+        heph_expect_success!(renderer.destroy_buffer(&mut index_buffer));
         for uniform_buffer in &mut uniform_buffers {
             heph_expect_success!(renderer.destroy_buffer(uniform_buffer));
         }
