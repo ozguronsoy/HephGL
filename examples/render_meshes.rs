@@ -63,8 +63,8 @@ fn example(
     drop(vert_shader);
     drop(frag_shader);
 
-    // Vertex attribute type order defines the packed vertex layout, so this mesh's vertex layout
-    // will be: [px, py, pz, nx, ny, nz, u0, v0].
+    // Vertex attribute order defines the packed vertex layout, so this mesh's vertex layout will
+    // be: [px, py, pz, nx, ny, nz, u0, v0].
     let mesh = Mesh::from_file(
         MESH_PATH,
         &[
