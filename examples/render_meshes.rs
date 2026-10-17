@@ -5,7 +5,7 @@ use heph_gl::{
     graphics_device::Feature::AnisotropicFiltering,
     light::Lighting,
     math::{Mat4, Quat, Vec3},
-    mesh::Mesh,
+    mesh::{Mesh, MeshVertexAttribute},
     renderers::{
         Renderer,
         resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType, TextureFormat},
@@ -21,8 +21,6 @@ use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
 
 mod utils;
-
-type Vertex = [f32; 8];
 
 const MESH_PATH: &str = "assets/treasure_chest/treasure_chest_4k.gltf";
 const IMAGE_PATH: &str = "assets/treasure_chest/treasure_chest_diff_4k.jpg";
@@ -65,19 +63,29 @@ fn example(
     drop(vert_shader);
     drop(frag_shader);
 
-    let mesh = Mesh::from_file(MESH_PATH).unwrap();
+    // Vertex attribute type order defines the packed vertex layout, so this mesh's vertex layout
+    // will be: [px, py, pz, nx, ny, nz, u0, v0].
+    let mesh = Mesh::from_file(
+        MESH_PATH,
+        &[
+            MeshVertexAttribute::Position,
+            MeshVertexAttribute::Normal,
+            MeshVertexAttribute::TextureCoordinates(0),
+        ],
+    )
+    .unwrap();
     let mut vertices = mesh.flattened_vertices();
     let indices = mesh.flattened_indices();
 
-    let mut min = Vec3::from_slice(&vertices[0][..3]);
+    let mut min = Vec3::from_slice(&vertices[..3]);
     let mut max = min;
-    for vertex in &vertices {
+    for vertex in vertices.chunks_exact(mesh.vertex_component_count()) {
         let position = Vec3::from_slice(&vertex[..3]);
         min = min.min(position);
         max = max.max(position);
     }
     let center = (min + max) * 0.5;
-    for vertex in &mut vertices {
+    for vertex in vertices.chunks_exact_mut(mesh.vertex_component_count()) {
         vertex[0] -= center.x;
         vertex[1] -= center.y;
         vertex[2] -= center.z;
@@ -90,7 +98,7 @@ fn example(
 
     let mut vertex_buffer = renderer
         .create_buffer(
-            vertices.len() * std::mem::size_of::<Vertex>(),
+            vertices.len() * std::mem::size_of::<f32>(),
             BufferUsage::Vertex,
         )
         .unwrap();

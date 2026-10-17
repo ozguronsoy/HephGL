@@ -13,13 +13,24 @@ use crate::{
     renderers::settings::PrimitiveTopology,
 };
 
-/// Represents a mesh vertex containing a 3D position, a 3D normal, and a 2D texture coordinates, in
-/// that order.
-pub type MeshVertex = [f32; 8];
-
 /// Defines the supported file types for loading meshes.
 enum MeshFileType {
     Gltf,
+}
+
+/// Defines the vertex attributes to read when loading a mesh.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MeshVertexAttribute {
+    /// The 3D position of the vertex.
+    Position,
+    /// The 3D surface normal at the vertex.
+    Normal,
+    /// The 3D tangent direction and the sign used to reconstruct the bitangent.
+    Tangent,
+    /// The 2D texture coordinates from the specified UV set.
+    TextureCoordinates(u32),
+    /// The vertex color from the specified color set.
+    Color(u32),
 }
 
 /// One part of a 3D shape, described by points and references that connect them.
@@ -27,7 +38,7 @@ enum MeshFileType {
 // all indices and vertices in two vectors.
 #[derive(Default, Clone)]
 struct Primitive {
-    vertices: Vec<MeshVertex>,
+    vertices: Vec<f32>,
     indices: Vec<u32>,
     material: MaterialProperties,
 }
@@ -36,22 +47,28 @@ struct Primitive {
 /// how they connect.
 #[derive(Default, Clone)]
 pub struct Mesh {
+    vertex_component_count: usize,
     primitives: Vec<Primitive>,
 }
 
 impl Mesh {
-    /// Gets the material properties of each primitive.
-    pub fn materials(&self) -> Vec<&MaterialProperties> {
-        self.primitives.iter().map(|p| &p.material).collect()
+    /// Gets the number of components in a mesh vertex.
+    pub fn vertex_component_count(&self) -> usize {
+        self.vertex_component_count
+    }
+
+    /// Gets the size of a mesh vertex in bytes.
+    pub fn vertex_size_bytes(&self) -> usize {
+        self.vertex_component_count * std::mem::size_of::<f32>()
     }
 
     /// Gets the vertices of each primitive.
-    pub fn vertices(&self) -> Vec<&Vec<MeshVertex>> {
+    pub fn vertices(&self) -> Vec<&Vec<f32>> {
         self.primitives.iter().map(|p| &p.vertices).collect()
     }
 
     /// Gets the flattened vertices.
-    pub fn flattened_vertices(&self) -> Vec<MeshVertex> {
+    pub fn flattened_vertices(&self) -> Vec<f32> {
         self.primitives
             .iter()
             .flat_map(|p| p.vertices.clone())
@@ -70,20 +87,33 @@ impl Mesh {
         let mut vertex_offset = 0;
         for primitive in &self.primitives {
             flattened_indices.extend(primitive.indices.iter().map(|index| vertex_offset + index));
-            vertex_offset += primitive.vertices.len() as u32;
+            vertex_offset += (primitive.vertices.len() / self.vertex_component_count) as u32;
         }
         flattened_indices
     }
 
+    /// Gets the material properties of each primitive.
+    pub fn materials(&self) -> Vec<&MaterialProperties> {
+        self.primitives.iter().map(|p| &p.material).collect()
+    }
+
     /// Loads the mesh from a file.
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
+    pub fn from_file<P: AsRef<Path>>(
+        path: P,
+        vertex_attributes: &[MeshVertexAttribute],
+    ) -> Result<Self> {
+        if vertex_attributes.is_empty() {
+            return Err(Error::invalid_argument(
+                "Mesh vertex attributes cannot be empty.",
+            ));
+        }
         let path = path.as_ref();
         if !path.exists() {
             return Err(Error::io("Mesh file not found."));
         }
 
         match Self::get_file_type(path)? {
-            MeshFileType::Gltf => Self::from_gltf_file(path),
+            MeshFileType::Gltf => Self::from_gltf_file(path, vertex_attributes),
         }
     }
 
@@ -105,7 +135,22 @@ impl Mesh {
         Err(Error::io("Unsupported mesh file type"))
     }
 
-    fn from_gltf_file(path: &Path) -> Result<Self> {
+    fn calculate_vertex_component_count(vertex_attributes: &[MeshVertexAttribute]) -> usize {
+        let mut vertex_component_count = 0;
+        for &vertex_attribute in vertex_attributes {
+            vertex_component_count += match vertex_attribute {
+                MeshVertexAttribute::Position => 3,
+                MeshVertexAttribute::Normal => 3,
+                MeshVertexAttribute::Tangent => 4,
+                MeshVertexAttribute::TextureCoordinates(_) => 2,
+                // We always use RGBA,
+                MeshVertexAttribute::Color(_) => 4,
+            }
+        }
+        vertex_component_count
+    }
+
+    fn from_gltf_file(path: &Path, vertex_attributes: &[MeshVertexAttribute]) -> Result<Self> {
         let mut mesh = Self::default();
 
         let gltf = gltf::Gltf::open(path)?;
@@ -131,6 +176,7 @@ impl Mesh {
         let mut nodes: Vec<_> = scene.nodes().map(|node| (node, Mat4::IDENTITY)).collect();
         let coordinate_conversion = Mat4::from_scale(Vec3::new(1.0, 1.0, -1.0));
 
+        mesh.vertex_component_count = Self::calculate_vertex_component_count(vertex_attributes);
         while let Some((node, parent_transform)) = nodes.pop() {
             let node_transform =
                 parent_transform * Mat4::from_cols_array_2d(&node.transform().matrix());
@@ -143,6 +189,7 @@ impl Mesh {
             };
             let transform = coordinate_conversion * node_transform;
             let normal_transform = Mat3::from_mat4(transform).inverse().transpose();
+            let swap_triangle_winding = transform.determinant() < 0.0;
 
             let gltf_primitives = gltf_mesh.primitives();
             mesh.primitives.reserve(gltf_primitives.len());
@@ -151,37 +198,89 @@ impl Mesh {
 
                 let reader =
                     gltf_primitive.reader(|buffer| Some(buffers[buffer.index()].as_slice()));
-                let positions = reader
-                    .read_positions()
-                    .ok_or(Error::fail("Failed to read the mesh primitive positions."))?;
-                let normals = reader
-                    .read_normals()
-                    .ok_or(Error::fail("Failed to read the mesh primitive normals."))?;
-                let tex_coords = reader
-                    .read_tex_coords(0)
-                    .ok_or(Error::io(
-                        "Failed to read the primitive texture coordinates.",
-                    ))?
-                    .into_f32();
+                let mut attribute_offset = 0;
+                for &vertex_attribute in vertex_attributes {
+                    let attribute_values: Vec<f32> = match vertex_attribute {
+                        MeshVertexAttribute::Position => reader
+                            .read_positions()
+                            .ok_or(Error::fail("Failed to read the mesh primitive positions."))?
+                            .flat_map(|p| transform.transform_point3(Vec3::from(p)).to_array())
+                            .collect(),
+                        MeshVertexAttribute::Normal => reader
+                            .read_normals()
+                            .ok_or(Error::fail("Failed to read the mesh primitive normals."))?
+                            .flat_map(|n| {
+                                (normal_transform * Vec3::from_array(n))
+                                    .normalize()
+                                    .to_array()
+                            })
+                            .collect(),
+                        MeshVertexAttribute::Tangent => reader
+                            .read_tangents()
+                            .ok_or(Error::fail("Failed to read the mesh primitive tangents."))?
+                            .flat_map(|t| {
+                                let tangent = transform
+                                    .transform_vector3(Vec3::new(t[0], t[1], t[2]))
+                                    .normalize();
+                                let handedness = match swap_triangle_winding {
+                                    true => -t[3],
+                                    false => t[3],
+                                };
+                                [tangent.x, tangent.y, tangent.z, handedness]
+                            })
+                            .collect(),
+                        MeshVertexAttribute::TextureCoordinates(set) => reader
+                            .read_tex_coords(set)
+                            .ok_or(Error::fail(
+                                "Failed to read the mesh primitive texture coordinates.",
+                            ))?
+                            .into_f32()
+                            .flatten()
+                            .collect(),
+                        MeshVertexAttribute::Color(set) => reader
+                            .read_colors(set)
+                            .ok_or(Error::fail("Failed to read the mesh primitive colors."))?
+                            .into_rgba_f32()
+                            .flatten()
+                            .collect(),
+                    };
+                    let component_count =
+                        Self::calculate_vertex_component_count(&[vertex_attribute]);
+                    let vertex_count = attribute_values.len() / component_count;
+                    if attribute_offset == 0 {
+                        primitive
+                            .vertices
+                            .resize(vertex_count * mesh.vertex_component_count, 0.0);
+                    } else if vertex_count != primitive.vertices.len() / mesh.vertex_component_count
+                    {
+                        return Err(Error::fail(
+                            "Mesh vertex attributes have different lengths.",
+                        ));
+                    }
 
-                primitive.vertices.reserve(positions.len());
-                for ((position, normal), uv) in positions.zip(normals).zip(tex_coords) {
-                    // Bake node transforms so the lid, body, handles, and lock keep their
-                    // placement.
-                    let position = transform.transform_point3(Vec3::from_array(position));
-                    let normal = (normal_transform * Vec3::from_array(normal)).normalize();
-                    primitive.vertices.push([
-                        position.x, position.y, position.z, normal.x, normal.y, normal.z, uv[0],
-                        uv[1],
-                    ]);
+                    for (vertex, attribute) in primitive
+                        .vertices
+                        .chunks_exact_mut(mesh.vertex_component_count)
+                        .zip(attribute_values.chunks_exact(component_count))
+                    {
+                        vertex[attribute_offset..attribute_offset + component_count]
+                            .copy_from_slice(attribute);
+                    }
+                    attribute_offset += component_count;
                 }
 
                 let topology = gltf_primitive.mode().try_into()?;
                 if let Some(indices) = reader.read_indices() {
                     primitive.indices = indices.into_u32().collect();
-                    Self::swap_triangle_winding(&transform, topology, &mut primitive.indices);
-                } else {
-                    Self::swap_triangle_winding(&transform, topology, &mut primitive.vertices);
+                    if swap_triangle_winding {
+                        Self::swap_triangle_winding(topology, &mut primitive.indices, 1);
+                    }
+                } else if swap_triangle_winding {
+                    Self::swap_triangle_winding(
+                        topology,
+                        &mut primitive.vertices,
+                        mesh.vertex_component_count,
+                    );
                 }
 
                 primitive.material = Self::read_gltf_material(&gltf_primitive.material());
@@ -208,25 +307,24 @@ impl Mesh {
     }
 
     fn swap_triangle_winding<T: Copy>(
-        transform: &Mat4,
         topology: PrimitiveTopology,
         elements: &mut Vec<T>,
+        element_size: usize,
     ) {
-        if transform.determinant() >= 0.0 {
-            return;
-        }
-
         match topology {
             PrimitiveTopology::TriangleList => {
-                for triangle in elements.as_chunks_mut::<3>().0 {
-                    triangle.swap(1, 2);
+                for triangle in elements.chunks_exact_mut(3 * element_size) {
+                    let (_, remaining) = triangle.split_at_mut(element_size);
+                    let (second, third) = remaining.split_at_mut(element_size);
+                    second.swap_with_slice(third);
                 }
             }
             PrimitiveTopology::TriangleStrip => {
-                if elements.len() >= 3 {
+                if elements.len() / element_size >= 3 {
                     // A leading degenerate triangle shifts the strip parity, reversing the
                     // winding of every original triangle without changing its vertices.
-                    elements.insert(0, elements[0]);
+                    elements.extend_from_within(..element_size);
+                    elements.rotate_right(element_size);
                 }
             }
             PrimitiveTopology::PointList
@@ -271,28 +369,83 @@ mod tests {
 
     #[test]
     fn test_from_file() {
+        let vertex_attributes = [
+            MeshVertexAttribute::Position,
+            MeshVertexAttribute::Normal,
+            MeshVertexAttribute::TextureCoordinates(0),
+        ];
         {
             const FILE_PATH: &str = "assets/treasure_chest/treasure_chest_4k.gltf";
-            assert!(Mesh::from_file(FILE_PATH).is_ok());
+            assert!(Mesh::from_file(FILE_PATH, &vertex_attributes).is_ok());
         }
 
         {
             const FILE_PATH: &str = "assets/treasure_chest/treasure_chest_diff_4k.jpg";
-            assert!(matches!(Mesh::from_file(FILE_PATH), Err(Error::Io(_))));
+            assert!(matches!(
+                Mesh::from_file(FILE_PATH, &vertex_attributes),
+                Err(Error::Io(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn test_from_file_interleaves_vertex_attributes() {
+        const FILE_PATH: &str = "assets/treasure_chest/treasure_chest_4k.gltf";
+        let positions = Mesh::from_file(FILE_PATH, &[MeshVertexAttribute::Position]).unwrap();
+        let normals = Mesh::from_file(FILE_PATH, &[MeshVertexAttribute::Normal]).unwrap();
+        let tex_coords =
+            Mesh::from_file(FILE_PATH, &[MeshVertexAttribute::TextureCoordinates(0)]).unwrap();
+        let mesh = Mesh::from_file(
+            FILE_PATH,
+            &[
+                MeshVertexAttribute::TextureCoordinates(0),
+                MeshVertexAttribute::Position,
+                MeshVertexAttribute::Normal,
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(mesh.vertex_component_count(), 8);
+        assert_eq!(mesh.vertex_size_bytes(), 8 * std::mem::size_of::<f32>());
+        assert_eq!(mesh.primitives.len(), positions.primitives.len());
+        for (i, primitive) in mesh.primitives.iter().enumerate() {
+            let positions = &positions.primitives[i].vertices;
+            let normals = &normals.primitives[i].vertices;
+            let tex_coords = &tex_coords.primitives[i].vertices;
+            assert_eq!(primitive.vertices.len(), positions.len() / 3 * 8);
+            for (j, vertex) in primitive.vertices.as_chunks::<8>().0.iter().enumerate() {
+                assert_eq!(&vertex[..2], &tex_coords[j * 2..j * 2 + 2]);
+                assert_eq!(&vertex[2..5], &positions[j * 3..j * 3 + 3]);
+                assert_eq!(&vertex[5..], &normals[j * 3..j * 3 + 3]);
+            }
+        }
+
+        // Flattened indices must reference the corresponding primitive's vertex range.
+        let indices = mesh.flattened_indices();
+        let mut index_offset = 0;
+        let mut vertex_offset = 0;
+        for primitive in &mesh.primitives {
+            let vertex_count = primitive.vertices.len() / 8;
+            for &index in &indices[index_offset..index_offset + primitive.indices.len()] {
+                assert!((vertex_offset..vertex_offset + vertex_count).contains(&(index as usize)));
+            }
+            index_offset += primitive.indices.len();
+            vertex_offset += vertex_count;
         }
     }
 
     #[test]
     fn test_flattened_indices_rebase_each_primitive() {
         let mesh = Mesh {
+            vertex_component_count: 8,
             primitives: vec![
                 Primitive {
-                    vertices: vec![[0.0; 8]; 3],
+                    vertices: vec![0.0; 8 * 3],
                     indices: vec![0, 2],
                     ..Default::default()
                 },
                 Primitive {
-                    vertices: vec![[0.0; 8]; 4],
+                    vertices: vec![0.0; 8 * 4],
                     indices: vec![1, 3],
                     ..Default::default()
                 },
@@ -303,33 +456,19 @@ mod tests {
 
     #[test]
     fn test_swap_triangle_winding() {
-        let reflection = Mat4::from_scale(Vec3::new(1.0, 1.0, -1.0));
-
-        for topology in [
-            PrimitiveTopology::PointList,
-            PrimitiveTopology::LineList,
-            PrimitiveTopology::LineStrip,
-            PrimitiveTopology::TriangleList,
-            PrimitiveTopology::TriangleStrip,
-        ] {
-            let mut indices = vec![0u32, 1, 2, 3, 4, 5];
-            Mesh::swap_triangle_winding(&Mat4::IDENTITY, topology, &mut indices);
-            assert_eq!(indices, vec![0, 1, 2, 3, 4, 5]);
-        }
-
         for topology in [
             PrimitiveTopology::PointList,
             PrimitiveTopology::LineList,
             PrimitiveTopology::LineStrip,
         ] {
             let mut indices = vec![0u32, 1, 2, 3, 4, 5];
-            Mesh::swap_triangle_winding(&reflection, topology, &mut indices);
+            Mesh::swap_triangle_winding(topology, &mut indices, 1);
             assert_eq!(indices, vec![0, 1, 2, 3, 4, 5]);
         }
 
         {
             let mut indices = vec![0u32, 1, 2, 3, 4, 5];
-            Mesh::swap_triangle_winding(&reflection, PrimitiveTopology::TriangleList, &mut indices);
+            Mesh::swap_triangle_winding(PrimitiveTopology::TriangleList, &mut indices, 1);
             assert_eq!(indices, vec![0, 2, 1, 3, 5, 4]);
         }
 
@@ -359,21 +498,32 @@ mod tests {
             for triangle in &mut expected {
                 triangle.swap(1, 2);
             }
-            Mesh::swap_triangle_winding(
-                &reflection,
-                PrimitiveTopology::TriangleStrip,
-                &mut indices,
-            );
+            Mesh::swap_triangle_winding(PrimitiveTopology::TriangleStrip, &mut indices, 1);
             assert_eq!(strip_triangles(&indices), expected);
             if count < 3 {
                 assert_eq!(indices, original);
             }
         }
 
-        // Non-indexed geometry must move the complete vertex, including its normal and UV.
-        let mut vertices: Vec<MeshVertex> = vec![[1.0; 8], [2.0; 8], [3.0; 8]];
-        Mesh::swap_triangle_winding(&reflection, PrimitiveTopology::TriangleList, &mut vertices);
-        assert_eq!(vertices, vec![[1.0; 8], [3.0; 8], [2.0; 8]]);
+        // Non-indexed winding must preserve the complete interleaved vertex records.
+        let original: Vec<f32> = (0..48).map(|value| value as f32).collect();
+        let mut vertices = original.clone();
+        Mesh::swap_triangle_winding(PrimitiveTopology::TriangleList, &mut vertices, 8);
+        let expected: Vec<f32> = [0, 2, 1, 3, 5, 4]
+            .into_iter()
+            .flat_map(|i| original[i * 8..i * 8 + 8].iter().copied())
+            .collect();
+        assert_eq!(vertices, expected);
+
+        let mut vertices = original.clone();
+        Mesh::swap_triangle_winding(PrimitiveTopology::TriangleStrip, &mut vertices, 8);
+        assert_eq!(&vertices[..8], &original[..8]);
+        assert_eq!(&vertices[8..], original.as_slice());
+        for count in 0..3 {
+            let mut vertices = original[..count * 8].to_vec();
+            Mesh::swap_triangle_winding(PrimitiveTopology::TriangleStrip, &mut vertices, 8);
+            assert_eq!(vertices, original[..count * 8]);
+        }
     }
 
     #[test]
