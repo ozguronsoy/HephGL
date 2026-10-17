@@ -4,7 +4,6 @@ use heph_gl::{
     camera::{Camera, Projection},
     graphics_device::Feature::AnisotropicFiltering,
     light::Lighting,
-    material::MaterialProperties,
     math::{Mat4, Quat, Vec3},
     mesh::Mesh,
     renderers::{
@@ -115,10 +114,9 @@ fn example(
     let image = image::open(IMAGE_PATH).unwrap().to_rgba8();
     let arm = image::open(ARM_PATH).unwrap().to_rgba8();
     let normal = image::open(NORMAL_PATH).unwrap().to_rgba8();
-    let material = MaterialProperties {
-        metallicness: 1.0,
-        ..Default::default()
-    };
+
+    // All primitives in this chest share the same material.
+    let material = mesh.materials()[0];
     let lighting = Lighting {
         direction: Vec3::new(0.5, -0.8, 1.0),
         intensity: 3.0,

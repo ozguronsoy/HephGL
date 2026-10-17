@@ -4,8 +4,11 @@ use std::{
     path::Path,
 };
 
+use renkrs::RGBA;
+
 use crate::{
     Error, Result,
+    material::MaterialProperties,
     math::{Mat3, Mat4, Vec3},
     renderers::settings::PrimitiveTopology,
 };
@@ -26,6 +29,7 @@ enum MeshFileType {
 struct Primitive {
     vertices: Vec<MeshVertex>,
     indices: Vec<u32>,
+    material: MaterialProperties,
 }
 
 /// Represents a 3D shape assembled from parts, with each part describing points on its surface and
@@ -36,6 +40,11 @@ pub struct Mesh {
 }
 
 impl Mesh {
+    /// Gets the material properties of each primitive.
+    pub fn materials(&self) -> Vec<&MaterialProperties> {
+        self.primitives.iter().map(|p| &p.material).collect()
+    }
+
     /// Gets the vertices of each primitive.
     pub fn vertices(&self) -> Vec<&Vec<MeshVertex>> {
         self.primitives.iter().map(|p| &p.vertices).collect()
@@ -175,11 +184,27 @@ impl Mesh {
                     Self::swap_triangle_winding(&transform, topology, &mut primitive.vertices);
                 }
 
+                primitive.material = Self::read_gltf_material(&gltf_primitive.material());
                 mesh.primitives.push(primitive);
             }
         }
 
         Ok(mesh)
+    }
+
+    fn read_gltf_material(material: &gltf::Material<'_>) -> MaterialProperties {
+        let pbr = material.pbr_metallic_roughness();
+        let [r, g, b, a] = pbr.base_color_factor();
+
+        MaterialProperties {
+            base_color: RGBA::new(r, g, b, a),
+            roughness: pbr.roughness_factor(),
+            metallicness: pbr.metallic_factor(),
+            normal_scale: material
+                .normal_texture()
+                .map_or(1.0, |texture| texture.scale()),
+            ..Default::default()
+        }
     }
 
     fn swap_triangle_winding<T: Copy>(
@@ -264,10 +289,12 @@ mod tests {
                 Primitive {
                     vertices: vec![[0.0; 8]; 3],
                     indices: vec![0, 2],
+                    ..Default::default()
                 },
                 Primitive {
                     vertices: vec![[0.0; 8]; 4],
                     indices: vec![1, 3],
+                    ..Default::default()
                 },
             ],
         };
