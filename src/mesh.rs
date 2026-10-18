@@ -40,7 +40,12 @@ pub enum MeshVertexAttribute {
 struct Primitive {
     vertices: Vec<f32>,
     indices: Vec<u32>,
-    material: MaterialProperties,
+    material_index: usize,
+    base_color_texture_index: Option<usize>,
+    arm_texture_index: Option<usize>,
+    normal_texture_index: Option<usize>,
+    emissive_texture_index: Option<usize>,
+    occlusion_texture_index: Option<usize>,
 }
 
 /// Represents a 3D shape assembled from parts, with each part describing points on its surface and
@@ -49,6 +54,8 @@ struct Primitive {
 pub struct Mesh {
     vertex_component_count: usize,
     primitives: Vec<Primitive>,
+    materials: Vec<MaterialProperties>,
+    texture_datas: Vec<Vec<u8>>,
 }
 
 impl Mesh {
@@ -92,9 +99,9 @@ impl Mesh {
         flattened_indices
     }
 
-    /// Gets the material properties of each primitive.
-    pub fn materials(&self) -> Vec<&MaterialProperties> {
-        self.primitives.iter().map(|p| &p.material).collect()
+    /// Gets the material properties used by the mesh.
+    pub fn materials(&self) -> &Vec<MaterialProperties> {
+        &self.materials
     }
 
     /// Loads the mesh from a file.
@@ -175,6 +182,41 @@ impl Mesh {
             .ok_or(Error::io("Failed to read the glTF file."))?;
         let mut nodes: Vec<_> = scene.nodes().map(|node| (node, Mat4::IDENTITY)).collect();
         let coordinate_conversion = Mat4::from_scale(Vec3::new(1.0, 1.0, -1.0));
+
+        // First material is the default glTF material.
+        mesh.materials.reserve(gltf.materials().len() + 1);
+        mesh.materials.push(MaterialProperties {
+            metallicness: 1.0,
+            ..Default::default()
+        });
+        for ref material in gltf.materials() {
+            let pbr = material.pbr_metallic_roughness();
+            let [r, g, b, a] = pbr.base_color_factor();
+            mesh.materials.push(MaterialProperties {
+                base_color: RGBA::new(r, g, b, a),
+                roughness: pbr.roughness_factor(),
+                metallicness: pbr.metallic_factor(),
+                normal_scale: material
+                    .normal_texture()
+                    .map_or(1.0, |texture| texture.scale()),
+                ..Default::default()
+            });
+        }
+
+        mesh.texture_datas.reserve(gltf.images().len());
+        for ref image in gltf.images() {
+            let view = match image.source() {
+                gltf::image::Source::View { view, .. } => view,
+                gltf::image::Source::Uri { .. } => {
+                    // Push an empty vector to keep the texture indices of primitives valid.
+                    mesh.texture_datas.push(Vec::default());
+                    continue;
+                }
+            };
+            let buffer = &buffers[view.buffer().index()];
+            mesh.texture_datas
+                .push(buffer[view.offset()..view.offset() + view.length()].to_vec());
+        }
 
         mesh.vertex_component_count = Self::calculate_vertex_component_count(vertex_attributes);
         while let Some((node, parent_transform)) = nodes.pop() {
@@ -283,27 +325,31 @@ impl Mesh {
                     );
                 }
 
-                primitive.material = Self::read_gltf_material(&gltf_primitive.material());
+                let material = gltf_primitive.material();
+                primitive.material_index = material.index().map_or(0, |i| i + 1);
+                primitive.base_color_texture_index = material
+                    .pbr_metallic_roughness()
+                    .base_color_texture()
+                    .map(|i| i.texture().source().index());
+                primitive.arm_texture_index = material
+                    .pbr_metallic_roughness()
+                    .metallic_roughness_texture()
+                    .map(|i| i.texture().source().index());
+                primitive.normal_texture_index = material
+                    .normal_texture()
+                    .map(|i| i.texture().source().index());
+                primitive.emissive_texture_index = material
+                    .emissive_texture()
+                    .map(|i| i.texture().source().index());
+                primitive.occlusion_texture_index = material
+                    .occlusion_texture()
+                    .map(|i| i.texture().source().index());
+
                 mesh.primitives.push(primitive);
             }
         }
 
         Ok(mesh)
-    }
-
-    fn read_gltf_material(material: &gltf::Material<'_>) -> MaterialProperties {
-        let pbr = material.pbr_metallic_roughness();
-        let [r, g, b, a] = pbr.base_color_factor();
-
-        MaterialProperties {
-            base_color: RGBA::new(r, g, b, a),
-            roughness: pbr.roughness_factor(),
-            metallicness: pbr.metallic_factor(),
-            normal_scale: material
-                .normal_texture()
-                .map_or(1.0, |texture| texture.scale()),
-            ..Default::default()
-        }
     }
 
     fn swap_triangle_winding<T: Copy>(
@@ -450,6 +496,7 @@ mod tests {
                     ..Default::default()
                 },
             ],
+            ..Default::default()
         };
         assert_eq!(mesh.flattened_indices(), vec![0, 2, 4, 6]);
     }
