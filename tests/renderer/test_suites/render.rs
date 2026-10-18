@@ -1109,7 +1109,12 @@ where
         let arm = heph_expect_success!(image::open(ARM_PATH)).to_rgba8();
         let normal = heph_expect_success!(image::open(NORMAL_PATH)).to_rgba8();
 
-        let material = mesh.materials()[0];
+        let material = *heph_expect_success!(
+            mesh.parts()
+                .next()
+                .ok_or(heph_gl::Error::invalid_operation("Empty mesh"))
+        )
+        .material();
         let lighting = Lighting {
             direction: Vec3::new(0.5, -0.8, 1.0),
             intensity: 3.0,

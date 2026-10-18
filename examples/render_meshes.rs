@@ -74,6 +74,7 @@ fn example(
         ],
     )
     .unwrap();
+
     let mut vertices = mesh.flattened_vertices();
     let indices = mesh.flattened_indices();
 
@@ -123,8 +124,8 @@ fn example(
     let arm = image::open(ARM_PATH).unwrap().to_rgba8();
     let normal = image::open(NORMAL_PATH).unwrap().to_rgba8();
 
-    // All primitives in this chest share the same material.
-    let material = mesh.materials()[0];
+    // All parts in this chest share the same material.
+    let material = *mesh.parts().next().unwrap().material();
     let lighting = Lighting {
         direction: Vec3::new(0.5, -0.8, 1.0),
         intensity: 3.0,

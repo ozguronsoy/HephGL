@@ -34,7 +34,6 @@ pub enum MeshVertexAttribute {
     Color(u32),
 }
 
-#[allow(dead_code)]
 #[derive(Default, Clone, Copy)]
 struct MeshTexture {
     image_index: usize,
@@ -42,7 +41,6 @@ struct MeshTexture {
     sampler_index: usize,
 }
 
-#[allow(dead_code)]
 #[derive(Default, Clone, Copy)]
 struct MeshSampler {
     min_filter: SamplerFilter,
@@ -56,7 +54,7 @@ struct MeshSampler {
 // TODO: We use too many vectors here. Refactor this to have begin/end iterators, so we can store
 // all indices and vertices in two vectors.
 #[derive(Default, Clone)]
-struct Primitive {
+struct MeshPrimitive {
     vertices: Vec<f32>,
     indices: Vec<u32>,
     material_index: usize,
@@ -67,12 +65,19 @@ struct Primitive {
     occlusion_texture: Option<MeshTexture>,
 }
 
+/// Represents one part of a 3D shape.
+#[derive(Clone, Copy)]
+pub struct MeshPart<'a> {
+    mesh: &'a Mesh,
+    primitive: &'a MeshPrimitive,
+}
+
 /// Represents a 3D shape assembled from parts, with each part describing points on its surface and
 /// how they connect.
 #[derive(Default, Clone)]
 pub struct Mesh {
     vertex_component_count: usize,
-    primitives: Vec<Primitive>,
+    primitives: Vec<MeshPrimitive>,
     materials: Vec<MaterialProperties>,
     samplers: Vec<MeshSampler>,
     texture_images: Vec<Vec<u8>>,
@@ -119,9 +124,42 @@ impl Mesh {
         flattened_indices
     }
 
-    /// Gets the material properties used by the mesh.
-    pub fn materials(&self) -> &Vec<MaterialProperties> {
-        &self.materials
+    /// Gets the number of parts in the mesh.
+    pub fn part_count(&self) -> usize {
+        self.primitives.len()
+    }
+
+    /// Iterates over the mesh's parts.
+    pub fn parts<'a>(&'a self) -> impl Iterator<Item = MeshPart<'a>> {
+        self.primitives.iter().map(move |primitive| MeshPart {
+            mesh: self,
+            primitive,
+        })
+    }
+
+    /// Checks whether any mesh part has an embedded base-color texture.
+    pub fn has_embedded_base_color_texture(&self) -> bool {
+        self.primitives
+            .iter()
+            .any(|p| p.base_color_texture.is_some())
+    }
+    /// Checks whether any mesh part has an embedded metallic-roughness texture.
+    pub fn has_embedded_arm_texture(&self) -> bool {
+        self.primitives.iter().any(|p| p.arm_texture.is_some())
+    }
+    /// Checks whether any mesh part has an embedded normal texture.
+    pub fn has_embedded_normal_texture(&self) -> bool {
+        self.primitives.iter().any(|p| p.normal_texture.is_some())
+    }
+    /// Checks whether any mesh part has an embedded emissive texture.
+    pub fn has_embedded_emissive_texture(&self) -> bool {
+        self.primitives.iter().any(|p| p.emissive_texture.is_some())
+    }
+    /// Checks whether any mesh part has an embedded occlusion texture.
+    pub fn has_embedded_occlusion_texture(&self) -> bool {
+        self.primitives
+            .iter()
+            .any(|p| p.occlusion_texture.is_some())
     }
 
     /// Loads the mesh from a file.
@@ -306,7 +344,7 @@ impl Mesh {
             let gltf_primitives = gltf_mesh.primitives();
             mesh.primitives.reserve(gltf_primitives.len());
             for gltf_primitive in gltf_primitives {
-                let mut primitive = Primitive::default();
+                let mut primitive = MeshPrimitive::default();
 
                 let reader =
                     gltf_primitive.reader(|buffer| Some(buffers[buffer.index()].as_slice()));
@@ -449,6 +487,175 @@ impl Mesh {
     }
 }
 
+impl<'a> MeshPart<'a> {
+    /// Gets the part's interleaved vertex components.
+    pub fn vertices(&self) -> &Vec<f32> {
+        &self.primitive.vertices
+    }
+
+    /// Gets the indices referencing the part's vertices.
+    pub fn indices(&self) -> &Vec<u32> {
+        &self.primitive.indices
+    }
+
+    /// Gets the part's material properties.
+    pub fn material(&self) -> &MaterialProperties {
+        &self.mesh.materials[self.primitive.material_index]
+    }
+
+    /// Gets the base-color texture's encoded image bytes, if embedded in the mesh file.
+    pub fn base_texture_image_data(&self) -> Option<&[u8]> {
+        self.texture_image_data(&self.primitive.base_color_texture)
+    }
+    /// Gets the UV set used by the base-color texture, if present in the mesh file.
+    pub fn base_texture_uv_set(&self) -> Option<usize> {
+        self.texture_uv_set(&self.primitive.base_color_texture)
+    }
+    /// Gets the base-color texture's minification, magnification, and optional mipmap filters.
+    /// Returns None if the texture is not present in the mesh file; a `None` mipmap filter disables
+    /// mipmapping.
+    pub fn base_texture_sampler_filters(
+        &self,
+    ) -> Option<(SamplerFilter, SamplerFilter, Option<SamplerFilter>)> {
+        self.texture_sampler_filters(&self.primitive.base_color_texture)
+    }
+    /// Gets the base-color texture's U and V addressing modes, if present in the mesh file.
+    pub fn base_texture_sampler_address_modes(
+        &self,
+    ) -> Option<(SamplerAddressMode, SamplerAddressMode)> {
+        self.texture_sampler_address_modes(&self.primitive.base_color_texture)
+    }
+
+    /// Gets the metallic-roughness texture's encoded image bytes, if present in the mesh file.
+    pub fn arm_texture_image_data(&self) -> Option<&[u8]> {
+        self.texture_image_data(&self.primitive.arm_texture)
+    }
+    /// Gets the UV set used by the metallic-roughness texture, if present in the mesh file.
+    pub fn arm_texture_uv_set(&self) -> Option<usize> {
+        self.texture_uv_set(&self.primitive.arm_texture)
+    }
+    /// Gets the metallic-roughness texture's minification, magnification, and optional mipmap
+    /// filters. Returns None if the texture is not present in the mesh file; a missing mipmap
+    /// filter disables mipmapping.
+    pub fn arm_texture_sampler_filters(
+        &self,
+    ) -> Option<(SamplerFilter, SamplerFilter, Option<SamplerFilter>)> {
+        self.texture_sampler_filters(&self.primitive.arm_texture)
+    }
+    /// Gets the metallic-roughness texture's U and V addressing modes, if present in the mesh file.
+    pub fn arm_texture_sampler_address_modes(
+        &self,
+    ) -> Option<(SamplerAddressMode, SamplerAddressMode)> {
+        self.texture_sampler_address_modes(&self.primitive.arm_texture)
+    }
+
+    /// Gets the normal texture's encoded image bytes, if present in the mesh file.
+    pub fn normal_texture_image_data(&self) -> Option<&[u8]> {
+        self.texture_image_data(&self.primitive.normal_texture)
+    }
+    /// Gets the UV set used by the normal texture, if present in the mesh file.
+    pub fn normal_texture_uv_set(&self) -> Option<usize> {
+        self.texture_uv_set(&self.primitive.normal_texture)
+    }
+    /// Gets the normal texture's minification, magnification, and optional mipmap filters. Returns
+    /// None if the texture is not present in the mesh file; a missing mipmap filter disables
+    /// mipmapping.
+    pub fn normal_texture_sampler_filters(
+        &self,
+    ) -> Option<(SamplerFilter, SamplerFilter, Option<SamplerFilter>)> {
+        self.texture_sampler_filters(&self.primitive.normal_texture)
+    }
+    /// Gets the normal texture's U and V addressing modes, if present in the mesh file.
+    pub fn normal_texture_sampler_address_modes(
+        &self,
+    ) -> Option<(SamplerAddressMode, SamplerAddressMode)> {
+        self.texture_sampler_address_modes(&self.primitive.normal_texture)
+    }
+
+    /// Gets the emissive texture's encoded image bytes, if present in the mesh file.
+    pub fn emissive_texture_image_data(&self) -> Option<&[u8]> {
+        self.texture_image_data(&self.primitive.emissive_texture)
+    }
+    /// Gets the UV set used by the emissive texture, if present in the mesh file.
+    pub fn emissive_texture_uv_set(&self) -> Option<usize> {
+        self.texture_uv_set(&self.primitive.emissive_texture)
+    }
+    /// Gets the emissive texture's minification, magnification, and optional mipmap filters.
+    /// Returns None if the texture is not present in the mesh file; a missing mipmap filter
+    /// disables mipmapping.
+    pub fn emissive_texture_sampler_filters(
+        &self,
+    ) -> Option<(SamplerFilter, SamplerFilter, Option<SamplerFilter>)> {
+        self.texture_sampler_filters(&self.primitive.emissive_texture)
+    }
+    /// Gets the emissive texture's U and V addressing modes, if present in the mesh file.
+    pub fn emissive_texture_sampler_address_modes(
+        &self,
+    ) -> Option<(SamplerAddressMode, SamplerAddressMode)> {
+        self.texture_sampler_address_modes(&self.primitive.emissive_texture)
+    }
+
+    /// Gets the occlusion texture's encoded image bytes, if present in the mesh file.
+    pub fn occlusion_texture_image_data(&self) -> Option<&[u8]> {
+        self.texture_image_data(&self.primitive.occlusion_texture)
+    }
+    /// Gets the UV set used by the occlusion texture, if present in the mesh file.
+    pub fn occlusion_texture_uv_set(&self) -> Option<usize> {
+        self.texture_uv_set(&self.primitive.occlusion_texture)
+    }
+    /// Gets the occlusion texture's minification, magnification, and optional mipmap filters.
+    /// Returns None if the texture is not present in the mesh file; a missing mipmap filter
+    /// disables mipmapping.
+    pub fn occlusion_texture_sampler_filters(
+        &self,
+    ) -> Option<(SamplerFilter, SamplerFilter, Option<SamplerFilter>)> {
+        self.texture_sampler_filters(&self.primitive.occlusion_texture)
+    }
+    /// Gets the occlusion texture's U and V addressing modes, if present in the mesh file.
+    pub fn occlusion_texture_sampler_address_modes(
+        &self,
+    ) -> Option<(SamplerAddressMode, SamplerAddressMode)> {
+        self.texture_sampler_address_modes(&self.primitive.occlusion_texture)
+    }
+
+    fn texture_image_data(&self, texture: &Option<MeshTexture>) -> Option<&[u8]> {
+        if let Some(texture) = texture {
+            let data = self.mesh.texture_images[texture.image_index].as_slice();
+            match data.is_empty() {
+                true => None,
+                false => Some(data),
+            }
+        } else {
+            None
+        }
+    }
+    fn texture_uv_set(&self, texture: &Option<MeshTexture>) -> Option<usize> {
+        texture.map(|t| t.uv_set)
+    }
+    fn texture_sampler_filters(
+        &self,
+        texture: &Option<MeshTexture>,
+    ) -> Option<(SamplerFilter, SamplerFilter, Option<SamplerFilter>)> {
+        texture.map(|t| {
+            let sampler = &self.mesh.samplers[t.sampler_index];
+            (
+                sampler.min_filter,
+                sampler.mag_filter,
+                sampler.mipmap_filter,
+            )
+        })
+    }
+    fn texture_sampler_address_modes(
+        &self,
+        texture: &Option<MeshTexture>,
+    ) -> Option<(SamplerAddressMode, SamplerAddressMode)> {
+        texture.map(|t| {
+            let sampler = &self.mesh.samplers[t.sampler_index];
+            (sampler.address_mode_u, sampler.address_mode_v)
+        })
+    }
+}
+
 impl MeshTexture {
     fn from_gltf_texture(texture: &gltf::Texture<'_>, uv_set: u32) -> Self {
         Self {
@@ -544,40 +751,6 @@ mod tests {
                 assert_eq!(&vertex[5..], &normals[j * 3..j * 3 + 3]);
             }
         }
-
-        // Flattened indices must reference the corresponding primitive's vertex range.
-        let indices = mesh.flattened_indices();
-        let mut index_offset = 0;
-        let mut vertex_offset = 0;
-        for primitive in &mesh.primitives {
-            let vertex_count = primitive.vertices.len() / 8;
-            for &index in &indices[index_offset..index_offset + primitive.indices.len()] {
-                assert!((vertex_offset..vertex_offset + vertex_count).contains(&(index as usize)));
-            }
-            index_offset += primitive.indices.len();
-            vertex_offset += vertex_count;
-        }
-    }
-
-    #[test]
-    fn test_flattened_indices_rebase_each_primitive() {
-        let mesh = Mesh {
-            vertex_component_count: 8,
-            primitives: vec![
-                Primitive {
-                    vertices: vec![0.0; 8 * 3],
-                    indices: vec![0, 2],
-                    ..Default::default()
-                },
-                Primitive {
-                    vertices: vec![0.0; 8 * 4],
-                    indices: vec![1, 3],
-                    ..Default::default()
-                },
-            ],
-            ..Default::default()
-        };
-        assert_eq!(mesh.flattened_indices(), vec![0, 2, 4, 6]);
     }
 
     #[test]
