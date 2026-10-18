@@ -56,7 +56,8 @@ struct MeshSampler {
 #[derive(Default, Clone)]
 struct MeshPrimitive {
     vertices: Vec<f32>,
-    indices: Vec<u32>,
+    // start index, end index.
+    indices_range: (usize, usize),
     material_index: usize,
     base_color_texture: Option<MeshTexture>,
     arm_texture: Option<MeshTexture>,
@@ -77,6 +78,7 @@ pub struct MeshPart<'a> {
 #[derive(Default, Clone)]
 pub struct Mesh {
     vertex_component_count: usize,
+    indices: Vec<u32>,
     primitives: Vec<MeshPrimitive>,
     materials: Vec<MaterialProperties>,
     samplers: Vec<MeshSampler>,
@@ -107,18 +109,15 @@ impl Mesh {
             .collect()
     }
 
-    /// Gets the indices of each primitive.
-    pub fn indices(&self) -> Vec<&Vec<u32>> {
-        self.primitives.iter().map(|p| &p.indices).collect()
-    }
-
     /// Gets the flattened indices.
     pub fn flattened_indices(&self) -> Vec<u32> {
-        let mut flattened_indices =
-            Vec::with_capacity(self.primitives.iter().map(|p| p.indices.len()).sum());
+        let mut flattened_indices = self.indices.clone();
         let mut vertex_offset = 0;
         for primitive in &self.primitives {
-            flattened_indices.extend(primitive.indices.iter().map(|index| vertex_offset + index));
+            let (ib, ie) = primitive.indices_range;
+            for index in &mut flattened_indices[ib..ie] {
+                *index += vertex_offset;
+            }
             vertex_offset += (primitive.vertices.len() / self.vertex_component_count) as u32;
         }
         flattened_indices
@@ -421,14 +420,17 @@ impl Mesh {
 
                 let topology = gltf_primitive.mode().try_into()?;
                 if let Some(indices) = reader.read_indices() {
-                    primitive.indices = indices.into_u32().collect();
+                    let ib = mesh.indices.len();
+                    mesh.indices.extend(indices.into_u32());
                     if swap_triangle_winding {
-                        Self::swap_triangle_winding(topology, &mut primitive.indices, 1);
+                        Self::swap_triangle_winding(topology, &mut mesh.indices, ib, 1);
                     }
+                    primitive.indices_range = (ib, mesh.indices.len());
                 } else if swap_triangle_winding {
                     Self::swap_triangle_winding(
                         topology,
                         &mut primitive.vertices,
+                        0,
                         mesh.vertex_component_count,
                     );
                 }
@@ -462,22 +464,23 @@ impl Mesh {
     fn swap_triangle_winding<T: Copy>(
         topology: PrimitiveTopology,
         elements: &mut Vec<T>,
+        start_index: usize,
         element_size: usize,
     ) {
         match topology {
             PrimitiveTopology::TriangleList => {
-                for triangle in elements.chunks_exact_mut(3 * element_size) {
+                for triangle in elements[start_index..].chunks_exact_mut(3 * element_size) {
                     let (_, remaining) = triangle.split_at_mut(element_size);
                     let (second, third) = remaining.split_at_mut(element_size);
                     second.swap_with_slice(third);
                 }
             }
             PrimitiveTopology::TriangleStrip => {
-                if elements.len() / element_size >= 3 {
+                if (elements.len() - start_index) / element_size >= 3 {
                     // A leading degenerate triangle shifts the strip parity, reversing the
                     // winding of every original triangle without changing its vertices.
-                    elements.extend_from_within(..element_size);
-                    elements.rotate_right(element_size);
+                    elements.extend_from_within(start_index..start_index + element_size);
+                    elements[start_index..].rotate_right(element_size);
                 }
             }
             PrimitiveTopology::PointList
@@ -494,8 +497,9 @@ impl<'a> MeshPart<'a> {
     }
 
     /// Gets the indices referencing the part's vertices.
-    pub fn indices(&self) -> &Vec<u32> {
-        &self.primitive.indices
+    pub fn indices(&self) -> &[u32] {
+        let (ib, ie) = self.primitive.indices_range;
+        &self.mesh.indices[ib..ie]
     }
 
     /// Gets the part's material properties.
@@ -761,13 +765,13 @@ mod tests {
             PrimitiveTopology::LineStrip,
         ] {
             let mut indices = vec![0u32, 1, 2, 3, 4, 5];
-            Mesh::swap_triangle_winding(topology, &mut indices, 1);
+            Mesh::swap_triangle_winding(topology, &mut indices, 0, 1);
             assert_eq!(indices, vec![0, 1, 2, 3, 4, 5]);
         }
 
         {
             let mut indices = vec![0u32, 1, 2, 3, 4, 5];
-            Mesh::swap_triangle_winding(PrimitiveTopology::TriangleList, &mut indices, 1);
+            Mesh::swap_triangle_winding(PrimitiveTopology::TriangleList, &mut indices, 0, 1);
             assert_eq!(indices, vec![0, 2, 1, 3, 5, 4]);
         }
 
@@ -797,17 +801,30 @@ mod tests {
             for triangle in &mut expected {
                 triangle.swap(1, 2);
             }
-            Mesh::swap_triangle_winding(PrimitiveTopology::TriangleStrip, &mut indices, 1);
+            Mesh::swap_triangle_winding(PrimitiveTopology::TriangleStrip, &mut indices, 0, 1);
             assert_eq!(strip_triangles(&indices), expected);
             if count < 3 {
                 assert_eq!(indices, original);
             }
+
+            // Earlier primitives must remain unchanged in shared index storage.
+            let prefix = [10, 11, 12];
+            let mut shared_indices = prefix.to_vec();
+            shared_indices.extend_from_slice(&original);
+            Mesh::swap_triangle_winding(
+                PrimitiveTopology::TriangleStrip,
+                &mut shared_indices,
+                prefix.len(),
+                1,
+            );
+            assert_eq!(&shared_indices[..prefix.len()], &prefix);
+            assert_eq!(&shared_indices[prefix.len()..], indices.as_slice());
         }
 
         // Non-indexed winding must preserve the complete interleaved vertex records.
         let original: Vec<f32> = (0..48).map(|value| value as f32).collect();
         let mut vertices = original.clone();
-        Mesh::swap_triangle_winding(PrimitiveTopology::TriangleList, &mut vertices, 8);
+        Mesh::swap_triangle_winding(PrimitiveTopology::TriangleList, &mut vertices, 0, 8);
         let expected: Vec<f32> = [0, 2, 1, 3, 5, 4]
             .into_iter()
             .flat_map(|i| original[i * 8..i * 8 + 8].iter().copied())
@@ -815,12 +832,12 @@ mod tests {
         assert_eq!(vertices, expected);
 
         let mut vertices = original.clone();
-        Mesh::swap_triangle_winding(PrimitiveTopology::TriangleStrip, &mut vertices, 8);
+        Mesh::swap_triangle_winding(PrimitiveTopology::TriangleStrip, &mut vertices, 0, 8);
         assert_eq!(&vertices[..8], &original[..8]);
         assert_eq!(&vertices[8..], original.as_slice());
         for count in 0..3 {
             let mut vertices = original[..count * 8].to_vec();
-            Mesh::swap_triangle_winding(PrimitiveTopology::TriangleStrip, &mut vertices, 8);
+            Mesh::swap_triangle_winding(PrimitiveTopology::TriangleStrip, &mut vertices, 0, 8);
             assert_eq!(vertices, original[..count * 8]);
         }
     }
