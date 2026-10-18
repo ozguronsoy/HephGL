@@ -4,13 +4,14 @@ use std::{
     path::Path,
 };
 
+use gltf::texture::MinFilter;
 use renkrs::RGBA;
 
 use crate::{
     Error, Result,
     material::MaterialProperties,
     math::{Mat3, Mat4, Vec3},
-    renderers::settings::PrimitiveTopology,
+    renderers::settings::{PrimitiveTopology, SamplerAddressMode, SamplerFilter},
 };
 
 /// Defines the supported file types for loading meshes.
@@ -33,6 +34,24 @@ pub enum MeshVertexAttribute {
     Color(u32),
 }
 
+#[allow(dead_code)]
+#[derive(Default, Clone, Copy)]
+struct MeshTexture {
+    image_index: usize,
+    uv_set: usize,
+    sampler_index: usize,
+}
+
+#[allow(dead_code)]
+#[derive(Default, Clone, Copy)]
+struct MeshSampler {
+    min_filter: SamplerFilter,
+    mag_filter: SamplerFilter,
+    mipmap_filter: Option<SamplerFilter>,
+    address_mode_u: SamplerAddressMode,
+    address_mode_v: SamplerAddressMode,
+}
+
 /// One part of a 3D shape, described by points and references that connect them.
 // TODO: We use too many vectors here. Refactor this to have begin/end iterators, so we can store
 // all indices and vertices in two vectors.
@@ -41,11 +60,11 @@ struct Primitive {
     vertices: Vec<f32>,
     indices: Vec<u32>,
     material_index: usize,
-    base_color_texture_index: Option<usize>,
-    arm_texture_index: Option<usize>,
-    normal_texture_index: Option<usize>,
-    emissive_texture_index: Option<usize>,
-    occlusion_texture_index: Option<usize>,
+    base_color_texture: Option<MeshTexture>,
+    arm_texture: Option<MeshTexture>,
+    normal_texture: Option<MeshTexture>,
+    emissive_texture: Option<MeshTexture>,
+    occlusion_texture: Option<MeshTexture>,
 }
 
 /// Represents a 3D shape assembled from parts, with each part describing points on its surface and
@@ -55,7 +74,8 @@ pub struct Mesh {
     vertex_component_count: usize,
     primitives: Vec<Primitive>,
     materials: Vec<MaterialProperties>,
-    texture_datas: Vec<Vec<u8>>,
+    samplers: Vec<MeshSampler>,
+    texture_images: Vec<Vec<u8>>,
 }
 
 impl Mesh {
@@ -203,18 +223,68 @@ impl Mesh {
             });
         }
 
-        mesh.texture_datas.reserve(gltf.images().len());
+        // First sampler is the default glTF sampler.
+        mesh.samplers.reserve(gltf.samplers().len() + 1);
+        mesh.samplers.push(MeshSampler {
+            address_mode_u: SamplerAddressMode::Repeat,
+            address_mode_v: SamplerAddressMode::Repeat,
+            ..Default::default()
+        });
+        for ref sampler in gltf.samplers() {
+            fn convert_wrapping_mode(mode: gltf::texture::WrappingMode) -> SamplerAddressMode {
+                match mode {
+                    gltf::texture::WrappingMode::ClampToEdge => SamplerAddressMode::ClampToEdge,
+                    gltf::texture::WrappingMode::MirroredRepeat => {
+                        SamplerAddressMode::MirroredRepeat
+                    }
+                    gltf::texture::WrappingMode::Repeat => SamplerAddressMode::Repeat,
+                }
+            }
+            let (min_filter, mipmap_filter) =
+                sampler
+                    .min_filter()
+                    .map_or((SamplerFilter::default(), None), |f| match f {
+                        MinFilter::Linear => (SamplerFilter::Linear, None),
+                        MinFilter::LinearMipmapLinear => {
+                            (SamplerFilter::Linear, Some(SamplerFilter::Linear))
+                        }
+                        MinFilter::LinearMipmapNearest => {
+                            (SamplerFilter::Linear, Some(SamplerFilter::Nearest))
+                        }
+                        MinFilter::Nearest => (SamplerFilter::Nearest, None),
+                        MinFilter::NearestMipmapLinear => {
+                            (SamplerFilter::Nearest, Some(SamplerFilter::Linear))
+                        }
+                        MinFilter::NearestMipmapNearest => {
+                            (SamplerFilter::Nearest, Some(SamplerFilter::Nearest))
+                        }
+                    });
+            mesh.samplers.push(MeshSampler {
+                address_mode_u: convert_wrapping_mode(sampler.wrap_s()),
+                address_mode_v: convert_wrapping_mode(sampler.wrap_t()),
+                min_filter,
+                mipmap_filter,
+                mag_filter: sampler
+                    .mag_filter()
+                    .map_or(SamplerFilter::default(), |f| match f {
+                        gltf::texture::MagFilter::Linear => SamplerFilter::Linear,
+                        gltf::texture::MagFilter::Nearest => SamplerFilter::Nearest,
+                    }),
+            });
+        }
+
+        mesh.texture_images.reserve(gltf.images().len());
         for ref image in gltf.images() {
             let view = match image.source() {
                 gltf::image::Source::View { view, .. } => view,
                 gltf::image::Source::Uri { .. } => {
-                    // Push an empty vector to keep the texture indices of primitives valid.
-                    mesh.texture_datas.push(Vec::default());
+                    // Push an empty vector to keep the indices of primitives valid.
+                    mesh.texture_images.push(Vec::default());
                     continue;
                 }
             };
             let buffer = &buffers[view.buffer().index()];
-            mesh.texture_datas
+            mesh.texture_images
                 .push(buffer[view.offset()..view.offset() + view.length()].to_vec());
         }
 
@@ -327,23 +397,22 @@ impl Mesh {
 
                 let material = gltf_primitive.material();
                 primitive.material_index = material.index().map_or(0, |i| i + 1);
-                primitive.base_color_texture_index = material
-                    .pbr_metallic_roughness()
+                let pbr = material.pbr_metallic_roughness();
+                primitive.base_color_texture = pbr
                     .base_color_texture()
-                    .map(|i| i.texture().source().index());
-                primitive.arm_texture_index = material
-                    .pbr_metallic_roughness()
+                    .map(|i| MeshTexture::from_gltf_texture(&i.texture(), i.tex_coord()));
+                primitive.arm_texture = pbr
                     .metallic_roughness_texture()
-                    .map(|i| i.texture().source().index());
-                primitive.normal_texture_index = material
+                    .map(|i| MeshTexture::from_gltf_texture(&i.texture(), i.tex_coord()));
+                primitive.normal_texture = material
                     .normal_texture()
-                    .map(|i| i.texture().source().index());
-                primitive.emissive_texture_index = material
+                    .map(|i| MeshTexture::from_gltf_texture(&i.texture(), i.tex_coord()));
+                primitive.emissive_texture = material
                     .emissive_texture()
-                    .map(|i| i.texture().source().index());
-                primitive.occlusion_texture_index = material
+                    .map(|i| MeshTexture::from_gltf_texture(&i.texture(), i.tex_coord()));
+                primitive.occlusion_texture = material
                     .occlusion_texture()
-                    .map(|i| i.texture().source().index());
+                    .map(|i| MeshTexture::from_gltf_texture(&i.texture(), i.tex_coord()));
 
                 mesh.primitives.push(primitive);
             }
@@ -376,6 +445,16 @@ impl Mesh {
             PrimitiveTopology::PointList
             | PrimitiveTopology::LineList
             | PrimitiveTopology::LineStrip => {}
+        }
+    }
+}
+
+impl MeshTexture {
+    fn from_gltf_texture(texture: &gltf::Texture<'_>, uv_set: u32) -> Self {
+        Self {
+            image_index: texture.source().index(),
+            uv_set: uv_set as usize,
+            sampler_index: texture.sampler().index().map_or(0, |i| i + 1),
         }
     }
 }
