@@ -534,6 +534,16 @@ impl<'a> MeshPart<'a> {
         &self.mesh.materials[self.primitive.material_index]
     }
 
+    /// Gets the number of UV sets present in this part.
+    pub fn uv_set_count(&self) -> usize {
+        self.primitive.tex_coords_ranges.len()
+    }
+
+    /// Gets the number of vertex color sets present in this part.
+    pub fn color_set_count(&self) -> usize {
+        self.primitive.colors_ranges.len()
+    }
+
     /// Gets the base-color texture's image URI, if present in the mesh file.
     pub fn base_texture_image_uri(&self) -> Option<&str> {
         self.texture_image_uri(&self.primitive.base_color_texture)
