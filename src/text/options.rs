@@ -1,5 +1,5 @@
 /// Defines the geometry and coordinate system used to render text.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TextType {
     /// Generates textured quads in clip space from a position in pixels, with positive Y down.
     Screen {
