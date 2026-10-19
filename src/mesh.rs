@@ -87,7 +87,7 @@ pub struct Mesh {
     primitives: Vec<MeshPrimitive>,
     materials: Vec<MaterialProperties>,
     samplers: Vec<MeshSampler>,
-    texture_images: Vec<Vec<u8>>,
+    texture_images: Vec<(String, Vec<u8>)>,
 }
 
 impl Mesh {
@@ -232,17 +232,19 @@ impl Mesh {
 
         mesh.texture_images.reserve(gltf.images().len());
         for ref image in gltf.images() {
-            let view = match image.source() {
-                gltf::image::Source::View { view, .. } => view,
-                gltf::image::Source::Uri { .. } => {
+            match image.source() {
+                gltf::image::Source::View { view, .. } => {
+                    let buffer = &buffers[view.buffer().index()];
+                    mesh.texture_images.push((
+                        String::default(),
+                        buffer[view.offset()..view.offset() + view.length()].to_vec(),
+                    ));
+                }
+                gltf::image::Source::Uri { uri, .. } => {
                     // Push an empty vector to keep the indices of primitives valid.
-                    mesh.texture_images.push(Vec::default());
-                    continue;
+                    mesh.texture_images.push((uri.to_owned(), Vec::default()));
                 }
             };
-            let buffer = &buffers[view.buffer().index()];
-            mesh.texture_images
-                .push(buffer[view.offset()..view.offset() + view.length()].to_vec());
         }
 
         while let Some((node, parent_transform)) = nodes.pop() {
@@ -532,6 +534,10 @@ impl<'a> MeshPart<'a> {
         &self.mesh.materials[self.primitive.material_index]
     }
 
+    /// Gets the base-color texture's image URI, if present in the mesh file.
+    pub fn base_texture_image_uri(&self) -> Option<&str> {
+        self.texture_image_uri(&self.primitive.base_color_texture)
+    }
     /// Gets the base-color texture's encoded image bytes, if embedded in the mesh file.
     pub fn base_texture_image_data(&self) -> Option<&[u8]> {
         self.texture_image_data(&self.primitive.base_color_texture)
@@ -555,6 +561,10 @@ impl<'a> MeshPart<'a> {
         self.texture_sampler_address_modes(&self.primitive.base_color_texture)
     }
 
+    /// Gets the metallic-roughness texture's image URI, if present in the mesh file.
+    pub fn arm_texture_image_uri(&self) -> Option<&str> {
+        self.texture_image_uri(&self.primitive.arm_texture)
+    }
     /// Gets the metallic-roughness texture's encoded image bytes, if present in the mesh file.
     pub fn arm_texture_image_data(&self) -> Option<&[u8]> {
         self.texture_image_data(&self.primitive.arm_texture)
@@ -578,6 +588,10 @@ impl<'a> MeshPart<'a> {
         self.texture_sampler_address_modes(&self.primitive.arm_texture)
     }
 
+    /// Gets the normal texture's image URI, if present in the mesh file.
+    pub fn normal_texture_image_uri(&self) -> Option<&str> {
+        self.texture_image_uri(&self.primitive.normal_texture)
+    }
     /// Gets the normal texture's encoded image bytes, if present in the mesh file.
     pub fn normal_texture_image_data(&self) -> Option<&[u8]> {
         self.texture_image_data(&self.primitive.normal_texture)
@@ -601,6 +615,10 @@ impl<'a> MeshPart<'a> {
         self.texture_sampler_address_modes(&self.primitive.normal_texture)
     }
 
+    /// Gets the emissive texture's image URI, if present in the mesh file.
+    pub fn emissive_texture_image_uri(&self) -> Option<&str> {
+        self.texture_image_uri(&self.primitive.emissive_texture)
+    }
     /// Gets the emissive texture's encoded image bytes, if present in the mesh file.
     pub fn emissive_texture_image_data(&self) -> Option<&[u8]> {
         self.texture_image_data(&self.primitive.emissive_texture)
@@ -624,6 +642,10 @@ impl<'a> MeshPart<'a> {
         self.texture_sampler_address_modes(&self.primitive.emissive_texture)
     }
 
+    /// Gets the occlusion texture's image URI, if present in the mesh file.
+    pub fn occlusion_texture_image_uri(&self) -> Option<&str> {
+        self.texture_image_uri(&self.primitive.occlusion_texture)
+    }
     /// Gets the occlusion texture's encoded image bytes, if present in the mesh file.
     pub fn occlusion_texture_image_data(&self) -> Option<&[u8]> {
         self.texture_image_data(&self.primitive.occlusion_texture)
@@ -647,9 +669,12 @@ impl<'a> MeshPart<'a> {
         self.texture_sampler_address_modes(&self.primitive.occlusion_texture)
     }
 
+    fn texture_image_uri(&self, texture: &Option<MeshTexture>) -> Option<&str> {
+        texture.map(|t| self.mesh.texture_images[t.image_index].0.as_str())
+    }
     fn texture_image_data(&self, texture: &Option<MeshTexture>) -> Option<&[u8]> {
         if let Some(texture) = texture {
-            let data = self.mesh.texture_images[texture.image_index].as_slice();
+            let data = self.mesh.texture_images[texture.image_index].1.as_slice();
             match data.is_empty() {
                 true => None,
                 false => Some(data),
