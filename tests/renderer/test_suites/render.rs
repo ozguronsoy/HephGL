@@ -1012,10 +1012,9 @@ where
     }
 
     pub(crate) fn test_render_meshes(&self) {
+        use std::{collections::HashMap, path::Path};
+
         const MESH_PATH: &str = "assets/treasure_chest/treasure_chest_4k.gltf";
-        const IMAGE_PATH: &str = "assets/treasure_chest/treasure_chest_diff_4k.jpg";
-        const ARM_PATH: &str = "assets/treasure_chest/treasure_chest_arm_4k.jpg";
-        const NORMAL_PATH: &str = "assets/treasure_chest/treasure_chest_nor_gl_4k.jpg";
         const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 
         let mut renderer = self
@@ -1075,7 +1074,15 @@ where
             Vec3::splat(2.0 / (max - min).max_element()),
         );
 
+        let mesh_directory = heph_expect_success!(
+            Path::new(MESH_PATH)
+                .parent()
+                .ok_or("Missing mesh directory.")
+        );
+        let mut textures = HashMap::new();
         let mut part_buffers = Vec::with_capacity(mesh.part_count());
+        heph_expect_success!(renderer.begin_frame());
+        heph_expect_success!(renderer.clear(RGB::default()));
         for part in mesh.parts() {
             let vertex_attributes = [
                 MeshVertexAttribute::Position,
@@ -1108,12 +1115,62 @@ where
             heph_expect_success!(
                 renderer.write_buffer(&index_buffer, bytemuck::cast_slice(indices))
             );
-            part_buffers.push((vertex_buffer, index_buffer, indices.len() as u32));
+
+            let part_textures = [
+                (
+                    heph_expect_success!(
+                        part.base_texture_image_uri()
+                            .ok_or("Missing base-color texture URI.")
+                    ),
+                    TextureFormat::Rgba8Srgb,
+                ),
+                (
+                    heph_expect_success!(
+                        part.arm_texture_image_uri()
+                            .ok_or("Missing metallic-roughness texture URI.")
+                    ),
+                    TextureFormat::Rgba8Unorm,
+                ),
+                (
+                    heph_expect_success!(
+                        part.normal_texture_image_uri()
+                            .ok_or("Missing normal texture URI.")
+                    ),
+                    TextureFormat::Rgba8Unorm,
+                ),
+            ]
+            .map(|(uri, format)| {
+                *textures.entry(uri.to_owned()).or_insert_with(|| {
+                    let file_name = heph_expect_success!(
+                        Path::new(uri)
+                            .file_name()
+                            .ok_or("Missing texture file name.")
+                    );
+                    let image = heph_expect_success!(image::open(mesh_directory.join(file_name)))
+                        .to_rgba8();
+                    heph_expect_success!(renderer.create_texture(
+                        &TextureOptions {
+                            width: image.width(),
+                            height: image.height(),
+                            format,
+                            mip_level_count: TextureOptions::max_mip_level_count(
+                                image.width(),
+                                image.height()
+                            ),
+                        },
+                        image.as_raw(),
+                    ))
+                })
+            });
+            part_buffers.push((
+                vertex_buffer,
+                index_buffer,
+                indices.len() as u32,
+                part_textures,
+            ));
         }
 
-        let image = heph_expect_success!(image::open(IMAGE_PATH)).to_rgba8();
-        let arm = heph_expect_success!(image::open(ARM_PATH)).to_rgba8();
-        let normal = heph_expect_success!(image::open(NORMAL_PATH)).to_rgba8();
+        heph_expect_success!(renderer.end_frame());
 
         let material = *heph_expect_success!(
             mesh.parts()
@@ -1189,44 +1246,6 @@ where
             ..Default::default()
         }));
 
-        heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(RGB::default()));
-        let mut texture =
-            heph_expect_success!(renderer.create_texture(
-                &TextureOptions {
-                    width: image.width(),
-                    height: image.height(),
-                    format: TextureFormat::Rgba8Srgb,
-                    mip_level_count: TextureOptions::max_mip_level_count(
-                        image.width(),
-                        image.height(),
-                    ),
-                },
-                image.as_raw(),
-            ));
-        let mut arm_texture = heph_expect_success!(renderer.create_texture(
-            &TextureOptions {
-                width: arm.width(),
-                height: arm.height(),
-                format: TextureFormat::Rgba8Unorm,
-                mip_level_count: TextureOptions::max_mip_level_count(arm.width(), arm.height()),
-            },
-            arm.as_raw(),
-        ));
-        let mut normal_texture = heph_expect_success!(renderer.create_texture(
-            &TextureOptions {
-                width: normal.width(),
-                height: normal.height(),
-                format: TextureFormat::Rgba8Unorm,
-                mip_level_count: TextureOptions::max_mip_level_count(
-                    normal.width(),
-                    normal.height(),
-                ),
-            },
-            normal.as_raw(),
-        ));
-        heph_expect_success!(renderer.end_frame());
-
         let mut frame_index = 0;
         let start = Instant::now();
         loop {
@@ -1247,7 +1266,13 @@ where
                 renderer.write_buffer(&uniform_buffer, bytemuck::cast_slice(&matrices))
             );
 
-            for &(vertex_buffer, index_buffer, index_count) in &part_buffers {
+            for &(
+                vertex_buffer,
+                index_buffer,
+                index_count,
+                [texture, arm_texture, normal_texture],
+            ) in &part_buffers
+            {
                 let bindings = [
                     ResourceBinding {
                         binding: 0,
@@ -1323,11 +1348,11 @@ where
 
         heph_expect_success!(renderer.wait_idle());
         heph_expect_success!(renderer.destroy_sampler(&mut sampler));
-        heph_expect_success!(renderer.destroy_texture(&mut texture));
-        heph_expect_success!(renderer.destroy_texture(&mut arm_texture));
-        heph_expect_success!(renderer.destroy_texture(&mut normal_texture));
+        for texture in textures.values_mut() {
+            heph_expect_success!(renderer.destroy_texture(texture));
+        }
         heph_expect_success!(renderer.destroy_buffer(&mut material_buffer));
-        for (vertex_buffer, index_buffer, _) in &mut part_buffers {
+        for (vertex_buffer, index_buffer, _, _) in &mut part_buffers {
             heph_expect_success!(renderer.destroy_buffer(vertex_buffer));
             heph_expect_success!(renderer.destroy_buffer(index_buffer));
         }

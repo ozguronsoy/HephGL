@@ -1,4 +1,8 @@
-use std::time::{Duration, Instant};
+use std::{
+    collections::HashMap,
+    path::Path,
+    time::{Duration, Instant},
+};
 
 use heph_gl::{
     camera::{Camera, Projection},
@@ -23,9 +27,6 @@ use renkrs::RGB;
 mod utils;
 
 const MESH_PATH: &str = "assets/treasure_chest/treasure_chest_4k.gltf";
-const IMAGE_PATH: &str = "assets/treasure_chest/treasure_chest_diff_4k.jpg";
-const ARM_PATH: &str = "assets/treasure_chest/treasure_chest_arm_4k.jpg";
-const NORMAL_PATH: &str = "assets/treasure_chest/treasure_chest_nor_gl_4k.jpg";
 const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 
 fn example(
@@ -83,7 +84,11 @@ fn example(
         Vec3::splat(2.0 / (max - min).max_element()),
     );
 
+    let mesh_directory = Path::new(MESH_PATH).parent().unwrap();
+    let mut textures = HashMap::new();
     let mut part_buffers = Vec::with_capacity(mesh.part_count());
+    renderer.begin_frame().unwrap();
+    renderer.clear(RGB::default()).unwrap();
     for part in mesh.parts() {
         // All textures in this chest use the same UV set; the shader expects [px, py, pz, nx, ny,
         // nz, u, v].
@@ -118,12 +123,55 @@ fn example(
         renderer
             .write_buffer(&index_buffer, bytemuck::cast_slice(indices))
             .unwrap();
-        part_buffers.push((vertex_buffer, index_buffer, indices.len() as u32));
+
+        // The local assets are beside the mesh, so only use each URI's file name when opening it.
+        // The HashMap caches textures by URI so parts sharing a texture do not decode its image or
+        // create its GPU texture more than once.
+        let part_textures = [
+            (
+                part.base_texture_image_uri().unwrap(),
+                TextureFormat::Rgba8Srgb,
+            ),
+            (
+                part.arm_texture_image_uri().unwrap(),
+                TextureFormat::Rgba8Unorm,
+            ),
+            (
+                part.normal_texture_image_uri().unwrap(),
+                TextureFormat::Rgba8Unorm,
+            ),
+        ]
+        .map(|(uri, format)| {
+            *textures.entry(uri.to_owned()).or_insert_with(|| {
+                let file_name = Path::new(uri).file_name().unwrap();
+                let image = image::open(mesh_directory.join(file_name))
+                    .unwrap()
+                    .to_rgba8();
+                renderer
+                    .create_texture(
+                        &TextureOptions {
+                            width: image.width(),
+                            height: image.height(),
+                            format,
+                            mip_level_count: TextureOptions::max_mip_level_count(
+                                image.width(),
+                                image.height(),
+                            ),
+                        },
+                        image.as_raw(),
+                    )
+                    .unwrap()
+            })
+        });
+        part_buffers.push((
+            vertex_buffer,
+            index_buffer,
+            indices.len() as u32,
+            part_textures,
+        ));
     }
 
-    let image = image::open(IMAGE_PATH).unwrap().to_rgba8();
-    let arm = image::open(ARM_PATH).unwrap().to_rgba8();
-    let normal = image::open(NORMAL_PATH).unwrap().to_rgba8();
+    renderer.end_frame().unwrap();
 
     // All parts in this chest share the same material.
     let material = *mesh.parts().next().unwrap().material();
@@ -202,46 +250,6 @@ fn example(
         })
         .unwrap();
 
-    renderer.begin_frame().unwrap();
-    renderer.clear(RGB::default()).unwrap();
-    let mut texture = renderer
-        .create_texture(
-            &TextureOptions {
-                width: image.width(),
-                height: image.height(),
-                format: TextureFormat::Rgba8Srgb,
-                mip_level_count: TextureOptions::max_mip_level_count(image.width(), image.height()),
-            },
-            image.as_raw(),
-        )
-        .unwrap();
-    let mut arm_texture = renderer
-        .create_texture(
-            &TextureOptions {
-                width: arm.width(),
-                height: arm.height(),
-                format: TextureFormat::Rgba8Unorm,
-                mip_level_count: TextureOptions::max_mip_level_count(arm.width(), arm.height()),
-            },
-            arm.as_raw(),
-        )
-        .unwrap();
-    let mut normal_texture = renderer
-        .create_texture(
-            &TextureOptions {
-                width: normal.width(),
-                height: normal.height(),
-                format: TextureFormat::Rgba8Unorm,
-                mip_level_count: TextureOptions::max_mip_level_count(
-                    normal.width(),
-                    normal.height(),
-                ),
-            },
-            normal.as_raw(),
-        )
-        .unwrap();
-    renderer.end_frame().unwrap();
-
     let mut frame_index = 0;
     let start = Instant::now();
     loop {
@@ -261,7 +269,9 @@ fn example(
             .write_buffer(&uniform_buffer, bytemuck::cast_slice(&matrices))
             .unwrap();
 
-        for &(vertex_buffer, index_buffer, index_count) in &part_buffers {
+        for &(vertex_buffer, index_buffer, index_count, [texture, arm_texture, normal_texture]) in
+            &part_buffers
+        {
             let bindings = [
                 ResourceBinding {
                     binding: 0,
@@ -336,11 +346,11 @@ fn example(
     // Cleanup.
     renderer.wait_idle().unwrap();
     renderer.destroy_sampler(&mut sampler).unwrap();
-    renderer.destroy_texture(&mut texture).unwrap();
-    renderer.destroy_texture(&mut arm_texture).unwrap();
-    renderer.destroy_texture(&mut normal_texture).unwrap();
+    for texture in textures.values_mut() {
+        renderer.destroy_texture(texture).unwrap();
+    }
     renderer.destroy_buffer(&mut material_buffer).unwrap();
-    for (vertex_buffer, index_buffer, _) in &mut part_buffers {
+    for (vertex_buffer, index_buffer, _, _) in &mut part_buffers {
         renderer.destroy_buffer(vertex_buffer).unwrap();
         renderer.destroy_buffer(index_buffer).unwrap();
     }
