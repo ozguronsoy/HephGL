@@ -1,4 +1,8 @@
-use std::time::{Duration, Instant};
+use std::{
+    collections::HashMap,
+    path::Path,
+    time::{Duration, Instant},
+};
 
 use heph_gl::{
     camera::{Camera, Projection},
@@ -22,10 +26,7 @@ use renkrs::RGB;
 
 mod utils;
 
-const MESH_PATH: &str = "assets/treasure_chest/treasure_chest_4k.gltf";
-const IMAGE_PATH: &str = "assets/treasure_chest/treasure_chest_diff_4k.jpg";
-const ARM_PATH: &str = "assets/treasure_chest/treasure_chest_arm_4k.jpg";
-const NORMAL_PATH: &str = "assets/treasure_chest/treasure_chest_nor_gl_4k.jpg";
+const MESH_PATH: &str = "assets/ship/ship_pinnace_4k.gltf";
 const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 
 fn example(
@@ -63,68 +64,26 @@ fn example(
     drop(vert_shader);
     drop(frag_shader);
 
-    // Vertex attribute order defines the packed vertex layout, so this mesh's vertex layout will
-    // be: [px, py, pz, nx, ny, nz, u0, v0].
-    let mesh = Mesh::from_file(
-        MESH_PATH,
-        &[
-            MeshVertexAttribute::Position,
-            MeshVertexAttribute::Normal,
-            MeshVertexAttribute::TextureCoordinates(0),
-        ],
-    )
-    .unwrap();
-    let mut vertices = mesh.flattened_vertices();
-    let indices = mesh.flattened_indices();
+    let mesh = Mesh::from_file(MESH_PATH).unwrap();
 
-    let mut min = Vec3::from_slice(&vertices[..3]);
-    let mut max = min;
-    for vertex in vertices.chunks_exact(mesh.vertex_component_count()) {
-        let position = Vec3::from_slice(&vertex[..3]);
-        min = min.min(position);
-        max = max.max(position);
+    // Find the bounds of the whole mesh so every part uses the same center and scale.
+    let mut min = Vec3::splat(f32::INFINITY);
+    let mut max = Vec3::splat(f32::NEG_INFINITY);
+    for part in mesh.parts() {
+        let positions = part.vertices(&[MeshVertexAttribute::Position]).unwrap();
+        for position in positions.as_chunks::<3>().0 {
+            let position = Vec3::from_slice(position);
+            min = min.min(position);
+            max = max.max(position);
+        }
     }
     let center = (min + max) * 0.5;
-    for vertex in vertices.chunks_exact_mut(mesh.vertex_component_count()) {
-        vertex[0] -= center.x;
-        vertex[1] -= center.y;
-        vertex[2] -= center.z;
-    }
     let mut transform = Transform::new(
         Vec3::ZERO,
         Quat::IDENTITY,
-        Vec3::splat(2.0 / (max - min).max_element()),
+        Vec3::splat(3.0 / (max - min).max_element()),
     );
 
-    let mut vertex_buffer = renderer
-        .create_buffer(
-            vertices.len() * std::mem::size_of::<f32>(),
-            BufferUsage::Vertex,
-        )
-        .unwrap();
-    renderer
-        .write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
-        .unwrap();
-    drop(vertices);
-
-    let index_count = indices.len() as u32;
-    let mut index_buffer = renderer
-        .create_buffer(
-            indices.len() * std::mem::size_of::<u32>(),
-            BufferUsage::Index,
-        )
-        .unwrap();
-    renderer
-        .write_buffer(&index_buffer, bytemuck::cast_slice(&indices))
-        .unwrap();
-    drop(indices);
-
-    let image = image::open(IMAGE_PATH).unwrap().to_rgba8();
-    let arm = image::open(ARM_PATH).unwrap().to_rgba8();
-    let normal = image::open(NORMAL_PATH).unwrap().to_rgba8();
-
-    // All primitives in this chest share the same material.
-    let material = mesh.materials()[0];
     let lighting = Lighting {
         direction: Vec3::new(0.5, -0.8, 1.0),
         intensity: 3.0,
@@ -140,45 +99,133 @@ fn example(
     camera.position = Vec3::new(1.6, 1.0, -3.0);
     camera.look_at(&Vec3::ZERO, &Vec3::Y).unwrap();
 
-    let uniforms = [
-        [
-            material.base_color.r,
-            material.base_color.g,
-            material.base_color.b,
-            material.base_color.a,
-        ],
-        [
-            material.roughness,
-            material.metallicness,
-            material.normal_scale,
-            0.0,
-        ],
-        [
-            lighting.direction.x,
-            lighting.direction.y,
-            lighting.direction.z,
-            0.0,
-        ],
-        [
-            lighting.color.r,
-            lighting.color.g,
-            lighting.color.b,
-            lighting.intensity,
-        ],
-        [
-            lighting.ambient.r,
-            lighting.ambient.g,
-            lighting.ambient.b,
-            0.0,
-        ],
-        [camera.position.x, camera.position.y, camera.position.z, 1.0],
-    ];
-    let mut material_buffer = renderer
-        .create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
-        .unwrap();
-    renderer
-        .write_buffer(&material_buffer, bytemuck::cast_slice(&uniforms))
-        .unwrap();
+    let mesh_directory = Path::new(MESH_PATH).parent().unwrap();
+    let mut textures = HashMap::new();
+    let mut part_buffers = Vec::with_capacity(mesh.part_count());
+    renderer.begin_frame().unwrap();
+    renderer.clear(RGB::default()).unwrap();
+    for part in mesh.parts() {
+        // All textures in this ship use the same UV set; the shader expects [px, py, pz, nx, ny,
+        // nz, u, v].
+        let vertex_attributes = [
+            MeshVertexAttribute::Position,
+            MeshVertexAttribute::Normal,
+            MeshVertexAttribute::TextureCoordinates(part.base_texture_uv_set().unwrap()),
+        ];
+        let mut vertices = part.vertices(&vertex_attributes).unwrap();
+        let component_count = part.vertex_component_count(&vertex_attributes);
+        for vertex in vertices.chunks_exact_mut(component_count) {
+            vertex[0] -= center.x;
+            vertex[1] -= center.y;
+            vertex[2] -= center.z;
+        }
+        let vertex_count = vertices.len() / component_count;
+        let vertex_buffer = renderer
+            .create_buffer(
+                vertex_count * part.vertex_size_bytes(&vertex_attributes),
+                BufferUsage::Vertex,
+            )
+            .unwrap();
+        renderer
+            .write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
+            .unwrap();
+
+        // Indices reference this part's vertices, so each part is drawn with its own buffers.
+        let indices = part.indices();
+        let index_buffer = renderer
+            .create_buffer(std::mem::size_of_val(indices), BufferUsage::Index)
+            .unwrap();
+        renderer
+            .write_buffer(&index_buffer, bytemuck::cast_slice(indices))
+            .unwrap();
+
+        // Resolve each texture URI relative to the mesh directory, preserving its folder structure.
+        // The HashMap avoids decoding and creating shared textures more than once.
+        let part_textures = [
+            (
+                part.base_texture_image_uri().unwrap(),
+                TextureFormat::Rgba8Srgb,
+            ),
+            (
+                part.arm_texture_image_uri().unwrap(),
+                TextureFormat::Rgba8Unorm,
+            ),
+            (
+                part.normal_texture_image_uri().unwrap(),
+                TextureFormat::Rgba8Unorm,
+            ),
+        ]
+        .map(|(uri, format)| {
+            *textures.entry(uri.to_owned()).or_insert_with(|| {
+                let image = image::open(mesh_directory.join(uri)).unwrap().to_rgba8();
+                renderer
+                    .create_texture(
+                        &TextureOptions {
+                            width: image.width(),
+                            height: image.height(),
+                            format,
+                            mip_level_count: TextureOptions::max_mip_level_count(
+                                image.width(),
+                                image.height(),
+                            ),
+                        },
+                        image.as_raw(),
+                    )
+                    .unwrap()
+            })
+        });
+        // Each part uses the material properties loaded from the mesh.
+        let material = part.material();
+        let uniforms = [
+            [
+                material.base_color.r,
+                material.base_color.g,
+                material.base_color.b,
+                material.base_color.a,
+            ],
+            [
+                material.roughness,
+                material.metallicness,
+                material.normal_scale,
+                0.0,
+            ],
+            [
+                lighting.direction.x,
+                lighting.direction.y,
+                lighting.direction.z,
+                0.0,
+            ],
+            [
+                lighting.color.r,
+                lighting.color.g,
+                lighting.color.b,
+                lighting.intensity,
+            ],
+            [
+                lighting.ambient.r,
+                lighting.ambient.g,
+                lighting.ambient.b,
+                0.0,
+            ],
+            [camera.position.x, camera.position.y, camera.position.z, 1.0],
+        ];
+        let material_buffer = renderer
+            .create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
+            .unwrap();
+        renderer
+            .write_buffer(&material_buffer, bytemuck::cast_slice(&uniforms))
+            .unwrap();
+
+        part_buffers.push((
+            vertex_buffer,
+            index_buffer,
+            indices.len() as u32,
+            part_textures,
+            material_buffer,
+        ));
+    }
+
+    renderer.end_frame().unwrap();
 
     let mut uniform_buffers = Vec::with_capacity(settings.frames_in_flight);
     for _ in 0..settings.frames_in_flight {
@@ -200,46 +247,6 @@ fn example(
         })
         .unwrap();
 
-    renderer.begin_frame().unwrap();
-    renderer.clear(RGB::default()).unwrap();
-    let mut texture = renderer
-        .create_texture(
-            &TextureOptions {
-                width: image.width(),
-                height: image.height(),
-                format: TextureFormat::Rgba8Srgb,
-                mip_level_count: TextureOptions::max_mip_level_count(image.width(), image.height()),
-            },
-            image.as_raw(),
-        )
-        .unwrap();
-    let mut arm_texture = renderer
-        .create_texture(
-            &TextureOptions {
-                width: arm.width(),
-                height: arm.height(),
-                format: TextureFormat::Rgba8Unorm,
-                mip_level_count: TextureOptions::max_mip_level_count(arm.width(), arm.height()),
-            },
-            arm.as_raw(),
-        )
-        .unwrap();
-    let mut normal_texture = renderer
-        .create_texture(
-            &TextureOptions {
-                width: normal.width(),
-                height: normal.height(),
-                format: TextureFormat::Rgba8Unorm,
-                mip_level_count: TextureOptions::max_mip_level_count(
-                    normal.width(),
-                    normal.height(),
-                ),
-            },
-            normal.as_raw(),
-        )
-        .unwrap();
-    renderer.end_frame().unwrap();
-
     let mut frame_index = 0;
     let start = Instant::now();
     loop {
@@ -259,67 +266,76 @@ fn example(
             .write_buffer(&uniform_buffer, bytemuck::cast_slice(&matrices))
             .unwrap();
 
-        let bindings = [
-            ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Buffer {
-                    handle: vertex_buffer,
-                    usage: BufferUsage::Vertex,
-                    offset: 0,
-                    size: vertex_buffer.size(),
+        for &(
+            vertex_buffer,
+            index_buffer,
+            index_count,
+            [texture, arm_texture, normal_texture],
+            material_buffer,
+        ) in &part_buffers
+        {
+            let bindings = [
+                ResourceBinding {
+                    binding: 0,
+                    resource: ResourceBindingType::Buffer {
+                        handle: vertex_buffer,
+                        usage: BufferUsage::Vertex,
+                        offset: 0,
+                        size: vertex_buffer.size(),
+                    },
                 },
-            },
-            ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Buffer {
-                    handle: index_buffer,
-                    usage: BufferUsage::Index,
-                    offset: 0,
-                    size: index_buffer.size(),
+                ResourceBinding {
+                    binding: 0,
+                    resource: ResourceBindingType::Buffer {
+                        handle: index_buffer,
+                        usage: BufferUsage::Index,
+                        offset: 0,
+                        size: index_buffer.size(),
+                    },
                 },
-            },
-            ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Texture { handle: texture },
-            },
-            ResourceBinding {
-                binding: 1,
-                resource: ResourceBindingType::Sampler { handle: sampler },
-            },
-            ResourceBinding {
-                binding: 2,
-                resource: ResourceBindingType::Texture {
-                    handle: arm_texture,
+                ResourceBinding {
+                    binding: 0,
+                    resource: ResourceBindingType::Texture { handle: texture },
                 },
-            },
-            ResourceBinding {
-                binding: 3,
-                resource: ResourceBindingType::Texture {
-                    handle: normal_texture,
+                ResourceBinding {
+                    binding: 1,
+                    resource: ResourceBindingType::Sampler { handle: sampler },
                 },
-            },
-            ResourceBinding {
-                binding: 4,
-                resource: ResourceBindingType::Buffer {
-                    handle: material_buffer,
-                    usage: BufferUsage::Uniform,
-                    offset: 0,
-                    size: material_buffer.size(),
+                ResourceBinding {
+                    binding: 2,
+                    resource: ResourceBindingType::Texture {
+                        handle: arm_texture,
+                    },
                 },
-            },
-            ResourceBinding {
-                binding: 5,
-                resource: ResourceBindingType::Buffer {
-                    handle: uniform_buffer,
-                    usage: BufferUsage::Uniform,
-                    offset: 0,
-                    size: uniform_buffer.size(),
+                ResourceBinding {
+                    binding: 3,
+                    resource: ResourceBindingType::Texture {
+                        handle: normal_texture,
+                    },
                 },
-            },
-        ];
-        renderer
-            .record_graphics_command(&pipeline, &[&bindings], index_count, 1)
-            .unwrap();
+                ResourceBinding {
+                    binding: 4,
+                    resource: ResourceBindingType::Buffer {
+                        handle: material_buffer,
+                        usage: BufferUsage::Uniform,
+                        offset: 0,
+                        size: material_buffer.size(),
+                    },
+                },
+                ResourceBinding {
+                    binding: 5,
+                    resource: ResourceBindingType::Buffer {
+                        handle: uniform_buffer,
+                        usage: BufferUsage::Uniform,
+                        offset: 0,
+                        size: uniform_buffer.size(),
+                    },
+                },
+            ];
+            renderer
+                .record_graphics_command(&pipeline, &[&bindings], index_count, 1)
+                .unwrap();
+        }
 
         renderer.end_frame().unwrap();
 
@@ -332,12 +348,15 @@ fn example(
     // Cleanup.
     renderer.wait_idle().unwrap();
     renderer.destroy_sampler(&mut sampler).unwrap();
-    renderer.destroy_texture(&mut texture).unwrap();
-    renderer.destroy_texture(&mut arm_texture).unwrap();
-    renderer.destroy_texture(&mut normal_texture).unwrap();
-    renderer.destroy_buffer(&mut material_buffer).unwrap();
-    renderer.destroy_buffer(&mut vertex_buffer).unwrap();
-    renderer.destroy_buffer(&mut index_buffer).unwrap();
+    for texture in textures.values_mut() {
+        renderer.destroy_texture(texture).unwrap();
+    }
+
+    for (vertex_buffer, index_buffer, _, _, material_buffer) in &mut part_buffers {
+        renderer.destroy_buffer(material_buffer).unwrap();
+        renderer.destroy_buffer(vertex_buffer).unwrap();
+        renderer.destroy_buffer(index_buffer).unwrap();
+    }
     for uniform_buffer in &mut uniform_buffers {
         renderer.destroy_buffer(uniform_buffer).unwrap();
     }

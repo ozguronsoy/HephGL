@@ -92,5 +92,5 @@ impl VulkanFrameSync for TimelineSemaphoreFrameSync {
 }
 
 impl TimelineSemaphoreFrameSync {
-    const TIMEOUT_NS: u64 = 1.0e9 as u64;
+    const TIMEOUT_NS: u64 = 1.0e10 as u64;
 }

@@ -1012,10 +1012,9 @@ where
     }
 
     pub(crate) fn test_render_meshes(&self) {
-        const MESH_PATH: &str = "assets/treasure_chest/treasure_chest_4k.gltf";
-        const IMAGE_PATH: &str = "assets/treasure_chest/treasure_chest_diff_4k.jpg";
-        const ARM_PATH: &str = "assets/treasure_chest/treasure_chest_arm_4k.jpg";
-        const NORMAL_PATH: &str = "assets/treasure_chest/treasure_chest_nor_gl_4k.jpg";
+        use std::{collections::HashMap, path::Path};
+
+        const MESH_PATH: &str = "assets/ship/ship_pinnace_4k.gltf";
         const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 
         let mut renderer = self
@@ -1057,59 +1056,24 @@ where
         drop(vert_shader);
         drop(frag_shader);
 
-        let mesh = Mesh::from_file(
-            MESH_PATH,
-            &[
-                MeshVertexAttribute::Position,
-                MeshVertexAttribute::Normal,
-                MeshVertexAttribute::TextureCoordinates(0),
-            ],
-        );
-        let mesh = heph_expect_success!(mesh);
-        let mut vertices = mesh.flattened_vertices();
-        let indices = mesh.flattened_indices();
-
-        let mut min = Vec3::from_slice(&vertices[..3]);
-        let mut max = min;
-        for vertex in vertices.chunks_exact(mesh.vertex_component_count()) {
-            let position = Vec3::from_slice(&vertex[..3]);
-            min = min.min(position);
-            max = max.max(position);
+        let mesh = heph_expect_success!(Mesh::from_file(MESH_PATH));
+        let mut min = Vec3::splat(f32::INFINITY);
+        let mut max = Vec3::splat(f32::NEG_INFINITY);
+        for part in mesh.parts() {
+            let positions = heph_expect_success!(part.vertices(&[MeshVertexAttribute::Position]));
+            for position in positions.as_chunks::<3>().0 {
+                let position = Vec3::from_slice(position);
+                min = min.min(position);
+                max = max.max(position);
+            }
         }
         let center = (min + max) * 0.5;
-        for vertex in vertices.chunks_exact_mut(mesh.vertex_component_count()) {
-            vertex[0] -= center.x;
-            vertex[1] -= center.y;
-            vertex[2] -= center.z;
-        }
         let mut transform = Transform::new(
             Vec3::ZERO,
             Quat::IDENTITY,
-            Vec3::splat(2.0 / (max - min).max_element()),
+            Vec3::splat(3.0 / (max - min).max_element()),
         );
 
-        let mut vertex_buffer = heph_expect_success!(renderer.create_buffer(
-            vertices.len() * std::mem::size_of::<f32>(),
-            BufferUsage::Vertex,
-        ));
-        heph_expect_success!(
-            renderer.write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
-        );
-        drop(vertices);
-
-        let index_count = indices.len() as u32;
-        let mut index_buffer = heph_expect_success!(renderer.create_buffer(
-            indices.len() * std::mem::size_of::<u32>(),
-            BufferUsage::Index,
-        ));
-        heph_expect_success!(renderer.write_buffer(&index_buffer, bytemuck::cast_slice(&indices)));
-        drop(indices);
-
-        let image = heph_expect_success!(image::open(IMAGE_PATH)).to_rgba8();
-        let arm = heph_expect_success!(image::open(ARM_PATH)).to_rgba8();
-        let normal = heph_expect_success!(image::open(NORMAL_PATH)).to_rgba8();
-
-        let material = mesh.materials()[0];
         let lighting = Lighting {
             direction: Vec3::new(0.5, -0.8, 1.0),
             intensity: 3.0,
@@ -1125,45 +1089,140 @@ where
         camera.position = Vec3::new(1.6, 1.0, -3.0);
         heph_expect_success!(camera.look_at(&Vec3::ZERO, &Vec3::Y));
 
-        let uniforms = [
-            [
-                material.base_color.r,
-                material.base_color.g,
-                material.base_color.b,
-                material.base_color.a,
-            ],
-            [
-                material.roughness,
-                material.metallicness,
-                material.normal_scale,
-                0.0,
-            ],
-            [
-                lighting.direction.x,
-                lighting.direction.y,
-                lighting.direction.z,
-                0.0,
-            ],
-            [
-                lighting.color.r,
-                lighting.color.g,
-                lighting.color.b,
-                lighting.intensity,
-            ],
-            [
-                lighting.ambient.r,
-                lighting.ambient.g,
-                lighting.ambient.b,
-                0.0,
-            ],
-            [camera.position.x, camera.position.y, camera.position.z, 1.0],
-        ];
-        let mut material_buffer = heph_expect_success!(
-            renderer.create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
+        let mesh_directory = heph_expect_success!(
+            Path::new(MESH_PATH)
+                .parent()
+                .ok_or("Missing mesh directory.")
         );
-        heph_expect_success!(
-            renderer.write_buffer(&material_buffer, bytemuck::cast_slice(&uniforms))
-        );
+        let mut textures = HashMap::new();
+        let mut part_buffers = Vec::with_capacity(mesh.part_count());
+        heph_expect_success!(renderer.begin_frame());
+        heph_expect_success!(renderer.clear(RGB::default()));
+        for part in mesh.parts() {
+            let vertex_attributes = [
+                MeshVertexAttribute::Position,
+                MeshVertexAttribute::Normal,
+                MeshVertexAttribute::TextureCoordinates(heph_expect_success!(
+                    part.base_texture_uv_set()
+                        .ok_or("Missing base-color texture UV set.")
+                )),
+            ];
+            let mut vertices = heph_expect_success!(part.vertices(&vertex_attributes));
+            let component_count = part.vertex_component_count(&vertex_attributes);
+            for vertex in vertices.chunks_exact_mut(component_count) {
+                vertex[0] -= center.x;
+                vertex[1] -= center.y;
+                vertex[2] -= center.z;
+            }
+            let vertex_count = vertices.len() / component_count;
+            let vertex_buffer = heph_expect_success!(renderer.create_buffer(
+                vertex_count * part.vertex_size_bytes(&vertex_attributes),
+                BufferUsage::Vertex,
+            ));
+            heph_expect_success!(
+                renderer.write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
+            );
+
+            let indices = part.indices();
+            let index_buffer = heph_expect_success!(
+                renderer.create_buffer(std::mem::size_of_val(indices), BufferUsage::Index,)
+            );
+            heph_expect_success!(
+                renderer.write_buffer(&index_buffer, bytemuck::cast_slice(indices))
+            );
+
+            let part_textures = [
+                (
+                    heph_expect_success!(
+                        part.base_texture_image_uri()
+                            .ok_or("Missing base-color texture URI.")
+                    ),
+                    TextureFormat::Rgba8Srgb,
+                ),
+                (
+                    heph_expect_success!(
+                        part.arm_texture_image_uri()
+                            .ok_or("Missing metallic-roughness texture URI.")
+                    ),
+                    TextureFormat::Rgba8Unorm,
+                ),
+                (
+                    heph_expect_success!(
+                        part.normal_texture_image_uri()
+                            .ok_or("Missing normal texture URI.")
+                    ),
+                    TextureFormat::Rgba8Unorm,
+                ),
+            ]
+            .map(|(uri, format)| {
+                *textures.entry(uri.to_owned()).or_insert_with(|| {
+                    let image =
+                        heph_expect_success!(image::open(mesh_directory.join(uri))).to_rgba8();
+                    heph_expect_success!(renderer.create_texture(
+                        &TextureOptions {
+                            width: image.width(),
+                            height: image.height(),
+                            format,
+                            mip_level_count: TextureOptions::max_mip_level_count(
+                                image.width(),
+                                image.height()
+                            ),
+                        },
+                        image.as_raw(),
+                    ))
+                })
+            });
+            let material = part.material();
+            let uniforms = [
+                [
+                    material.base_color.r,
+                    material.base_color.g,
+                    material.base_color.b,
+                    material.base_color.a,
+                ],
+                [
+                    material.roughness,
+                    material.metallicness,
+                    material.normal_scale,
+                    0.0,
+                ],
+                [
+                    lighting.direction.x,
+                    lighting.direction.y,
+                    lighting.direction.z,
+                    0.0,
+                ],
+                [
+                    lighting.color.r,
+                    lighting.color.g,
+                    lighting.color.b,
+                    lighting.intensity,
+                ],
+                [
+                    lighting.ambient.r,
+                    lighting.ambient.g,
+                    lighting.ambient.b,
+                    0.0,
+                ],
+                [camera.position.x, camera.position.y, camera.position.z, 1.0],
+            ];
+            let material_buffer = heph_expect_success!(
+                renderer.create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
+            );
+            heph_expect_success!(
+                renderer.write_buffer(&material_buffer, bytemuck::cast_slice(&uniforms))
+            );
+
+            part_buffers.push((
+                vertex_buffer,
+                index_buffer,
+                indices.len() as u32,
+                part_textures,
+                material_buffer,
+            ));
+        }
+
+        heph_expect_success!(renderer.end_frame());
 
         let mut uniform_buffers = Vec::with_capacity(settings.frames_in_flight);
         for _ in 0..settings.frames_in_flight {
@@ -1177,44 +1236,6 @@ where
             max_anisotropy,
             ..Default::default()
         }));
-
-        heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(RGB::default()));
-        let mut texture =
-            heph_expect_success!(renderer.create_texture(
-                &TextureOptions {
-                    width: image.width(),
-                    height: image.height(),
-                    format: TextureFormat::Rgba8Srgb,
-                    mip_level_count: TextureOptions::max_mip_level_count(
-                        image.width(),
-                        image.height(),
-                    ),
-                },
-                image.as_raw(),
-            ));
-        let mut arm_texture = heph_expect_success!(renderer.create_texture(
-            &TextureOptions {
-                width: arm.width(),
-                height: arm.height(),
-                format: TextureFormat::Rgba8Unorm,
-                mip_level_count: TextureOptions::max_mip_level_count(arm.width(), arm.height()),
-            },
-            arm.as_raw(),
-        ));
-        let mut normal_texture = heph_expect_success!(renderer.create_texture(
-            &TextureOptions {
-                width: normal.width(),
-                height: normal.height(),
-                format: TextureFormat::Rgba8Unorm,
-                mip_level_count: TextureOptions::max_mip_level_count(
-                    normal.width(),
-                    normal.height(),
-                ),
-            },
-            normal.as_raw(),
-        ));
-        heph_expect_success!(renderer.end_frame());
 
         let mut frame_index = 0;
         let start = Instant::now();
@@ -1236,71 +1257,79 @@ where
                 renderer.write_buffer(&uniform_buffer, bytemuck::cast_slice(&matrices))
             );
 
-            let bindings = [
-                ResourceBinding {
-                    binding: 0,
-                    resource: ResourceBindingType::Buffer {
-                        handle: vertex_buffer,
-                        usage: BufferUsage::Vertex,
-                        offset: 0,
-                        size: vertex_buffer.size(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 0,
-                    resource: ResourceBindingType::Buffer {
-                        handle: index_buffer,
-                        usage: BufferUsage::Index,
-                        offset: 0,
-                        size: index_buffer.size(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 0,
-                    resource: ResourceBindingType::Texture { handle: texture },
-                },
-                ResourceBinding {
-                    binding: 1,
-                    resource: ResourceBindingType::Sampler { handle: sampler },
-                },
-                ResourceBinding {
-                    binding: 2,
-                    resource: ResourceBindingType::Texture {
-                        handle: arm_texture,
-                    },
-                },
-                ResourceBinding {
-                    binding: 3,
-                    resource: ResourceBindingType::Texture {
-                        handle: normal_texture,
-                    },
-                },
-                ResourceBinding {
-                    binding: 4,
-                    resource: ResourceBindingType::Buffer {
-                        handle: material_buffer,
-                        usage: BufferUsage::Uniform,
-                        offset: 0,
-                        size: material_buffer.size(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 5,
-                    resource: ResourceBindingType::Buffer {
-                        handle: uniform_buffer,
-                        usage: BufferUsage::Uniform,
-                        offset: 0,
-                        size: uniform_buffer.size(),
-                    },
-                },
-            ];
-            heph_expect_success!(renderer.record_graphics_command(
-                &pipeline,
-                &[&bindings],
+            for &(
+                vertex_buffer,
+                index_buffer,
                 index_count,
-                1
-            ));
-
+                [texture, arm_texture, normal_texture],
+                material_buffer,
+            ) in &part_buffers
+            {
+                let bindings = [
+                    ResourceBinding {
+                        binding: 0,
+                        resource: ResourceBindingType::Buffer {
+                            handle: vertex_buffer,
+                            usage: BufferUsage::Vertex,
+                            offset: 0,
+                            size: vertex_buffer.size(),
+                        },
+                    },
+                    ResourceBinding {
+                        binding: 0,
+                        resource: ResourceBindingType::Buffer {
+                            handle: index_buffer,
+                            usage: BufferUsage::Index,
+                            offset: 0,
+                            size: index_buffer.size(),
+                        },
+                    },
+                    ResourceBinding {
+                        binding: 0,
+                        resource: ResourceBindingType::Texture { handle: texture },
+                    },
+                    ResourceBinding {
+                        binding: 1,
+                        resource: ResourceBindingType::Sampler { handle: sampler },
+                    },
+                    ResourceBinding {
+                        binding: 2,
+                        resource: ResourceBindingType::Texture {
+                            handle: arm_texture,
+                        },
+                    },
+                    ResourceBinding {
+                        binding: 3,
+                        resource: ResourceBindingType::Texture {
+                            handle: normal_texture,
+                        },
+                    },
+                    ResourceBinding {
+                        binding: 4,
+                        resource: ResourceBindingType::Buffer {
+                            handle: material_buffer,
+                            usage: BufferUsage::Uniform,
+                            offset: 0,
+                            size: material_buffer.size(),
+                        },
+                    },
+                    ResourceBinding {
+                        binding: 5,
+                        resource: ResourceBindingType::Buffer {
+                            handle: uniform_buffer,
+                            usage: BufferUsage::Uniform,
+                            offset: 0,
+                            size: uniform_buffer.size(),
+                        },
+                    },
+                ];
+                heph_expect_success!(renderer.record_graphics_command(
+                    &pipeline,
+                    &[&bindings],
+                    index_count,
+                    1
+                ));
+            }
             heph_expect_success!(renderer.end_frame());
 
             frame_index = (frame_index + 1) % uniform_buffers.len();
@@ -1311,12 +1340,15 @@ where
 
         heph_expect_success!(renderer.wait_idle());
         heph_expect_success!(renderer.destroy_sampler(&mut sampler));
-        heph_expect_success!(renderer.destroy_texture(&mut texture));
-        heph_expect_success!(renderer.destroy_texture(&mut arm_texture));
-        heph_expect_success!(renderer.destroy_texture(&mut normal_texture));
-        heph_expect_success!(renderer.destroy_buffer(&mut material_buffer));
-        heph_expect_success!(renderer.destroy_buffer(&mut vertex_buffer));
-        heph_expect_success!(renderer.destroy_buffer(&mut index_buffer));
+        for texture in textures.values_mut() {
+            heph_expect_success!(renderer.destroy_texture(texture));
+        }
+
+        for (vertex_buffer, index_buffer, _, _, material_buffer) in &mut part_buffers {
+            heph_expect_success!(renderer.destroy_buffer(material_buffer));
+            heph_expect_success!(renderer.destroy_buffer(vertex_buffer));
+            heph_expect_success!(renderer.destroy_buffer(index_buffer));
+        }
         for uniform_buffer in &mut uniform_buffers {
             heph_expect_success!(renderer.destroy_buffer(uniform_buffer));
         }

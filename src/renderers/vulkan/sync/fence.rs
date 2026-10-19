@@ -68,5 +68,5 @@ impl VulkanFrameSync for FenceFrameSync {
 }
 
 impl FenceFrameSync {
-    const TIMEOUT_NS: u64 = 1.0e9 as u64;
+    const TIMEOUT_NS: u64 = 1.0e10 as u64;
 }
