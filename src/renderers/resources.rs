@@ -1,5 +1,5 @@
 /// Defines the possible usages of a buffer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BufferUsage {
     /// The buffer is used to store general purpose data.
     Storage,
@@ -13,7 +13,7 @@ pub enum BufferUsage {
 }
 
 /// Defines the pixel format of a texture.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum TextureFormat {
     /// 8-bit single channel linear color value.
     R8Unorm,
@@ -25,7 +25,7 @@ pub enum TextureFormat {
 }
 
 /// Defines the types of resources being bound to a shader slot.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ResourceBindingType<BufferHandle, TextureHandle, SamplerHandle> {
     /// A block of GPU memory.
     Buffer {

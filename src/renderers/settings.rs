@@ -1,9 +1,10 @@
 use crate::renderers::resources::TextureFormat;
 
 /// Defines the multisample anti-aliasing sample count used when rendering.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum Msaa {
     /// Disables MSAA and uses a single sample per pixel.
+    #[default]
     X1,
     /// Uses 2 samples per pixel.
     X2,
@@ -20,7 +21,7 @@ pub enum Msaa {
 }
 
 /// Defines the color blending modes supported by the renderers.
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum ColorBlending {
     /// Color blending is disabled.
     #[default]
@@ -31,7 +32,7 @@ pub enum ColorBlending {
 }
 
 /// Defines how vertices are assembled into primitives.
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum PrimitiveTopology {
     /// Each vertex represents an individual point.
     PointList,
@@ -47,7 +48,7 @@ pub enum PrimitiveTopology {
 }
 
 /// Defines which triangle faces are discarded during rasterization.
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum CullingMode {
     /// No faces are culled.
     #[default]
@@ -59,7 +60,7 @@ pub enum CullingMode {
 }
 
 /// Defines which vertex winding order is considered front-facing.
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum FrontFace {
     /// Vertices ordered clockwise are considered front-facing.
     Clockwise,
@@ -69,7 +70,7 @@ pub enum FrontFace {
 }
 
 /// Defines the filtering mode used by a sampler.
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum SamplerFilter {
     Nearest,
     #[default]
@@ -77,7 +78,7 @@ pub enum SamplerFilter {
 }
 
 /// Defines how texture coordinates outside the texture range are handled.
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum SamplerAddressMode {
     Repeat,
     MirroredRepeat,
