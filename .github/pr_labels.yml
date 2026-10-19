@@ -1,6 +1,6 @@
 core:
   - changed-files:
-      - any-glob-to-any-file: ['src/*.rs']
+      - any-glob-to-any-file: ['src/*.rs', 'src/!(renderers)/**/*.rs']
 
 renderer:
   - changed-files:
@@ -40,7 +40,7 @@ example:
 
 infrastructure:
   - changed-files:
-      - any-glob-to-any-file: ['.github/**', '**/*.toml']
+      - any-glob-to-any-file: ['.github/**']
 
 documentation:
   - changed-files:
