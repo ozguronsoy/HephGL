@@ -19,7 +19,7 @@ enum MeshFileType {
     Gltf,
 }
 
-/// Defines the vertex attributes to read when loading a mesh.
+/// Defines the vertex attributes and their order in a mesh part's vertex layout.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MeshVertexAttribute {
     /// The 3D position of the vertex.
@@ -29,9 +29,9 @@ pub enum MeshVertexAttribute {
     /// The 3D tangent direction and the sign used to reconstruct the bitangent.
     Tangent,
     /// The 2D texture coordinates from the specified UV set.
-    TextureCoordinates(u32),
+    TextureCoordinates(usize),
     /// The vertex color from the specified color set.
-    Color(u32),
+    Color(usize),
 }
 
 #[derive(Default, Clone, Copy)]
@@ -50,13 +50,17 @@ struct MeshSampler {
     address_mode_v: SamplerAddressMode,
 }
 
-/// One part of a 3D shape, described by points and references that connect them.
-// TODO: We use too many vectors here. Refactor this to have begin/end iterators, so we can store
-// all indices and vertices in two vectors.
 #[derive(Default, Clone)]
 struct MeshPrimitive {
-    vertices: Vec<f32>,
-    // start index, end index.
+    vertex_count: usize,
+    // start index, end index for all range tuples.
+    positions_range: Option<(usize, usize)>,
+    normals_range: Option<(usize, usize)>,
+    tangents_range: Option<(usize, usize)>,
+    // Color set and its start/end component indices.
+    colors_ranges: Vec<(u32, (usize, usize))>,
+    // UV set and its start/end component indices.
+    tex_coords_ranges: Vec<(u32, (usize, usize))>,
     indices_range: (usize, usize),
     material_index: usize,
     base_color_texture: Option<MeshTexture>,
@@ -77,7 +81,7 @@ pub struct MeshPart<'a> {
 /// how they connect.
 #[derive(Default, Clone)]
 pub struct Mesh {
-    vertex_component_count: usize,
+    vertices: Vec<f32>,
     indices: Vec<u32>,
     primitives: Vec<MeshPrimitive>,
     materials: Vec<MaterialProperties>,
@@ -86,43 +90,6 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    /// Gets the number of components in a mesh vertex.
-    pub fn vertex_component_count(&self) -> usize {
-        self.vertex_component_count
-    }
-
-    /// Gets the size of a mesh vertex in bytes.
-    pub fn vertex_size_bytes(&self) -> usize {
-        self.vertex_component_count * std::mem::size_of::<f32>()
-    }
-
-    /// Gets the vertices of each primitive.
-    pub fn vertices(&self) -> Vec<&Vec<f32>> {
-        self.primitives.iter().map(|p| &p.vertices).collect()
-    }
-
-    /// Gets the flattened vertices.
-    pub fn flattened_vertices(&self) -> Vec<f32> {
-        self.primitives
-            .iter()
-            .flat_map(|p| p.vertices.clone())
-            .collect()
-    }
-
-    /// Gets the flattened indices.
-    pub fn flattened_indices(&self) -> Vec<u32> {
-        let mut flattened_indices = self.indices.clone();
-        let mut vertex_offset = 0;
-        for primitive in &self.primitives {
-            let (ib, ie) = primitive.indices_range;
-            for index in &mut flattened_indices[ib..ie] {
-                *index += vertex_offset;
-            }
-            vertex_offset += (primitive.vertices.len() / self.vertex_component_count) as u32;
-        }
-        flattened_indices
-    }
-
     /// Gets the number of parts in the mesh.
     pub fn part_count(&self) -> usize {
         self.primitives.len()
@@ -162,22 +129,14 @@ impl Mesh {
     }
 
     /// Loads the mesh from a file.
-    pub fn from_file<P: AsRef<Path>>(
-        path: P,
-        vertex_attributes: &[MeshVertexAttribute],
-    ) -> Result<Self> {
-        if vertex_attributes.is_empty() {
-            return Err(Error::invalid_argument(
-                "Mesh vertex attributes cannot be empty.",
-            ));
-        }
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
         if !path.exists() {
             return Err(Error::io("Mesh file not found."));
         }
 
         match Self::get_file_type(path)? {
-            MeshFileType::Gltf => Self::from_gltf_file(path, vertex_attributes),
+            MeshFileType::Gltf => Self::from_gltf_file(path),
         }
     }
 
@@ -199,22 +158,7 @@ impl Mesh {
         Err(Error::io("Unsupported mesh file type"))
     }
 
-    fn calculate_vertex_component_count(vertex_attributes: &[MeshVertexAttribute]) -> usize {
-        let mut vertex_component_count = 0;
-        for &vertex_attribute in vertex_attributes {
-            vertex_component_count += match vertex_attribute {
-                MeshVertexAttribute::Position => 3,
-                MeshVertexAttribute::Normal => 3,
-                MeshVertexAttribute::Tangent => 4,
-                MeshVertexAttribute::TextureCoordinates(_) => 2,
-                // We always use RGBA,
-                MeshVertexAttribute::Color(_) => 4,
-            }
-        }
-        vertex_component_count
-    }
-
-    fn from_gltf_file(path: &Path, vertex_attributes: &[MeshVertexAttribute]) -> Result<Self> {
+    fn from_gltf_file(path: &Path) -> Result<Self> {
         let mut mesh = Self::default();
 
         let gltf = gltf::Gltf::open(path)?;
@@ -325,7 +269,6 @@ impl Mesh {
                 .push(buffer[view.offset()..view.offset() + view.length()].to_vec());
         }
 
-        mesh.vertex_component_count = Self::calculate_vertex_component_count(vertex_attributes);
         while let Some((node, parent_transform)) = nodes.pop() {
             let node_transform =
                 parent_transform * Mat4::from_cols_array_2d(&node.transform().matrix());
@@ -343,82 +286,103 @@ impl Mesh {
             let gltf_primitives = gltf_mesh.primitives();
             mesh.primitives.reserve(gltf_primitives.len());
             for gltf_primitive in gltf_primitives {
-                let mut primitive = MeshPrimitive::default();
-
+                let mut primitive = MeshPrimitive {
+                    vertex_count: gltf_primitive
+                        .attributes()
+                        .next()
+                        .map_or(0, |(_, accessor)| accessor.count()),
+                    ..Default::default()
+                };
+                let topology = gltf_primitive.mode().try_into()?;
+                let swap_vertices = swap_triangle_winding && gltf_primitive.indices().is_none();
                 let reader =
                     gltf_primitive.reader(|buffer| Some(buffers[buffer.index()].as_slice()));
-                let mut attribute_offset = 0;
-                for &vertex_attribute in vertex_attributes {
-                    let attribute_values: Vec<f32> = match vertex_attribute {
-                        MeshVertexAttribute::Position => reader
-                            .read_positions()
-                            .ok_or(Error::fail("Failed to read the mesh primitive positions."))?
-                            .flat_map(|p| transform.transform_point3(Vec3::from(p)).to_array())
-                            .collect(),
-                        MeshVertexAttribute::Normal => reader
-                            .read_normals()
-                            .ok_or(Error::fail("Failed to read the mesh primitive normals."))?
-                            .flat_map(|n| {
-                                (normal_transform * Vec3::from_array(n))
-                                    .normalize()
-                                    .to_array()
-                            })
-                            .collect(),
-                        MeshVertexAttribute::Tangent => reader
-                            .read_tangents()
-                            .ok_or(Error::fail("Failed to read the mesh primitive tangents."))?
-                            .flat_map(|t| {
-                                let tangent = transform
-                                    .transform_vector3(Vec3::new(t[0], t[1], t[2]))
-                                    .normalize();
-                                let handedness = match swap_triangle_winding {
-                                    true => -t[3],
-                                    false => t[3],
-                                };
-                                [tangent.x, tangent.y, tangent.z, handedness]
-                            })
-                            .collect(),
-                        MeshVertexAttribute::TextureCoordinates(set) => reader
-                            .read_tex_coords(set)
-                            .ok_or(Error::fail(
-                                "Failed to read the mesh primitive texture coordinates.",
-                            ))?
-                            .into_f32()
-                            .flatten()
-                            .collect(),
-                        MeshVertexAttribute::Color(set) => reader
-                            .read_colors(set)
-                            .ok_or(Error::fail("Failed to read the mesh primitive colors."))?
-                            .into_rgba_f32()
-                            .flatten()
-                            .collect(),
-                    };
-                    let component_count =
-                        Self::calculate_vertex_component_count(&[vertex_attribute]);
-                    let vertex_count = attribute_values.len() / component_count;
-                    if attribute_offset == 0 {
-                        primitive
-                            .vertices
-                            .resize(vertex_count * mesh.vertex_component_count, 0.0);
-                    } else if vertex_count != primitive.vertices.len() / mesh.vertex_component_count
-                    {
-                        return Err(Error::fail(
-                            "Mesh vertex attributes have different lengths.",
-                        ));
+                for (semantic, _) in gltf_primitive.attributes() {
+                    match semantic {
+                        gltf::Semantic::Positions => {
+                            let positions = reader
+                                .read_positions()
+                                .ok_or(Error::fail("Failed to read the mesh primitive positions."))?
+                                .map(|p| transform.transform_point3(Vec3::from(p)).to_array());
+                            primitive.positions_range = Some(mesh.append_vertex_attribute(
+                                positions,
+                                primitive.vertex_count,
+                                topology,
+                                swap_vertices,
+                            )?);
+                        }
+                        gltf::Semantic::Normals => {
+                            let normals = reader
+                                .read_normals()
+                                .ok_or(Error::fail("Failed to read the mesh primitive normals."))?
+                                .map(|n| {
+                                    (normal_transform * Vec3::from_array(n))
+                                        .normalize()
+                                        .to_array()
+                                });
+                            primitive.normals_range = Some(mesh.append_vertex_attribute(
+                                normals,
+                                primitive.vertex_count,
+                                topology,
+                                swap_vertices,
+                            )?);
+                        }
+                        gltf::Semantic::Tangents => {
+                            let tangents = reader
+                                .read_tangents()
+                                .ok_or(Error::fail("Failed to read the mesh primitive tangents."))?
+                                .map(|t| {
+                                    let tangent = transform
+                                        .transform_vector3(Vec3::new(t[0], t[1], t[2]))
+                                        .normalize();
+                                    let handedness = match swap_triangle_winding {
+                                        true => -t[3],
+                                        false => t[3],
+                                    };
+                                    [tangent.x, tangent.y, tangent.z, handedness]
+                                });
+                            primitive.tangents_range = Some(mesh.append_vertex_attribute(
+                                tangents,
+                                primitive.vertex_count,
+                                topology,
+                                swap_vertices,
+                            )?);
+                        }
+                        gltf::Semantic::TexCoords(set) => {
+                            let tex_coords = reader
+                                .read_tex_coords(set)
+                                .ok_or(Error::fail(
+                                    "Failed to read the mesh primitive texture coordinates.",
+                                ))?
+                                .into_f32();
+                            let range = mesh.append_vertex_attribute(
+                                tex_coords,
+                                primitive.vertex_count,
+                                topology,
+                                swap_vertices,
+                            )?;
+                            primitive.tex_coords_ranges.push((set, range));
+                        }
+                        gltf::Semantic::Colors(set) => {
+                            let colors = reader
+                                .read_colors(set)
+                                .ok_or(Error::fail("Failed to read the mesh primitive colors."))?
+                                .into_rgba_f32();
+                            let range = mesh.append_vertex_attribute(
+                                colors,
+                                primitive.vertex_count,
+                                topology,
+                                swap_vertices,
+                            )?;
+                            primitive.colors_ranges.push((set, range));
+                        }
+                        _ => {}
                     }
-
-                    for (vertex, attribute) in primitive
-                        .vertices
-                        .chunks_exact_mut(mesh.vertex_component_count)
-                        .zip(attribute_values.chunks_exact(component_count))
-                    {
-                        vertex[attribute_offset..attribute_offset + component_count]
-                            .copy_from_slice(attribute);
-                    }
-                    attribute_offset += component_count;
                 }
+                primitive
+                    .tex_coords_ranges
+                    .sort_unstable_by_key(|(set, _)| *set);
 
-                let topology = gltf_primitive.mode().try_into()?;
                 if let Some(indices) = reader.read_indices() {
                     let ib = mesh.indices.len();
                     mesh.indices.extend(indices.into_u32());
@@ -426,13 +390,11 @@ impl Mesh {
                         Self::swap_triangle_winding(topology, &mut mesh.indices, ib, 1);
                     }
                     primitive.indices_range = (ib, mesh.indices.len());
-                } else if swap_triangle_winding {
-                    Self::swap_triangle_winding(
-                        topology,
-                        &mut primitive.vertices,
-                        0,
-                        mesh.vertex_component_count,
-                    );
+                } else if swap_vertices
+                    && matches!(topology, PrimitiveTopology::TriangleStrip)
+                    && primitive.vertex_count >= 3
+                {
+                    primitive.vertex_count += 1;
                 }
 
                 let material = gltf_primitive.material();
@@ -461,6 +423,26 @@ impl Mesh {
         Ok(mesh)
     }
 
+    fn append_vertex_attribute<const N: usize>(
+        &mut self,
+        values: impl Iterator<Item = [f32; N]>,
+        vertex_count: usize,
+        topology: PrimitiveTopology,
+        swap_triangle_winding: bool,
+    ) -> Result<(usize, usize)> {
+        let begin = self.vertices.len();
+        self.vertices.extend(values.flatten());
+        if self.vertices.len() - begin != vertex_count * N {
+            return Err(Error::fail(
+                "Mesh vertex attributes have different lengths.",
+            ));
+        }
+        if swap_triangle_winding {
+            Self::swap_triangle_winding(topology, &mut self.vertices, begin, N);
+        }
+        Ok((begin, self.vertices.len()))
+    }
+
     fn swap_triangle_winding<T: Copy>(
         topology: PrimitiveTopology,
         elements: &mut Vec<T>,
@@ -477,8 +459,8 @@ impl Mesh {
             }
             PrimitiveTopology::TriangleStrip => {
                 if (elements.len() - start_index) / element_size >= 3 {
-                    // A leading degenerate triangle shifts the strip parity, reversing the
-                    // winding of every original triangle without changing its vertices.
+                    // A leading degenerate triangle shifts the strip parity, reversing the winding
+                    // of every original triangle without changing its vertices.
                     elements.extend_from_within(start_index..start_index + element_size);
                     elements[start_index..].rotate_right(element_size);
                 }
@@ -491,9 +473,71 @@ impl Mesh {
 }
 
 impl<'a> MeshPart<'a> {
-    /// Gets the part's interleaved vertex components.
-    pub fn vertices(&self) -> &Vec<f32> {
-        &self.primitive.vertices
+    /// Gets the number of components in a vertex with the requested layout.
+    pub fn vertex_component_count(&self, vertex_attributes: &[MeshVertexAttribute]) -> usize {
+        vertex_attributes
+            .iter()
+            .map(|attribute| match attribute {
+                MeshVertexAttribute::Position | MeshVertexAttribute::Normal => 3,
+                MeshVertexAttribute::Tangent | MeshVertexAttribute::Color(_) => 4,
+                MeshVertexAttribute::TextureCoordinates(_) => 2,
+            })
+            .sum()
+    }
+
+    /// Gets the size of a vertex in bytes with the requested layout.
+    pub fn vertex_size_bytes(&self, vertex_attributes: &[MeshVertexAttribute]) -> usize {
+        self.vertex_component_count(vertex_attributes) * std::mem::size_of::<f32>()
+    }
+
+    /// Gets the part's vertices interleaved in the requested attribute order.
+    pub fn vertices(&self, vertex_attributes: &[MeshVertexAttribute]) -> Result<Vec<f32>> {
+        if vertex_attributes.is_empty() {
+            return Err(Error::invalid_argument(
+                "Mesh vertex attributes cannot be empty.",
+            ));
+        }
+
+        let component_count = self.vertex_component_count(vertex_attributes);
+        let mut vertices = vec![0.0; self.primitive.vertex_count * component_count];
+        let mut offset = 0;
+        for &attribute in vertex_attributes {
+            let (range, width) = match attribute {
+                MeshVertexAttribute::Position => (self.primitive.positions_range, 3),
+                MeshVertexAttribute::Normal => (self.primitive.normals_range, 3),
+                MeshVertexAttribute::Tangent => (self.primitive.tangents_range, 4),
+                MeshVertexAttribute::Color(set) => (
+                    self.primitive
+                        .colors_ranges
+                        .iter()
+                        .find(|(index, _)| *index as usize == set)
+                        .map(|(_, range)| *range),
+                    4,
+                ),
+                MeshVertexAttribute::TextureCoordinates(set) => (
+                    self.primitive
+                        .tex_coords_ranges
+                        .iter()
+                        .find(|(index, _)| *index as usize == set)
+                        .map(|(_, range)| *range),
+                    2,
+                ),
+            };
+            let Some((begin, end)) = range else {
+                return Err(Error::fail(format!(
+                    "Mesh vertex attribute {attribute:?} is not present in the mesh file.",
+                )));
+            };
+
+            for (vertex, values) in vertices
+                .chunks_exact_mut(component_count)
+                .zip(self.mesh.vertices[begin..end].chunks_exact(width))
+            {
+                vertex[offset..offset + width].copy_from_slice(values);
+            }
+            offset += width;
+        }
+        Ok(vertices)
     }
 
     /// Gets the indices referencing the part's vertices.
@@ -705,55 +749,251 @@ mod tests {
 
     #[test]
     fn test_from_file() {
-        let vertex_attributes = [
-            MeshVertexAttribute::Position,
-            MeshVertexAttribute::Normal,
-            MeshVertexAttribute::TextureCoordinates(0),
-        ];
         {
             const FILE_PATH: &str = "assets/treasure_chest/treasure_chest_4k.gltf";
-            assert!(Mesh::from_file(FILE_PATH, &vertex_attributes).is_ok());
+            assert!(Mesh::from_file(FILE_PATH).is_ok());
         }
 
         {
             const FILE_PATH: &str = "assets/treasure_chest/treasure_chest_diff_4k.jpg";
-            assert!(matches!(
-                Mesh::from_file(FILE_PATH, &vertex_attributes),
-                Err(Error::Io(_))
-            ));
+            assert!(matches!(Mesh::from_file(FILE_PATH), Err(Error::Io(_))));
         }
     }
 
     #[test]
-    fn test_from_file_interleaves_vertex_attributes() {
-        const FILE_PATH: &str = "assets/treasure_chest/treasure_chest_4k.gltf";
-        let positions = Mesh::from_file(FILE_PATH, &[MeshVertexAttribute::Position]).unwrap();
-        let normals = Mesh::from_file(FILE_PATH, &[MeshVertexAttribute::Normal]).unwrap();
-        let tex_coords =
-            Mesh::from_file(FILE_PATH, &[MeshVertexAttribute::TextureCoordinates(0)]).unwrap();
-        let mesh = Mesh::from_file(
-            FILE_PATH,
-            &[
-                MeshVertexAttribute::TextureCoordinates(0),
-                MeshVertexAttribute::Position,
-                MeshVertexAttribute::Normal,
+    fn test_from_file_attribute_blocks() {
+        // The source is interleaved and has two UV sets and RGB colors.
+        let source: [[f32; 17]; 3] = [
+            [
+                0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.1, 0.2, 1.0, 0.0, 0.0,
             ],
-        )
-        .unwrap();
+            [
+                1.0, 0.0, 2.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.3, 0.4, 0.0, 1.0, 0.0,
+            ],
+            [
+                0.0, 1.0, 3.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.5, 0.6, 0.0, 0.0, 1.0,
+            ],
+        ];
+        let mut buffer: Vec<u8> = source
+            .iter()
+            .flatten()
+            .flat_map(|value| value.to_le_bytes())
+            .collect();
+        buffer.extend([0u32, 1, 2].into_iter().flat_map(u32::to_le_bytes));
+        let json = br#"{
+            "asset": {"version": "2.0"},
+            "scene": 0,
+            "scenes": [{"nodes": [0]}],
+            "nodes": [{"mesh": 0}],
+            "buffers": [{"byteLength": 216}],
+            "bufferViews": [
+                {"buffer": 0, "byteLength": 204, "byteStride": 68},
+                {"buffer": 0, "byteOffset": 204, "byteLength": 12}
+            ],
+            "accessors": [
+                {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0,0,1], "max": [1,1,3]},
+                {"bufferView": 0, "byteOffset": 12, "componentType": 5126, "count": 3, "type": "VEC3"},
+                {"bufferView": 0, "byteOffset": 24, "componentType": 5126, "count": 3, "type": "VEC4"},
+                {"bufferView": 0, "byteOffset": 40, "componentType": 5126, "count": 3, "type": "VEC2"},
+                {"bufferView": 0, "byteOffset": 48, "componentType": 5126, "count": 3, "type": "VEC2"},
+                {"bufferView": 0, "byteOffset": 56, "componentType": 5126, "count": 3, "type": "VEC3"},
+                {"bufferView": 1, "componentType": 5125, "count": 3, "type": "SCALAR"}
+            ],
+            "meshes": [{"primitives": [
+                {"attributes": {"POSITION": 0, "NORMAL": 1, "TANGENT": 2, "TEXCOORD_1": 4, "TEXCOORD_0": 3, "COLOR_0": 5, "COLOR_1": 1}, "indices": 6, "mode": 5},
+                {"attributes": {"POSITION": 0, "NORMAL": 1, "TANGENT": 2, "TEXCOORD_1": 4, "TEXCOORD_0": 3, "COLOR_0": 5, "COLOR_1": 1}, "mode": 5},
+                {"attributes": {"POSITION": 0, "NORMAL": 1, "TANGENT": 2, "TEXCOORD_1": 4, "TEXCOORD_0": 3, "COLOR_0": 5, "COLOR_1": 1}, "mode": 4},
+                {"attributes": {"POSITION": 0}, "mode": 4}
+            ]}]
+        }"#;
+        let glb = gltf::binary::Glb {
+            header: gltf::binary::Header {
+                magic: *b"glTF",
+                version: 2,
+                length: 0,
+            },
+            json: std::borrow::Cow::Borrowed(json),
+            bin: Some(std::borrow::Cow::Owned(buffer)),
+        };
+        let path = std::env::temp_dir().join(format!(
+            "heph_mesh_attributes_{}_{}.glb",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+        ));
+        glb.to_writer(File::create(&path).unwrap()).unwrap();
+        let result = Mesh::from_file(&path);
+        std::fs::remove_file(&path).unwrap();
+        let mesh = result.unwrap();
+        let attributes = [
+            MeshVertexAttribute::Color(0),
+            MeshVertexAttribute::TextureCoordinates(0),
+            MeshVertexAttribute::TextureCoordinates(1),
+            MeshVertexAttribute::Tangent,
+            MeshVertexAttribute::Normal,
+            MeshVertexAttribute::Position,
+        ];
+        assert_eq!(mesh.part_count(), 4);
+        let orders: [&[usize]; 3] = [&[0, 1, 2], &[0, 0, 1, 2], &[0, 2, 1]];
+        for (i, part) in mesh.parts().take(3).enumerate() {
+            assert_eq!(part.vertex_component_count(&attributes), 18);
+            let colors = [MeshVertexAttribute::Color(1), MeshVertexAttribute::Color(0)];
+            assert_eq!(part.vertex_component_count(&colors), 8);
+            assert_eq!(part.vertex_size_bytes(&colors), 32);
+            let colors = part.vertices(&colors).unwrap();
+            assert_eq!(colors.len(), orders[i].len() * 8);
+            for (vertex, &source_index) in colors.as_chunks::<8>().0.iter().zip(orders[i]) {
+                assert_eq!(&vertex[..4], &[0.0, 0.0, 1.0, 1.0]);
+                assert_eq!(&vertex[4..7], &source[source_index][14..17]);
+                assert_eq!(vertex[7], 1.0);
+            }
+            assert!(part.vertices(&[MeshVertexAttribute::Color(2)]).is_err());
+            let vertices = part.vertices(&attributes).unwrap();
+            assert_eq!(vertices.len(), orders[i].len() * 18);
+            for (vertex, &source_index) in vertices.as_chunks::<18>().0.iter().zip(orders[i]) {
+                let original = source[source_index];
+                assert_eq!(
+                    &vertex[..4],
+                    &[original[14], original[15], original[16], 1.0]
+                );
+                assert_eq!(&vertex[4..8], &original[10..14]);
+                assert_eq!(&vertex[8..12], &[1.0, 0.0, 0.0, -1.0]);
+                assert_eq!(&vertex[12..15], &[0.0, 0.0, -1.0]);
+                assert_eq!(&vertex[15..], &[original[0], original[1], -original[2]]);
+            }
+            match i {
+                0 => assert_eq!(part.indices(), &[0, 0, 1, 2]),
+                _ => assert!(part.indices().is_empty()),
+            }
+        }
+        let part = mesh.parts().last().unwrap();
+        assert_eq!(
+            part.vertices(&[MeshVertexAttribute::Position])
+                .unwrap()
+                .len(),
+            9
+        );
+        assert!(part.vertices(&[MeshVertexAttribute::Normal]).is_err());
+        assert!(
+            part.vertices(&[MeshVertexAttribute::TextureCoordinates(0)])
+                .is_err()
+        );
+    }
 
-        assert_eq!(mesh.vertex_component_count(), 8);
-        assert_eq!(mesh.vertex_size_bytes(), 8 * std::mem::size_of::<f32>());
-        assert_eq!(mesh.primitives.len(), positions.primitives.len());
-        for (i, primitive) in mesh.primitives.iter().enumerate() {
-            let positions = &positions.primitives[i].vertices;
-            let normals = &normals.primitives[i].vertices;
-            let tex_coords = &tex_coords.primitives[i].vertices;
-            assert_eq!(primitive.vertices.len(), positions.len() / 3 * 8);
-            for (j, vertex) in primitive.vertices.as_chunks::<8>().0.iter().enumerate() {
+    #[test]
+    fn test_vertices_interleaves_vertex_attributes() {
+        const FILE_PATH: &str = "assets/treasure_chest/treasure_chest_4k.gltf";
+        let mesh = Mesh::from_file(FILE_PATH).unwrap();
+        let attributes = [
+            MeshVertexAttribute::TextureCoordinates(0),
+            MeshVertexAttribute::Position,
+            MeshVertexAttribute::Normal,
+        ];
+        for part in mesh.parts() {
+            let positions = part.vertices(&[MeshVertexAttribute::Position]).unwrap();
+            let normals = part.vertices(&[MeshVertexAttribute::Normal]).unwrap();
+            let tex_coords = part
+                .vertices(&[MeshVertexAttribute::TextureCoordinates(0)])
+                .unwrap();
+            let vertices = part.vertices(&attributes).unwrap();
+            assert_eq!(part.vertex_component_count(&attributes), 8);
+            assert_eq!(
+                part.vertex_size_bytes(&attributes),
+                8 * std::mem::size_of::<f32>()
+            );
+            assert_eq!(vertices.len(), positions.len() / 3 * 8);
+            for (j, vertex) in vertices.as_chunks::<8>().0.iter().enumerate() {
                 assert_eq!(&vertex[..2], &tex_coords[j * 2..j * 2 + 2]);
                 assert_eq!(&vertex[2..5], &positions[j * 3..j * 3 + 3]);
                 assert_eq!(&vertex[5..], &normals[j * 3..j * 3 + 3]);
             }
+        }
+    }
+
+    #[test]
+    fn test_vertices_missing_attributes() {
+        let mesh = Mesh {
+            vertices: vec![1.0, 2.0, 3.0],
+            primitives: vec![MeshPrimitive {
+                vertex_count: 1,
+                positions_range: Some((0, 3)),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let part = mesh.parts().next().unwrap();
+        assert_eq!(
+            part.vertices(&[MeshVertexAttribute::Position]).unwrap(),
+            vec![1.0, 2.0, 3.0]
+        );
+        assert!(matches!(part.vertices(&[]), Err(Error::InvalidArgument(_))));
+        for attribute in [
+            MeshVertexAttribute::Normal,
+            MeshVertexAttribute::Tangent,
+            MeshVertexAttribute::TextureCoordinates(0),
+            MeshVertexAttribute::Color(0),
+        ] {
+            assert!(matches!(part.vertices(&[attribute]), Err(Error::Fail(_))));
+            assert!(matches!(
+                part.vertices(&[MeshVertexAttribute::Position, attribute]),
+                Err(Error::Fail(_))
+            ));
+        }
+        let mesh = Mesh {
+            primitives: vec![MeshPrimitive::default()],
+            ..Default::default()
+        };
+        assert!(matches!(
+            mesh.parts()
+                .next()
+                .unwrap()
+                .vertices(&[MeshVertexAttribute::Position]),
+            Err(Error::Fail(_))
+        ));
+    }
+
+    #[test]
+    fn test_vertices_uv_sets() {
+        let mesh = Mesh {
+            vertices: vec![
+                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8,
+            ],
+            primitives: vec![MeshPrimitive {
+                vertex_count: 2,
+                positions_range: Some((0, 6)),
+                tex_coords_ranges: vec![(0, (6, 10)), (1, (10, 14))],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let part = mesh.parts().next().unwrap();
+        let attributes = [
+            MeshVertexAttribute::TextureCoordinates(1),
+            MeshVertexAttribute::Position,
+            MeshVertexAttribute::TextureCoordinates(0),
+        ];
+        assert_eq!(part.vertex_component_count(&attributes), 7);
+        assert_eq!(part.vertex_size_bytes(&attributes), 28);
+        assert_eq!(
+            part.vertices(&attributes).unwrap(),
+            vec![
+                0.5, 0.6, 1.0, 2.0, 3.0, 0.1, 0.2, 0.7, 0.8, 4.0, 5.0, 6.0, 0.3, 0.4,
+            ]
+        );
+        let attributes = [MeshVertexAttribute::TextureCoordinates(1)];
+        assert_eq!(part.vertex_component_count(&attributes), 2);
+        assert_eq!(part.vertex_size_bytes(&attributes), 8);
+        assert_eq!(
+            part.vertices(&attributes).unwrap(),
+            vec![0.5, 0.6, 0.7, 0.8]
+        );
+        for set in [2, usize::MAX] {
+            assert!(
+                part.vertices(&[MeshVertexAttribute::TextureCoordinates(set)])
+                    .is_err()
+            );
         }
     }
 
@@ -775,8 +1015,8 @@ mod tests {
             assert_eq!(indices, vec![0, 2, 1, 3, 5, 4]);
         }
 
-        // Decode the strip to check that every original triangle has reversed winding.
-        // Ignore degenerate triangles and normalize cyclic rotations for comparison.
+        // Decode the strip to check that every original triangle has reversed winding. Ignore
+        // degenerate triangles and normalize cyclic rotations for comparison.
         let strip_triangles = |indices: &[u32]| {
             indices
                 .windows(3)

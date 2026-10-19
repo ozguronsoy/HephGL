@@ -63,62 +63,63 @@ fn example(
     drop(vert_shader);
     drop(frag_shader);
 
-    // Vertex attribute order defines the packed vertex layout, so this mesh's vertex layout will
-    // be: [px, py, pz, nx, ny, nz, u0, v0].
-    let mesh = Mesh::from_file(
-        MESH_PATH,
-        &[
-            MeshVertexAttribute::Position,
-            MeshVertexAttribute::Normal,
-            MeshVertexAttribute::TextureCoordinates(0),
-        ],
-    )
-    .unwrap();
+    let mesh = Mesh::from_file(MESH_PATH).unwrap();
 
-    let mut vertices = mesh.flattened_vertices();
-    let indices = mesh.flattened_indices();
-
-    let mut min = Vec3::from_slice(&vertices[..3]);
-    let mut max = min;
-    for vertex in vertices.chunks_exact(mesh.vertex_component_count()) {
-        let position = Vec3::from_slice(&vertex[..3]);
-        min = min.min(position);
-        max = max.max(position);
+    // Find the bounds of the whole mesh so every part uses the same center and scale.
+    let mut min = Vec3::splat(f32::INFINITY);
+    let mut max = Vec3::splat(f32::NEG_INFINITY);
+    for part in mesh.parts() {
+        let positions = part.vertices(&[MeshVertexAttribute::Position]).unwrap();
+        for position in positions.as_chunks::<3>().0 {
+            let position = Vec3::from_slice(position);
+            min = min.min(position);
+            max = max.max(position);
+        }
     }
     let center = (min + max) * 0.5;
-    for vertex in vertices.chunks_exact_mut(mesh.vertex_component_count()) {
-        vertex[0] -= center.x;
-        vertex[1] -= center.y;
-        vertex[2] -= center.z;
-    }
     let mut transform = Transform::new(
         Vec3::ZERO,
         Quat::IDENTITY,
         Vec3::splat(2.0 / (max - min).max_element()),
     );
 
-    let mut vertex_buffer = renderer
-        .create_buffer(
-            vertices.len() * std::mem::size_of::<f32>(),
-            BufferUsage::Vertex,
-        )
-        .unwrap();
-    renderer
-        .write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
-        .unwrap();
-    drop(vertices);
+    let mut part_buffers = Vec::with_capacity(mesh.part_count());
+    for part in mesh.parts() {
+        // All textures in this chest use the same UV set; the shader expects [px, py, pz, nx, ny,
+        // nz, u, v].
+        let vertex_attributes = [
+            MeshVertexAttribute::Position,
+            MeshVertexAttribute::Normal,
+            MeshVertexAttribute::TextureCoordinates(part.base_texture_uv_set().unwrap()),
+        ];
+        let mut vertices = part.vertices(&vertex_attributes).unwrap();
+        let component_count = part.vertex_component_count(&vertex_attributes);
+        for vertex in vertices.chunks_exact_mut(component_count) {
+            vertex[0] -= center.x;
+            vertex[1] -= center.y;
+            vertex[2] -= center.z;
+        }
+        let vertex_count = vertices.len() / component_count;
+        let vertex_buffer = renderer
+            .create_buffer(
+                vertex_count * part.vertex_size_bytes(&vertex_attributes),
+                BufferUsage::Vertex,
+            )
+            .unwrap();
+        renderer
+            .write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
+            .unwrap();
 
-    let index_count = indices.len() as u32;
-    let mut index_buffer = renderer
-        .create_buffer(
-            indices.len() * std::mem::size_of::<u32>(),
-            BufferUsage::Index,
-        )
-        .unwrap();
-    renderer
-        .write_buffer(&index_buffer, bytemuck::cast_slice(&indices))
-        .unwrap();
-    drop(indices);
+        // Indices reference this part's vertices, so each part is drawn with its own buffers.
+        let indices = part.indices();
+        let index_buffer = renderer
+            .create_buffer(std::mem::size_of_val(indices), BufferUsage::Index)
+            .unwrap();
+        renderer
+            .write_buffer(&index_buffer, bytemuck::cast_slice(indices))
+            .unwrap();
+        part_buffers.push((vertex_buffer, index_buffer, indices.len() as u32));
+    }
 
     let image = image::open(IMAGE_PATH).unwrap().to_rgba8();
     let arm = image::open(ARM_PATH).unwrap().to_rgba8();
@@ -260,67 +261,69 @@ fn example(
             .write_buffer(&uniform_buffer, bytemuck::cast_slice(&matrices))
             .unwrap();
 
-        let bindings = [
-            ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Buffer {
-                    handle: vertex_buffer,
-                    usage: BufferUsage::Vertex,
-                    offset: 0,
-                    size: vertex_buffer.size(),
+        for &(vertex_buffer, index_buffer, index_count) in &part_buffers {
+            let bindings = [
+                ResourceBinding {
+                    binding: 0,
+                    resource: ResourceBindingType::Buffer {
+                        handle: vertex_buffer,
+                        usage: BufferUsage::Vertex,
+                        offset: 0,
+                        size: vertex_buffer.size(),
+                    },
                 },
-            },
-            ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Buffer {
-                    handle: index_buffer,
-                    usage: BufferUsage::Index,
-                    offset: 0,
-                    size: index_buffer.size(),
+                ResourceBinding {
+                    binding: 0,
+                    resource: ResourceBindingType::Buffer {
+                        handle: index_buffer,
+                        usage: BufferUsage::Index,
+                        offset: 0,
+                        size: index_buffer.size(),
+                    },
                 },
-            },
-            ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Texture { handle: texture },
-            },
-            ResourceBinding {
-                binding: 1,
-                resource: ResourceBindingType::Sampler { handle: sampler },
-            },
-            ResourceBinding {
-                binding: 2,
-                resource: ResourceBindingType::Texture {
-                    handle: arm_texture,
+                ResourceBinding {
+                    binding: 0,
+                    resource: ResourceBindingType::Texture { handle: texture },
                 },
-            },
-            ResourceBinding {
-                binding: 3,
-                resource: ResourceBindingType::Texture {
-                    handle: normal_texture,
+                ResourceBinding {
+                    binding: 1,
+                    resource: ResourceBindingType::Sampler { handle: sampler },
                 },
-            },
-            ResourceBinding {
-                binding: 4,
-                resource: ResourceBindingType::Buffer {
-                    handle: material_buffer,
-                    usage: BufferUsage::Uniform,
-                    offset: 0,
-                    size: material_buffer.size(),
+                ResourceBinding {
+                    binding: 2,
+                    resource: ResourceBindingType::Texture {
+                        handle: arm_texture,
+                    },
                 },
-            },
-            ResourceBinding {
-                binding: 5,
-                resource: ResourceBindingType::Buffer {
-                    handle: uniform_buffer,
-                    usage: BufferUsage::Uniform,
-                    offset: 0,
-                    size: uniform_buffer.size(),
+                ResourceBinding {
+                    binding: 3,
+                    resource: ResourceBindingType::Texture {
+                        handle: normal_texture,
+                    },
                 },
-            },
-        ];
-        renderer
-            .record_graphics_command(&pipeline, &[&bindings], index_count, 1)
-            .unwrap();
+                ResourceBinding {
+                    binding: 4,
+                    resource: ResourceBindingType::Buffer {
+                        handle: material_buffer,
+                        usage: BufferUsage::Uniform,
+                        offset: 0,
+                        size: material_buffer.size(),
+                    },
+                },
+                ResourceBinding {
+                    binding: 5,
+                    resource: ResourceBindingType::Buffer {
+                        handle: uniform_buffer,
+                        usage: BufferUsage::Uniform,
+                        offset: 0,
+                        size: uniform_buffer.size(),
+                    },
+                },
+            ];
+            renderer
+                .record_graphics_command(&pipeline, &[&bindings], index_count, 1)
+                .unwrap();
+        }
 
         renderer.end_frame().unwrap();
 
@@ -337,8 +340,10 @@ fn example(
     renderer.destroy_texture(&mut arm_texture).unwrap();
     renderer.destroy_texture(&mut normal_texture).unwrap();
     renderer.destroy_buffer(&mut material_buffer).unwrap();
-    renderer.destroy_buffer(&mut vertex_buffer).unwrap();
-    renderer.destroy_buffer(&mut index_buffer).unwrap();
+    for (vertex_buffer, index_buffer, _) in &mut part_buffers {
+        renderer.destroy_buffer(vertex_buffer).unwrap();
+        renderer.destroy_buffer(index_buffer).unwrap();
+    }
     for uniform_buffer in &mut uniform_buffers {
         renderer.destroy_buffer(uniform_buffer).unwrap();
     }
