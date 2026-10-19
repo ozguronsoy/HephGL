@@ -52,6 +52,7 @@ struct MeshSampler {
 
 #[derive(Default, Clone)]
 struct MeshPrimitive {
+    topology: PrimitiveTopology,
     vertex_count: usize,
     // start index, end index for all range tuples.
     positions_range: Option<(usize, usize)>,
@@ -287,13 +288,13 @@ impl Mesh {
             mesh.primitives.reserve(gltf_primitives.len());
             for gltf_primitive in gltf_primitives {
                 let mut primitive = MeshPrimitive {
+                    topology: gltf_primitive.mode().try_into()?,
                     vertex_count: gltf_primitive
                         .attributes()
                         .next()
                         .map_or(0, |(_, accessor)| accessor.count()),
                     ..Default::default()
                 };
-                let topology = gltf_primitive.mode().try_into()?;
                 let swap_vertices = swap_triangle_winding && gltf_primitive.indices().is_none();
                 let reader =
                     gltf_primitive.reader(|buffer| Some(buffers[buffer.index()].as_slice()));
@@ -307,7 +308,7 @@ impl Mesh {
                             primitive.positions_range = Some(mesh.append_vertex_attribute(
                                 positions,
                                 primitive.vertex_count,
-                                topology,
+                                primitive.topology,
                                 swap_vertices,
                             )?);
                         }
@@ -323,7 +324,7 @@ impl Mesh {
                             primitive.normals_range = Some(mesh.append_vertex_attribute(
                                 normals,
                                 primitive.vertex_count,
-                                topology,
+                                primitive.topology,
                                 swap_vertices,
                             )?);
                         }
@@ -344,7 +345,7 @@ impl Mesh {
                             primitive.tangents_range = Some(mesh.append_vertex_attribute(
                                 tangents,
                                 primitive.vertex_count,
-                                topology,
+                                primitive.topology,
                                 swap_vertices,
                             )?);
                         }
@@ -358,7 +359,7 @@ impl Mesh {
                             let range = mesh.append_vertex_attribute(
                                 tex_coords,
                                 primitive.vertex_count,
-                                topology,
+                                primitive.topology,
                                 swap_vertices,
                             )?;
                             primitive.tex_coords_ranges.push((set, range));
@@ -371,7 +372,7 @@ impl Mesh {
                             let range = mesh.append_vertex_attribute(
                                 colors,
                                 primitive.vertex_count,
-                                topology,
+                                primitive.topology,
                                 swap_vertices,
                             )?;
                             primitive.colors_ranges.push((set, range));
@@ -387,11 +388,11 @@ impl Mesh {
                     let ib = mesh.indices.len();
                     mesh.indices.extend(indices.into_u32());
                     if swap_triangle_winding {
-                        Self::swap_triangle_winding(topology, &mut mesh.indices, ib, 1);
+                        Self::swap_triangle_winding(primitive.topology, &mut mesh.indices, ib, 1);
                     }
                     primitive.indices_range = (ib, mesh.indices.len());
                 } else if swap_vertices
-                    && matches!(topology, PrimitiveTopology::TriangleStrip)
+                    && matches!(primitive.topology, PrimitiveTopology::TriangleStrip)
                     && primitive.vertex_count >= 3
                 {
                     primitive.vertex_count += 1;
@@ -473,6 +474,11 @@ impl Mesh {
 }
 
 impl<'a> MeshPart<'a> {
+    /// Gets the primitive topology of the part.
+    pub fn topology(&self) -> PrimitiveTopology {
+        self.primitive.topology
+    }
+
     /// Gets the number of components in a vertex with the requested layout.
     pub fn vertex_component_count(&self, vertex_attributes: &[MeshVertexAttribute]) -> usize {
         vertex_attributes
