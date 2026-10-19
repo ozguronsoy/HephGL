@@ -104,31 +104,6 @@ impl Mesh {
         })
     }
 
-    /// Checks whether any mesh part has an embedded base-color texture.
-    pub fn has_embedded_base_color_texture(&self) -> bool {
-        self.primitives
-            .iter()
-            .any(|p| p.base_color_texture.is_some())
-    }
-    /// Checks whether any mesh part has an embedded metallic-roughness texture.
-    pub fn has_embedded_arm_texture(&self) -> bool {
-        self.primitives.iter().any(|p| p.arm_texture.is_some())
-    }
-    /// Checks whether any mesh part has an embedded normal texture.
-    pub fn has_embedded_normal_texture(&self) -> bool {
-        self.primitives.iter().any(|p| p.normal_texture.is_some())
-    }
-    /// Checks whether any mesh part has an embedded emissive texture.
-    pub fn has_embedded_emissive_texture(&self) -> bool {
-        self.primitives.iter().any(|p| p.emissive_texture.is_some())
-    }
-    /// Checks whether any mesh part has an embedded occlusion texture.
-    pub fn has_embedded_occlusion_texture(&self) -> bool {
-        self.primitives
-            .iter()
-            .any(|p| p.occlusion_texture.is_some())
-    }
-
     /// Loads the mesh from a file.
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
