@@ -756,12 +756,12 @@ mod tests {
     #[test]
     fn test_from_file() {
         {
-            const FILE_PATH: &str = "assets/treasure_chest/treasure_chest_4k.gltf";
+            const FILE_PATH: &str = "assets/ship/ship_pinnace_4k.gltf";
             assert!(Mesh::from_file(FILE_PATH).is_ok());
         }
 
         {
-            const FILE_PATH: &str = "assets/treasure_chest/treasure_chest_diff_4k.jpg";
+            const FILE_PATH: &str = "assets/ship/textures/ship_pinnace_hull_diff_4k.jpg";
             assert!(matches!(Mesh::from_file(FILE_PATH), Err(Error::Io(_))));
         }
     }
@@ -890,7 +890,7 @@ mod tests {
 
     #[test]
     fn test_vertices_interleaves_vertex_attributes() {
-        const FILE_PATH: &str = "assets/treasure_chest/treasure_chest_4k.gltf";
+        const FILE_PATH: &str = "assets/ship/ship_pinnace_4k.gltf";
         let mesh = Mesh::from_file(FILE_PATH).unwrap();
         let attributes = [
             MeshVertexAttribute::TextureCoordinates(0),

@@ -66,7 +66,7 @@ void main()
     roughness = clamp(roughness, 0.045, 1.0);
 
     vec3 normal = surface_normal();
-    // The chest's material is double-sided, so reverse the shading normal on back faces.
+    // Reverse the shading normal on back faces for double-sided materials.
     if (!gl_FrontFacing)
     {
         normal = -normal;

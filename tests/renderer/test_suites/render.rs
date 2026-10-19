@@ -1014,7 +1014,7 @@ where
     pub(crate) fn test_render_meshes(&self) {
         use std::{collections::HashMap, path::Path};
 
-        const MESH_PATH: &str = "assets/treasure_chest/treasure_chest_4k.gltf";
+        const MESH_PATH: &str = "assets/ship/ship_pinnace_4k.gltf";
         const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 
         let mut renderer = self
@@ -1071,8 +1071,23 @@ where
         let mut transform = Transform::new(
             Vec3::ZERO,
             Quat::IDENTITY,
-            Vec3::splat(2.0 / (max - min).max_element()),
+            Vec3::splat(3.0 / (max - min).max_element()),
         );
+
+        let lighting = Lighting {
+            direction: Vec3::new(0.5, -0.8, 1.0),
+            intensity: 3.0,
+            ambient: RGB::new(0.15, 0.15, 0.15),
+            ..Default::default()
+        };
+        let mut camera = Camera::new(Projection::Perspective {
+            vertical_fov: std::f32::consts::FRAC_PI_3,
+            aspect_ratio: 16.0 / 9.0,
+            near: 0.1,
+            far: 100.0,
+        });
+        camera.position = Vec3::new(1.6, 1.0, -3.0);
+        heph_expect_success!(camera.look_at(&Vec3::ZERO, &Vec3::Y));
 
         let mesh_directory = heph_expect_success!(
             Path::new(MESH_PATH)
@@ -1141,13 +1156,8 @@ where
             ]
             .map(|(uri, format)| {
                 *textures.entry(uri.to_owned()).or_insert_with(|| {
-                    let file_name = heph_expect_success!(
-                        Path::new(uri)
-                            .file_name()
-                            .ok_or("Missing texture file name.")
-                    );
-                    let image = heph_expect_success!(image::open(mesh_directory.join(file_name)))
-                        .to_rgba8();
+                    let image =
+                        heph_expect_success!(image::open(mesh_directory.join(uri))).to_rgba8();
                     heph_expect_success!(renderer.create_texture(
                         &TextureOptions {
                             width: image.width(),
@@ -1162,76 +1172,57 @@ where
                     ))
                 })
             });
+            let material = part.material();
+            let uniforms = [
+                [
+                    material.base_color.r,
+                    material.base_color.g,
+                    material.base_color.b,
+                    material.base_color.a,
+                ],
+                [
+                    material.roughness,
+                    material.metallicness,
+                    material.normal_scale,
+                    0.0,
+                ],
+                [
+                    lighting.direction.x,
+                    lighting.direction.y,
+                    lighting.direction.z,
+                    0.0,
+                ],
+                [
+                    lighting.color.r,
+                    lighting.color.g,
+                    lighting.color.b,
+                    lighting.intensity,
+                ],
+                [
+                    lighting.ambient.r,
+                    lighting.ambient.g,
+                    lighting.ambient.b,
+                    0.0,
+                ],
+                [camera.position.x, camera.position.y, camera.position.z, 1.0],
+            ];
+            let material_buffer = heph_expect_success!(
+                renderer.create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
+            );
+            heph_expect_success!(
+                renderer.write_buffer(&material_buffer, bytemuck::cast_slice(&uniforms))
+            );
+
             part_buffers.push((
                 vertex_buffer,
                 index_buffer,
                 indices.len() as u32,
                 part_textures,
+                material_buffer,
             ));
         }
 
         heph_expect_success!(renderer.end_frame());
-
-        let material = *heph_expect_success!(
-            mesh.parts()
-                .next()
-                .ok_or(heph_gl::Error::invalid_operation("Empty mesh"))
-        )
-        .material();
-        let lighting = Lighting {
-            direction: Vec3::new(0.5, -0.8, 1.0),
-            intensity: 3.0,
-            ambient: RGB::new(0.15, 0.15, 0.15),
-            ..Default::default()
-        };
-        let mut camera = Camera::new(Projection::Perspective {
-            vertical_fov: std::f32::consts::FRAC_PI_3,
-            aspect_ratio: 16.0 / 9.0,
-            near: 0.1,
-            far: 100.0,
-        });
-        camera.position = Vec3::new(1.6, 1.0, -3.0);
-        heph_expect_success!(camera.look_at(&Vec3::ZERO, &Vec3::Y));
-
-        let uniforms = [
-            [
-                material.base_color.r,
-                material.base_color.g,
-                material.base_color.b,
-                material.base_color.a,
-            ],
-            [
-                material.roughness,
-                material.metallicness,
-                material.normal_scale,
-                0.0,
-            ],
-            [
-                lighting.direction.x,
-                lighting.direction.y,
-                lighting.direction.z,
-                0.0,
-            ],
-            [
-                lighting.color.r,
-                lighting.color.g,
-                lighting.color.b,
-                lighting.intensity,
-            ],
-            [
-                lighting.ambient.r,
-                lighting.ambient.g,
-                lighting.ambient.b,
-                0.0,
-            ],
-            [camera.position.x, camera.position.y, camera.position.z, 1.0],
-        ];
-        let mut material_buffer = heph_expect_success!(
-            renderer.create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
-        );
-        heph_expect_success!(
-            renderer.write_buffer(&material_buffer, bytemuck::cast_slice(&uniforms))
-        );
 
         let mut uniform_buffers = Vec::with_capacity(settings.frames_in_flight);
         for _ in 0..settings.frames_in_flight {
@@ -1271,6 +1262,7 @@ where
                 index_buffer,
                 index_count,
                 [texture, arm_texture, normal_texture],
+                material_buffer,
             ) in &part_buffers
             {
                 let bindings = [
@@ -1351,8 +1343,9 @@ where
         for texture in textures.values_mut() {
             heph_expect_success!(renderer.destroy_texture(texture));
         }
-        heph_expect_success!(renderer.destroy_buffer(&mut material_buffer));
-        for (vertex_buffer, index_buffer, _, _) in &mut part_buffers {
+
+        for (vertex_buffer, index_buffer, _, _, material_buffer) in &mut part_buffers {
+            heph_expect_success!(renderer.destroy_buffer(material_buffer));
             heph_expect_success!(renderer.destroy_buffer(vertex_buffer));
             heph_expect_success!(renderer.destroy_buffer(index_buffer));
         }

@@ -26,7 +26,7 @@ use renkrs::RGB;
 
 mod utils;
 
-const MESH_PATH: &str = "assets/treasure_chest/treasure_chest_4k.gltf";
+const MESH_PATH: &str = "assets/ship/ship_pinnace_4k.gltf";
 const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 
 fn example(
@@ -81,8 +81,23 @@ fn example(
     let mut transform = Transform::new(
         Vec3::ZERO,
         Quat::IDENTITY,
-        Vec3::splat(2.0 / (max - min).max_element()),
+        Vec3::splat(3.0 / (max - min).max_element()),
     );
+
+    let lighting = Lighting {
+        direction: Vec3::new(0.5, -0.8, 1.0),
+        intensity: 3.0,
+        ambient: RGB::new(0.15, 0.15, 0.15),
+        ..Default::default()
+    };
+    let mut camera = Camera::new(Projection::Perspective {
+        vertical_fov: std::f32::consts::FRAC_PI_3,
+        aspect_ratio: 16.0 / 9.0,
+        near: 0.1,
+        far: 100.0,
+    });
+    camera.position = Vec3::new(1.6, 1.0, -3.0);
+    camera.look_at(&Vec3::ZERO, &Vec3::Y).unwrap();
 
     let mesh_directory = Path::new(MESH_PATH).parent().unwrap();
     let mut textures = HashMap::new();
@@ -90,7 +105,7 @@ fn example(
     renderer.begin_frame().unwrap();
     renderer.clear(RGB::default()).unwrap();
     for part in mesh.parts() {
-        // All textures in this chest use the same UV set; the shader expects [px, py, pz, nx, ny,
+        // All textures in this ship use the same UV set; the shader expects [px, py, pz, nx, ny,
         // nz, u, v].
         let vertex_attributes = [
             MeshVertexAttribute::Position,
@@ -124,9 +139,8 @@ fn example(
             .write_buffer(&index_buffer, bytemuck::cast_slice(indices))
             .unwrap();
 
-        // The local assets are beside the mesh, so only use each URI's file name when opening it.
-        // The HashMap caches textures by URI so parts sharing a texture do not decode its image or
-        // create its GPU texture more than once.
+        // Resolve each texture URI relative to the mesh directory, preserving its folder structure.
+        // The HashMap avoids decoding and creating shared textures more than once.
         let part_textures = [
             (
                 part.base_texture_image_uri().unwrap(),
@@ -143,10 +157,7 @@ fn example(
         ]
         .map(|(uri, format)| {
             *textures.entry(uri.to_owned()).or_insert_with(|| {
-                let file_name = Path::new(uri).file_name().unwrap();
-                let image = image::open(mesh_directory.join(file_name))
-                    .unwrap()
-                    .to_rgba8();
+                let image = image::open(mesh_directory.join(uri)).unwrap().to_rgba8();
                 renderer
                     .create_texture(
                         &TextureOptions {
@@ -163,72 +174,58 @@ fn example(
                     .unwrap()
             })
         });
+        // Each part uses the material properties loaded from the mesh.
+        let material = part.material();
+        let uniforms = [
+            [
+                material.base_color.r,
+                material.base_color.g,
+                material.base_color.b,
+                material.base_color.a,
+            ],
+            [
+                material.roughness,
+                material.metallicness,
+                material.normal_scale,
+                0.0,
+            ],
+            [
+                lighting.direction.x,
+                lighting.direction.y,
+                lighting.direction.z,
+                0.0,
+            ],
+            [
+                lighting.color.r,
+                lighting.color.g,
+                lighting.color.b,
+                lighting.intensity,
+            ],
+            [
+                lighting.ambient.r,
+                lighting.ambient.g,
+                lighting.ambient.b,
+                0.0,
+            ],
+            [camera.position.x, camera.position.y, camera.position.z, 1.0],
+        ];
+        let material_buffer = renderer
+            .create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
+            .unwrap();
+        renderer
+            .write_buffer(&material_buffer, bytemuck::cast_slice(&uniforms))
+            .unwrap();
+
         part_buffers.push((
             vertex_buffer,
             index_buffer,
             indices.len() as u32,
             part_textures,
+            material_buffer,
         ));
     }
 
     renderer.end_frame().unwrap();
-
-    // All parts in this chest share the same material.
-    let material = *mesh.parts().next().unwrap().material();
-    let lighting = Lighting {
-        direction: Vec3::new(0.5, -0.8, 1.0),
-        intensity: 3.0,
-        ambient: RGB::new(0.15, 0.15, 0.15),
-        ..Default::default()
-    };
-    let mut camera = Camera::new(Projection::Perspective {
-        vertical_fov: std::f32::consts::FRAC_PI_3,
-        aspect_ratio: 16.0 / 9.0,
-        near: 0.1,
-        far: 100.0,
-    });
-    camera.position = Vec3::new(1.6, 1.0, -3.0);
-    camera.look_at(&Vec3::ZERO, &Vec3::Y).unwrap();
-
-    let uniforms = [
-        [
-            material.base_color.r,
-            material.base_color.g,
-            material.base_color.b,
-            material.base_color.a,
-        ],
-        [
-            material.roughness,
-            material.metallicness,
-            material.normal_scale,
-            0.0,
-        ],
-        [
-            lighting.direction.x,
-            lighting.direction.y,
-            lighting.direction.z,
-            0.0,
-        ],
-        [
-            lighting.color.r,
-            lighting.color.g,
-            lighting.color.b,
-            lighting.intensity,
-        ],
-        [
-            lighting.ambient.r,
-            lighting.ambient.g,
-            lighting.ambient.b,
-            0.0,
-        ],
-        [camera.position.x, camera.position.y, camera.position.z, 1.0],
-    ];
-    let mut material_buffer = renderer
-        .create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
-        .unwrap();
-    renderer
-        .write_buffer(&material_buffer, bytemuck::cast_slice(&uniforms))
-        .unwrap();
 
     let mut uniform_buffers = Vec::with_capacity(settings.frames_in_flight);
     for _ in 0..settings.frames_in_flight {
@@ -269,8 +266,13 @@ fn example(
             .write_buffer(&uniform_buffer, bytemuck::cast_slice(&matrices))
             .unwrap();
 
-        for &(vertex_buffer, index_buffer, index_count, [texture, arm_texture, normal_texture]) in
-            &part_buffers
+        for &(
+            vertex_buffer,
+            index_buffer,
+            index_count,
+            [texture, arm_texture, normal_texture],
+            material_buffer,
+        ) in &part_buffers
         {
             let bindings = [
                 ResourceBinding {
@@ -349,8 +351,9 @@ fn example(
     for texture in textures.values_mut() {
         renderer.destroy_texture(texture).unwrap();
     }
-    renderer.destroy_buffer(&mut material_buffer).unwrap();
-    for (vertex_buffer, index_buffer, _, _) in &mut part_buffers {
+
+    for (vertex_buffer, index_buffer, _, _, material_buffer) in &mut part_buffers {
+        renderer.destroy_buffer(material_buffer).unwrap();
         renderer.destroy_buffer(vertex_buffer).unwrap();
         renderer.destroy_buffer(index_buffer).unwrap();
     }
