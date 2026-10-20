@@ -578,7 +578,16 @@ impl Renderer for VulkanRenderer {
             ))
         })?;
 
-        let device_extension_names = [ash::vk::KHR_SWAPCHAIN_NAME.as_ptr()];
+        let extension_properties =
+            unsafe { instance.enumerate_device_extension_properties(physical_device)? };
+        let mut device_extension_names = vec![ash::vk::KHR_SWAPCHAIN_NAME.as_ptr()];
+        if extension_properties.iter().any(|ext| {
+            let name = unsafe { std::ffi::CStr::from_ptr(ext.extension_name.as_ptr()) };
+            name == ash::vk::KHR_PORTABILITY_SUBSET_NAME
+        }) {
+            // This must be enabled whenever the physical device supports it per specification.
+            device_extension_names.push(ash::vk::KHR_PORTABILITY_SUBSET_NAME.as_ptr());
+        }
         let mut physical_features2 = PhysicalDeviceFeatures2::default();
         if available_features.contains(&Feature::GeometryShaders) {
             physical_features2.features.geometry_shader = ash::vk::TRUE;
