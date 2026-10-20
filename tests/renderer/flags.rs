@@ -36,6 +36,7 @@ define_renderer_test_flags!(
     test_impossible_buffer_size,
     test_begin_twice,
     test_end_without_begin,
+    test_resize_window,
     test_calling_main_thread_only_fn_from_worker_thread,
     test_multiple_workers_per_thread,
     test_workers_begin_before_main,

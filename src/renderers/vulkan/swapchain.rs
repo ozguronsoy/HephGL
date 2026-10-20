@@ -1,11 +1,14 @@
 use ash::vk::{
-    ColorSpaceKHR, CompositeAlphaFlagsKHR, Extent3D, Handle, ImageCreateInfo, ImageLayout,
+    ColorSpaceKHR, CompositeAlphaFlagsKHR, Extent3D, ImageCreateInfo, ImageLayout,
     ImageSubresourceRange, ImageTiling, ImageUsageFlags, ImageViewCreateInfo, PresentModeKHR,
     SampleCountFlags, SemaphoreCreateInfo, SharingMode, SwapchainCreateInfoKHR, SwapchainKHR,
 };
 use vk_mem::Alloc;
 
-use crate::{Error, Result, renderers::vulkan::VulkanRenderer};
+use crate::{
+    Error, Result,
+    renderers::{Renderer, vulkan::VulkanRenderer},
+};
 
 /// Represents the Vulkan swapchain and its associated resources required for presentation.
 pub struct SwapchainContext {
@@ -13,6 +16,8 @@ pub struct SwapchainContext {
     pub loader: ash::khr::swapchain::Device,
     /// The Vulkan swapchain instance.
     pub swapchain: ash::vk::SwapchainKHR,
+    /// Indicates whether the swapchain must be recreated before acquiring another image.
+    pub invalidated: bool,
     /// The pixel format of the surface images.
     pub format: ash::vk::Format,
     /// The width and height of the swapchain images.
@@ -50,8 +55,6 @@ impl VulkanRenderer {
     /// Creates the swapchain, images, image views, semaphores, and the depth buffer for the
     /// renderer.
     pub(super) fn create_swapchain(&mut self) -> Result<()> {
-        self.destroy_swapchain()?;
-
         let window_surface_loader = self
             .window_surface_loader
             .as_ref()
@@ -86,24 +89,35 @@ impl VulkanRenderer {
         }
 
         // TODO: Add an enum for enabling HDR.
-        device_context.swapchain_context.format = ash::vk::Format::B8G8R8A8_SRGB;
+        let format = ash::vk::Format::B8G8R8A8_SRGB;
         let color_space = ColorSpaceKHR::SRGB_NONLINEAR;
 
-        device_context.swapchain_context.extent =
-            if surface_capabilities.current_extent.width == u32::MAX {
-                ash::vk::Extent2D {
-                    width: self.settings.default_size.0.clamp(
-                        surface_capabilities.min_image_extent.width,
-                        surface_capabilities.max_image_extent.width,
-                    ),
-                    height: self.settings.default_size.1.clamp(
-                        surface_capabilities.min_image_extent.height,
-                        surface_capabilities.max_image_extent.height,
-                    ),
-                }
-            } else {
-                surface_capabilities.current_extent
-            };
+        let extent = match surface_capabilities.current_extent.width == u32::MAX {
+            true => ash::vk::Extent2D {
+                width: self.settings.default_size.0.clamp(
+                    surface_capabilities.min_image_extent.width,
+                    surface_capabilities.max_image_extent.width,
+                ),
+                height: self.settings.default_size.1.clamp(
+                    surface_capabilities.min_image_extent.height,
+                    surface_capabilities.max_image_extent.height,
+                ),
+            },
+            false => surface_capabilities.current_extent,
+        };
+        if extent.width == 0 || extent.height == 0 {
+            return Err(Error::invalid_operation(
+                "Cannot render to a zero-sized window surface. Retry after the window is restored.",
+            ));
+        }
+
+        self.destroy_swapchain()?;
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(Error::invalid_operation("Device is not set."))?;
+        device_context.swapchain_context.format = format;
+        device_context.swapchain_context.extent = extent;
 
         // `0` means there is no limit for number of images.
         let requested_image_count = match surface_capabilities.max_image_count == 0 {
@@ -306,6 +320,63 @@ impl VulkanRenderer {
         Ok(())
     }
 
+    /// Acquires a swapchain image, recreating invalidated presentation resources before recording
+    /// begins.
+    pub(super) fn acquire_swapchain_image(&mut self) -> Result<()> {
+        // Avoid multiple borrowing errors.
+        let p_self = self as *mut Self as usize;
+        let get_self = || -> &mut Self { unsafe { &mut *(p_self as *mut Self) } };
+
+        // Retry once so repeated surface changes return control to the application's event loop.
+        for attempt in 0..2 {
+            let device_context = get_self()
+                .device_context
+                .as_mut()
+                .ok_or(Error::invalid_operation("Device is not set."))?;
+            let swapchain_context = &mut device_context.swapchain_context;
+
+            if swapchain_context.image_avaliable_semaphore_index != SwapchainContext::INVALID_INDEX
+            {
+                return Ok(());
+            }
+
+            if swapchain_context.invalidated {
+                get_self().wait_idle()?;
+                get_self().destroy_rendering()?;
+                get_self().create_swapchain()?;
+                get_self().create_rendering()?;
+                swapchain_context.invalidated = false;
+            }
+
+            let result = unsafe {
+                swapchain_context.loader.acquire_next_image(
+                    swapchain_context.swapchain,
+                    1.0e9 as u64,
+                    swapchain_context.semaphores[device_context.current_frame_index].0,
+                    ash::vk::Fence::null(),
+                )
+            };
+            match result {
+                Ok((image_index, suboptimal)) => {
+                    swapchain_context.current_image_index = image_index as usize;
+                    swapchain_context.image_avaliable_semaphore_index =
+                        device_context.current_frame_index;
+                    swapchain_context.invalidated = suboptimal;
+                    return Ok(());
+                }
+                Err(ash::vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                    swapchain_context.invalidated = true;
+                    if attempt == 1 {
+                        return Err(ash::vk::Result::ERROR_OUT_OF_DATE_KHR.into());
+                    }
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
+
+        Ok(())
+    }
+
     /// Destroys the swapchain, images, image views, semaphores, and the depth buffer.
     pub(super) fn destroy_swapchain(&mut self) -> Result<()> {
         let device_context = self
@@ -313,76 +384,51 @@ impl VulkanRenderer {
             .as_mut()
             .ok_or(Error::invalid_operation("Device is not set."))?;
 
-        if device_context.swapchain_context.depth_image_view.is_null() {
-            // There is no swapchain to destroy.
-            return Ok(());
-        }
-
+        let swapchain = &mut device_context.swapchain_context;
         unsafe {
             device_context
                 .logical_device
-                .destroy_image_view(device_context.swapchain_context.depth_image_view, None);
-            device_context.swapchain_context.depth_image_view = ash::vk::ImageView::null();
-
-            device_context.vma_allocator.destroy_image(
-                device_context.swapchain_context.depth_image,
+                .destroy_image_view(swapchain.depth_image_view, None);
+            swapchain.depth_image_view = ash::vk::ImageView::null();
+            if let Some(mut allocation) = swapchain.depth_image_allocation.take() {
                 device_context
-                    .swapchain_context
-                    .depth_image_allocation
-                    .as_mut()
-                    .ok_or(Error::invalid_operation("Failed to destroy the swapchain."))?,
-            );
-            device_context.swapchain_context.depth_image = ash::vk::Image::null();
-            device_context.swapchain_context.depth_image_allocation = None;
-
-            for i in 0..device_context.swapchain_context.images.len() {
-                let (image_available_semaphore, render_finished_semaphore) =
-                    device_context.swapchain_context.semaphores[i];
-                device_context
-                    .logical_device
-                    .destroy_semaphore(image_available_semaphore, None);
-                device_context
-                    .logical_device
-                    .destroy_semaphore(render_finished_semaphore, None);
-                device_context
-                    .logical_device
-                    .destroy_image_view(device_context.swapchain_context.image_views[i], None);
+                    .vma_allocator
+                    .destroy_image(swapchain.depth_image, &mut allocation);
             }
-            device_context.swapchain_context.semaphores.clear();
-            device_context.swapchain_context.image_views.clear();
+            swapchain.depth_image = ash::vk::Image::null();
 
-            // Destroying the swapchain also destroys the images.
             device_context
-                .swapchain_context
-                .loader
-                .destroy_swapchain(device_context.swapchain_context.swapchain, None);
-            device_context.swapchain_context.images.clear();
-            device_context.swapchain_context.swapchain = SwapchainKHR::null();
-
-            if !device_context
-                .swapchain_context
-                .msaa_color_image_view
-                .is_null()
-            {
-                device_context.logical_device.destroy_image_view(
-                    device_context.swapchain_context.msaa_color_image_view,
-                    None,
-                );
-
-                device_context.vma_allocator.destroy_image(
-                    device_context.swapchain_context.msaa_color_image,
-                    device_context
-                        .swapchain_context
-                        .msaa_color_image_allocation
-                        .as_mut()
-                        .unwrap(),
-                );
-
-                device_context.swapchain_context.msaa_color_image = ash::vk::Image::null();
-                device_context.swapchain_context.msaa_color_image_view = ash::vk::ImageView::null();
-                device_context.swapchain_context.msaa_color_image_allocation = None;
+                .logical_device
+                .destroy_image_view(swapchain.msaa_color_image_view, None);
+            swapchain.msaa_color_image_view = ash::vk::ImageView::null();
+            if let Some(mut allocation) = swapchain.msaa_color_image_allocation.take() {
+                device_context
+                    .vma_allocator
+                    .destroy_image(swapchain.msaa_color_image, &mut allocation);
             }
+            swapchain.msaa_color_image = ash::vk::Image::null();
+
+            for (image_available, render_finished) in swapchain.semaphores.drain(..) {
+                device_context
+                    .logical_device
+                    .destroy_semaphore(image_available, None);
+                device_context
+                    .logical_device
+                    .destroy_semaphore(render_finished, None);
+            }
+
+            for view in swapchain.image_views.drain(..) {
+                device_context.logical_device.destroy_image_view(view, None);
+            }
+            swapchain
+                .loader
+                .destroy_swapchain(swapchain.swapchain, None);
+            swapchain.swapchain = SwapchainKHR::null();
+            swapchain.images.clear();
         }
+
+        swapchain.current_image_index = 0;
+        swapchain.image_avaliable_semaphore_index = SwapchainContext::INVALID_INDEX;
 
         Ok(())
     }

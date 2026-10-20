@@ -160,6 +160,7 @@ where
                 create_trial!(versioned_test_suite, test_impossible_buffer_size),
                 create_trial!(versioned_test_suite, test_begin_twice),
                 create_trial!(versioned_test_suite, test_end_without_begin),
+                create_trial!(versioned_test_suite, test_resize_window),
                 create_trial!(
                     versioned_test_suite,
                     test_calling_main_thread_only_fn_from_worker_thread
