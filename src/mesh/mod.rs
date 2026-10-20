@@ -3,6 +3,7 @@ mod gltf;
 mod part;
 mod primitive;
 mod sampler;
+mod skin;
 mod texture;
 
 use std::path::Path;
@@ -11,9 +12,11 @@ pub use part::MeshPart;
 
 use crate::{
     Error, Result,
+    animation::Animation,
     material::MaterialProperties,
-    mesh::{primitive::MeshPrimitive, sampler::MeshSampler},
+    mesh::{primitive::MeshPrimitive, sampler::MeshSampler, skin::MeshSkin},
     renderers::settings::PrimitiveTopology,
+    skeleton::Skeleton,
 };
 
 /// Defines the supported file types for loading meshes.
@@ -34,6 +37,10 @@ pub enum MeshVertexAttribute {
     TextureCoordinates(usize),
     /// The vertex color from the specified color set.
     Color(usize),
+    /// Four skin-local joint indices from the specified set, represented as f32 components.
+    JointIndices(usize),
+    /// Four joint weights from the specified set, normalized across all weight sets.
+    JointWeights(usize),
 }
 
 /// Represents a 3D shape assembled from parts, with each part describing points on its surface and
@@ -44,6 +51,9 @@ pub struct Mesh {
     indices: Vec<u32>,
     primitives: Vec<MeshPrimitive>,
     materials: Vec<MaterialProperties>,
+    skins: Vec<MeshSkin>,
+    skeleton: Option<Skeleton>,
+    animations: Vec<Animation>,
     samplers: Vec<MeshSampler>,
     texture_images: Vec<(String, Vec<u8>)>,
 }
@@ -60,6 +70,16 @@ impl Mesh {
             mesh: self,
             primitive,
         })
+    }
+
+    /// Gets the shared skeleton used by the mesh's skin bindings and animations, if present.
+    pub fn skeleton(&self) -> Option<&Skeleton> {
+        self.skeleton.as_ref()
+    }
+
+    /// Gets animation clips in file order, targeting this mesh's skeleton.
+    pub fn animations(&self) -> &[Animation] {
+        &self.animations
     }
 
     /// Loads the mesh from a file.
