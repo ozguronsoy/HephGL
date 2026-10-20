@@ -390,7 +390,7 @@ impl Renderer for VulkanRenderer {
             }
             for ext in extension_properties {
                 let name = unsafe { std::ffi::CStr::from_ptr(ext.extension_name.as_ptr()) };
-                if name.to_string_lossy() == "VK_KHR_ray_tracing_pipeline" {
+                if name == ash::vk::KHR_RAY_TRACING_PIPELINE_NAME {
                     supported_features.insert(crate::graphics_device::Feature::RayTracing);
                 }
             }
