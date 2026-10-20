@@ -47,9 +47,24 @@ impl ApplicationHandler for App {
             return;
         }
 
-        let window_attributes = Window::default_attributes()
+        let window_size = winit::dpi::LogicalSize::new(1280.0, 720.0);
+        let mut window_attributes = Window::default_attributes()
             .with_title(format!("HephGL - {}", self.name))
-            .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0));
+            .with_inner_size(window_size);
+
+        if let Some(monitor) = event_loop.primary_monitor() {
+            let monitor_position = monitor.position();
+            let monitor_size = monitor.size();
+            let scale_factor = monitor.scale_factor();
+            let window_width = window_size.width * scale_factor;
+            let window_height = window_size.height * scale_factor;
+            let x = monitor_position.x
+                + ((f64::from(monitor_size.width) - window_width) / 2.0).round() as i32;
+            let y = monitor_position.y
+                + ((f64::from(monitor_size.height) - window_height) / 2.0).round() as i32;
+            window_attributes =
+                window_attributes.with_position(winit::dpi::PhysicalPosition::new(x, y));
+        }
 
         let window = event_loop.create_window(window_attributes).unwrap();
         let window_handle = window.window_handle().unwrap().as_raw();
