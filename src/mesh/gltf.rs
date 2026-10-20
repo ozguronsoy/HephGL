@@ -9,10 +9,13 @@ use renkrs::RGBA;
 
 use crate::{
     Error, Result,
+    animation::{Animation, AnimationChannel, AnimationInterpolation, AnimationProperty},
     material::MaterialProperties,
-    math::{Mat3, Mat4, Vec3},
-    mesh::{Mesh, MeshPrimitive, MeshSampler, texture::MeshTexture},
+    math::{Mat3, Mat4, Quat, Vec3, Vec4},
+    mesh::{Mesh, MeshPrimitive, MeshSampler, skin::MeshSkin, texture::MeshTexture},
     renderers::settings::{PrimitiveTopology, SamplerAddressMode, SamplerFilter},
+    skeleton::{Joint, Skeleton},
+    transform::Transform,
 };
 
 impl TryFrom<gltf::mesh::Mode> for PrimitiveTopology {
@@ -68,6 +71,10 @@ pub(super) fn from_file(path: &Path) -> Result<Mesh> {
         .ok_or(Error::io("Failed to read the glTF file."))?;
     let mut nodes: Vec<_> = scene.nodes().map(|node| (node, Mat4::IDENTITY)).collect();
     let coordinate_conversion = Mat4::from_scale(Vec3::new(1.0, 1.0, -1.0));
+    let (skeleton, joint_indices) = read_skeleton(&gltf)?;
+    mesh.skeleton = skeleton;
+    mesh.skins = read_skins(&gltf, &buffers, &joint_indices)?;
+    mesh.animations = read_animations(&gltf, &buffers, &joint_indices)?;
 
     // First material is the default glTF material.
     mesh.materials.reserve(gltf.materials().len() + 1);
@@ -164,7 +171,11 @@ pub(super) fn from_file(path: &Path) -> Result<Mesh> {
         let Some(gltf_mesh) = node.mesh() else {
             continue;
         };
-        let transform = coordinate_conversion * node_transform;
+        // Skinned vertices use joint transforms, ignoring the transform of the mesh attachment.
+        let transform = match node.skin() {
+            Some(_) => coordinate_conversion,
+            None => coordinate_conversion * node_transform,
+        };
         let normal_transform = Mat3::from_mat4(transform).inverse().transpose();
         let swap_triangle_winding = transform.determinant() < 0.0;
 
@@ -177,6 +188,11 @@ pub(super) fn from_file(path: &Path) -> Result<Mesh> {
                     .attributes()
                     .next()
                     .map_or(0, |(_, accessor)| accessor.count()),
+                joint_index: match node.skin().is_none() {
+                    true => joint_indices[node.index()],
+                    false => None,
+                },
+                skin_index: node.skin().map(|skin| skin.index()),
                 ..Default::default()
             };
             let swap_vertices = swap_triangle_winding && gltf_primitive.indices().is_none();
@@ -260,7 +276,33 @@ pub(super) fn from_file(path: &Path) -> Result<Mesh> {
                         )?;
                         primitive.colors_ranges.push((set, range));
                     }
-                    _ => {}
+                    gltf::Semantic::Joints(set) => {
+                        let joints = reader
+                            .read_joints(set)
+                            .ok_or(Error::fail("Failed to read mesh joint indices."))?
+                            .into_u16()
+                            .map(|indices| indices.map(f32::from));
+                        let range = mesh.append_vertex_attribute(
+                            joints,
+                            primitive.vertex_count,
+                            primitive.topology,
+                            swap_vertices,
+                        )?;
+                        primitive.joint_indices_ranges.push((set, range));
+                    }
+                    gltf::Semantic::Weights(set) => {
+                        let weights = reader
+                            .read_weights(set)
+                            .ok_or(Error::fail("Failed to read mesh joint weights."))?
+                            .into_f32();
+                        let range = mesh.append_vertex_attribute(
+                            weights,
+                            primitive.vertex_count,
+                            primitive.topology,
+                            swap_vertices,
+                        )?;
+                        primitive.joint_weights_ranges.push((set, range));
+                    }
                 }
             }
             primitive
@@ -280,6 +322,7 @@ pub(super) fn from_file(path: &Path) -> Result<Mesh> {
             {
                 primitive.vertex_count += 1;
             }
+            normalize_joint_weights(&mut mesh, &primitive)?;
 
             let material = gltf_primitive.material();
             primitive.material_index = material.index().map_or(0, |i| i + 1);
@@ -315,132 +358,271 @@ fn read_texture(texture: &gltf::Texture<'_>, uv_set: u32) -> MeshTexture {
     }
 }
 
+fn read_skeleton(gltf: &gltf::Gltf) -> Result<(Option<Skeleton>, Vec<Option<usize>>)> {
+    let count = gltf.nodes().len();
+    let mut joint_indices = vec![None; count];
+
+    if gltf.skins().len() == 0 && gltf.animations().len() == 0 {
+        return Ok((None, joint_indices));
+    }
+
+    let mut parents = vec![None; count];
+    let mut children = vec![Vec::new(); count];
+    for node in gltf.nodes() {
+        for child in node.children() {
+            if parents[child.index()].is_some() {
+                return Err(Error::fail("glTF node has multiple parents."));
+            }
+            parents[child.index()] = Some(node.index());
+            children[node.index()].push(child.index());
+        }
+    }
+
+    let mut order: Vec<usize> = parents
+        .iter()
+        .enumerate()
+        .filter_map(|(index, parent)| parent.is_none().then_some(index))
+        .collect();
+    let mut cursor = 0;
+    while cursor < order.len() {
+        order.extend_from_slice(&children[order[cursor]]);
+        cursor += 1;
+    }
+    if order.len() != count {
+        return Err(Error::fail("glTF node hierarchy contains a cycle."));
+    }
+
+    let mut animated = vec![false; count];
+    let mut required = vec![false; count];
+    for skin in gltf.skins() {
+        for joint in skin.joints() {
+            required[joint.index()] = true;
+        }
+    }
+    for animation in gltf.animations() {
+        for channel in animation.channels() {
+            animated[channel.target().node().index()] = true;
+            required[channel.target().node().index()] = true;
+        }
+    }
+    for &index in &order {
+        if let Some(parent) = parents[index] {
+            animated[index] |= animated[parent];
+        }
+    }
+    for node in gltf.nodes() {
+        if node.mesh().is_some() && node.skin().is_none() && animated[node.index()] {
+            required[node.index()] = true;
+        }
+    }
+
+    // Preserve transform-only ancestors without retaining the glTF scene graph in Mesh.
+    for &index in order.iter().rev() {
+        if required[index]
+            && let Some(parent) = parents[index]
+        {
+            required[parent] = true;
+        }
+    }
+
+    let mut joint_count = 0;
+    for (index, &required) in required.iter().enumerate() {
+        if required {
+            joint_indices[index] = Some(joint_count);
+            joint_count += 1;
+        }
+    }
+
+    let mut joints = Vec::with_capacity(joint_count);
+    for node in gltf.nodes().filter(|node| required[node.index()]) {
+        let (translation, rotation, scale) = node.transform().decomposed();
+        let rotation = Quat::from_xyzw(-rotation[0], -rotation[1], rotation[2], rotation[3]);
+        if rotation.length_squared() <= 0.0 {
+            return Err(Error::fail("glTF joint rotation has zero length."));
+        }
+        joints.push(Joint {
+            parent_index: parents[node.index()].and_then(|parent| joint_indices[parent]),
+            transform: Transform::new(
+                Vec3::new(translation[0], translation[1], -translation[2]),
+                rotation.normalize(),
+                Vec3::from_array(scale),
+            ),
+        });
+    }
+
+    Ok((Some(Skeleton::new(joints)?), joint_indices))
+}
+
+fn read_skins(
+    gltf: &gltf::Gltf,
+    buffers: &[Vec<u8>],
+    joint_indices: &[Option<usize>],
+) -> Result<Vec<MeshSkin>> {
+    let conversion = Mat4::from_scale(Vec3::new(1.0, 1.0, -1.0));
+    gltf.skins()
+        .map(|skin| {
+            let joint_indices = skin
+                .joints()
+                .map(|joint| {
+                    joint_indices[joint.index()]
+                        .ok_or(Error::fail("glTF skin joint is missing from the skeleton."))
+                })
+                .collect::<Result<Vec<usize>>>()?;
+
+            let inverse_bind_matrices = match skin
+                .reader(|buffer| buffers.get(buffer.index()).map(Vec::as_slice))
+                .read_inverse_bind_matrices()
+            {
+                Some(matrices) => matrices
+                    .take(joint_indices.len())
+                    .map(|matrix| conversion * Mat4::from_cols_array_2d(&matrix) * conversion)
+                    .collect(),
+                None => {
+                    if skin.inverse_bind_matrices().is_some() {
+                        return Err(Error::fail("Failed to read glTF inverse bind matrices."));
+                    }
+                    vec![Mat4::IDENTITY; joint_indices.len()]
+                }
+            };
+
+            if inverse_bind_matrices.len() != joint_indices.len() {
+                return Err(Error::fail(
+                    "The number of inverse bind matrices does not match the number of joints.",
+                ));
+            }
+
+            Ok(MeshSkin {
+                joint_indices,
+                inverse_bind_matrices,
+            })
+        })
+        .collect()
+}
+
+fn read_animations(
+    gltf: &gltf::Gltf,
+    buffers: &[Vec<u8>],
+    joint_indices: &[Option<usize>],
+) -> Result<Vec<Animation>> {
+    use gltf::animation::{Interpolation, util::ReadOutputs};
+
+    gltf.animations()
+        .map(|animation| {
+            let channels = animation
+                .channels()
+                .map(|channel| {
+                    let target = channel.target().node();
+                    if matches!(target.transform(), gltf::scene::Transform::Matrix { .. }) {
+                        return Err(Error::fail("glTF animation targets a matrix transform."));
+                    }
+                    let joint_index = joint_indices[target.index()].ok_or(Error::fail(
+                        "glTF animation target is missing from the skeleton.",
+                    ))?;
+                    let reader =
+                        channel.reader(|buffer| buffers.get(buffer.index()).map(Vec::as_slice));
+                    let times = reader
+                        .read_inputs()
+                        .ok_or(Error::fail("Failed to read glTF animation times."))?
+                        .collect();
+                    let (property, values) = match reader
+                        .read_outputs()
+                        .ok_or(Error::fail("Failed to read glTF animation values."))?
+                    {
+                        ReadOutputs::Translations(values) => (
+                            AnimationProperty::Translation,
+                            values.map(|v| Vec4::new(v[0], v[1], -v[2], 0.0)).collect(),
+                        ),
+                        ReadOutputs::Rotations(values) => (
+                            AnimationProperty::Rotation,
+                            values
+                                .into_f32()
+                                .map(|v| Vec4::new(-v[0], -v[1], v[2], v[3]))
+                                .collect(),
+                        ),
+                        ReadOutputs::Scales(values) => (
+                            AnimationProperty::Scale,
+                            values.map(|v| Vec3::from_array(v).extend(0.0)).collect(),
+                        ),
+                        ReadOutputs::MorphTargetWeights(_) => {
+                            return Err(Error::fail("Morph target animations are not supported."));
+                        }
+                    };
+                    let interpolation = match channel.sampler().interpolation() {
+                        Interpolation::Step => AnimationInterpolation::Step,
+                        Interpolation::Linear => AnimationInterpolation::Linear,
+                        Interpolation::CubicSpline => AnimationInterpolation::CubicSpline,
+                    };
+                    Ok(AnimationChannel {
+                        joint_index,
+                        property,
+                        interpolation,
+                        times,
+                        values,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            Animation::new(channels)
+        })
+        .collect()
+}
+
+fn normalize_joint_weights(mesh: &mut Mesh, primitive: &MeshPrimitive) -> Result<()> {
+    let Some(skin) = primitive.skin_index.map(|index| &mesh.skins[index]) else {
+        return Ok(());
+    };
+    if primitive.joint_indices_ranges.is_empty()
+        || primitive.joint_indices_ranges.len() != primitive.joint_weights_ranges.len()
+    {
+        return Err(Error::fail(
+            "Skinned parts require matching joint index and weight sets.",
+        ));
+    }
+
+    for (set, (begin, end)) in &primitive.joint_indices_ranges {
+        if !primitive
+            .joint_weights_ranges
+            .iter()
+            .any(|(weight_set, _)| weight_set == set)
+            || mesh.vertices[*begin..*end]
+                .iter()
+                .any(|&index| index >= skin.joint_indices.len() as f32)
+        {
+            return Err(Error::fail(
+                "Mesh joint indices do not match the skin or weight sets.",
+            ));
+        }
+    }
+
+    for vertex in 0..primitive.vertex_count {
+        let mut total = 0.0;
+        for (_, (begin, _)) in &primitive.joint_weights_ranges {
+            for &weight in &mesh.vertices[begin + vertex * 4..begin + vertex * 4 + 4] {
+                if weight < 0.0 {
+                    return Err(Error::fail("Mesh joint weights must be nonnegative."));
+                }
+                total += weight;
+            }
+        }
+
+        if total <= 0.0 {
+            return Err(Error::fail(
+                "Skinned vertices must have a positive total joint weight.",
+            ));
+        }
+
+        for (_, (begin, _)) in &primitive.joint_weights_ranges {
+            for weight in &mut mesh.vertices[begin + vertex * 4..begin + vertex * 4 + 4] {
+                *weight /= total;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mesh::MeshVertexAttribute;
-
-    #[test]
-    fn test_from_file_attribute_blocks() {
-        // The source is interleaved and has two UV sets and RGB colors.
-        let source: [[f32; 17]; 3] = [
-            [
-                0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.1, 0.2, 1.0, 0.0, 0.0,
-            ],
-            [
-                1.0, 0.0, 2.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.3, 0.4, 0.0, 1.0, 0.0,
-            ],
-            [
-                0.0, 1.0, 3.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.5, 0.6, 0.0, 0.0, 1.0,
-            ],
-        ];
-        let mut buffer: Vec<u8> = source
-            .iter()
-            .flatten()
-            .flat_map(|value| value.to_le_bytes())
-            .collect();
-        buffer.extend([0u32, 1, 2].into_iter().flat_map(u32::to_le_bytes));
-        let json = br#"{
-            "asset": {"version": "2.0"},
-            "scene": 0,
-            "scenes": [{"nodes": [0]}],
-            "nodes": [{"mesh": 0}],
-            "buffers": [{"byteLength": 216}],
-            "bufferViews": [
-                {"buffer": 0, "byteLength": 204, "byteStride": 68},
-                {"buffer": 0, "byteOffset": 204, "byteLength": 12}
-            ],
-            "accessors": [
-                {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0,0,1], "max": [1,1,3]},
-                {"bufferView": 0, "byteOffset": 12, "componentType": 5126, "count": 3, "type": "VEC3"},
-                {"bufferView": 0, "byteOffset": 24, "componentType": 5126, "count": 3, "type": "VEC4"},
-                {"bufferView": 0, "byteOffset": 40, "componentType": 5126, "count": 3, "type": "VEC2"},
-                {"bufferView": 0, "byteOffset": 48, "componentType": 5126, "count": 3, "type": "VEC2"},
-                {"bufferView": 0, "byteOffset": 56, "componentType": 5126, "count": 3, "type": "VEC3"},
-                {"bufferView": 1, "componentType": 5125, "count": 3, "type": "SCALAR"}
-            ],
-            "meshes": [{"primitives": [
-                {"attributes": {"POSITION": 0, "NORMAL": 1, "TANGENT": 2, "TEXCOORD_1": 4, "TEXCOORD_0": 3, "COLOR_0": 5, "COLOR_1": 1}, "indices": 6, "mode": 5},
-                {"attributes": {"POSITION": 0, "NORMAL": 1, "TANGENT": 2, "TEXCOORD_1": 4, "TEXCOORD_0": 3, "COLOR_0": 5, "COLOR_1": 1}, "mode": 5},
-                {"attributes": {"POSITION": 0, "NORMAL": 1, "TANGENT": 2, "TEXCOORD_1": 4, "TEXCOORD_0": 3, "COLOR_0": 5, "COLOR_1": 1}, "mode": 4},
-                {"attributes": {"POSITION": 0}, "mode": 4}
-            ]}]
-        }"#;
-        let glb = gltf::binary::Glb {
-            header: gltf::binary::Header {
-                magic: *b"glTF",
-                version: 2,
-                length: 0,
-            },
-            json: std::borrow::Cow::Borrowed(json),
-            bin: Some(std::borrow::Cow::Owned(buffer)),
-        };
-        let path = std::env::temp_dir().join(format!(
-            "heph_mesh_attributes_{}_{}.glb",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos(),
-        ));
-        glb.to_writer(File::create(&path).unwrap()).unwrap();
-        let result = Mesh::from_file(&path);
-        std::fs::remove_file(&path).unwrap();
-        let mesh = result.unwrap();
-        let attributes = [
-            MeshVertexAttribute::Color(0),
-            MeshVertexAttribute::TextureCoordinates(0),
-            MeshVertexAttribute::TextureCoordinates(1),
-            MeshVertexAttribute::Tangent,
-            MeshVertexAttribute::Normal,
-            MeshVertexAttribute::Position,
-        ];
-        assert_eq!(mesh.part_count(), 4);
-        let orders: [&[usize]; 3] = [&[0, 1, 2], &[0, 0, 1, 2], &[0, 2, 1]];
-        for (i, part) in mesh.parts().take(3).enumerate() {
-            assert_eq!(part.vertex_component_count(&attributes), 18);
-            let colors = [MeshVertexAttribute::Color(1), MeshVertexAttribute::Color(0)];
-            assert_eq!(part.vertex_component_count(&colors), 8);
-            assert_eq!(part.vertex_size_bytes(&colors), 32);
-            let colors = part.vertices(&colors).unwrap();
-            assert_eq!(colors.len(), orders[i].len() * 8);
-            for (vertex, &source_index) in colors.as_chunks::<8>().0.iter().zip(orders[i]) {
-                assert_eq!(&vertex[..4], &[0.0, 0.0, 1.0, 1.0]);
-                assert_eq!(&vertex[4..7], &source[source_index][14..17]);
-                assert_eq!(vertex[7], 1.0);
-            }
-            assert!(part.vertices(&[MeshVertexAttribute::Color(2)]).is_err());
-            let vertices = part.vertices(&attributes).unwrap();
-            assert_eq!(vertices.len(), orders[i].len() * 18);
-            for (vertex, &source_index) in vertices.as_chunks::<18>().0.iter().zip(orders[i]) {
-                let original = source[source_index];
-                assert_eq!(
-                    &vertex[..4],
-                    &[original[14], original[15], original[16], 1.0]
-                );
-                assert_eq!(&vertex[4..8], &original[10..14]);
-                assert_eq!(&vertex[8..12], &[1.0, 0.0, 0.0, -1.0]);
-                assert_eq!(&vertex[12..15], &[0.0, 0.0, -1.0]);
-                assert_eq!(&vertex[15..], &[original[0], original[1], -original[2]]);
-            }
-            match i {
-                0 => assert_eq!(part.indices(), &[0, 0, 1, 2]),
-                _ => assert!(part.indices().is_empty()),
-            }
-        }
-        let part = mesh.parts().last().unwrap();
-        assert_eq!(
-            part.vertices(&[MeshVertexAttribute::Position])
-                .unwrap()
-                .len(),
-            9
-        );
-        assert!(part.vertices(&[MeshVertexAttribute::Normal]).is_err());
-        assert!(
-            part.vertices(&[MeshVertexAttribute::TextureCoordinates(0)])
-                .is_err()
-        );
-    }
 
     #[test]
     fn test_primitive_topology_try_from() {

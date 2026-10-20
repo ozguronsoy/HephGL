@@ -1,6 +1,7 @@
 use crate::{
     Error, Result,
     material::MaterialProperties,
+    math::Mat4,
     mesh::{Mesh, MeshPrimitive, MeshVertexAttribute, texture::MeshTexture},
     renderers::settings::{PrimitiveTopology, SamplerAddressMode, SamplerFilter},
 };
@@ -24,7 +25,10 @@ impl<'a> MeshPart<'a> {
             .iter()
             .map(|attribute| match attribute {
                 MeshVertexAttribute::Position | MeshVertexAttribute::Normal => 3,
-                MeshVertexAttribute::Tangent | MeshVertexAttribute::Color(_) => 4,
+                MeshVertexAttribute::Tangent
+                | MeshVertexAttribute::Color(_)
+                | MeshVertexAttribute::JointIndices(_)
+                | MeshVertexAttribute::JointWeights(_) => 4,
                 MeshVertexAttribute::TextureCoordinates(_) => 2,
             })
             .sum()
@@ -35,7 +39,8 @@ impl<'a> MeshPart<'a> {
         self.vertex_component_count(vertex_attributes) * std::mem::size_of::<f32>()
     }
 
-    /// Gets the part's vertices interleaved in the requested attribute order.
+    /// Gets vertices in the requested layout; skinned positions are local to the skin, while other
+    /// positions include the file's default transforms.
     pub fn vertices(&self, vertex_attributes: &[MeshVertexAttribute]) -> Result<Vec<f32>> {
         if vertex_attributes.is_empty() {
             return Err(Error::invalid_argument(
@@ -67,6 +72,22 @@ impl<'a> MeshPart<'a> {
                         .map(|(_, range)| *range),
                     2,
                 ),
+                MeshVertexAttribute::JointIndices(set) => (
+                    self.primitive
+                        .joint_indices_ranges
+                        .iter()
+                        .find(|(index, _)| *index as usize == set)
+                        .map(|(_, range)| *range),
+                    4,
+                ),
+                MeshVertexAttribute::JointWeights(set) => (
+                    self.primitive
+                        .joint_weights_ranges
+                        .iter()
+                        .find(|(index, _)| *index as usize == set)
+                        .map(|(_, range)| *range),
+                    4,
+                ),
             };
             let Some((begin, end)) = range else {
                 return Err(Error::fail(format!(
@@ -94,6 +115,84 @@ impl<'a> MeshPart<'a> {
     /// Gets the part's material properties.
     pub fn material(&self) -> &MaterialProperties {
         &self.mesh.materials[self.primitive.material_index]
+    }
+
+    /// Gets the skeleton joint controlling this part's rigid transform, if present.
+    pub fn joint_index(&self) -> Option<usize> {
+        self.primitive.joint_index
+    }
+
+    /// Gets the mapping from vertex joint indices to skeleton joint indices, if a skin is present.
+    pub fn skin_joint_indices(&self) -> Option<&[usize]> {
+        self.primitive
+            .skin_index
+            .map(|index| self.mesh.skins[index].joint_indices.as_slice())
+    }
+
+    /// Gets inverse bind matrices in skin joint order, if a skin is present.
+    pub fn inverse_bind_matrices(&self) -> Option<&[Mat4]> {
+        self.primitive
+            .skin_index
+            .map(|index| self.mesh.skins[index].inverse_bind_matrices.as_slice())
+    }
+
+    /// Calculates skinning matrices from compatible global skeleton matrices in vertex joint index
+    /// order.
+    pub fn joint_matrices(&self, matrices: &[Mat4]) -> Result<Vec<Mat4>> {
+        let skin = self
+            .primitive
+            .skin_index
+            .map(|index| &self.mesh.skins[index])
+            .ok_or(Error::invalid_operation("Mesh part has no skin."))?;
+        skin.joint_indices
+            .iter()
+            .zip(&skin.inverse_bind_matrices)
+            .map(|(&joint, inverse_bind)| {
+                matrices
+                    .get(joint)
+                    .map(|matrix| *matrix * inverse_bind)
+                    .ok_or(Error::invalid_argument(
+                        "Skeleton matrix index is out of range.",
+                    ))
+            })
+            .collect()
+    }
+
+    /// Calculates the animated transform relative to the part's stored vertices. Skinned parts use
+    /// joint matrices and return identity here.
+    pub fn animation_matrix(&self, matrices: &[Mat4]) -> Result<Mat4> {
+        if self.primitive.skin_index.is_some() {
+            return Ok(Mat4::IDENTITY);
+        }
+        let Some(joint) = self.primitive.joint_index else {
+            return Ok(Mat4::IDENTITY);
+        };
+
+        let skeleton = self
+            .mesh
+            .skeleton
+            .as_ref()
+            .ok_or(Error::invalid_operation("Mesh has no skeleton."))?;
+
+        let mut default_matrix = Mat4::IDENTITY;
+        let mut current = Some(joint);
+        while let Some(index) = current {
+            let joint = &skeleton.joints()[index];
+            default_matrix = joint.transform.matrix()? * default_matrix;
+            current = joint.parent_index;
+        }
+
+        if default_matrix.determinant() == 0.0 {
+            return Err(Error::invalid_operation(
+                "Mesh part's default transform is not invertible.",
+            ));
+        }
+
+        let matrix = matrices.get(joint).ok_or(Error::invalid_argument(
+            "Skeleton matrix index is out of range.",
+        ))?;
+
+        Ok(*matrix * default_matrix.inverse())
     }
 
     /// Gets the number of UV sets present in this part.

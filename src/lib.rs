@@ -1,5 +1,6 @@
 pub use crate::error::{Error, Result};
 
+pub mod animation;
 pub mod camera;
 pub mod error;
 pub mod graphics_device;
@@ -9,6 +10,7 @@ pub mod math;
 pub mod mesh;
 pub mod renderers;
 pub mod shader;
+pub mod skeleton;
 pub mod text;
 pub mod transform;
 

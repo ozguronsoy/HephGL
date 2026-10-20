@@ -12,8 +12,12 @@ pub(super) struct MeshPrimitive {
     pub(super) colors_ranges: Vec<(u32, (usize, usize))>,
     // UV set and its start/end component indices.
     pub(super) tex_coords_ranges: Vec<(u32, (usize, usize))>,
+    pub(super) joint_indices_ranges: Vec<(u32, (usize, usize))>,
+    pub(super) joint_weights_ranges: Vec<(u32, (usize, usize))>,
     pub(super) indices_range: (usize, usize),
     pub(super) material_index: usize,
+    pub(super) joint_index: Option<usize>,
+    pub(super) skin_index: Option<usize>,
     pub(super) base_color_texture: Option<MeshTexture>,
     pub(super) arm_texture: Option<MeshTexture>,
     pub(super) normal_texture: Option<MeshTexture>,
