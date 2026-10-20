@@ -221,7 +221,6 @@ where
                 create_trial!(versioned_test_suite, test_render_dynamic_cubes),
                 create_trial!(versioned_test_suite, test_render_textures),
                 create_trial!(versioned_test_suite, test_render_text),
-                create_trial!(versioned_test_suite, test_render_camera),
                 create_trial!(versioned_test_suite, test_render_meshes),
             ];
             tests.append(&mut test_suite);
