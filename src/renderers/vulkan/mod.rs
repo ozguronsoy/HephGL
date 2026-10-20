@@ -232,20 +232,25 @@ impl Renderer for VulkanRenderer {
             required_extension_names.push(c"VK_KHR_portability_enumeration".as_ptr());
         }
 
-        let available_layers: Vec<_> = unsafe {
-            entry
-                .enumerate_instance_layer_properties()
-                .unwrap_or_default()
-                .into_iter()
-                .map(|properties| {
-                    std::ffi::CStr::from_ptr(properties.layer_name.as_ptr()).to_owned()
-                })
-                .collect()
-        };
-        let validation_layer_name = std::ffi::CString::new("VK_LAYER_KHRONOS_validation").unwrap();
         let mut enabled_layer_names = Vec::new();
-        if available_layers.contains(&validation_layer_name) {
-            enabled_layer_names.push(validation_layer_name.as_ptr());
+        if cfg!(debug_assertions) {
+            let available_layers: Vec<_> = unsafe {
+                entry
+                    .enumerate_instance_layer_properties()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|properties| {
+                        std::ffi::CStr::from_ptr(properties.layer_name.as_ptr()).to_owned()
+                    })
+                    .collect()
+            };
+            let validation_layer_name = c"VK_LAYER_KHRONOS_validation";
+            if available_layers
+                .iter()
+                .any(|name| name == validation_layer_name)
+            {
+                enabled_layer_names.push(validation_layer_name.as_ptr());
+            }
         }
 
         let instance_create_info = InstanceCreateInfo {
