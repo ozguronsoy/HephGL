@@ -1093,6 +1093,359 @@ where
         heph_expect_success!(renderer.destroy_graphics_pipeline(&pipeline));
     }
 
+    pub(crate) fn test_render_animated_meshes(&self) {
+        const MESH_PATH: &str = "assets/dragon/model.glb";
+        const ANIMATION_DURATION: Duration = Duration::from_secs(5);
+
+        let mut renderer = self
+            .create_renderer_with_any_device(&[FeatureRequest::new(AnisotropicFiltering, false)]);
+        let max_anisotropy = if let Some(device) = renderer.get_device() {
+            match device.supported_features.contains(&AnisotropicFiltering) {
+                true => Some(device.max_sampler_anisotropy),
+                false => None,
+            }
+        } else {
+            None
+        };
+        let Some(&msaa) = heph_expect_success!(renderer.supported_msaa_list()).last() else {
+            panic!("Failed to get a supported MSAA sample count.");
+        };
+        let settings = Settings {
+            frames_in_flight: 2,
+            vsync: true,
+            msaa,
+            ..Default::default()
+        };
+        heph_expect_success!(renderer.set_settings(settings));
+
+        let vert_shader = heph_expect_success!(Shader::from_file(format!(
+            "{}/{}",
+            SHADERS_DIR, "animation_vert.spv"
+        )));
+        let frag_shader = heph_expect_success!(Shader::from_file(format!(
+            "{}/{}",
+            SHADERS_DIR, "mesh_frag.spv"
+        )));
+        let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+            &[&vert_shader, &frag_shader],
+            &GraphicsPipelineOptions {
+                front_face: FrontFace::Clockwise,
+                ..Default::default()
+            },
+        ));
+        drop(vert_shader);
+        drop(frag_shader);
+
+        let mesh = heph_expect_success!(Mesh::from_file(MESH_PATH));
+
+        let part = heph_expect_success!(mesh.parts().next().ok_or("Missing mesh part."));
+        let skeleton = heph_expect_success!(mesh.skeleton().ok_or("Missing skeleton."));
+        let default_transforms = skeleton.transforms();
+        let mut transforms = default_transforms.clone();
+        let joint_matrices = heph_expect_success!(
+            part.joint_matrices(&heph_expect_success!(skeleton.matrices(&transforms)))
+        );
+        let vertex_attributes = [
+            MeshVertexAttribute::Position,
+            MeshVertexAttribute::Normal,
+            MeshVertexAttribute::TextureCoordinates(heph_expect_success!(
+                part.base_texture_uv_set()
+                    .ok_or("Missing base-color texture UV set.")
+            )),
+            MeshVertexAttribute::JointIndices(0),
+            MeshVertexAttribute::JointWeights(0),
+        ];
+        let vertices = heph_expect_success!(part.vertices(&vertex_attributes));
+        let component_count = part.vertex_component_count(&vertex_attributes);
+
+        let mut min = Vec3::splat(f32::INFINITY);
+        let mut max = Vec3::splat(f32::NEG_INFINITY);
+        for vertex in vertices.chunks_exact(component_count) {
+            let position = Vec3::from_slice(vertex);
+            let mut skinned_position = Vec3::ZERO;
+            for influence in 0..4 {
+                skinned_position += joint_matrices[vertex[8 + influence] as usize]
+                    .transform_point3(position)
+                    * vertex[12 + influence];
+            }
+            min = min.min(skinned_position);
+            max = max.max(skinned_position);
+        }
+        let model = Mat4::from_translation(Vec3::new(0.0, 0.0, 3.0))
+            * Mat4::from_scale(Vec3::splat(5.0 / (max - min).max_element()))
+            * Mat4::from_translation(-(min + max) * 0.5);
+
+        let lighting = Lighting {
+            direction: Vec3::new(0.5, -0.8, 1.0),
+            intensity: 3.0,
+            ambient: RGB::new(0.15, 0.15, 0.15),
+            ..Default::default()
+        };
+        let mut camera = Camera::new(Projection::Perspective {
+            vertical_fov: std::f32::consts::FRAC_PI_3,
+            aspect_ratio: 16.0 / 9.0,
+            near: 0.1,
+            far: 100.0,
+        });
+        camera.position = Vec3::new(1.6, 1.0, -3.0);
+        heph_expect_success!(camera.look_at(&Vec3::ZERO, &Vec3::Y));
+
+        heph_expect_success!(renderer.begin_frame());
+        heph_expect_success!(renderer.clear(RGB::default()));
+        let vertex_count = vertices.len() / component_count;
+        let mut vertex_buffer = heph_expect_success!(renderer.create_buffer(
+            vertex_count * part.vertex_size_bytes(&vertex_attributes),
+            BufferUsage::Vertex,
+        ));
+        heph_expect_success!(
+            renderer.write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
+        );
+
+        let indices = part.indices();
+        let mut index_buffer = heph_expect_success!(
+            renderer.create_buffer(std::mem::size_of_val(indices), BufferUsage::Index)
+        );
+        heph_expect_success!(renderer.write_buffer(&index_buffer, bytemuck::cast_slice(indices)));
+
+        let image = heph_expect_success!(image::load_from_memory(heph_expect_success!(
+            part.base_texture_image_data()
+                .ok_or("Missing embedded base-color texture.")
+        )))
+        .to_rgba8();
+        let (min_filter, mag_filter, mipmap_filter) = heph_expect_success!(
+            part.base_texture_sampler_filters()
+                .ok_or("Missing base-color sampler filters.")
+        );
+        let (address_mode_u, address_mode_v) = heph_expect_success!(
+            part.base_texture_sampler_address_modes()
+                .ok_or("Missing base-color sampler addressing modes.")
+        );
+
+        let mut texture = heph_expect_success!(renderer.create_texture(
+            &TextureOptions {
+                width: image.width(),
+                height: image.height(),
+                format: TextureFormat::Rgba8Srgb,
+                mip_level_count: match mipmap_filter.is_some() {
+                    true => TextureOptions::max_mip_level_count(image.width(), image.height()),
+                    false => 1,
+                },
+            },
+            image.as_raw(),
+        ));
+        let mut arm_texture = heph_expect_success!(renderer.create_texture(
+            &TextureOptions {
+                width: 1,
+                height: 1,
+                format: TextureFormat::Rgba8Unorm,
+                mip_level_count: 1,
+            },
+            &[255, 255, 255, 255],
+        ));
+        let mut normal_texture = heph_expect_success!(renderer.create_texture(
+            &TextureOptions {
+                width: 1,
+                height: 1,
+                format: TextureFormat::Rgba8Unorm,
+                mip_level_count: 1,
+            },
+            &[128, 128, 255, 255],
+        ));
+
+        let material = part.material();
+        let uniforms = [
+            [
+                material.base_color.r,
+                material.base_color.g,
+                material.base_color.b,
+                material.base_color.a,
+            ],
+            [material.roughness, material.metallicness, 0.0, 0.0],
+            [
+                lighting.direction.x,
+                lighting.direction.y,
+                lighting.direction.z,
+                0.0,
+            ],
+            [
+                lighting.color.r,
+                lighting.color.g,
+                lighting.color.b,
+                lighting.intensity,
+            ],
+            [
+                lighting.ambient.r,
+                lighting.ambient.g,
+                lighting.ambient.b,
+                0.0,
+            ],
+            [camera.position.x, camera.position.y, camera.position.z, 1.0],
+        ];
+        let mut material_buffer = heph_expect_success!(
+            renderer.create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
+        );
+        heph_expect_success!(
+            renderer.write_buffer(&material_buffer, bytemuck::cast_slice(&uniforms))
+        );
+
+        heph_expect_success!(renderer.end_frame());
+
+        let matrices = [
+            model.to_cols_array(),
+            heph_expect_success!(camera.view_projection_matrix()).to_cols_array(),
+            model.inverse().transpose().to_cols_array(),
+        ];
+        let mut uniform_buffer = heph_expect_success!(
+            renderer.create_buffer(std::mem::size_of_val(&matrices), BufferUsage::Uniform)
+        );
+        heph_expect_success!(
+            renderer.write_buffer(&uniform_buffer, bytemuck::cast_slice(&matrices))
+        );
+
+        let mut joint_buffers = Vec::with_capacity(settings.frames_in_flight);
+        for _ in 0..settings.frames_in_flight {
+            joint_buffers.push(heph_expect_success!(renderer.create_buffer(
+                joint_matrices.len() * std::mem::size_of::<[f32; 16]>(),
+                BufferUsage::Storage,
+            )));
+        }
+        let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions {
+            min_filter,
+            mag_filter,
+            mipmap_filter: mipmap_filter.unwrap_or_default(),
+            address_mode_u,
+            address_mode_v,
+            max_anisotropy,
+            ..Default::default()
+        }));
+
+        let mut frame_index = 0;
+        let start = Instant::now();
+        loop {
+            heph_expect_success!(renderer.begin_frame());
+            heph_expect_success!(renderer.clear(RGB::default()));
+
+            let elapsed = start.elapsed().as_secs_f32();
+            let clip_index = (elapsed / ANIMATION_DURATION.as_secs_f32()) as usize;
+            if clip_index >= mesh.animations().len() {
+                heph_expect_success!(renderer.end_frame());
+                break;
+            }
+
+            let animation = &mesh.animations()[clip_index];
+            let clip_time = elapsed % ANIMATION_DURATION.as_secs_f32();
+            let time = match animation.duration() > 0.0 {
+                true => clip_time % animation.duration(),
+                false => 0.0,
+            };
+
+            transforms.clone_from_slice(&default_transforms);
+            heph_expect_success!(animation.sample(time, &mut transforms));
+
+            let matrices = heph_expect_success!(skeleton.matrices(&transforms));
+            let joints: Vec<[f32; 16]> = heph_expect_success!(part.joint_matrices(&matrices))
+                .iter()
+                .map(Mat4::to_cols_array)
+                .collect();
+            let joint_buffer = joint_buffers[frame_index];
+            heph_expect_success!(
+                renderer.write_buffer(&joint_buffer, bytemuck::cast_slice(&joints))
+            );
+
+            let bindings = [
+                ResourceBinding {
+                    binding: 0,
+                    resource: ResourceBindingType::Buffer {
+                        handle: vertex_buffer,
+                        usage: BufferUsage::Vertex,
+                        offset: 0,
+                        size: vertex_buffer.size(),
+                    },
+                },
+                ResourceBinding {
+                    binding: 0,
+                    resource: ResourceBindingType::Buffer {
+                        handle: index_buffer,
+                        usage: BufferUsage::Index,
+                        offset: 0,
+                        size: index_buffer.size(),
+                    },
+                },
+                ResourceBinding {
+                    binding: 0,
+                    resource: ResourceBindingType::Texture { handle: texture },
+                },
+                ResourceBinding {
+                    binding: 1,
+                    resource: ResourceBindingType::Sampler { handle: sampler },
+                },
+                ResourceBinding {
+                    binding: 2,
+                    resource: ResourceBindingType::Texture {
+                        handle: arm_texture,
+                    },
+                },
+                ResourceBinding {
+                    binding: 3,
+                    resource: ResourceBindingType::Texture {
+                        handle: normal_texture,
+                    },
+                },
+                ResourceBinding {
+                    binding: 4,
+                    resource: ResourceBindingType::Buffer {
+                        handle: material_buffer,
+                        usage: BufferUsage::Uniform,
+                        offset: 0,
+                        size: material_buffer.size(),
+                    },
+                },
+                ResourceBinding {
+                    binding: 5,
+                    resource: ResourceBindingType::Buffer {
+                        handle: uniform_buffer,
+                        usage: BufferUsage::Uniform,
+                        offset: 0,
+                        size: uniform_buffer.size(),
+                    },
+                },
+                ResourceBinding {
+                    binding: 6,
+                    resource: ResourceBindingType::Buffer {
+                        handle: joint_buffer,
+                        usage: BufferUsage::Storage,
+                        offset: 0,
+                        size: joint_buffer.size(),
+                    },
+                },
+            ];
+            heph_expect_success!(renderer.record_graphics_command(
+                &pipeline,
+                &[&bindings],
+                indices.len() as u32,
+                1
+            ));
+
+            heph_expect_success!(renderer.end_frame());
+
+            frame_index = (frame_index + 1) % joint_buffers.len();
+        }
+
+        heph_expect_success!(renderer.wait_idle());
+        heph_expect_success!(renderer.destroy_sampler(&mut sampler));
+        heph_expect_success!(renderer.destroy_texture(&mut texture));
+        heph_expect_success!(renderer.destroy_texture(&mut arm_texture));
+        heph_expect_success!(renderer.destroy_texture(&mut normal_texture));
+        heph_expect_success!(renderer.destroy_buffer(&mut material_buffer));
+        heph_expect_success!(renderer.destroy_buffer(&mut vertex_buffer));
+        heph_expect_success!(renderer.destroy_buffer(&mut index_buffer));
+        heph_expect_success!(renderer.destroy_buffer(&mut uniform_buffer));
+        for joint_buffer in &mut joint_buffers {
+            heph_expect_success!(renderer.destroy_buffer(joint_buffer));
+        }
+        heph_expect_success!(renderer.destroy_graphics_pipeline(&pipeline));
+    }
+
     fn load_exr(&self, path: &str, channel_names: [&str; 3]) -> image::RgbaImage {
         let layer =
             heph_expect_success!(exr::prelude::read_first_flat_layer_from_file(path)).layer_data;
