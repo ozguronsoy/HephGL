@@ -220,16 +220,25 @@ impl Renderer for VulkanRenderer {
             ..Default::default()
         };
 
-        let create_flags = if cfg!(target_os = "macos") {
-            ash::vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR
-        } else {
-            ash::vk::InstanceCreateFlags::empty()
+        let extension_properties = unsafe { entry.enumerate_instance_extension_properties(None)? };
+        let supports_portability_enumeration = extension_properties.iter().any(|ext| {
+            let name = unsafe { std::ffi::CStr::from_ptr(ext.extension_name.as_ptr()) };
+            name == ash::vk::KHR_PORTABILITY_ENUMERATION_NAME
+        });
+        let create_flags = match supports_portability_enumeration {
+            true => ash::vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR,
+            false => ash::vk::InstanceCreateFlags::empty(),
         };
 
         let mut required_extension_names =
             ash_window::enumerate_required_extensions(options.display_handle)?.to_vec();
-        if cfg!(target_os = "macos") {
-            required_extension_names.push(c"VK_KHR_portability_enumeration".as_ptr());
+        if supports_portability_enumeration {
+            required_extension_names.push(ash::vk::KHR_PORTABILITY_ENUMERATION_NAME.as_ptr());
+            if self.api_version < Version::new(1, 1, 0) {
+                // Portability subset requires this instance extension before Vulkan 1.1.
+                required_extension_names
+                    .push(ash::vk::KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_NAME.as_ptr());
+            }
         }
 
         let mut enabled_layer_names = Vec::new();
