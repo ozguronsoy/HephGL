@@ -7,11 +7,24 @@ advanced usage:
 - [Compute](#compute)
 - [Rendering](#rendering)
 
-Run an example from the repository root using its filename without `.rs`:
-
+Running an example using the default backend (Vulkan):
 ```bash
-cargo run --example render_basic_triangle
+cargo run --example <example_name>
 ```
+
+Running an example using a specific backend:
+```bash
+cargo run --example <example_name> --no-default-features --features <backend_name>
+```
+
+Backends:
+- vulkan
+- directx
+- metal
+- opengl
+
+> [!NOTE]
+> Currently only Vulkan is supported.
 
 The shared [utilities](utils/mod.rs) create the window and renderer, and initialize the renderer
 for every example except `creating_renderer`, which demonstrates initialization explicitly. The
