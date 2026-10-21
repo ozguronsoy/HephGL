@@ -3,7 +3,7 @@ use ash::vk::{
     SemaphoreWaitInfo, SubmitInfo, TimelineSemaphoreSubmitInfo,
 };
 
-use crate::{Error, Result, renderers::vulkan::sync::VulkanFrameSync};
+use crate::{Result, renderers::vulkan::sync::VulkanFrameSync};
 
 /// Implements frame synchronization using a timeline semaphore.
 pub struct TimelineSemaphoreFrameSync {
@@ -38,11 +38,15 @@ impl VulkanFrameSync for TimelineSemaphoreFrameSync {
         queue: Queue,
         submits: &[SubmitInfo],
     ) -> Result<()> {
-        // TODO: Recreate the semaphore and use that.
-        let next_value = self
-            .new_value
-            .checked_add(1)
-            .ok_or(Error::fail("Timeline semaphore counter exhausted."))?;
+        if self.new_value == u64::MAX {
+            unsafe {
+                device.queue_wait_idle(queue)?;
+                let temp = Self::new(device, self.frame_values.len())?;
+                device.destroy_semaphore(self.semaphore, None);
+                *self = temp;
+            }
+        }
+        let next_value = self.new_value + 1;
 
         let semaphores = [self.semaphore];
         let values = [self.new_value];
@@ -93,4 +97,188 @@ impl VulkanFrameSync for TimelineSemaphoreFrameSync {
 
 impl TimelineSemaphoreFrameSync {
     const TIMEOUT_NS: u64 = 1.0e10 as u64;
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{cell::RefCell, ffi::c_void};
+
+    use ash::vk::{self, Handle};
+
+    use super::*;
+
+    #[derive(Default)]
+    struct Calls {
+        events: Vec<&'static str>,
+        wait_result: vk::Result,
+        create_result: vk::Result,
+        submit_result: vk::Result,
+        signal: Option<(Semaphore, u64)>,
+        destroyed: Option<Semaphore>,
+    }
+
+    thread_local! {
+        static CALLS: RefCell<Calls> = RefCell::new(Calls::default());
+    }
+
+    unsafe extern "system" fn queue_wait_idle(_: Queue) -> vk::Result {
+        CALLS.with_borrow_mut(|calls| {
+            calls.events.push("wait");
+            calls.wait_result
+        })
+    }
+
+    unsafe extern "system" fn create_semaphore(
+        _: vk::Device,
+        _: *const SemaphoreCreateInfo<'_>,
+        _: *const vk::AllocationCallbacks<'_>,
+        semaphore: *mut Semaphore,
+    ) -> vk::Result {
+        CALLS.with_borrow_mut(|calls| {
+            calls.events.push("create");
+            if calls.create_result == vk::Result::SUCCESS {
+                unsafe {
+                    *semaphore = Semaphore::from_raw(2);
+                }
+            }
+            calls.create_result
+        })
+    }
+
+    unsafe extern "system" fn destroy_semaphore(
+        _: vk::Device,
+        semaphore: Semaphore,
+        _: *const vk::AllocationCallbacks<'_>,
+    ) {
+        CALLS.with_borrow_mut(|calls| {
+            calls.events.push("destroy");
+            calls.destroyed = Some(semaphore);
+        });
+    }
+
+    unsafe extern "system" fn queue_submit(
+        _: Queue,
+        count: u32,
+        submits: *const SubmitInfo<'_>,
+        _: Fence,
+    ) -> vk::Result {
+        let submit = unsafe { &*submits.add(count as usize - 1) };
+        let timeline = unsafe { &*submit.p_next.cast::<TimelineSemaphoreSubmitInfo<'_>>() };
+        CALLS.with_borrow_mut(|calls| {
+            calls.events.push("submit");
+            calls.signal = Some(unsafe {
+                (
+                    *submit.p_signal_semaphores,
+                    *timeline.p_signal_semaphore_values,
+                )
+            });
+            calls.submit_result
+        })
+    }
+
+    fn device() -> ash::Device {
+        unsafe {
+            ash::Device::load_with(
+                |name| match name.to_bytes() {
+                    b"vkQueueWaitIdle" => queue_wait_idle as *const c_void,
+                    b"vkCreateSemaphore" => create_semaphore as *const c_void,
+                    b"vkDestroySemaphore" => destroy_semaphore as *const c_void,
+                    b"vkQueueSubmit" => queue_submit as *const c_void,
+                    _ => std::ptr::null(),
+                },
+                vk::Device::null(),
+            )
+        }
+    }
+
+    #[test]
+    fn test_counter_exhaustion() {
+        CALLS.set(Calls::default());
+        let device = device();
+        let mut sync = TimelineSemaphoreFrameSync {
+            semaphore: Semaphore::from_raw(1),
+            frame_values: vec![u64::MAX - 2, 0],
+            new_value: u64::MAX - 1,
+        };
+
+        sync.submit(&device, 1, Queue::null(), &[]).unwrap();
+        assert_eq!(sync.new_value, u64::MAX);
+        CALLS.with_borrow(|calls| {
+            assert_eq!(calls.events, ["submit"]);
+            assert_eq!(calls.signal, Some((Semaphore::from_raw(1), u64::MAX - 1)));
+        });
+        CALLS.set(Calls::default());
+
+        sync.submit(&device, 0, Queue::null(), &[]).unwrap();
+        assert_eq!(sync.semaphore, Semaphore::from_raw(2));
+        assert_eq!(sync.frame_values, [1, 0]);
+        assert_eq!(sync.new_value, 2);
+        CALLS.with_borrow(|calls| {
+            assert_eq!(calls.events, ["wait", "create", "destroy", "submit"]);
+            assert_eq!(calls.destroyed, Some(Semaphore::from_raw(1)));
+            assert_eq!(calls.signal, Some((Semaphore::from_raw(2), 1)));
+        });
+
+        sync.submit(&device, 1, Queue::null(), &[]).unwrap();
+        assert_eq!(sync.frame_values, [1, 2]);
+        assert_eq!(sync.new_value, 3);
+    }
+
+    #[test]
+    fn test_recreation_failure() {
+        let device = device();
+        for fail_wait in [true, false] {
+            CALLS.set(Calls {
+                wait_result: if fail_wait {
+                    vk::Result::ERROR_DEVICE_LOST
+                } else {
+                    vk::Result::SUCCESS
+                },
+                create_result: vk::Result::ERROR_OUT_OF_HOST_MEMORY,
+                ..Default::default()
+            });
+            let mut sync = TimelineSemaphoreFrameSync {
+                semaphore: Semaphore::from_raw(1),
+                frame_values: vec![u64::MAX - 1],
+                new_value: u64::MAX,
+            };
+            assert!(sync.submit(&device, 0, Queue::null(), &[]).is_err());
+            assert_eq!(sync.semaphore, Semaphore::from_raw(1));
+            assert_eq!(sync.frame_values, [u64::MAX - 1]);
+            assert_eq!(sync.new_value, u64::MAX);
+            CALLS.with_borrow(|calls| {
+                assert!(calls.destroyed.is_none());
+                assert!(calls.signal.is_none());
+            });
+
+            CALLS.set(Calls::default());
+            sync.submit(&device, 0, Queue::null(), &[]).unwrap();
+            assert_eq!(sync.frame_values, [1]);
+            assert_eq!(sync.new_value, 2);
+        }
+    }
+
+    #[test]
+    fn test_submission_failure_after_recreation() {
+        CALLS.set(Calls {
+            submit_result: vk::Result::ERROR_OUT_OF_HOST_MEMORY,
+            ..Default::default()
+        });
+        let device = device();
+        let mut sync = TimelineSemaphoreFrameSync {
+            semaphore: Semaphore::from_raw(1),
+            frame_values: vec![u64::MAX - 1],
+            new_value: u64::MAX,
+        };
+        assert!(sync.submit(&device, 0, Queue::null(), &[]).is_err());
+        assert_eq!(sync.semaphore, Semaphore::from_raw(2));
+        assert_eq!(sync.frame_values, [0]);
+        assert_eq!(sync.new_value, 1);
+
+        CALLS.set(Calls::default());
+        sync.submit(&device, 0, Queue::null(), &[]).unwrap();
+        assert_eq!(sync.frame_values, [1]);
+        assert_eq!(sync.new_value, 2);
+        CALLS.with_borrow(|calls| assert_eq!(calls.events, ["submit"]));
+    }
 }
