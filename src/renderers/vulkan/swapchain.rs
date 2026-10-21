@@ -322,14 +322,16 @@ impl VulkanRenderer {
 
     /// Acquires a swapchain image, recreating invalidated presentation resources before recording
     /// begins.
-    pub(super) fn acquire_swapchain_image(&mut self) -> Result<()> {
-        // Avoid multiple borrowing errors.
-        let p_self = self as *mut Self as usize;
-        let get_self = || -> &mut Self { unsafe { &mut *(p_self as *mut Self) } };
+    pub(super) fn acquire_swapchain_image(p_self: *mut Self) -> Result<()> {
+        macro_rules! this {
+            () => {
+                unsafe { &mut *p_self }
+            };
+        }
 
         // Retry once so repeated surface changes return control to the application's event loop.
         for attempt in 0..2 {
-            let device_context = get_self()
+            let device_context = this!()
                 .device_context
                 .as_mut()
                 .ok_or(Error::invalid_operation("Device is not set."))?;
@@ -341,10 +343,10 @@ impl VulkanRenderer {
             }
 
             if swapchain_context.invalidated {
-                get_self().wait_idle()?;
-                get_self().destroy_rendering()?;
-                get_self().create_swapchain()?;
-                get_self().create_rendering()?;
+                this!().wait_idle()?;
+                this!().destroy_rendering()?;
+                this!().create_swapchain()?;
+                this!().create_rendering()?;
                 swapchain_context.invalidated = false;
             }
 

@@ -1556,12 +1556,9 @@ impl Renderer for VulkanRenderer {
     }
 
     fn begin_frame(&mut self) -> Result<()> {
-        // Avoid multiple borrowing errors.
-        let p_self = self as *mut Self as usize;
-        let get_self = || -> &mut Self { unsafe { &mut *(p_self as *mut Self) } };
-
-        let is_in_main_thread = get_self().is_in_main_thread();
-        let device_context = get_self()
+        let p_self = self as *mut Self;
+        let is_in_main_thread = self.is_in_main_thread();
+        let device_context = self
             .device_context
             .as_mut()
             .ok_or(Error::invalid_operation("Device is not set."))?;
@@ -1585,7 +1582,7 @@ impl Renderer for VulkanRenderer {
                 wait_frame_sync(compute_queue_context)?;
             }
 
-            get_self().acquire_swapchain_image()?;
+            Self::acquire_swapchain_image(p_self)?;
         } else {
             // The worker thread might be one frame ahead of the main thread. Wait for main to
             // consume the previous frame, releasing the index lock while waiting so main can
@@ -1662,7 +1659,7 @@ impl Renderer for VulkanRenderer {
                     .logical_device
                     .begin_command_buffer(current_frame.command_buffer, &begin_info)?;
                 if is_graphics {
-                    let layer_count = match get_self().settings.stereoscopic_3d_rendering {
+                    let layer_count = match self.settings.stereoscopic_3d_rendering {
                         true => 2,
                         false => 1,
                     };
@@ -1701,7 +1698,7 @@ impl Renderer for VulkanRenderer {
                         1,
                         layer_count,
                     );
-                    if get_self().settings.msaa != Msaa::X1 {
+                    if self.settings.msaa != Msaa::X1 {
                         Self::transition_image_layout(
                             &device_context.logical_device,
                             current_frame.command_buffer,
