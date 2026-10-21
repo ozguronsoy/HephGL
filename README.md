@@ -119,71 +119,67 @@ The `Renderer` trait provides a clean and simple API that is agnostic to the bac
 enables us to switch between graphics APIs without changing the code. Renderers must be initialized
 before we can start utilizing them.
 
-```mermaid
----
-title: Initialization Phase
----
-graph LR;
-    A(Create renderer) --> B(Initialize);
-    B --> C{Use a specific \n graphics device?}
-    C -- Yes --> D(Enumerate devices)
-    C -- No --> E(Select the default device)
-    D --> F(Select a device)
-    F --> G
-    E --> G(Set selected device)
-```
-
-After the initialization phase, we can use the graphics device to do computations, video
-decoding/encoding, and graphics rendering. Flowcharts of these operations are given below. Check
-the [examples](examples/) directory for code implementations.
-
-
-You can use the "compute pipeline" for performing general purpose computations in the GPU. You can
-use this to compute physics in a game, or multiply matrices. HephGL will utilize the dedicated
-computation hardware whenever possible, and will fallback to general purpose GPU hardware if a
-dedicated hardware is not available.
-```mermaid
----
-title: General Purpose Computing (Single Thread)
----
-graph LR;
-    A(Load Shader) --> B(Create Compute Pipeline);
-    B --> C(Begin Frame)
-    C --> D(Prepare Resources)
-    D --> E(Record Command)
-    E --> F(Submit Commands)
-    F --> G(End Frame)
-```
+After initialization and device selection, rendering and compute work follow the same basic
+lifecycle: load shaders, create a pipeline, and record commands between `begin_frame` and
+`end_frame`. Ending the frame submits the recorded work. Reuse the pipeline across frames, then
+wait for the GPU before releasing its resources.
 
 ```mermaid
----
-title: General Purpose Computing (Multi Thread)
----
-graph LR;
-    A(Load Shader) --> B(Create Compute Pipeline);
-    B --> C(Begin Frame)
-    C --> D(Create Renderer Handle)
-
-    D --> E1(Spawn Renderer Worker)
-    E1 --> F1(Prepare Resources)
-    F1 --> G1(Record Command)
-    G1 --> H(Submit Commands)
-    
-    D --> E2(Spawn Renderer Worker)
-    E2 --> F2(Prepare Resources)
-    F2 --> G2(Record Command)
-    G2 --> H(Submit Commands)
-
-    D --> E3(Spawn Renderer Worker)
-    E3 --> F3(Prepare Resources)
-    F3 --> G3(Record Command)
-    G3 --> H(Submit Commands)
-
-    H --> I(End Frame)
+flowchart TD
+    A[Create and initialize renderer] --> B[Select graphics device]
+    B --> C[Load shaders and create pipeline]
+    C --> D[Begin frame]
+    D --> E[Prepare resources and record commands]
+    E --> F[End frame]
+    F --> G{More frames?}
+    G -- Yes --> D
+    G -- No --> H[Wait for GPU completion and release resources]
 ```
 
-> [!NOTE]
-> The remaining operations are not implemented yet, thus no flowcharts.
+The following example renders a basic triangle using the Vulkan backend. Replace the placeholders
+with the corresponding raw handles from your chosen windowing library. Shader paths are relative to
+the repository root, these shaders generate the triangle's vertices without vertex buffers.
+
+```rust
+use heph_gl::{
+    renderers::{
+        Renderer,
+        settings::{GraphicsPipelineOptions, InitializeOptions},
+        vulkan::VulkanRenderer,
+    },
+    shader::Shader,
+};
+use renkrs::RGB;
+
+let mut renderer = VulkanRenderer::new();
+renderer.initialize(&InitializeOptions {
+        app_name: "Basic Triangle",
+        window_handle: <raw_window_handle>,
+        display_handle: <raw_display_handle>,
+        api_version: VulkanRenderer::LATEST_API_VERSION,
+    }).unwrap();
+renderer.set_device(VulkanRenderer::DEFAULT_DEVICE, &[]).unwrap();
+
+let vert_shader = Shader::from_file("shaders/shapes/basic_triangle_vert.spv").unwrap();
+let frag_shader = Shader::from_file("shaders/shapes/basic_triangle_frag.spv").unwrap();
+let pipeline = renderer.create_graphics_pipeline(
+        &[&vert_shader, &frag_shader],
+        &GraphicsPipelineOptions::default(),
+    ).unwrap();
+drop(vert_shader);
+drop(frag_shader);
+
+renderer.begin_frame().unwrap();
+renderer.clear(RGB::default()).unwrap();
+// Three vertices, one instance.
+renderer.record_graphics_command(&pipeline, &[], 3, 1).unwrap();
+renderer.end_frame().unwrap();
+
+renderer.wait_idle().unwrap();
+renderer.destroy_graphics_pipeline(&pipeline).unwrap();
+```
+
+Check out the [examples directory](examples/) for more examples and flowcharts.
 
 ### Graphics
 
