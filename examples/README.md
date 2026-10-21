@@ -1,8 +1,11 @@
 # Examples
 
-Start with renderer setup and device enumeration, then move on to compute and rendering. Within
-each category, examples progress from basic usage to more advanced resource management and
-animation.
+Examples are organized into three categories, with each category progressing from basic to more
+advanced usage:
+
+- [Initialization](#initialization)
+- [Compute](#compute)
+- [Rendering](#rendering)
 
 Run an example from the repository root using its filename without `.rs`:
 
@@ -12,11 +15,9 @@ cargo run --example render_basic_triangle
 
 The shared [utilities](utils/mod.rs) create the window and renderer, and initialize the renderer
 for every example except `creating_renderer`, which demonstrates initialization explicitly. The
-flowcharts describe reusable library workflows. Compute and rendering workflows assume an
-initialized renderer; device selection, feature requests, and renderer settings are grouped as
-renderer configuration.
+flowcharts describe reusable library workflows.
 
-## Creation, initialization, and device enumeration
+## Initialization
 
 ### [creating_renderer](creating_renderer.rs)
 
