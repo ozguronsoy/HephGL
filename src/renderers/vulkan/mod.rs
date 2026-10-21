@@ -699,6 +699,7 @@ impl Renderer for VulkanRenderer {
             swapchain_context: SwapchainContext {
                 loader: ash::khr::swapchain::Device::new(instance, &logical_device),
                 swapchain: SwapchainKHR::null(),
+                invalidated: false,
                 format: ash::vk::Format::default(),
                 extent: ash::vk::Extent2D::default(),
                 images: Vec::default(),
@@ -1555,6 +1556,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn begin_frame(&mut self) -> Result<()> {
+        let p_self = self as *mut Self;
         let is_in_main_thread = self.is_in_main_thread();
         let device_context = self
             .device_context
@@ -1580,29 +1582,7 @@ impl Renderer for VulkanRenderer {
                 wait_frame_sync(compute_queue_context)?;
             }
 
-            if device_context
-                .swapchain_context
-                .image_avaliable_semaphore_index
-                == SwapchainContext::INVALID_INDEX
-            {
-                device_context.swapchain_context.current_image_index = unsafe {
-                    device_context
-                        .swapchain_context
-                        .loader
-                        .acquire_next_image(
-                            device_context.swapchain_context.swapchain,
-                            1e9 as u64,
-                            device_context.swapchain_context.semaphores
-                                [device_context.current_frame_index]
-                                .0,
-                            ash::vk::Fence::null(),
-                        )?
-                        .0 as usize
-                };
-                device_context
-                    .swapchain_context
-                    .image_avaliable_semaphore_index = device_context.current_frame_index;
-            }
+            Self::acquire_swapchain_image(p_self)?;
         } else {
             // The worker thread might be one frame ahead of the main thread. Wait for main to
             // consume the previous frame, releasing the index lock while waiting so main can
@@ -1956,13 +1936,19 @@ impl Renderer for VulkanRenderer {
                     .wait_semaphores(&wait_semaphores)
                     .swapchains(&swapchains)
                     .image_indices(&image_indices);
-                let _suboptimal = unsafe {
+                let result = unsafe {
                     device_context
                         .swapchain_context
                         .loader
-                        .queue_present(device_context.graphics_queue_context.queue, &present_info)?
+                        .queue_present(device_context.graphics_queue_context.queue, &present_info)
                 };
-                // TODO: Recreate swapchain if suboptimal.
+                match result {
+                    Ok(suboptimal) => device_context.swapchain_context.invalidated |= suboptimal,
+                    Err(ash::vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                        device_context.swapchain_context.invalidated = true
+                    }
+                    Err(error) => return Err(error.into()),
+                }
                 device_context
                     .swapchain_context
                     .image_avaliable_semaphore_index = SwapchainContext::INVALID_INDEX;
