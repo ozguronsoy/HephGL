@@ -6,8 +6,6 @@
     - [Dependencies](#dependencies)
 - [Usage](#usage)
     - [Environment Variables](#environment-variables)
-    - [Running Examples](#running-examples)
-    - [Running Tests](#running-tests)
     - [Renderer](#renderer)
     - [Graphics](#graphics)
 - [Examples](examples/)
@@ -74,44 +72,6 @@ during build.
 
 HephGL supports compile-time configuration through optional environment variables:
 - `HEPHGL_RENDERER_MAX_CONCURRENT_THREADS=<usize>`: The maximum number of threads a renderer can concurrently run.
-
-### Running Examples
-
-Running an example using the default backend (Vulkan)
-```bash
-cargo run --example <example_name>
-```
-
-Running an example using a specific backend
-```bash
-cargo run --example <example_name> --no-default-features --features <backend_name>
-```
-
-Backends:
-- vulkan
-- directx
-- metal
-- opengl
-
-> [!NOTE]
-> Currently only Vulkan is supported.
-
-### Running Tests
-
-Running the unit tests
-```bash
-cargo test
-```
-
-Running the integration tests
-```bash
-cargo nextest run
-```
-
-Generating code coverage reports
-```bash
-cargo llvm-cov nextest
-```
 
 ### Renderer
 
