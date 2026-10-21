@@ -13,7 +13,7 @@
 - [Examples](examples/)
 - [Documentation](https://docs.rs/heph-gl/0.1.0/heph_gl/)
 - [Contributing](#contributing)
-- [License](#license)
+- [License](LICENSE)
 
 
 ## Introduction
