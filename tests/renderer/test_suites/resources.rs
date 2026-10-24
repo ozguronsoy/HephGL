@@ -24,6 +24,9 @@ impl RendererBuffer for ForeignBuffer {
     fn size(&self) -> usize {
         4
     }
+    fn usage(&self) -> BufferUsage {
+        BufferUsage::Storage
+    }
 }
 
 struct ForeignTexture;

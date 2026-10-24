@@ -777,6 +777,7 @@ impl Renderer for VulkanRenderer {
             buffer,
             vma_allocation,
             size,
+            usage,
         }))
     }
 
@@ -1193,6 +1194,7 @@ impl Renderer for VulkanRenderer {
             buffer: staging_buffer,
             vma_allocation: staging_allocation,
             size: expected_size,
+            usage: BufferUsage::Uniform,
         });
         current_frame.recorded = true;
 

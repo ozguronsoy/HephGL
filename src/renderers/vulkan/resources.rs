@@ -23,6 +23,7 @@ pub struct VulkanBuffer {
     pub(super) buffer: Buffer,
     pub(super) vma_allocation: vk_mem::Allocation,
     pub(super) size: usize,
+    pub(super) usage: BufferUsage,
 }
 
 /// Represents a Vulkan texture.
@@ -108,6 +109,10 @@ impl RendererResource for VulkanBuffer {
 impl RendererBuffer for VulkanBuffer {
     fn size(&self) -> usize {
         self.size
+    }
+
+    fn usage(&self) -> BufferUsage {
+        self.usage
     }
 }
 

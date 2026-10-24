@@ -74,6 +74,8 @@ pub trait RendererResource: Any + Send + Sync {
 pub trait RendererBuffer: RendererResource {
     /// Returns the size of the buffer in bytes.
     fn size(&self) -> usize;
+    /// Returns the usage type of the buffer.
+    fn usage(&self) -> BufferUsage;
 }
 
 /// Represents a GPU texture.
