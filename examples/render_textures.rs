@@ -110,7 +110,7 @@ fn example(
         .create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
         .unwrap();
     renderer
-        .write_buffer(uniform_buffer.as_mut(), bytemuck::cast_slice(&uniforms))
+        .write_buffer(uniform_buffer.as_mut(), 0, bytemuck::cast_slice(&uniforms))
         .unwrap();
 
     // Displace a unit sphere before scaling it, so all three sizes have the same relative relief.
@@ -140,7 +140,7 @@ fn example(
         )
         .unwrap();
     renderer
-        .write_buffer(vertex_buffer.as_mut(), bytemuck::cast_slice(&vertices))
+        .write_buffer(vertex_buffer.as_mut(), 0, bytemuck::cast_slice(&vertices))
         .unwrap();
     drop(vertices);
 

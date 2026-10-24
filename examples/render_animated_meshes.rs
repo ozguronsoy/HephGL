@@ -121,7 +121,7 @@ fn example(
         )
         .unwrap();
     renderer
-        .write_buffer(vertex_buffer.as_mut(), bytemuck::cast_slice(&vertices))
+        .write_buffer(vertex_buffer.as_mut(), 0, bytemuck::cast_slice(&vertices))
         .unwrap();
 
     let indices = part.indices();
@@ -129,7 +129,7 @@ fn example(
         .create_buffer(std::mem::size_of_val(indices), BufferUsage::Index)
         .unwrap();
     renderer
-        .write_buffer(index_buffer.as_mut(), bytemuck::cast_slice(indices))
+        .write_buffer(index_buffer.as_mut(), 0, bytemuck::cast_slice(indices))
         .unwrap();
 
     let image = image::load_from_memory(part.base_texture_image_data().unwrap())
@@ -209,7 +209,7 @@ fn example(
         .create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
         .unwrap();
     renderer
-        .write_buffer(material_buffer.as_mut(), bytemuck::cast_slice(&uniforms))
+        .write_buffer(material_buffer.as_mut(), 0, bytemuck::cast_slice(&uniforms))
         .unwrap();
 
     renderer.end_frame().unwrap();
@@ -223,7 +223,7 @@ fn example(
         .create_buffer(std::mem::size_of_val(&matrices), BufferUsage::Uniform)
         .unwrap();
     renderer
-        .write_buffer(uniform_buffer.as_mut(), bytemuck::cast_slice(&matrices))
+        .write_buffer(uniform_buffer.as_mut(), 0, bytemuck::cast_slice(&matrices))
         .unwrap();
 
     let mut joint_buffers = Vec::with_capacity(settings.frames_in_flight);
@@ -285,7 +285,7 @@ fn example(
             .collect();
         let joint_buffer = &mut joint_buffers[frame_index];
         renderer
-            .write_buffer(joint_buffer.as_mut(), bytemuck::cast_slice(&joints))
+            .write_buffer(joint_buffer.as_mut(), 0, bytemuck::cast_slice(&joints))
             .unwrap();
 
         let bindings = [

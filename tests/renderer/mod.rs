@@ -153,6 +153,7 @@ where
                 create_trial!(versioned_test_suite, test_enumerate_devices),
                 create_trial!(versioned_test_suite, test_set_device),
                 create_trial!(versioned_test_suite, test_set_settings),
+                create_trial!(versioned_test_suite, test_buffer_io),
                 create_trial!(versioned_test_suite, test_uniform_buffer),
                 create_trial!(versioned_test_suite, test_storage_buffer),
                 create_trial!(versioned_test_suite, test_index_buffer),

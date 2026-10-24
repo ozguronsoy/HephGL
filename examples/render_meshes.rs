@@ -127,7 +127,7 @@ fn example(
             )
             .unwrap();
         renderer
-            .write_buffer(vertex_buffer.as_mut(), bytemuck::cast_slice(&vertices))
+            .write_buffer(vertex_buffer.as_mut(), 0, bytemuck::cast_slice(&vertices))
             .unwrap();
 
         // Indices reference this part's vertices, so each part is drawn with its own buffers.
@@ -136,7 +136,7 @@ fn example(
             .create_buffer(std::mem::size_of_val(indices), BufferUsage::Index)
             .unwrap();
         renderer
-            .write_buffer(index_buffer.as_mut(), bytemuck::cast_slice(indices))
+            .write_buffer(index_buffer.as_mut(), 0, bytemuck::cast_slice(indices))
             .unwrap();
 
         // Resolve each texture URI relative to the mesh directory, preserving its folder structure.
@@ -214,7 +214,7 @@ fn example(
             .create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
             .unwrap();
         renderer
-            .write_buffer(material_buffer.as_mut(), bytemuck::cast_slice(&uniforms))
+            .write_buffer(material_buffer.as_mut(), 0, bytemuck::cast_slice(&uniforms))
             .unwrap();
 
         part_buffers.push((
@@ -269,7 +269,7 @@ fn example(
 
         let uniform_buffer = &mut uniform_buffers[frame_index];
         renderer
-            .write_buffer(uniform_buffer.as_mut(), bytemuck::cast_slice(&matrices))
+            .write_buffer(uniform_buffer.as_mut(), 0, bytemuck::cast_slice(&matrices))
             .unwrap();
 
         for (

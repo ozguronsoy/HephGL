@@ -50,7 +50,7 @@ fn create_vertex_buffer(
         .create_buffer(std::mem::size_of_val(vertices), BufferUsage::Vertex)
         .unwrap();
     renderer
-        .write_buffer(buffer.as_mut(), bytemuck::cast_slice(vertices))
+        .write_buffer(buffer.as_mut(), 0, bytemuck::cast_slice(vertices))
         .unwrap();
     buffer
 }
@@ -227,6 +227,7 @@ fn example(
             renderer
                 .write_buffer(
                     uniform_buffers[frame_index][index].as_mut(),
+                    0,
                     bytemuck::cast_slice(&matrices),
                 )
                 .unwrap();

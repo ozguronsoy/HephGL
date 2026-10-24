@@ -1,4 +1,3 @@
-pub mod buffer;
 pub mod compute;
 pub mod concurrency;
 pub mod frame;

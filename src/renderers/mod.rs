@@ -78,9 +78,19 @@ pub trait Renderer {
     /// Allocates a new buffer on the GPU with the specified size and usage.
     fn create_buffer(&self, size: usize, usage: BufferUsage) -> Result<Box<dyn RendererBuffer>>;
     /// Writes data to the buffer on the GPU.
-    fn write_buffer(&self, buffer: &mut dyn RendererBuffer, data: &[u8]) -> Result<()>;
+    fn write_buffer(
+        &self,
+        buffer: &mut dyn RendererBuffer,
+        offset: usize,
+        src: &[u8],
+    ) -> Result<()>;
     /// Reads data from the buffer on the GPU.
-    fn read_buffer(&self, buffer: &dyn RendererBuffer, dest: &mut [u8]) -> Result<()>;
+    fn read_buffer(
+        &self,
+        buffer: &dyn RendererBuffer,
+        offset: usize,
+        dest: &mut [u8],
+    ) -> Result<()>;
     /// Frees the memory allocated for the provided buffer.
     fn destroy_buffer(&self, buffer: &mut dyn RendererBuffer) -> Result<()>;
 
