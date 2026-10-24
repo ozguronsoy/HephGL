@@ -160,9 +160,11 @@ where
         let mut index_buffer =
             heph_expect_success!(renderer.create_buffer(index_buffer_size, BufferUsage::Index));
 
-        heph_expect_success!(
-            renderer.write_buffer(index_buffer.as_mut(), bytemuck::cast_slice(&INDICES))
-        );
+        heph_expect_success!(renderer.write_buffer(
+            index_buffer.as_mut(),
+            0,
+            bytemuck::cast_slice(&INDICES)
+        ));
 
         let cube_vertices = |offset: [f32; 3], color: [f32; 4]| -> [Vertex; 8] {
             std::array::from_fn(|i| {
@@ -188,12 +190,16 @@ where
 
         let cube_a = cube_vertices([-0.5, -0.125, 0.5], [1.0, 0.0, 0.0, 1.0]);
         let cube_b = cube_vertices([0.5, 0.125, 0.2], [0.0, 0.0, 1.0, 0.5]);
-        heph_expect_success!(
-            renderer.write_buffer(cube_a_buffer.as_mut(), bytemuck::cast_slice(&cube_a))
-        );
-        heph_expect_success!(
-            renderer.write_buffer(cube_b_buffer.as_mut(), bytemuck::cast_slice(&cube_b))
-        );
+        heph_expect_success!(renderer.write_buffer(
+            cube_a_buffer.as_mut(),
+            0,
+            bytemuck::cast_slice(&cube_a)
+        ));
+        heph_expect_success!(renderer.write_buffer(
+            cube_b_buffer.as_mut(),
+            0,
+            bytemuck::cast_slice(&cube_b)
+        ));
 
         let cube_a_bindings = [
             ResourceBinding {
@@ -336,9 +342,11 @@ where
         let mut uniform_buffer = heph_expect_success!(
             renderer.create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
         );
-        heph_expect_success!(
-            renderer.write_buffer(uniform_buffer.as_mut(), bytemuck::cast_slice(&uniforms))
-        );
+        heph_expect_success!(renderer.write_buffer(
+            uniform_buffer.as_mut(),
+            0,
+            bytemuck::cast_slice(&uniforms)
+        ));
 
         let mut sphere = self.sphere_vertices(1.0, 0.0);
         self.displace_vertices(&mut sphere, &displacement, &material);
@@ -364,9 +372,11 @@ where
             vertices.len() * std::mem::size_of::<SphereVertex>(),
             BufferUsage::Vertex,
         ));
-        heph_expect_success!(
-            renderer.write_buffer(vertex_buffer.as_mut(), bytemuck::cast_slice(&vertices))
-        );
+        heph_expect_success!(renderer.write_buffer(
+            vertex_buffer.as_mut(),
+            0,
+            bytemuck::cast_slice(&vertices)
+        ));
         drop(vertices);
 
         let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions {
@@ -494,9 +504,11 @@ where
             let mut buffer = heph_expect_success!(
                 renderer.create_buffer(std::mem::size_of_val(vertices), BufferUsage::Vertex)
             );
-            heph_expect_success!(
-                renderer.write_buffer(buffer.as_mut(), bytemuck::cast_slice(vertices))
-            );
+            heph_expect_success!(renderer.write_buffer(
+                buffer.as_mut(),
+                0,
+                bytemuck::cast_slice(vertices)
+            ));
             buffer
         };
         let center_vertices = |vertices: &mut [TextVertex]| {
@@ -655,6 +667,7 @@ where
                 ];
                 heph_expect_success!(renderer.write_buffer(
                     uniform_buffers[frame_index][index].as_mut(),
+                    0,
                     bytemuck::cast_slice(&matrices),
                 ));
             }
@@ -882,17 +895,21 @@ where
                 vertex_count * part.vertex_size_bytes(&vertex_attributes),
                 BufferUsage::Vertex,
             ));
-            heph_expect_success!(
-                renderer.write_buffer(vertex_buffer.as_mut(), bytemuck::cast_slice(&vertices))
-            );
+            heph_expect_success!(renderer.write_buffer(
+                vertex_buffer.as_mut(),
+                0,
+                bytemuck::cast_slice(&vertices)
+            ));
 
             let indices = part.indices();
             let mut index_buffer = heph_expect_success!(
                 renderer.create_buffer(std::mem::size_of_val(indices), BufferUsage::Index,)
             );
-            heph_expect_success!(
-                renderer.write_buffer(index_buffer.as_mut(), bytemuck::cast_slice(indices))
-            );
+            heph_expect_success!(renderer.write_buffer(
+                index_buffer.as_mut(),
+                0,
+                bytemuck::cast_slice(indices)
+            ));
 
             let part_textures = [
                 (
@@ -973,9 +990,11 @@ where
             let mut material_buffer = heph_expect_success!(
                 renderer.create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
             );
-            heph_expect_success!(
-                renderer.write_buffer(material_buffer.as_mut(), bytemuck::cast_slice(&uniforms))
-            );
+            heph_expect_success!(renderer.write_buffer(
+                material_buffer.as_mut(),
+                0,
+                bytemuck::cast_slice(&uniforms)
+            ));
 
             part_buffers.push((
                 vertex_buffer,
@@ -1022,9 +1041,11 @@ where
             ];
 
             let uniform_buffer = &mut uniform_buffers[frame_index];
-            heph_expect_success!(
-                renderer.write_buffer(uniform_buffer.as_mut(), bytemuck::cast_slice(&matrices))
-            );
+            heph_expect_success!(renderer.write_buffer(
+                uniform_buffer.as_mut(),
+                0,
+                bytemuck::cast_slice(&matrices)
+            ));
 
             for (
                 (vertex_buffer, index_buffer, index_count, _, material_buffer),
@@ -1227,17 +1248,21 @@ where
             vertex_count * part.vertex_size_bytes(&vertex_attributes),
             BufferUsage::Vertex,
         ));
-        heph_expect_success!(
-            renderer.write_buffer(vertex_buffer.as_mut(), bytemuck::cast_slice(&vertices))
-        );
+        heph_expect_success!(renderer.write_buffer(
+            vertex_buffer.as_mut(),
+            0,
+            bytemuck::cast_slice(&vertices)
+        ));
 
         let indices = part.indices();
         let mut index_buffer = heph_expect_success!(
             renderer.create_buffer(std::mem::size_of_val(indices), BufferUsage::Index)
         );
-        heph_expect_success!(
-            renderer.write_buffer(index_buffer.as_mut(), bytemuck::cast_slice(indices))
-        );
+        heph_expect_success!(renderer.write_buffer(
+            index_buffer.as_mut(),
+            0,
+            bytemuck::cast_slice(indices)
+        ));
 
         let image = heph_expect_success!(image::load_from_memory(heph_expect_success!(
             part.base_texture_image_data()
@@ -1316,9 +1341,11 @@ where
         let mut material_buffer = heph_expect_success!(
             renderer.create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
         );
-        heph_expect_success!(
-            renderer.write_buffer(material_buffer.as_mut(), bytemuck::cast_slice(&uniforms))
-        );
+        heph_expect_success!(renderer.write_buffer(
+            material_buffer.as_mut(),
+            0,
+            bytemuck::cast_slice(&uniforms)
+        ));
 
         heph_expect_success!(renderer.end_frame());
 
@@ -1330,9 +1357,11 @@ where
         let mut uniform_buffer = heph_expect_success!(
             renderer.create_buffer(std::mem::size_of_val(&matrices), BufferUsage::Uniform)
         );
-        heph_expect_success!(
-            renderer.write_buffer(uniform_buffer.as_mut(), bytemuck::cast_slice(&matrices))
-        );
+        heph_expect_success!(renderer.write_buffer(
+            uniform_buffer.as_mut(),
+            0,
+            bytemuck::cast_slice(&matrices)
+        ));
 
         let mut joint_buffers = Vec::with_capacity(settings.frames_in_flight);
         for _ in 0..settings.frames_in_flight {
@@ -1380,9 +1409,11 @@ where
                 .map(Mat4::to_cols_array)
                 .collect();
             let joint_buffer = &mut joint_buffers[frame_index];
-            heph_expect_success!(
-                renderer.write_buffer(joint_buffer.as_mut(), bytemuck::cast_slice(&joints))
-            );
+            heph_expect_success!(renderer.write_buffer(
+                joint_buffer.as_mut(),
+                0,
+                bytemuck::cast_slice(&joints)
+            ));
 
             let bindings = [
                 ResourceBinding {

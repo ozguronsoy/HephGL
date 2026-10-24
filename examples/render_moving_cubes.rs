@@ -90,7 +90,7 @@ fn example(
         .unwrap();
 
     renderer
-        .write_buffer(index_buffer.as_mut(), bytemuck::cast_slice(&INDICES))
+        .write_buffer(index_buffer.as_mut(), 0, bytemuck::cast_slice(&INDICES))
         .unwrap();
 
     let start = Instant::now();
@@ -104,10 +104,10 @@ fn example(
         let cube_a = cube_vertices([-0.1 + movement, -0.125, 0.5], [1.0, 0.0, 0.0, 1.0]);
         let cube_b = cube_vertices([0.1 - movement, 0.125, 0.2], [0.0, 0.0, 1.0, 0.6]);
         renderer
-            .write_buffer(cube_a_buffer.as_mut(), bytemuck::cast_slice(&cube_a))
+            .write_buffer(cube_a_buffer.as_mut(), 0, bytemuck::cast_slice(&cube_a))
             .unwrap();
         renderer
-            .write_buffer(cube_b_buffer.as_mut(), bytemuck::cast_slice(&cube_b))
+            .write_buffer(cube_b_buffer.as_mut(), 0, bytemuck::cast_slice(&cube_b))
             .unwrap();
 
         let cube_a_bindings = [

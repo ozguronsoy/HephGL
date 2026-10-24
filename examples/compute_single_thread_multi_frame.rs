@@ -86,18 +86,21 @@ fn example(
             renderer
                 .read_buffer(
                     frame.buffer_a.as_ref(),
+                    0,
                     bytemuck::cast_slice_mut(&mut data_a),
                 )
                 .unwrap();
             renderer
                 .read_buffer(
                     frame.buffer_b.as_ref(),
+                    0,
                     bytemuck::cast_slice_mut(&mut data_b),
                 )
                 .unwrap();
             renderer
                 .read_buffer(
                     frame.buffer_c.as_ref(),
+                    0,
                     bytemuck::cast_slice_mut(&mut data_c),
                 )
                 .unwrap();
@@ -119,10 +122,10 @@ fn example(
         // Fill the input buffers.
         let (a_data, b_data) = create_data(i);
         renderer
-            .write_buffer(frame.buffer_a.as_mut(), bytemuck::cast_slice(&a_data))
+            .write_buffer(frame.buffer_a.as_mut(), 0, bytemuck::cast_slice(&a_data))
             .unwrap();
         renderer
-            .write_buffer(frame.buffer_b.as_mut(), bytemuck::cast_slice(&b_data))
+            .write_buffer(frame.buffer_b.as_mut(), 0, bytemuck::cast_slice(&b_data))
             .unwrap();
 
         // Bind the GPU buffers to the shader.

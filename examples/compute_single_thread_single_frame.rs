@@ -52,10 +52,10 @@ fn example(
         .create_buffer(BUFFER_SIZE, BufferUsage::Storage)
         .unwrap();
     renderer
-        .write_buffer(buffer_a.as_mut(), bytemuck::cast_slice(&a_data))
+        .write_buffer(buffer_a.as_mut(), 0, bytemuck::cast_slice(&a_data))
         .unwrap();
     renderer
-        .write_buffer(buffer_b.as_mut(), bytemuck::cast_slice(&b_data))
+        .write_buffer(buffer_b.as_mut(), 0, bytemuck::cast_slice(&b_data))
         .unwrap();
 
     // Bind the GPU buffers to the shader.
@@ -103,7 +103,7 @@ fn example(
     renderer.wait_idle().unwrap();
     let mut c_data = vec![0.0f32; BUFFER_LEN];
     renderer
-        .read_buffer(buffer_c.as_ref(), bytemuck::cast_slice_mut(&mut c_data))
+        .read_buffer(buffer_c.as_ref(), 0, bytemuck::cast_slice_mut(&mut c_data))
         .unwrap();
     println!("Compute Result:");
     for i in 0..BUFFER_LEN {

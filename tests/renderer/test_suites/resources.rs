@@ -55,8 +55,8 @@ where
         let mut graphics_pipeline: Box<dyn RendererGraphicsPipeline> =
             Box::new(ForeignGraphicsPipeline);
 
-        heph_expect_err!(renderer.write_buffer(buffer.as_mut(), &[0; 4]));
-        heph_expect_err!(renderer.read_buffer(buffer.as_ref(), &mut [0; 4]));
+        heph_expect_err!(renderer.write_buffer(buffer.as_mut(), 0, &[0; 4]));
+        heph_expect_err!(renderer.read_buffer(buffer.as_ref(), 0, &mut [0; 4]));
         heph_expect_err!(renderer.destroy_buffer(buffer.as_mut()));
         heph_expect_err!(renderer.destroy_texture(texture.as_mut()));
         heph_expect_err!(renderer.destroy_sampler(sampler.as_mut()));

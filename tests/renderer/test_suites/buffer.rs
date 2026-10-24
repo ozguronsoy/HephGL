@@ -60,12 +60,14 @@ where
         let mut buffer = heph_expect_success!(renderer.create_buffer(buffer_size, usage));
         assert_eq!(buffer.size(), buffer_size);
 
-        heph_expect_success!(renderer.write_buffer(buffer.as_mut(), bytemuck::cast_slice(data)));
+        heph_expect_success!(renderer.write_buffer(buffer.as_mut(), 0, bytemuck::cast_slice(data)));
 
         let mut output = vec![T::default(); data.len()];
-        heph_expect_success!(
-            renderer.read_buffer(buffer.as_ref(), bytemuck::cast_slice_mut(&mut output))
-        );
+        heph_expect_success!(renderer.read_buffer(
+            buffer.as_ref(),
+            0,
+            bytemuck::cast_slice_mut(&mut output)
+        ));
 
         assert_eq!(*data, output);
 

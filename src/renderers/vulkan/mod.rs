@@ -780,10 +780,23 @@ impl Renderer for VulkanRenderer {
         }))
     }
 
-    fn write_buffer(&self, buffer: &mut dyn RendererBuffer, data: &[u8]) -> Result<()> {
+    fn write_buffer(
+        &self,
+        buffer: &mut dyn RendererBuffer,
+        offset: usize,
+        src: &[u8],
+    ) -> Result<()> {
         let buffer = resource_ref::<VulkanBuffer>(buffer)?;
-        if data.len() > buffer.size {
-            return Err(Error::fail("Data exceeds buffer size!"));
+        if offset >= buffer.size {
+            return Err(Error::invalid_argument(
+                "Offset is greater than the source buffer size.",
+            ));
+        }
+        if src.is_empty() {
+            return Err(Error::invalid_argument("Source buffer cannot be empty."));
+        }
+        if offset + src.len() > buffer.size {
+            return Err(Error::fail("Buffer overflow."));
         }
 
         let device_context = self
@@ -796,19 +809,34 @@ impl Renderer for VulkanRenderer {
                 .vma_allocator
                 .get_allocation_info(&buffer.vma_allocation);
             std::ptr::copy_nonoverlapping(
-                data.as_ptr(),
-                alloc_info.mapped_data as *mut u8,
-                data.len(),
+                src.as_ptr(),
+                (alloc_info.mapped_data as *mut u8).wrapping_byte_add(offset),
+                src.len(),
             );
         }
 
         Ok(())
     }
 
-    fn read_buffer(&self, buffer: &dyn RendererBuffer, dest: &mut [u8]) -> Result<()> {
+    fn read_buffer(
+        &self,
+        buffer: &dyn RendererBuffer,
+        offset: usize,
+        dest: &mut [u8],
+    ) -> Result<()> {
         let buffer = resource_ref::<VulkanBuffer>(buffer)?;
-        if dest.len() > buffer.size {
-            return Err(Error::fail("Destination slice is larger than buffer!"));
+        if offset >= buffer.size {
+            return Err(Error::invalid_argument(
+                "Offset is greater than the source buffer size.",
+            ));
+        }
+        if dest.is_empty() {
+            return Err(Error::invalid_argument(
+                "Destination buffer cannot be empty.",
+            ));
+        }
+        if offset + dest.len() > buffer.size {
+            return Err(Error::fail("Buffer overflow."));
         }
 
         let device_context = self
@@ -821,7 +849,7 @@ impl Renderer for VulkanRenderer {
                 .vma_allocator
                 .get_allocation_info(&buffer.vma_allocation);
             std::ptr::copy_nonoverlapping(
-                alloc_info.mapped_data as *const u8,
+                (alloc_info.mapped_data as *const u8).wrapping_byte_add(offset),
                 dest.as_mut_ptr(),
                 dest.len(),
             );
