@@ -333,7 +333,9 @@ where
 
         let buffer_size = data.len() * size_of::<T>();
         let mut buffer = heph_expect_success!(renderer.create_buffer(buffer_size, usage));
+        assert!(buffer.is_allocated());
         assert_eq!(buffer.size(), buffer_size);
+        assert_eq!(buffer.usage(), usage);
 
         heph_expect_success!(renderer.write_buffer(buffer.as_mut(), 0, bytemuck::cast_slice(data)));
 
@@ -348,5 +350,6 @@ where
 
         heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
         assert_eq!(buffer.size(), 0);
+        assert!(!buffer.is_allocated());
     }
 }
