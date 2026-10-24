@@ -34,6 +34,7 @@ define_renderer_test_flags!(
     test_index_buffer,
     test_vertex_buffer,
     test_impossible_buffer_size,
+    test_reject_foreign_resources,
     test_begin_twice,
     test_end_without_begin,
     test_resize_window,

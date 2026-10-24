@@ -5,7 +5,10 @@ use heph_gl::{
     math::{Mat4, Quat, Vec3},
     renderers::{
         Renderer,
-        resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType, TextureFormat},
+        resources::{
+            BufferUsage, RendererBuffer, RendererGraphicsPipeline, ResourceBinding,
+            ResourceBindingType, TextureFormat,
+        },
         settings::{ColorBlending, GraphicsPipelineOptions, SamplerOptions, TextureOptions},
     },
     shader::Shader,
@@ -29,7 +32,7 @@ fn create_pipeline(
     vertex_shader: &str,
     fragment_shader: &str,
     options: &GraphicsPipelineOptions,
-) -> <utils::renderer::ExampleRenderer as Renderer>::GraphicsPipeline {
+) -> Box<dyn RendererGraphicsPipeline> {
     let vert_shader =
         Shader::from_file(format!("{}/{}", utils::SHADERS_DIR, vertex_shader)).unwrap();
     let frag_shader =
@@ -42,12 +45,12 @@ fn create_pipeline(
 fn create_vertex_buffer(
     renderer: &mut utils::renderer::ExampleRenderer,
     vertices: &[TextVertex],
-) -> <utils::renderer::ExampleRenderer as Renderer>::Buffer {
-    let buffer = renderer
+) -> Box<dyn RendererBuffer> {
+    let mut buffer = renderer
         .create_buffer(std::mem::size_of_val(vertices), BufferUsage::Vertex)
         .unwrap();
     renderer
-        .write_buffer(&buffer, bytemuck::cast_slice(vertices))
+        .write_buffer(buffer.as_mut(), bytemuck::cast_slice(vertices))
         .unwrap();
     buffer
 }
@@ -83,7 +86,7 @@ fn example(
     settings.vsync = true;
     renderer.set_settings(settings).unwrap();
 
-    let screen_pipeline = create_pipeline(
+    let mut screen_pipeline = create_pipeline(
         renderer,
         "text_vert.spv",
         "text_frag.spv",
@@ -94,7 +97,7 @@ fn example(
             ..Default::default()
         },
     );
-    let world_pipeline = create_pipeline(
+    let mut world_pipeline = create_pipeline(
         renderer,
         "text_world_vert.spv",
         "text_frag.spv",
@@ -103,7 +106,7 @@ fn example(
             ..Default::default()
         },
     );
-    let extruded_pipeline = create_pipeline(
+    let mut extruded_pipeline = create_pipeline(
         renderer,
         "text_world_vert.spv",
         "text_extruded_frag.spv",
@@ -223,7 +226,7 @@ fn example(
             ];
             renderer
                 .write_buffer(
-                    &uniform_buffers[frame_index][index],
+                    uniform_buffers[frame_index][index].as_mut(),
                     bytemuck::cast_slice(&matrices),
                 )
                 .unwrap();
@@ -233,7 +236,7 @@ fn example(
             ResourceBinding {
                 binding: 0,
                 resource: ResourceBindingType::Buffer {
-                    handle: screen_vertex_buffer,
+                    handle: screen_vertex_buffer.as_ref(),
                     usage: BufferUsage::Vertex,
                     offset: 0,
                     size: screen_vertex_buffer.size(),
@@ -241,18 +244,22 @@ fn example(
             },
             ResourceBinding {
                 binding: 0,
-                resource: ResourceBindingType::Texture { handle: texture },
+                resource: ResourceBindingType::Texture {
+                    handle: texture.as_ref(),
+                },
             },
             ResourceBinding {
                 binding: 1,
-                resource: ResourceBindingType::Sampler { handle: sampler },
+                resource: ResourceBindingType::Sampler {
+                    handle: sampler.as_ref(),
+                },
             },
         ];
         let world_bindings = [
             ResourceBinding {
                 binding: 0,
                 resource: ResourceBindingType::Buffer {
-                    handle: world_vertex_buffer,
+                    handle: world_vertex_buffer.as_ref(),
                     usage: BufferUsage::Vertex,
                     offset: 0,
                     size: world_vertex_buffer.size(),
@@ -260,16 +267,20 @@ fn example(
             },
             ResourceBinding {
                 binding: 0,
-                resource: ResourceBindingType::Texture { handle: texture },
+                resource: ResourceBindingType::Texture {
+                    handle: texture.as_ref(),
+                },
             },
             ResourceBinding {
                 binding: 1,
-                resource: ResourceBindingType::Sampler { handle: sampler },
+                resource: ResourceBindingType::Sampler {
+                    handle: sampler.as_ref(),
+                },
             },
             ResourceBinding {
                 binding: 2,
                 resource: ResourceBindingType::Buffer {
-                    handle: uniform_buffers[frame_index][0],
+                    handle: uniform_buffers[frame_index][0].as_ref(),
                     usage: BufferUsage::Uniform,
                     offset: 0,
                     size: uniform_buffers[frame_index][0].size(),
@@ -280,7 +291,7 @@ fn example(
             ResourceBinding {
                 binding: 0,
                 resource: ResourceBindingType::Buffer {
-                    handle: extruded_vertex_buffer,
+                    handle: extruded_vertex_buffer.as_ref(),
                     usage: BufferUsage::Vertex,
                     offset: 0,
                     size: extruded_vertex_buffer.size(),
@@ -289,7 +300,7 @@ fn example(
             ResourceBinding {
                 binding: 2,
                 resource: ResourceBindingType::Buffer {
-                    handle: uniform_buffers[frame_index][1],
+                    handle: uniform_buffers[frame_index][1].as_ref(),
                     usage: BufferUsage::Uniform,
                     offset: 0,
                     size: uniform_buffers[frame_index][1].size(),
@@ -299,7 +310,7 @@ fn example(
 
         renderer
             .record_graphics_command(
-                &screen_pipeline,
+                screen_pipeline.as_mut(),
                 &[&screen_bindings],
                 screen_vertices.len() as u32,
                 1,
@@ -307,7 +318,7 @@ fn example(
             .unwrap();
         renderer
             .record_graphics_command(
-                &world_pipeline,
+                world_pipeline.as_mut(),
                 &[&world_bindings],
                 world_vertices.len() as u32,
                 1,
@@ -315,7 +326,7 @@ fn example(
             .unwrap();
         renderer
             .record_graphics_command(
-                &extruded_pipeline,
+                extruded_pipeline.as_mut(),
                 &[&extruded_bindings],
                 extruded_vertices.len() as u32,
                 1,
@@ -328,24 +339,30 @@ fn example(
 
     // Cleanup.
     renderer.wait_idle().unwrap();
-    renderer.destroy_sampler(&mut sampler).unwrap();
-    renderer.destroy_texture(&mut texture).unwrap();
-    renderer.destroy_buffer(&mut screen_vertex_buffer).unwrap();
-    renderer.destroy_buffer(&mut world_vertex_buffer).unwrap();
+    renderer.destroy_sampler(sampler.as_mut()).unwrap();
+    renderer.destroy_texture(texture.as_mut()).unwrap();
     renderer
-        .destroy_buffer(&mut extruded_vertex_buffer)
+        .destroy_buffer(screen_vertex_buffer.as_mut())
+        .unwrap();
+    renderer
+        .destroy_buffer(world_vertex_buffer.as_mut())
+        .unwrap();
+    renderer
+        .destroy_buffer(extruded_vertex_buffer.as_mut())
         .unwrap();
     for frame_buffers in &mut uniform_buffers {
         for buffer in frame_buffers {
-            renderer.destroy_buffer(buffer).unwrap();
+            renderer.destroy_buffer(buffer.as_mut()).unwrap();
         }
     }
     renderer
-        .destroy_graphics_pipeline(&screen_pipeline)
+        .destroy_graphics_pipeline(screen_pipeline.as_mut())
         .unwrap();
-    renderer.destroy_graphics_pipeline(&world_pipeline).unwrap();
     renderer
-        .destroy_graphics_pipeline(&extruded_pipeline)
+        .destroy_graphics_pipeline(world_pipeline.as_mut())
+        .unwrap();
+    renderer
+        .destroy_graphics_pipeline(extruded_pipeline.as_mut())
         .unwrap();
 
     std::process::exit(0);

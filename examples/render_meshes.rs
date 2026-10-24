@@ -12,7 +12,7 @@ use heph_gl::{
     mesh::{Mesh, MeshVertexAttribute},
     renderers::{
         Renderer,
-        resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType, TextureFormat},
+        resources::{BufferUsage, ResourceBinding, ResourceBindingType, TextureFormat},
         settings::{
             FeatureRequest, FrontFace, GraphicsPipelineOptions, SamplerAddressMode, SamplerOptions,
             TextureOptions,
@@ -52,7 +52,7 @@ fn example(
         Shader::from_file(format!("{}/{}", utils::SHADERS_DIR, "camera_vert.spv")).unwrap();
     let frag_shader =
         Shader::from_file(format!("{}/{}", utils::SHADERS_DIR, "mesh_frag.spv")).unwrap();
-    let pipeline = renderer
+    let mut pipeline = renderer
         .create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
@@ -120,23 +120,23 @@ fn example(
             vertex[2] -= center.z;
         }
         let vertex_count = vertices.len() / component_count;
-        let vertex_buffer = renderer
+        let mut vertex_buffer = renderer
             .create_buffer(
                 vertex_count * part.vertex_size_bytes(&vertex_attributes),
                 BufferUsage::Vertex,
             )
             .unwrap();
         renderer
-            .write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
+            .write_buffer(vertex_buffer.as_mut(), bytemuck::cast_slice(&vertices))
             .unwrap();
 
         // Indices reference this part's vertices, so each part is drawn with its own buffers.
         let indices = part.indices();
-        let index_buffer = renderer
+        let mut index_buffer = renderer
             .create_buffer(std::mem::size_of_val(indices), BufferUsage::Index)
             .unwrap();
         renderer
-            .write_buffer(&index_buffer, bytemuck::cast_slice(indices))
+            .write_buffer(index_buffer.as_mut(), bytemuck::cast_slice(indices))
             .unwrap();
 
         // Resolve each texture URI relative to the mesh directory, preserving its folder structure.
@@ -156,7 +156,7 @@ fn example(
             ),
         ]
         .map(|(uri, format)| {
-            *textures.entry(uri.to_owned()).or_insert_with(|| {
+            textures.entry(uri.to_owned()).or_insert_with(|| {
                 let image = image::open(mesh_directory.join(uri)).unwrap().to_rgba8();
                 renderer
                     .create_texture(
@@ -172,7 +172,8 @@ fn example(
                         image.as_raw(),
                     )
                     .unwrap()
-            })
+            });
+            uri.to_owned()
         });
         // Each part uses the material properties loaded from the mesh.
         let material = part.material();
@@ -209,11 +210,11 @@ fn example(
             ],
             [camera.position.x, camera.position.y, camera.position.z, 1.0],
         ];
-        let material_buffer = renderer
+        let mut material_buffer = renderer
             .create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
             .unwrap();
         renderer
-            .write_buffer(&material_buffer, bytemuck::cast_slice(&uniforms))
+            .write_buffer(material_buffer.as_mut(), bytemuck::cast_slice(&uniforms))
             .unwrap();
 
         part_buffers.push((
@@ -247,6 +248,11 @@ fn example(
         })
         .unwrap();
 
+    let part_texture_handles: Vec<_> = part_buffers
+        .iter()
+        .map(|(_, _, _, uris, _)| uris.each_ref().map(|uri| &textures[uri]))
+        .collect();
+
     let mut frame_index = 0;
     let start = Instant::now();
     loop {
@@ -261,24 +267,21 @@ fn example(
             Mat4::from_mat3(transform.normal_matrix().unwrap()).to_cols_array(),
         ];
 
-        let uniform_buffer = uniform_buffers[frame_index];
+        let uniform_buffer = &mut uniform_buffers[frame_index];
         renderer
-            .write_buffer(&uniform_buffer, bytemuck::cast_slice(&matrices))
+            .write_buffer(uniform_buffer.as_mut(), bytemuck::cast_slice(&matrices))
             .unwrap();
 
-        for &(
-            vertex_buffer,
-            index_buffer,
-            index_count,
+        for (
+            (vertex_buffer, index_buffer, index_count, _, material_buffer),
             [texture, arm_texture, normal_texture],
-            material_buffer,
-        ) in &part_buffers
+        ) in part_buffers.iter().zip(&part_texture_handles)
         {
             let bindings = [
                 ResourceBinding {
                     binding: 0,
                     resource: ResourceBindingType::Buffer {
-                        handle: vertex_buffer,
+                        handle: vertex_buffer.as_ref(),
                         usage: BufferUsage::Vertex,
                         offset: 0,
                         size: vertex_buffer.size(),
@@ -287,7 +290,7 @@ fn example(
                 ResourceBinding {
                     binding: 0,
                     resource: ResourceBindingType::Buffer {
-                        handle: index_buffer,
+                        handle: index_buffer.as_ref(),
                         usage: BufferUsage::Index,
                         offset: 0,
                         size: index_buffer.size(),
@@ -295,28 +298,32 @@ fn example(
                 },
                 ResourceBinding {
                     binding: 0,
-                    resource: ResourceBindingType::Texture { handle: texture },
+                    resource: ResourceBindingType::Texture {
+                        handle: texture.as_ref(),
+                    },
                 },
                 ResourceBinding {
                     binding: 1,
-                    resource: ResourceBindingType::Sampler { handle: sampler },
+                    resource: ResourceBindingType::Sampler {
+                        handle: sampler.as_ref(),
+                    },
                 },
                 ResourceBinding {
                     binding: 2,
                     resource: ResourceBindingType::Texture {
-                        handle: arm_texture,
+                        handle: arm_texture.as_ref(),
                     },
                 },
                 ResourceBinding {
                     binding: 3,
                     resource: ResourceBindingType::Texture {
-                        handle: normal_texture,
+                        handle: normal_texture.as_ref(),
                     },
                 },
                 ResourceBinding {
                     binding: 4,
                     resource: ResourceBindingType::Buffer {
-                        handle: material_buffer,
+                        handle: material_buffer.as_ref(),
                         usage: BufferUsage::Uniform,
                         offset: 0,
                         size: material_buffer.size(),
@@ -325,7 +332,7 @@ fn example(
                 ResourceBinding {
                     binding: 5,
                     resource: ResourceBindingType::Buffer {
-                        handle: uniform_buffer,
+                        handle: uniform_buffer.as_ref(),
                         usage: BufferUsage::Uniform,
                         offset: 0,
                         size: uniform_buffer.size(),
@@ -333,7 +340,7 @@ fn example(
                 },
             ];
             renderer
-                .record_graphics_command(&pipeline, &[&bindings], index_count, 1)
+                .record_graphics_command(pipeline.as_mut(), &[&bindings], *index_count, 1)
                 .unwrap();
         }
 
@@ -347,20 +354,22 @@ fn example(
 
     // Cleanup.
     renderer.wait_idle().unwrap();
-    renderer.destroy_sampler(&mut sampler).unwrap();
+    renderer.destroy_sampler(sampler.as_mut()).unwrap();
     for texture in textures.values_mut() {
-        renderer.destroy_texture(texture).unwrap();
+        renderer.destroy_texture(texture.as_mut()).unwrap();
     }
 
     for (vertex_buffer, index_buffer, _, _, material_buffer) in &mut part_buffers {
-        renderer.destroy_buffer(material_buffer).unwrap();
-        renderer.destroy_buffer(vertex_buffer).unwrap();
-        renderer.destroy_buffer(index_buffer).unwrap();
+        renderer.destroy_buffer(material_buffer.as_mut()).unwrap();
+        renderer.destroy_buffer(vertex_buffer.as_mut()).unwrap();
+        renderer.destroy_buffer(index_buffer.as_mut()).unwrap();
     }
     for uniform_buffer in &mut uniform_buffers {
-        renderer.destroy_buffer(uniform_buffer).unwrap();
+        renderer.destroy_buffer(uniform_buffer.as_mut()).unwrap();
     }
-    renderer.destroy_graphics_pipeline(&pipeline).unwrap();
+    renderer
+        .destroy_graphics_pipeline(pipeline.as_mut())
+        .unwrap();
 
     std::process::exit(0);
 }

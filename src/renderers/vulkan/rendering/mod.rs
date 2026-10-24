@@ -7,13 +7,13 @@ use ash::vk::CommandBuffer;
 use crate::{
     Error, Result,
     renderers::{
-        Renderer,
         settings::{GraphicsPipelineOptions, Settings},
         vulkan::{
             VulkanRenderer,
             rendering::{
                 dynamic_rendering::DynamicRendering, render_pass_rendering::RenderPassRendering,
             },
+            resources::VulkanGraphicsPipeline,
             swapchain::SwapchainContext,
         },
     },
@@ -36,12 +36,12 @@ pub trait VulkanRendering {
         device: &ash::Device,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
-    ) -> Result<<VulkanRenderer as Renderer>::GraphicsPipeline>;
+    ) -> Result<VulkanGraphicsPipeline>;
     /// Destroys the graphics pipeline.
     fn destroy_graphics_pipeline(
         &mut self,
         device: &ash::Device,
-        pipeline: &<VulkanRenderer as Renderer>::GraphicsPipeline,
+        pipeline: &VulkanGraphicsPipeline,
     ) -> Result<()>;
     /// Starts rendering the frame.
     fn begin(

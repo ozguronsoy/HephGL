@@ -1,7 +1,7 @@
 use heph_gl::{
     graphics_device::Feature::ComputeShaders,
     renderers::{
-        Renderer, resources::BufferUsage, resources::GpuBuffer, resources::ResourceBinding,
+        Renderer, resources::BufferUsage, resources::ResourceBinding,
         resources::ResourceBindingType, settings::FeatureRequest,
     },
     shader::Shader,
@@ -35,7 +35,7 @@ fn example(
     // This shader takes one set of resources with 3 bindings (2 input buffers, and
     // an output buffer).
     let shader = Shader::from_file(format!("{}/{}", utils::SHADERS_DIR, "/addition.spv")).unwrap();
-    let pipeline = renderer.create_compute_pipeline(&shader).unwrap();
+    let mut pipeline = renderer.create_compute_pipeline(&shader).unwrap();
     drop(shader);
 
     renderer.begin_frame().unwrap();
@@ -52,10 +52,10 @@ fn example(
         .create_buffer(BUFFER_SIZE, BufferUsage::Storage)
         .unwrap();
     renderer
-        .write_buffer(&buffer_a, bytemuck::cast_slice(&a_data))
+        .write_buffer(buffer_a.as_mut(), bytemuck::cast_slice(&a_data))
         .unwrap();
     renderer
-        .write_buffer(&buffer_b, bytemuck::cast_slice(&b_data))
+        .write_buffer(buffer_b.as_mut(), bytemuck::cast_slice(&b_data))
         .unwrap();
 
     // Bind the GPU buffers to the shader.
@@ -64,7 +64,7 @@ fn example(
         ResourceBinding {
             binding: 0,
             resource: ResourceBindingType::Buffer {
-                handle: buffer_a,
+                handle: buffer_a.as_ref(),
                 usage: BufferUsage::Storage,
                 offset: 0,
                 size: buffer_a.size(),
@@ -74,7 +74,7 @@ fn example(
         ResourceBinding {
             binding: 1,
             resource: ResourceBindingType::Buffer {
-                handle: buffer_b,
+                handle: buffer_b.as_ref(),
                 usage: BufferUsage::Storage,
                 offset: 0,
                 size: buffer_b.size(),
@@ -84,7 +84,7 @@ fn example(
         ResourceBinding {
             binding: 2,
             resource: ResourceBindingType::Buffer {
-                handle: buffer_c,
+                handle: buffer_c.as_ref(),
                 usage: BufferUsage::Storage,
                 offset: 0,
                 size: buffer_c.size(),
@@ -93,7 +93,7 @@ fn example(
     ];
     // Record a command which will be submitted to the GPU at the end of the frame.
     renderer
-        .record_compute_command(&pipeline, &[&bindings], (1, 1, 1))
+        .record_compute_command(pipeline.as_mut(), &[&bindings], (1, 1, 1))
         .unwrap();
 
     renderer.end_frame().unwrap();
@@ -103,7 +103,7 @@ fn example(
     renderer.wait_idle().unwrap();
     let mut c_data = vec![0.0f32; BUFFER_LEN];
     renderer
-        .read_buffer(&buffer_c, bytemuck::cast_slice_mut(&mut c_data))
+        .read_buffer(buffer_c.as_ref(), bytemuck::cast_slice_mut(&mut c_data))
         .unwrap();
     println!("Compute Result:");
     for i in 0..BUFFER_LEN {
@@ -111,10 +111,12 @@ fn example(
     }
 
     // Cleanup
-    renderer.destroy_buffer(&mut buffer_a).unwrap();
-    renderer.destroy_buffer(&mut buffer_b).unwrap();
-    renderer.destroy_buffer(&mut buffer_c).unwrap();
-    renderer.destroy_compute_pipeline(&pipeline).unwrap();
+    renderer.destroy_buffer(buffer_a.as_mut()).unwrap();
+    renderer.destroy_buffer(buffer_b.as_mut()).unwrap();
+    renderer.destroy_buffer(buffer_c.as_mut()).unwrap();
+    renderer
+        .destroy_compute_pipeline(pipeline.as_mut())
+        .unwrap();
 
     std::process::exit(0);
 }

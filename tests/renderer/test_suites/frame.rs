@@ -52,7 +52,7 @@ where
                 "{}/shapes/basic_triangle_frag.spv",
                 SHADERS_DIR
             )));
-            let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+            let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
                 &[&vertex_shader, &fragment_shader],
                 &GraphicsPipelineOptions::default()
             ));
@@ -64,12 +64,17 @@ where
                         test_env!().resize_window(width + 32, height + 32);
                     }
                     heph_expect_success!(renderer.clear(RGB::default()));
-                    heph_expect_success!(renderer.record_graphics_command(&pipeline, &[], 3, 1));
+                    heph_expect_success!(renderer.record_graphics_command(
+                        pipeline.as_mut(),
+                        &[],
+                        3,
+                        1
+                    ));
                     heph_expect_success!(renderer.end_frame());
                 }
             }
             heph_expect_success!(renderer.wait_idle());
-            heph_expect_success!(renderer.destroy_graphics_pipeline(&pipeline));
+            heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
         }
     }
 }
