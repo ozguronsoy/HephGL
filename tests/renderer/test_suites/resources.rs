@@ -5,7 +5,7 @@ use heph_gl::{
         concurrency::{RendererHandle, RendererWorkerFactory},
         resources::{
             BufferUsage, RendererBuffer, RendererComputePipeline, RendererGraphicsPipeline,
-            RendererSampler, RendererTexture, TextureFormat,
+            RendererResource, RendererSampler, RendererTexture, TextureFormat,
         },
     },
 };
@@ -15,6 +15,11 @@ use crate::{heph_expect_err, heph_expect_success, renderer::RendererTests};
 const BUFFER_SIZE: usize = 1024;
 
 struct ForeignBuffer;
+impl RendererResource for ForeignBuffer {
+    fn is_allocated(&self) -> bool {
+        false
+    }
+}
 impl RendererBuffer for ForeignBuffer {
     fn size(&self) -> usize {
         4
@@ -22,6 +27,11 @@ impl RendererBuffer for ForeignBuffer {
 }
 
 struct ForeignTexture;
+impl RendererResource for ForeignTexture {
+    fn is_allocated(&self) -> bool {
+        false
+    }
+}
 impl RendererTexture for ForeignTexture {
     fn width(&self) -> u32 {
         1
@@ -38,12 +48,27 @@ impl RendererTexture for ForeignTexture {
 }
 
 struct ForeignSampler;
+impl RendererResource for ForeignSampler {
+    fn is_allocated(&self) -> bool {
+        false
+    }
+}
 impl RendererSampler for ForeignSampler {}
 
 struct ForeignComputePipeline;
+impl RendererResource for ForeignComputePipeline {
+    fn is_allocated(&self) -> bool {
+        false
+    }
+}
 impl RendererComputePipeline for ForeignComputePipeline {}
 
 struct ForeignGraphicsPipeline;
+impl RendererResource for ForeignGraphicsPipeline {
+    fn is_allocated(&self) -> bool {
+        false
+    }
+}
 impl RendererGraphicsPipeline for ForeignGraphicsPipeline {}
 
 impl<TestRenderer: Renderer> RendererTests<TestRenderer>

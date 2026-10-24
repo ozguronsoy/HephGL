@@ -274,7 +274,7 @@ impl VulkanRendering for DynamicRendering {
     fn destroy_graphics_pipeline(
         &mut self,
         device: &ash::Device,
-        pipeline: &VulkanGraphicsPipeline,
+        pipeline: &mut VulkanGraphicsPipeline,
     ) -> Result<()> {
         unsafe {
             device.destroy_pipeline(pipeline.pipeline, None);
@@ -283,6 +283,9 @@ impl VulkanRendering for DynamicRendering {
                 device.destroy_descriptor_set_layout(*descriptor_layout, None);
             }
         }
+        pipeline.pipeline = ash::vk::Pipeline::null();
+        pipeline.layout = ash::vk::PipelineLayout::null();
+        pipeline.descriptor_layouts.clear();
         Ok(())
     }
     fn begin(

@@ -69,8 +69,10 @@ impl<'a> Buffer<'a> {
 
 impl<'a> Drop for Buffer<'a> {
     fn drop(&mut self) {
-        self.renderer
-            .destroy_buffer(self.renderer_buffer.as_mut())
-            .unwrap();
+        if self.renderer_buffer.is_allocated() {
+            self.renderer
+                .destroy_buffer(self.renderer_buffer.as_mut())
+                .unwrap();
+        }
     }
 }

@@ -64,14 +64,20 @@ pub struct ResourceBinding<'a> {
     pub resource: ResourceBindingType<'a>,
 }
 
+/// Represents a resource managed by a renderer.
+pub trait RendererResource: Any + Send + Sync {
+    /// Indicates whether the resource currently has an allocation.
+    fn is_allocated(&self) -> bool;
+}
+
 /// Stores data in a GPU.
-pub trait RendererBuffer: Any + Send + Sync {
+pub trait RendererBuffer: RendererResource {
     /// Returns the size of the buffer in bytes.
     fn size(&self) -> usize;
 }
 
 /// Represents a GPU texture.
-pub trait RendererTexture: Any + Send + Sync {
+pub trait RendererTexture: RendererResource {
     /// Returns the texture width in pixels.
     fn width(&self) -> u32;
     /// Returns the texture height in pixels.
@@ -83,13 +89,13 @@ pub trait RendererTexture: Any + Send + Sync {
 }
 
 /// Represents a texture sampler.
-pub trait RendererSampler: Any + Send + Sync {}
+pub trait RendererSampler: RendererResource {}
 
 /// Represents a compiled compute pipeline.
-pub trait RendererComputePipeline: Any + Send + Sync {}
+pub trait RendererComputePipeline: RendererResource {}
 
 /// Represents a compiled graphics pipeline.
-pub trait RendererGraphicsPipeline: Any + Send + Sync {}
+pub trait RendererGraphicsPipeline: RendererResource {}
 
 impl TextureFormat {
     /// Calculates the size of each pixel in bytes.
