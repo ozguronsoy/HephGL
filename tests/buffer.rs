@@ -5,7 +5,9 @@ use std::process::ExitCode;
 use heph_gl::{
     buffer::Buffer,
     renderers::{
-        DEFAULT_DEVICE, Renderer, resources::BufferUsage, settings::InitializeOptions,
+        DEFAULT_DEVICE, Renderer,
+        resources::{BufferUsage, RendererBuffer},
+        settings::InitializeOptions,
         vulkan::VulkanRenderer,
     },
 };
@@ -60,5 +62,27 @@ fn test_buffer() {
         let mut result = [255u8; 3];
         heph_expect_success!(buffer.read(1, &mut result));
         assert_eq!(result, [0, 5, 4]);
+    }
+
+    {
+        const BUFFER_SIZE: usize = 5;
+        let renderer_buffer =
+            heph_expect_success!(renderer.create_buffer(BUFFER_SIZE, BUFFER_USAGE));
+        let renderer_buffer_ptr =
+            renderer_buffer.as_ref() as *const dyn RendererBuffer as *const ();
+        let buffer = Buffer::from_renderer_buffer(&renderer, renderer_buffer);
+        assert!(std::ptr::addr_eq(
+            buffer.renderer_buffer(),
+            renderer_buffer_ptr
+        ));
+    }
+
+    {
+        let data = [1u8, 2, 3, 4, 5];
+        let buffer = heph_expect_success!(Buffer::from_slice(&renderer, &data, BUFFER_USAGE));
+
+        let mut result = [0u8; 5];
+        heph_expect_success!(buffer.read(0, &mut result));
+        assert_eq!(result, data);
     }
 }
