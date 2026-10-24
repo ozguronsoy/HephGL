@@ -7,10 +7,12 @@ use heph_gl::{
             BufferUsage, RendererBuffer, RendererComputePipeline, RendererGraphicsPipeline,
             RendererResource, RendererSampler, RendererTexture, TextureFormat,
         },
+        settings::{GraphicsPipelineOptions, SamplerOptions, TextureOptions},
     },
+    shader::Shader,
 };
 
-use crate::{heph_expect_err, heph_expect_success, renderer::RendererTests};
+use crate::{heph_expect_err, heph_expect_success, renderer::RendererTests, utils::SHADERS_DIR};
 
 const BUFFER_SIZE: usize = 1024;
 
@@ -275,6 +277,77 @@ where
         let renderer = self.create_renderer_with_any_device(&[]);
         let buffer_size = 1024 * 1024 * 1024 * 1024; // 1 TB
         heph_expect_err!(renderer.create_buffer(buffer_size, BufferUsage::Storage));
+    }
+
+    pub(crate) fn test_texture(&self) {
+        const IMAGE_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_diff_1k.jpg";
+
+        let mut renderer = self.create_renderer_with_any_device(&[]);
+
+        let image = heph_expect_success!(image::open(IMAGE_PATH)).into_rgba8();
+        let texture_options = TextureOptions {
+            width: image.width(),
+            height: image.height(),
+            format: TextureFormat::Rgba8Srgb,
+            mip_level_count: TextureOptions::max_mip_level_count(image.width(), image.height()),
+        };
+
+        heph_expect_success!(renderer.begin_frame());
+        let mut texture = heph_expect_success!(
+            renderer.create_texture(&texture_options, image.iter().as_slice())
+        );
+        heph_expect_success!(renderer.end_frame());
+        heph_expect_success!(renderer.wait_idle());
+
+        assert!(texture.is_allocated());
+        assert_eq!(texture.as_ref().width(), texture_options.width);
+        assert_eq!(texture.as_ref().height(), texture_options.height);
+        assert_eq!(texture.as_ref().format(), texture_options.format);
+        assert_eq!(
+            texture.as_ref().mip_level_count(),
+            texture_options.mip_level_count
+        );
+
+        heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
+        assert!(!texture.is_allocated());
+    }
+
+    pub(crate) fn test_sampler(&self) {
+        let renderer = self.create_renderer_with_any_device(&[]);
+        let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
+        assert!(sampler.as_ref().is_allocated());
+        heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
+        assert!(!sampler.as_ref().is_allocated());
+    }
+
+    pub(crate) fn test_compute_pipeline(&self) {
+        let renderer = self.create_renderer_with_any_device(&[]);
+        let shader =
+            heph_expect_success!(Shader::from_file(format!("{}/addition.spv", SHADERS_DIR)));
+        // TODO: `create_compute_pipeline` should take a mutable self.
+        let mut pipeline = heph_expect_success!(renderer.create_compute_pipeline(&shader));
+        assert!(pipeline.as_ref().is_allocated());
+        heph_expect_success!(renderer.destroy_compute_pipeline(pipeline.as_mut()));
+        assert!(!pipeline.as_ref().is_allocated());
+    }
+
+    pub(crate) fn test_graphics_pipeline(&self) {
+        let mut renderer = self.create_renderer_with_any_device(&[]);
+        let frag_shader = heph_expect_success!(Shader::from_file(format!(
+            "{}/shapes/basic_triangle_frag.spv",
+            SHADERS_DIR
+        )));
+        let vert_shader = heph_expect_success!(Shader::from_file(format!(
+            "{}/shapes/basic_triangle_vert.spv",
+            SHADERS_DIR
+        )));
+        let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+            &[&frag_shader, &vert_shader],
+            &GraphicsPipelineOptions::default()
+        ));
+        assert!(pipeline.as_ref().is_allocated());
+        heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
+        assert!(!pipeline.as_ref().is_allocated());
     }
 
     pub(crate) fn test_reject_foreign_resources(&self) {
