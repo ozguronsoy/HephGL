@@ -1,6 +1,7 @@
 pub use crate::error::{Error, Result};
 
 pub mod animation;
+pub mod buffer;
 pub mod camera;
 pub mod error;
 pub mod graphics_device;
