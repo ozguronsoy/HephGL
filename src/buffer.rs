@@ -1,8 +1,8 @@
 use crate::{
-    Result,
+    Error, Result,
     renderers::{
         Renderer,
-        resources::{BufferUsage, RendererBuffer},
+        resources::{BufferUsage, RendererBuffer, ResourceBinding, ResourceBindingType},
     },
 };
 
@@ -64,6 +64,43 @@ impl<'a> Buffer<'a> {
     pub fn write(&mut self, offset: usize, src: &[u8]) -> Result<()> {
         self.renderer
             .write_buffer(self.renderer_buffer.as_mut(), offset, src)
+    }
+
+    /// Creates a resource binding for the entire buffer.
+    pub fn binding(&self, binding: u32) -> ResourceBinding<'_> {
+        ResourceBinding {
+            binding,
+            resource: ResourceBindingType::Buffer {
+                handle: self.renderer_buffer.as_ref(),
+                usage: self.renderer_buffer.usage(),
+                offset: 0,
+                size: self.renderer_buffer.size(),
+            },
+        }
+    }
+
+    /// Creates a resource binding for a part of the buffer.
+    pub fn partial_binding(
+        &self,
+        binding: u32,
+        offset: usize,
+        size: usize,
+    ) -> Result<ResourceBinding<'_>> {
+        if offset >= self.renderer_buffer.size() {
+            return Err(Error::invalid_argument("Offset out of bounds."));
+        }
+        if offset + size > self.renderer_buffer.size() {
+            return Err(Error::invalid_argument("Buffer overflow."));
+        }
+        Ok(ResourceBinding {
+            binding,
+            resource: ResourceBindingType::Buffer {
+                handle: self.renderer_buffer.as_ref(),
+                usage: self.renderer_buffer.usage(),
+                offset,
+                size,
+            },
+        })
     }
 }
 

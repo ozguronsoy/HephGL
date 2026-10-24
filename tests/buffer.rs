@@ -3,10 +3,11 @@ mod utils;
 use std::process::ExitCode;
 
 use heph_gl::{
+    Error,
     buffer::Buffer,
     renderers::{
         DEFAULT_DEVICE, Renderer,
-        resources::{BufferUsage, RendererBuffer},
+        resources::{BufferUsage, RendererBuffer, ResourceBindingType},
         settings::InitializeOptions,
         vulkan::VulkanRenderer,
     },
@@ -84,5 +85,52 @@ fn test_buffer() {
         let mut result = [0u8; 5];
         heph_expect_success!(buffer.read(0, &mut result));
         assert_eq!(result, data);
+
+        let binding = buffer.binding(86);
+        assert_eq!(binding.binding, 86);
+        match binding.resource {
+            ResourceBindingType::Buffer {
+                handle,
+                usage,
+                offset,
+                size,
+            } => {
+                assert!(std::ptr::addr_eq(handle, buffer.renderer_buffer()));
+                assert_eq!(usage, BUFFER_USAGE);
+                assert_eq!(offset, 0);
+                assert_eq!(size, data.len());
+            }
+            _ => panic!("Expected a buffer resource binding."),
+        }
+
+        let binding = heph_expect_success!(buffer.partial_binding(37, 1, 3));
+        assert_eq!(binding.binding, 37);
+        match binding.resource {
+            ResourceBindingType::Buffer {
+                handle,
+                usage,
+                offset,
+                size,
+            } => {
+                assert!(std::ptr::addr_eq(handle, buffer.renderer_buffer()));
+                assert_eq!(usage, BUFFER_USAGE);
+                assert_eq!(offset, 1);
+                assert_eq!(size, 3);
+            }
+            _ => panic!("Expected a buffer resource binding."),
+        }
+
+        heph_expect_err!(
+            buffer.partial_binding(0, data.len(), 1),
+            Error::invalid_argument("")
+        );
+        heph_expect_err!(
+            buffer.partial_binding(0, data.len() + 1, 1),
+            Error::invalid_argument("")
+        );
+        heph_expect_err!(
+            buffer.partial_binding(0, 0, data.len() + 1),
+            Error::invalid_argument("")
+        );
     }
 }
