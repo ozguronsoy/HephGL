@@ -59,10 +59,10 @@ fn example(
     renderer.begin_frame().unwrap();
     renderer.clear(RGB::default()).unwrap();
 
-    for (pipeline, draw_count) in pipelines.iter() {
+    for (pipeline, draw_count) in pipelines.iter_mut() {
         const INSTANCE_COUNT: u32 = 1;
         renderer
-            .record_graphics_command(pipeline, &[], *draw_count, INSTANCE_COUNT)
+            .record_graphics_command(pipeline.as_mut(), &[], *draw_count, INSTANCE_COUNT)
             .unwrap();
     }
 
@@ -70,8 +70,10 @@ fn example(
 
     // Cleanup.
     renderer.wait_idle().unwrap();
-    for (ref pipeline, _) in pipelines {
-        renderer.destroy_graphics_pipeline(pipeline).unwrap();
+    for (ref mut pipeline, _) in pipelines {
+        renderer
+            .destroy_graphics_pipeline(pipeline.as_mut())
+            .unwrap();
     }
 
     std::thread::sleep(std::time::Duration::from_secs(5));

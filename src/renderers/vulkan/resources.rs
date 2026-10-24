@@ -5,8 +5,11 @@ use ash::vk::{
 use crate::{
     Error, Result,
     renderers::{
-        GpuBuffer, Renderer,
-        resources::{BufferUsage, GpuTexture, ResourceBinding, ResourceBindingType, TextureFormat},
+        resource_ref,
+        resources::{
+            BufferUsage, RendererBuffer, RendererComputePipeline, RendererGraphicsPipeline,
+            RendererSampler, RendererTexture, ResourceBinding, ResourceBindingType, TextureFormat,
+        },
         settings::TextureOptions,
         vulkan::VulkanRenderer,
     },
@@ -55,7 +58,7 @@ pub struct VulkanComputePipeline {
     pub(super) descriptor_layouts: Vec<DescriptorSetLayout>,
 }
 
-impl GpuTexture for VulkanTexture {
+impl RendererTexture for VulkanTexture {
     fn width(&self) -> u32 {
         self.texture_options.width
     }
@@ -70,17 +73,23 @@ impl GpuTexture for VulkanTexture {
     }
 }
 
-impl GpuBuffer for VulkanBuffer {
+impl RendererBuffer for VulkanBuffer {
     fn size(&self) -> usize {
         self.size
     }
 }
 
+impl RendererSampler for VulkanSampler {}
+
+impl RendererComputePipeline for VulkanComputePipeline {}
+
+impl RendererGraphicsPipeline for VulkanGraphicsPipeline {}
+
 impl VulkanRenderer {
     pub(super) fn create_compute_resource_sets(
         &self,
-        pipeline: &<VulkanRenderer as Renderer>::ComputePipeline,
-        binding_sets: &[&[ResourceBinding<VulkanBuffer, VulkanTexture, VulkanSampler>]],
+        pipeline: &VulkanComputePipeline,
+        binding_sets: &[&[ResourceBinding<'_>]],
     ) -> Result<Vec<DescriptorSet>> {
         if binding_sets.is_empty() {
             return Ok(Vec::new());
@@ -123,6 +132,7 @@ impl VulkanRenderer {
                         offset,
                         size,
                     } => {
+                        let handle = resource_ref::<VulkanBuffer>(*handle)?;
                         if offset + size > handle.size {
                             return Err(Error::invalid_argument(
                                 "Buffer overflow when binding resources.",
@@ -144,6 +154,7 @@ impl VulkanRenderer {
                         );
                     }
                     ResourceBindingType::Texture { handle } => {
+                        let handle = resource_ref::<VulkanTexture>(*handle)?;
                         image_infos.push(
                             ash::vk::DescriptorImageInfo::default()
                                 .image_view(handle.image_view)
@@ -151,6 +162,7 @@ impl VulkanRenderer {
                         );
                     }
                     ResourceBindingType::Sampler { handle } => {
+                        let handle = resource_ref::<VulkanSampler>(*handle)?;
                         image_infos
                             .push(ash::vk::DescriptorImageInfo::default().sampler(handle.sampler));
                     }
@@ -214,8 +226,8 @@ impl VulkanRenderer {
 
     pub(super) fn create_graphics_resource_sets(
         &self,
-        pipeline: &<VulkanRenderer as Renderer>::GraphicsPipeline,
-        binding_sets: &[&[ResourceBinding<VulkanBuffer, VulkanTexture, VulkanSampler>]],
+        pipeline: &VulkanGraphicsPipeline,
+        binding_sets: &[&[ResourceBinding<'_>]],
     ) -> Result<Vec<DescriptorSet>> {
         if pipeline.descriptor_layouts.is_empty() {
             return Ok(Vec::new());
@@ -271,6 +283,7 @@ impl VulkanRenderer {
                         size,
                         ..
                     } => {
+                        let handle = resource_ref::<VulkanBuffer>(*handle)?;
                         if offset + size > handle.size {
                             return Err(Error::invalid_argument(
                                 "Buffer overflow when binding resources.",
@@ -284,6 +297,7 @@ impl VulkanRenderer {
                         );
                     }
                     ResourceBindingType::Texture { handle } => {
+                        let handle = resource_ref::<VulkanTexture>(*handle)?;
                         image_infos.push(
                             ash::vk::DescriptorImageInfo::default()
                                 .image_view(handle.image_view)
@@ -291,6 +305,7 @@ impl VulkanRenderer {
                         );
                     }
                     ResourceBindingType::Sampler { handle } => {
+                        let handle = resource_ref::<VulkanSampler>(*handle)?;
                         image_infos
                             .push(ash::vk::DescriptorImageInfo::default().sampler(handle.sampler));
                     }

@@ -8,7 +8,7 @@ use heph_gl::{
     mesh::{Mesh, MeshVertexAttribute},
     renderers::{
         Renderer,
-        resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType, TextureFormat},
+        resources::{BufferUsage, ResourceBinding, ResourceBindingType, TextureFormat},
         settings::{
             FeatureRequest, FrontFace, GraphicsPipelineOptions, SamplerOptions, TextureOptions,
         },
@@ -46,7 +46,7 @@ fn example(
         Shader::from_file(format!("{}/{}", utils::SHADERS_DIR, "animation_vert.spv")).unwrap();
     let frag_shader =
         Shader::from_file(format!("{}/{}", utils::SHADERS_DIR, "mesh_frag.spv")).unwrap();
-    let pipeline = renderer
+    let mut pipeline = renderer
         .create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
@@ -121,7 +121,7 @@ fn example(
         )
         .unwrap();
     renderer
-        .write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
+        .write_buffer(vertex_buffer.as_mut(), bytemuck::cast_slice(&vertices))
         .unwrap();
 
     let indices = part.indices();
@@ -129,7 +129,7 @@ fn example(
         .create_buffer(std::mem::size_of_val(indices), BufferUsage::Index)
         .unwrap();
     renderer
-        .write_buffer(&index_buffer, bytemuck::cast_slice(indices))
+        .write_buffer(index_buffer.as_mut(), bytemuck::cast_slice(indices))
         .unwrap();
 
     let image = image::load_from_memory(part.base_texture_image_data().unwrap())
@@ -209,7 +209,7 @@ fn example(
         .create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
         .unwrap();
     renderer
-        .write_buffer(&material_buffer, bytemuck::cast_slice(&uniforms))
+        .write_buffer(material_buffer.as_mut(), bytemuck::cast_slice(&uniforms))
         .unwrap();
 
     renderer.end_frame().unwrap();
@@ -223,7 +223,7 @@ fn example(
         .create_buffer(std::mem::size_of_val(&matrices), BufferUsage::Uniform)
         .unwrap();
     renderer
-        .write_buffer(&uniform_buffer, bytemuck::cast_slice(&matrices))
+        .write_buffer(uniform_buffer.as_mut(), bytemuck::cast_slice(&matrices))
         .unwrap();
 
     let mut joint_buffers = Vec::with_capacity(settings.frames_in_flight);
@@ -283,16 +283,16 @@ fn example(
             .iter()
             .map(Mat4::to_cols_array)
             .collect();
-        let joint_buffer = joint_buffers[frame_index];
+        let joint_buffer = &mut joint_buffers[frame_index];
         renderer
-            .write_buffer(&joint_buffer, bytemuck::cast_slice(&joints))
+            .write_buffer(joint_buffer.as_mut(), bytemuck::cast_slice(&joints))
             .unwrap();
 
         let bindings = [
             ResourceBinding {
                 binding: 0,
                 resource: ResourceBindingType::Buffer {
-                    handle: vertex_buffer,
+                    handle: vertex_buffer.as_ref(),
                     usage: BufferUsage::Vertex,
                     offset: 0,
                     size: vertex_buffer.size(),
@@ -301,7 +301,7 @@ fn example(
             ResourceBinding {
                 binding: 0,
                 resource: ResourceBindingType::Buffer {
-                    handle: index_buffer,
+                    handle: index_buffer.as_ref(),
                     usage: BufferUsage::Index,
                     offset: 0,
                     size: index_buffer.size(),
@@ -309,28 +309,32 @@ fn example(
             },
             ResourceBinding {
                 binding: 0,
-                resource: ResourceBindingType::Texture { handle: texture },
+                resource: ResourceBindingType::Texture {
+                    handle: texture.as_ref(),
+                },
             },
             ResourceBinding {
                 binding: 1,
-                resource: ResourceBindingType::Sampler { handle: sampler },
+                resource: ResourceBindingType::Sampler {
+                    handle: sampler.as_ref(),
+                },
             },
             ResourceBinding {
                 binding: 2,
                 resource: ResourceBindingType::Texture {
-                    handle: arm_texture,
+                    handle: arm_texture.as_ref(),
                 },
             },
             ResourceBinding {
                 binding: 3,
                 resource: ResourceBindingType::Texture {
-                    handle: normal_texture,
+                    handle: normal_texture.as_ref(),
                 },
             },
             ResourceBinding {
                 binding: 4,
                 resource: ResourceBindingType::Buffer {
-                    handle: material_buffer,
+                    handle: material_buffer.as_ref(),
                     usage: BufferUsage::Uniform,
                     offset: 0,
                     size: material_buffer.size(),
@@ -339,7 +343,7 @@ fn example(
             ResourceBinding {
                 binding: 5,
                 resource: ResourceBindingType::Buffer {
-                    handle: uniform_buffer,
+                    handle: uniform_buffer.as_ref(),
                     usage: BufferUsage::Uniform,
                     offset: 0,
                     size: uniform_buffer.size(),
@@ -348,7 +352,7 @@ fn example(
             ResourceBinding {
                 binding: 6,
                 resource: ResourceBindingType::Buffer {
-                    handle: joint_buffer,
+                    handle: joint_buffer.as_ref(),
                     usage: BufferUsage::Storage,
                     offset: 0,
                     size: joint_buffer.size(),
@@ -356,7 +360,7 @@ fn example(
             },
         ];
         renderer
-            .record_graphics_command(&pipeline, &[&bindings], indices.len() as u32, 1)
+            .record_graphics_command(pipeline.as_mut(), &[&bindings], indices.len() as u32, 1)
             .unwrap();
 
         renderer.end_frame().unwrap();
@@ -366,18 +370,20 @@ fn example(
 
     // Cleanup.
     renderer.wait_idle().unwrap();
-    renderer.destroy_sampler(&mut sampler).unwrap();
-    renderer.destroy_texture(&mut texture).unwrap();
-    renderer.destroy_texture(&mut arm_texture).unwrap();
-    renderer.destroy_texture(&mut normal_texture).unwrap();
-    renderer.destroy_buffer(&mut material_buffer).unwrap();
-    renderer.destroy_buffer(&mut vertex_buffer).unwrap();
-    renderer.destroy_buffer(&mut index_buffer).unwrap();
-    renderer.destroy_buffer(&mut uniform_buffer).unwrap();
+    renderer.destroy_sampler(sampler.as_mut()).unwrap();
+    renderer.destroy_texture(texture.as_mut()).unwrap();
+    renderer.destroy_texture(arm_texture.as_mut()).unwrap();
+    renderer.destroy_texture(normal_texture.as_mut()).unwrap();
+    renderer.destroy_buffer(material_buffer.as_mut()).unwrap();
+    renderer.destroy_buffer(vertex_buffer.as_mut()).unwrap();
+    renderer.destroy_buffer(index_buffer.as_mut()).unwrap();
+    renderer.destroy_buffer(uniform_buffer.as_mut()).unwrap();
     for joint_buffer in &mut joint_buffers {
-        renderer.destroy_buffer(joint_buffer).unwrap();
+        renderer.destroy_buffer(joint_buffer.as_mut()).unwrap();
     }
-    renderer.destroy_graphics_pipeline(&pipeline).unwrap();
+    renderer
+        .destroy_graphics_pipeline(pipeline.as_mut())
+        .unwrap();
 
     std::process::exit(0);
 }

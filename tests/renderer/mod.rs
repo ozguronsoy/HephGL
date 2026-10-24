@@ -8,7 +8,7 @@ use heph_gl::{
     Version,
     graphics_device::Type::{Cpu, DiscreteGpu, IntegratedGpu, VirtualGpu},
     renderers::{
-        Renderer,
+        LATEST_API_VERSION, Renderer,
         concurrency::{RendererHandle, RendererWorkerFactory},
     },
 };
@@ -45,7 +45,7 @@ where
         let args = Arguments::from_args();
 
         let device_type_exists = |device_type: heph_gl::graphics_device::Type| -> bool {
-            let renderer = Self::new(TestRenderer::LATEST_API_VERSION).create_renderer();
+            let renderer = Self::new(LATEST_API_VERSION).create_renderer();
             let devices = heph_expect_success!(renderer.enumerate_devices());
             devices
                 .iter()
@@ -129,7 +129,7 @@ where
         let renderer = TestRenderer::new();
         let latest_api_version = renderer
             .latest_api_version()
-            .unwrap_or(TestRenderer::MIN_SUPPORTED_API_VERSION);
+            .unwrap_or(renderer.min_api_version());
         let mut tests = Vec::new();
         let mut api_versions = Vec::new();
         for mut versioned_test_suite in versioned_test_suites.iter().copied() {
@@ -158,6 +158,7 @@ where
                 create_trial!(versioned_test_suite, test_index_buffer),
                 create_trial!(versioned_test_suite, test_vertex_buffer),
                 create_trial!(versioned_test_suite, test_impossible_buffer_size),
+                create_trial!(versioned_test_suite, test_reject_foreign_resources),
                 create_trial!(versioned_test_suite, test_begin_twice),
                 create_trial!(versioned_test_suite, test_end_without_begin),
                 create_trial!(versioned_test_suite, test_resize_window),

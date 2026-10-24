@@ -3,6 +3,7 @@ pub mod compute;
 pub mod concurrency;
 pub mod frame;
 pub mod render;
+pub mod resources;
 pub mod setup;
 
 use std::sync::{LazyLock, Mutex};

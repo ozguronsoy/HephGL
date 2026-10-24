@@ -16,7 +16,6 @@ use ash::vk::{
 use crate::{
     Error, Result,
     renderers::{
-        Renderer,
         settings::{GraphicsPipelineOptions, Msaa, Settings},
         vulkan::{
             VulkanRenderer,
@@ -62,7 +61,7 @@ impl VulkanRendering for DynamicRendering {
         device: &ash::Device,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
-    ) -> Result<<VulkanRenderer as Renderer>::GraphicsPipeline> {
+    ) -> Result<VulkanGraphicsPipeline> {
         // Create shader stage infos.
         let mut shader_modules = ShaderModules {
             device,
@@ -275,7 +274,7 @@ impl VulkanRendering for DynamicRendering {
     fn destroy_graphics_pipeline(
         &mut self,
         device: &ash::Device,
-        pipeline: &<VulkanRenderer as Renderer>::GraphicsPipeline,
+        pipeline: &VulkanGraphicsPipeline,
     ) -> Result<()> {
         unsafe {
             device.destroy_pipeline(pipeline.pipeline, None);

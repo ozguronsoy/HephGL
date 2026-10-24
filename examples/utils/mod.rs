@@ -3,7 +3,7 @@
 pub mod renderer;
 
 use heph_gl::renderers::{
-    Renderer,
+    LATEST_API_VERSION, Renderer,
     settings::{self, InitializeOptions, Settings},
 };
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
@@ -77,7 +77,7 @@ impl ApplicationHandler for App {
                 app_name: &self.name,
                 window_handle,
                 display_handle,
-                api_version: ExampleRenderer::LATEST_API_VERSION,
+                api_version: LATEST_API_VERSION,
             };
             renderer.initialize(&init_options).unwrap();
             renderer

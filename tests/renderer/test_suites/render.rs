@@ -10,7 +10,7 @@ use heph_gl::{
     renderers::{
         Renderer,
         concurrency::{RendererHandle, RendererWorkerFactory},
-        resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType, TextureFormat},
+        resources::{BufferUsage, ResourceBinding, ResourceBindingType, TextureFormat},
         settings::{
             ColorBlending, CullingMode, FeatureRequest, FrontFace, GraphicsPipelineOptions,
             PrimitiveTopology, SamplerAddressMode, SamplerOptions, Settings, TextureOptions,
@@ -97,14 +97,19 @@ where
 
         heph_expect_success!(renderer.begin_frame());
         heph_expect_success!(renderer.clear(RGB::default()));
-        for (pipeline, draw_count) in pipelines.iter() {
-            heph_expect_success!(renderer.record_graphics_command(pipeline, &[], *draw_count, 1));
+        for (pipeline, draw_count) in pipelines.iter_mut() {
+            heph_expect_success!(renderer.record_graphics_command(
+                pipeline.as_mut(),
+                &[],
+                *draw_count,
+                1
+            ));
         }
         heph_expect_success!(renderer.end_frame());
 
         heph_expect_success!(renderer.wait_idle());
-        for (ref pipeline, _) in pipelines {
-            heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline));
+        for (ref mut pipeline, _) in pipelines {
+            heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
         }
     }
 
@@ -134,7 +139,7 @@ where
             "{}/shapes/{}",
             SHADERS_DIR, "cube_frag.spv"
         )));
-        let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+        let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
                 blending: ColorBlending::Alpha,
@@ -155,7 +160,9 @@ where
         let mut index_buffer =
             heph_expect_success!(renderer.create_buffer(index_buffer_size, BufferUsage::Index));
 
-        heph_expect_success!(renderer.write_buffer(&index_buffer, bytemuck::cast_slice(&INDICES)));
+        heph_expect_success!(
+            renderer.write_buffer(index_buffer.as_mut(), bytemuck::cast_slice(&INDICES))
+        );
 
         let cube_vertices = |offset: [f32; 3], color: [f32; 4]| -> [Vertex; 8] {
             std::array::from_fn(|i| {
@@ -181,14 +188,18 @@ where
 
         let cube_a = cube_vertices([-0.5, -0.125, 0.5], [1.0, 0.0, 0.0, 1.0]);
         let cube_b = cube_vertices([0.5, 0.125, 0.2], [0.0, 0.0, 1.0, 0.5]);
-        heph_expect_success!(renderer.write_buffer(&cube_a_buffer, bytemuck::cast_slice(&cube_a)));
-        heph_expect_success!(renderer.write_buffer(&cube_b_buffer, bytemuck::cast_slice(&cube_b)));
+        heph_expect_success!(
+            renderer.write_buffer(cube_a_buffer.as_mut(), bytemuck::cast_slice(&cube_a))
+        );
+        heph_expect_success!(
+            renderer.write_buffer(cube_b_buffer.as_mut(), bytemuck::cast_slice(&cube_b))
+        );
 
         let cube_a_bindings = [
             ResourceBinding {
                 binding: 0,
                 resource: ResourceBindingType::Buffer {
-                    handle: cube_a_buffer,
+                    handle: cube_a_buffer.as_ref(),
                     usage: BufferUsage::Vertex,
                     offset: 0,
                     size: cube_a_buffer.size(),
@@ -197,7 +208,7 @@ where
             ResourceBinding {
                 binding: 0,
                 resource: ResourceBindingType::Buffer {
-                    handle: index_buffer,
+                    handle: index_buffer.as_ref(),
                     usage: BufferUsage::Index,
                     offset: 0,
                     size: index_buffer.size(),
@@ -208,7 +219,7 @@ where
             ResourceBinding {
                 binding: 0,
                 resource: ResourceBindingType::Buffer {
-                    handle: cube_b_buffer,
+                    handle: cube_b_buffer.as_ref(),
                     usage: BufferUsage::Vertex,
                     offset: 0,
                     size: cube_b_buffer.size(),
@@ -217,7 +228,7 @@ where
             ResourceBinding {
                 binding: 0,
                 resource: ResourceBindingType::Buffer {
-                    handle: index_buffer,
+                    handle: index_buffer.as_ref(),
                     usage: BufferUsage::Index,
                     offset: 0,
                     size: index_buffer.size(),
@@ -225,13 +236,13 @@ where
             },
         ];
         heph_expect_success!(renderer.record_graphics_command(
-            &pipeline,
+            pipeline.as_mut(),
             &[&cube_a_bindings],
             INDICES.len() as u32,
             1
         ));
         heph_expect_success!(renderer.record_graphics_command(
-            &pipeline,
+            pipeline.as_mut(),
             &[&cube_b_bindings],
             INDICES.len() as u32,
             1
@@ -240,10 +251,10 @@ where
         heph_expect_success!(renderer.end_frame());
 
         heph_expect_success!(renderer.wait_idle());
-        heph_expect_success!(renderer.destroy_buffer(&mut cube_a_buffer));
-        heph_expect_success!(renderer.destroy_buffer(&mut cube_b_buffer));
-        heph_expect_success!(renderer.destroy_buffer(&mut index_buffer));
-        heph_expect_success!(renderer.destroy_graphics_pipeline(&pipeline));
+        heph_expect_success!(renderer.destroy_buffer(cube_a_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(cube_b_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(index_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
     }
 
     pub(crate) fn test_render_textures(&self) {
@@ -266,7 +277,7 @@ where
             "{}/{}",
             SHADERS_DIR, "broken_brick_wall_frag.spv"
         )));
-        let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+        let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions::default(),
         ));
@@ -326,7 +337,7 @@ where
             renderer.create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
         );
         heph_expect_success!(
-            renderer.write_buffer(&uniform_buffer, bytemuck::cast_slice(&uniforms))
+            renderer.write_buffer(uniform_buffer.as_mut(), bytemuck::cast_slice(&uniforms))
         );
 
         let mut sphere = self.sphere_vertices(1.0, 0.0);
@@ -354,7 +365,7 @@ where
             BufferUsage::Vertex,
         ));
         heph_expect_success!(
-            renderer.write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
+            renderer.write_buffer(vertex_buffer.as_mut(), bytemuck::cast_slice(&vertices))
         );
         drop(vertices);
 
@@ -401,7 +412,7 @@ where
             ResourceBinding {
                 binding: 0,
                 resource: ResourceBindingType::Buffer {
-                    handle: vertex_buffer,
+                    handle: vertex_buffer.as_ref(),
                     usage: BufferUsage::Vertex,
                     offset: 0,
                     size: vertex_buffer.size(),
@@ -409,28 +420,32 @@ where
             },
             ResourceBinding {
                 binding: 0,
-                resource: ResourceBindingType::Texture { handle: texture },
+                resource: ResourceBindingType::Texture {
+                    handle: texture.as_ref(),
+                },
             },
             ResourceBinding {
                 binding: 1,
-                resource: ResourceBindingType::Sampler { handle: sampler },
+                resource: ResourceBindingType::Sampler {
+                    handle: sampler.as_ref(),
+                },
             },
             ResourceBinding {
                 binding: 2,
                 resource: ResourceBindingType::Texture {
-                    handle: arm_texture,
+                    handle: arm_texture.as_ref(),
                 },
             },
             ResourceBinding {
                 binding: 3,
                 resource: ResourceBindingType::Texture {
-                    handle: normal_texture,
+                    handle: normal_texture.as_ref(),
                 },
             },
             ResourceBinding {
                 binding: 4,
                 resource: ResourceBindingType::Buffer {
-                    handle: uniform_buffer,
+                    handle: uniform_buffer.as_ref(),
                     usage: BufferUsage::Uniform,
                     offset: 0,
                     size: uniform_buffer.size(),
@@ -438,7 +453,7 @@ where
             },
         ];
         heph_expect_success!(renderer.record_graphics_command(
-            &pipeline,
+            pipeline.as_mut(),
             &[&bindings],
             vertex_count as u32,
             1,
@@ -446,13 +461,13 @@ where
         heph_expect_success!(renderer.end_frame());
 
         heph_expect_success!(renderer.wait_idle());
-        heph_expect_success!(renderer.destroy_sampler(&mut sampler));
-        heph_expect_success!(renderer.destroy_texture(&mut texture));
-        heph_expect_success!(renderer.destroy_texture(&mut arm_texture));
-        heph_expect_success!(renderer.destroy_texture(&mut normal_texture));
-        heph_expect_success!(renderer.destroy_buffer(&mut uniform_buffer));
-        heph_expect_success!(renderer.destroy_buffer(&mut vertex_buffer));
-        heph_expect_success!(renderer.destroy_graphics_pipeline(&pipeline));
+        heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
+        heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
+        heph_expect_success!(renderer.destroy_texture(arm_texture.as_mut()));
+        heph_expect_success!(renderer.destroy_texture(normal_texture.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(uniform_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(vertex_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
     }
 
     pub(crate) fn test_render_text(&self) {
@@ -476,10 +491,12 @@ where
             )
         };
         let create_vertex_buffer = |renderer: &mut TestRenderer, vertices: &[TextVertex]| {
-            let buffer = heph_expect_success!(
+            let mut buffer = heph_expect_success!(
                 renderer.create_buffer(std::mem::size_of_val(vertices), BufferUsage::Vertex)
             );
-            heph_expect_success!(renderer.write_buffer(&buffer, bytemuck::cast_slice(vertices)));
+            heph_expect_success!(
+                renderer.write_buffer(buffer.as_mut(), bytemuck::cast_slice(vertices))
+            );
             buffer
         };
         let center_vertices = |vertices: &mut [TextVertex]| {
@@ -511,7 +528,7 @@ where
         };
         heph_expect_success!(renderer.set_settings(settings));
 
-        let screen_pipeline = create_pipeline(
+        let mut screen_pipeline = create_pipeline(
             &mut renderer,
             "text_vert.spv",
             "text_frag.spv",
@@ -522,7 +539,7 @@ where
                 ..Default::default()
             },
         );
-        let world_pipeline = create_pipeline(
+        let mut world_pipeline = create_pipeline(
             &mut renderer,
             "text_world_vert.spv",
             "text_frag.spv",
@@ -531,7 +548,7 @@ where
                 ..Default::default()
             },
         );
-        let extruded_pipeline = create_pipeline(
+        let mut extruded_pipeline = create_pipeline(
             &mut renderer,
             "text_world_vert.spv",
             "text_extruded_frag.spv",
@@ -637,7 +654,7 @@ where
                         .to_cols_array(),
                 ];
                 heph_expect_success!(renderer.write_buffer(
-                    &uniform_buffers[frame_index][index],
+                    uniform_buffers[frame_index][index].as_mut(),
                     bytemuck::cast_slice(&matrices),
                 ));
             }
@@ -646,7 +663,7 @@ where
                 ResourceBinding {
                     binding: 0,
                     resource: ResourceBindingType::Buffer {
-                        handle: screen_vertex_buffer,
+                        handle: screen_vertex_buffer.as_ref(),
                         usage: BufferUsage::Vertex,
                         offset: 0,
                         size: screen_vertex_buffer.size(),
@@ -654,18 +671,22 @@ where
                 },
                 ResourceBinding {
                     binding: 0,
-                    resource: ResourceBindingType::Texture { handle: texture },
+                    resource: ResourceBindingType::Texture {
+                        handle: texture.as_ref(),
+                    },
                 },
                 ResourceBinding {
                     binding: 1,
-                    resource: ResourceBindingType::Sampler { handle: sampler },
+                    resource: ResourceBindingType::Sampler {
+                        handle: sampler.as_ref(),
+                    },
                 },
             ];
             let world_bindings = [
                 ResourceBinding {
                     binding: 0,
                     resource: ResourceBindingType::Buffer {
-                        handle: world_vertex_buffer,
+                        handle: world_vertex_buffer.as_ref(),
                         usage: BufferUsage::Vertex,
                         offset: 0,
                         size: world_vertex_buffer.size(),
@@ -673,16 +694,20 @@ where
                 },
                 ResourceBinding {
                     binding: 0,
-                    resource: ResourceBindingType::Texture { handle: texture },
+                    resource: ResourceBindingType::Texture {
+                        handle: texture.as_ref(),
+                    },
                 },
                 ResourceBinding {
                     binding: 1,
-                    resource: ResourceBindingType::Sampler { handle: sampler },
+                    resource: ResourceBindingType::Sampler {
+                        handle: sampler.as_ref(),
+                    },
                 },
                 ResourceBinding {
                     binding: 2,
                     resource: ResourceBindingType::Buffer {
-                        handle: uniform_buffers[frame_index][0],
+                        handle: uniform_buffers[frame_index][0].as_ref(),
                         usage: BufferUsage::Uniform,
                         offset: 0,
                         size: uniform_buffers[frame_index][0].size(),
@@ -693,7 +718,7 @@ where
                 ResourceBinding {
                     binding: 0,
                     resource: ResourceBindingType::Buffer {
-                        handle: extruded_vertex_buffer,
+                        handle: extruded_vertex_buffer.as_ref(),
                         usage: BufferUsage::Vertex,
                         offset: 0,
                         size: extruded_vertex_buffer.size(),
@@ -702,7 +727,7 @@ where
                 ResourceBinding {
                     binding: 2,
                     resource: ResourceBindingType::Buffer {
-                        handle: uniform_buffers[frame_index][1],
+                        handle: uniform_buffers[frame_index][1].as_ref(),
                         usage: BufferUsage::Uniform,
                         offset: 0,
                         size: uniform_buffers[frame_index][1].size(),
@@ -711,19 +736,19 @@ where
             ];
 
             heph_expect_success!(renderer.record_graphics_command(
-                &screen_pipeline,
+                screen_pipeline.as_mut(),
                 &[&screen_bindings],
                 screen_vertices.len() as u32,
                 1,
             ));
             heph_expect_success!(renderer.record_graphics_command(
-                &world_pipeline,
+                world_pipeline.as_mut(),
                 &[&world_bindings],
                 world_vertices.len() as u32,
                 1,
             ));
             heph_expect_success!(renderer.record_graphics_command(
-                &extruded_pipeline,
+                extruded_pipeline.as_mut(),
                 &[&extruded_bindings],
                 extruded_vertices.len() as u32,
                 1,
@@ -734,19 +759,19 @@ where
         }
 
         heph_expect_success!(renderer.wait_idle());
-        heph_expect_success!(renderer.destroy_sampler(&mut sampler));
-        heph_expect_success!(renderer.destroy_texture(&mut texture));
-        heph_expect_success!(renderer.destroy_buffer(&mut screen_vertex_buffer));
-        heph_expect_success!(renderer.destroy_buffer(&mut world_vertex_buffer));
-        heph_expect_success!(renderer.destroy_buffer(&mut extruded_vertex_buffer));
+        heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
+        heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(screen_vertex_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(world_vertex_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(extruded_vertex_buffer.as_mut()));
         for frame_buffers in &mut uniform_buffers {
             for buffer in frame_buffers {
-                heph_expect_success!(renderer.destroy_buffer(buffer));
+                heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
             }
         }
-        heph_expect_success!(renderer.destroy_graphics_pipeline(&screen_pipeline));
-        heph_expect_success!(renderer.destroy_graphics_pipeline(&world_pipeline));
-        heph_expect_success!(renderer.destroy_graphics_pipeline(&extruded_pipeline));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(screen_pipeline.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(world_pipeline.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(extruded_pipeline.as_mut()));
     }
 
     pub(crate) fn test_render_meshes(&self) {
@@ -784,7 +809,7 @@ where
             "{}/{}",
             SHADERS_DIR, "mesh_frag.spv"
         )));
-        let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+        let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
                 front_face: FrontFace::Clockwise,
@@ -853,20 +878,20 @@ where
                 vertex[2] -= center.z;
             }
             let vertex_count = vertices.len() / component_count;
-            let vertex_buffer = heph_expect_success!(renderer.create_buffer(
+            let mut vertex_buffer = heph_expect_success!(renderer.create_buffer(
                 vertex_count * part.vertex_size_bytes(&vertex_attributes),
                 BufferUsage::Vertex,
             ));
             heph_expect_success!(
-                renderer.write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
+                renderer.write_buffer(vertex_buffer.as_mut(), bytemuck::cast_slice(&vertices))
             );
 
             let indices = part.indices();
-            let index_buffer = heph_expect_success!(
+            let mut index_buffer = heph_expect_success!(
                 renderer.create_buffer(std::mem::size_of_val(indices), BufferUsage::Index,)
             );
             heph_expect_success!(
-                renderer.write_buffer(&index_buffer, bytemuck::cast_slice(indices))
+                renderer.write_buffer(index_buffer.as_mut(), bytemuck::cast_slice(indices))
             );
 
             let part_textures = [
@@ -893,7 +918,7 @@ where
                 ),
             ]
             .map(|(uri, format)| {
-                *textures.entry(uri.to_owned()).or_insert_with(|| {
+                textures.entry(uri.to_owned()).or_insert_with(|| {
                     let image =
                         heph_expect_success!(image::open(mesh_directory.join(uri))).to_rgba8();
                     heph_expect_success!(renderer.create_texture(
@@ -908,7 +933,8 @@ where
                         },
                         image.as_raw(),
                     ))
-                })
+                });
+                uri.to_owned()
             });
             let material = part.material();
             let uniforms = [
@@ -944,11 +970,11 @@ where
                 ],
                 [camera.position.x, camera.position.y, camera.position.z, 1.0],
             ];
-            let material_buffer = heph_expect_success!(
+            let mut material_buffer = heph_expect_success!(
                 renderer.create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
             );
             heph_expect_success!(
-                renderer.write_buffer(&material_buffer, bytemuck::cast_slice(&uniforms))
+                renderer.write_buffer(material_buffer.as_mut(), bytemuck::cast_slice(&uniforms))
             );
 
             part_buffers.push((
@@ -959,6 +985,11 @@ where
                 material_buffer,
             ));
         }
+
+        let part_textures: Vec<_> = part_buffers
+            .iter()
+            .map(|(_, _, _, uris, _)| uris.each_ref().map(|uri| textures[uri].as_ref()))
+            .collect();
 
         heph_expect_success!(renderer.end_frame());
 
@@ -990,24 +1021,21 @@ where
                 Mat4::from_mat3(heph_expect_success!(transform.normal_matrix())).to_cols_array(),
             ];
 
-            let uniform_buffer = uniform_buffers[frame_index];
+            let uniform_buffer = &mut uniform_buffers[frame_index];
             heph_expect_success!(
-                renderer.write_buffer(&uniform_buffer, bytemuck::cast_slice(&matrices))
+                renderer.write_buffer(uniform_buffer.as_mut(), bytemuck::cast_slice(&matrices))
             );
 
-            for &(
-                vertex_buffer,
-                index_buffer,
-                index_count,
+            for (
+                (vertex_buffer, index_buffer, index_count, _, material_buffer),
                 [texture, arm_texture, normal_texture],
-                material_buffer,
-            ) in &part_buffers
+            ) in part_buffers.iter().zip(&part_textures)
             {
                 let bindings = [
                     ResourceBinding {
                         binding: 0,
                         resource: ResourceBindingType::Buffer {
-                            handle: vertex_buffer,
+                            handle: vertex_buffer.as_ref(),
                             usage: BufferUsage::Vertex,
                             offset: 0,
                             size: vertex_buffer.size(),
@@ -1016,7 +1044,7 @@ where
                     ResourceBinding {
                         binding: 0,
                         resource: ResourceBindingType::Buffer {
-                            handle: index_buffer,
+                            handle: index_buffer.as_ref(),
                             usage: BufferUsage::Index,
                             offset: 0,
                             size: index_buffer.size(),
@@ -1024,28 +1052,30 @@ where
                     },
                     ResourceBinding {
                         binding: 0,
-                        resource: ResourceBindingType::Texture { handle: texture },
+                        resource: ResourceBindingType::Texture { handle: *texture },
                     },
                     ResourceBinding {
                         binding: 1,
-                        resource: ResourceBindingType::Sampler { handle: sampler },
+                        resource: ResourceBindingType::Sampler {
+                            handle: sampler.as_ref(),
+                        },
                     },
                     ResourceBinding {
                         binding: 2,
                         resource: ResourceBindingType::Texture {
-                            handle: arm_texture,
+                            handle: *arm_texture,
                         },
                     },
                     ResourceBinding {
                         binding: 3,
                         resource: ResourceBindingType::Texture {
-                            handle: normal_texture,
+                            handle: *normal_texture,
                         },
                     },
                     ResourceBinding {
                         binding: 4,
                         resource: ResourceBindingType::Buffer {
-                            handle: material_buffer,
+                            handle: material_buffer.as_ref(),
                             usage: BufferUsage::Uniform,
                             offset: 0,
                             size: material_buffer.size(),
@@ -1054,7 +1084,7 @@ where
                     ResourceBinding {
                         binding: 5,
                         resource: ResourceBindingType::Buffer {
-                            handle: uniform_buffer,
+                            handle: uniform_buffer.as_ref(),
                             usage: BufferUsage::Uniform,
                             offset: 0,
                             size: uniform_buffer.size(),
@@ -1062,9 +1092,9 @@ where
                     },
                 ];
                 heph_expect_success!(renderer.record_graphics_command(
-                    &pipeline,
+                    pipeline.as_mut(),
                     &[&bindings],
-                    index_count,
+                    *index_count,
                     1
                 ));
             }
@@ -1077,20 +1107,20 @@ where
         }
 
         heph_expect_success!(renderer.wait_idle());
-        heph_expect_success!(renderer.destroy_sampler(&mut sampler));
+        heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
         for texture in textures.values_mut() {
-            heph_expect_success!(renderer.destroy_texture(texture));
+            heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
         }
 
         for (vertex_buffer, index_buffer, _, _, material_buffer) in &mut part_buffers {
-            heph_expect_success!(renderer.destroy_buffer(material_buffer));
-            heph_expect_success!(renderer.destroy_buffer(vertex_buffer));
-            heph_expect_success!(renderer.destroy_buffer(index_buffer));
+            heph_expect_success!(renderer.destroy_buffer(material_buffer.as_mut()));
+            heph_expect_success!(renderer.destroy_buffer(vertex_buffer.as_mut()));
+            heph_expect_success!(renderer.destroy_buffer(index_buffer.as_mut()));
         }
         for uniform_buffer in &mut uniform_buffers {
-            heph_expect_success!(renderer.destroy_buffer(uniform_buffer));
+            heph_expect_success!(renderer.destroy_buffer(uniform_buffer.as_mut()));
         }
-        heph_expect_success!(renderer.destroy_graphics_pipeline(&pipeline));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
     }
 
     pub(crate) fn test_render_animated_meshes(&self) {
@@ -1126,7 +1156,7 @@ where
             "{}/{}",
             SHADERS_DIR, "mesh_frag.spv"
         )));
-        let pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+        let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
                 front_face: FrontFace::Clockwise,
@@ -1198,14 +1228,16 @@ where
             BufferUsage::Vertex,
         ));
         heph_expect_success!(
-            renderer.write_buffer(&vertex_buffer, bytemuck::cast_slice(&vertices))
+            renderer.write_buffer(vertex_buffer.as_mut(), bytemuck::cast_slice(&vertices))
         );
 
         let indices = part.indices();
         let mut index_buffer = heph_expect_success!(
             renderer.create_buffer(std::mem::size_of_val(indices), BufferUsage::Index)
         );
-        heph_expect_success!(renderer.write_buffer(&index_buffer, bytemuck::cast_slice(indices)));
+        heph_expect_success!(
+            renderer.write_buffer(index_buffer.as_mut(), bytemuck::cast_slice(indices))
+        );
 
         let image = heph_expect_success!(image::load_from_memory(heph_expect_success!(
             part.base_texture_image_data()
@@ -1285,7 +1317,7 @@ where
             renderer.create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
         );
         heph_expect_success!(
-            renderer.write_buffer(&material_buffer, bytemuck::cast_slice(&uniforms))
+            renderer.write_buffer(material_buffer.as_mut(), bytemuck::cast_slice(&uniforms))
         );
 
         heph_expect_success!(renderer.end_frame());
@@ -1299,7 +1331,7 @@ where
             renderer.create_buffer(std::mem::size_of_val(&matrices), BufferUsage::Uniform)
         );
         heph_expect_success!(
-            renderer.write_buffer(&uniform_buffer, bytemuck::cast_slice(&matrices))
+            renderer.write_buffer(uniform_buffer.as_mut(), bytemuck::cast_slice(&matrices))
         );
 
         let mut joint_buffers = Vec::with_capacity(settings.frames_in_flight);
@@ -1347,16 +1379,16 @@ where
                 .iter()
                 .map(Mat4::to_cols_array)
                 .collect();
-            let joint_buffer = joint_buffers[frame_index];
+            let joint_buffer = &mut joint_buffers[frame_index];
             heph_expect_success!(
-                renderer.write_buffer(&joint_buffer, bytemuck::cast_slice(&joints))
+                renderer.write_buffer(joint_buffer.as_mut(), bytemuck::cast_slice(&joints))
             );
 
             let bindings = [
                 ResourceBinding {
                     binding: 0,
                     resource: ResourceBindingType::Buffer {
-                        handle: vertex_buffer,
+                        handle: vertex_buffer.as_ref(),
                         usage: BufferUsage::Vertex,
                         offset: 0,
                         size: vertex_buffer.size(),
@@ -1365,7 +1397,7 @@ where
                 ResourceBinding {
                     binding: 0,
                     resource: ResourceBindingType::Buffer {
-                        handle: index_buffer,
+                        handle: index_buffer.as_ref(),
                         usage: BufferUsage::Index,
                         offset: 0,
                         size: index_buffer.size(),
@@ -1373,28 +1405,32 @@ where
                 },
                 ResourceBinding {
                     binding: 0,
-                    resource: ResourceBindingType::Texture { handle: texture },
+                    resource: ResourceBindingType::Texture {
+                        handle: texture.as_ref(),
+                    },
                 },
                 ResourceBinding {
                     binding: 1,
-                    resource: ResourceBindingType::Sampler { handle: sampler },
+                    resource: ResourceBindingType::Sampler {
+                        handle: sampler.as_ref(),
+                    },
                 },
                 ResourceBinding {
                     binding: 2,
                     resource: ResourceBindingType::Texture {
-                        handle: arm_texture,
+                        handle: arm_texture.as_ref(),
                     },
                 },
                 ResourceBinding {
                     binding: 3,
                     resource: ResourceBindingType::Texture {
-                        handle: normal_texture,
+                        handle: normal_texture.as_ref(),
                     },
                 },
                 ResourceBinding {
                     binding: 4,
                     resource: ResourceBindingType::Buffer {
-                        handle: material_buffer,
+                        handle: material_buffer.as_ref(),
                         usage: BufferUsage::Uniform,
                         offset: 0,
                         size: material_buffer.size(),
@@ -1403,7 +1439,7 @@ where
                 ResourceBinding {
                     binding: 5,
                     resource: ResourceBindingType::Buffer {
-                        handle: uniform_buffer,
+                        handle: uniform_buffer.as_ref(),
                         usage: BufferUsage::Uniform,
                         offset: 0,
                         size: uniform_buffer.size(),
@@ -1412,7 +1448,7 @@ where
                 ResourceBinding {
                     binding: 6,
                     resource: ResourceBindingType::Buffer {
-                        handle: joint_buffer,
+                        handle: joint_buffer.as_ref(),
                         usage: BufferUsage::Storage,
                         offset: 0,
                         size: joint_buffer.size(),
@@ -1420,7 +1456,7 @@ where
                 },
             ];
             heph_expect_success!(renderer.record_graphics_command(
-                &pipeline,
+                pipeline.as_mut(),
                 &[&bindings],
                 indices.len() as u32,
                 1
@@ -1432,18 +1468,18 @@ where
         }
 
         heph_expect_success!(renderer.wait_idle());
-        heph_expect_success!(renderer.destroy_sampler(&mut sampler));
-        heph_expect_success!(renderer.destroy_texture(&mut texture));
-        heph_expect_success!(renderer.destroy_texture(&mut arm_texture));
-        heph_expect_success!(renderer.destroy_texture(&mut normal_texture));
-        heph_expect_success!(renderer.destroy_buffer(&mut material_buffer));
-        heph_expect_success!(renderer.destroy_buffer(&mut vertex_buffer));
-        heph_expect_success!(renderer.destroy_buffer(&mut index_buffer));
-        heph_expect_success!(renderer.destroy_buffer(&mut uniform_buffer));
+        heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
+        heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
+        heph_expect_success!(renderer.destroy_texture(arm_texture.as_mut()));
+        heph_expect_success!(renderer.destroy_texture(normal_texture.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(material_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(vertex_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(index_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(uniform_buffer.as_mut()));
         for joint_buffer in &mut joint_buffers {
-            heph_expect_success!(renderer.destroy_buffer(joint_buffer));
+            heph_expect_success!(renderer.destroy_buffer(joint_buffer.as_mut()));
         }
-        heph_expect_success!(renderer.destroy_graphics_pipeline(&pipeline));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
     }
 
     fn load_exr(&self, path: &str, channel_names: [&str; 3]) -> image::RgbaImage {

@@ -1,7 +1,7 @@
 use heph_gl::{
     graphics_device::Feature::ComputeShaders,
     renderers::{
-        Renderer, resources::BufferUsage, resources::GpuBuffer, resources::ResourceBinding,
+        Renderer, resources::BufferUsage, resources::RendererBuffer, resources::ResourceBinding,
         resources::ResourceBindingType, settings::FeatureRequest, settings::Settings,
     },
     shader::Shader,
@@ -49,15 +49,15 @@ fn example(
     // This shader takes one set of resources with 3 bindings (2 input buffers, and
     // an output buffer).
     let shader = Shader::from_file(format!("{}/{}", utils::SHADERS_DIR, "/addition.spv")).unwrap();
-    let pipeline = renderer.create_compute_pipeline(&shader).unwrap();
+    let mut pipeline = renderer.create_compute_pipeline(&shader).unwrap();
     drop(shader);
 
     // Create resources for each frame in flight. For this example, we only have
     // general purpose storage buffers in GPU as resources.
-    struct FrameResources<T> {
-        buffer_a: T,
-        buffer_b: T,
-        buffer_c: T,
+    struct FrameResources {
+        buffer_a: Box<dyn RendererBuffer>,
+        buffer_b: Box<dyn RendererBuffer>,
+        buffer_c: Box<dyn RendererBuffer>,
     }
     let mut frame_resources = Vec::with_capacity(FRAMES_IN_FLIGHT);
     for _ in 0..FRAMES_IN_FLIGHT {
@@ -84,13 +84,22 @@ fn example(
             let mut data_b = vec![0.0f32; BUFFER_LEN];
             let mut data_c = vec![0.0f32; BUFFER_LEN];
             renderer
-                .read_buffer(&frame.buffer_a, bytemuck::cast_slice_mut(&mut data_a))
+                .read_buffer(
+                    frame.buffer_a.as_ref(),
+                    bytemuck::cast_slice_mut(&mut data_a),
+                )
                 .unwrap();
             renderer
-                .read_buffer(&frame.buffer_b, bytemuck::cast_slice_mut(&mut data_b))
+                .read_buffer(
+                    frame.buffer_b.as_ref(),
+                    bytemuck::cast_slice_mut(&mut data_b),
+                )
                 .unwrap();
             renderer
-                .read_buffer(&frame.buffer_c, bytemuck::cast_slice_mut(&mut data_c))
+                .read_buffer(
+                    frame.buffer_c.as_ref(),
+                    bytemuck::cast_slice_mut(&mut data_c),
+                )
                 .unwrap();
 
             let index = 0;
@@ -110,10 +119,10 @@ fn example(
         // Fill the input buffers.
         let (a_data, b_data) = create_data(i);
         renderer
-            .write_buffer(&frame.buffer_a, bytemuck::cast_slice(&a_data))
+            .write_buffer(frame.buffer_a.as_mut(), bytemuck::cast_slice(&a_data))
             .unwrap();
         renderer
-            .write_buffer(&frame.buffer_b, bytemuck::cast_slice(&b_data))
+            .write_buffer(frame.buffer_b.as_mut(), bytemuck::cast_slice(&b_data))
             .unwrap();
 
         // Bind the GPU buffers to the shader.
@@ -122,7 +131,7 @@ fn example(
             ResourceBinding {
                 binding: 0,
                 resource: ResourceBindingType::Buffer {
-                    handle: frame.buffer_a,
+                    handle: frame.buffer_a.as_ref(),
                     usage: BufferUsage::Storage,
                     offset: 0,
                     size: frame.buffer_a.size(),
@@ -132,7 +141,7 @@ fn example(
             ResourceBinding {
                 binding: 1,
                 resource: ResourceBindingType::Buffer {
-                    handle: frame.buffer_b,
+                    handle: frame.buffer_b.as_ref(),
                     usage: BufferUsage::Storage,
                     offset: 0,
                     size: frame.buffer_b.size(),
@@ -142,7 +151,7 @@ fn example(
             ResourceBinding {
                 binding: 2,
                 resource: ResourceBindingType::Buffer {
-                    handle: frame.buffer_c,
+                    handle: frame.buffer_c.as_ref(),
                     usage: BufferUsage::Storage,
                     offset: 0,
                     size: frame.buffer_c.size(),
@@ -151,7 +160,7 @@ fn example(
         ];
         // Record a command which will be submitted to the GPU at the end of the frame.
         renderer
-            .record_compute_command(&pipeline, &[&bindings], (1, 1, 1))
+            .record_compute_command(pipeline.as_mut(), &[&bindings], (1, 1, 1))
             .unwrap();
 
         renderer.end_frame().unwrap();
@@ -159,11 +168,13 @@ fn example(
 
     // Cleanup
     for frame in &mut frame_resources {
-        renderer.destroy_buffer(&mut frame.buffer_a).unwrap();
-        renderer.destroy_buffer(&mut frame.buffer_b).unwrap();
-        renderer.destroy_buffer(&mut frame.buffer_c).unwrap();
+        renderer.destroy_buffer(frame.buffer_a.as_mut()).unwrap();
+        renderer.destroy_buffer(frame.buffer_b.as_mut()).unwrap();
+        renderer.destroy_buffer(frame.buffer_c.as_mut()).unwrap();
     }
-    renderer.destroy_compute_pipeline(&pipeline).unwrap();
+    renderer
+        .destroy_compute_pipeline(pipeline.as_mut())
+        .unwrap();
 
     std::process::exit(0);
 }

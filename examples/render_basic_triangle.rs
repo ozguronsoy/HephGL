@@ -29,7 +29,7 @@ fn example(
         "basic_triangle_frag.spv"
     ))
     .unwrap();
-    let pipeline = renderer
+    let mut pipeline = renderer
         .create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions::default(),
@@ -44,14 +44,16 @@ fn example(
     const VERTEX_COUNT: u32 = 3;
     const INSTANCE_COUNT: u32 = 1;
     renderer
-        .record_graphics_command(&pipeline, &[], VERTEX_COUNT, INSTANCE_COUNT)
+        .record_graphics_command(pipeline.as_mut(), &[], VERTEX_COUNT, INSTANCE_COUNT)
         .unwrap();
 
     renderer.end_frame().unwrap();
 
     // Cleanup.
     renderer.wait_idle().unwrap();
-    renderer.destroy_graphics_pipeline(&pipeline).unwrap();
+    renderer
+        .destroy_graphics_pipeline(pipeline.as_mut())
+        .unwrap();
 
     std::thread::sleep(std::time::Duration::from_secs(5));
     std::process::exit(0);
