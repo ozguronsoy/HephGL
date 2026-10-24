@@ -777,6 +777,7 @@ impl Renderer for VulkanRenderer {
             buffer,
             vma_allocation,
             size,
+            usage,
         }))
     }
 
@@ -864,14 +865,13 @@ impl Renderer for VulkanRenderer {
             .device_context
             .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
-
         unsafe {
             device_context
                 .vma_allocator
                 .destroy_buffer(buffer.buffer, &mut buffer.vma_allocation);
-            buffer.size = 0;
         }
-
+        buffer.buffer = ash::vk::Buffer::null();
+        buffer.size = 0;
         Ok(())
     }
 
@@ -1194,6 +1194,7 @@ impl Renderer for VulkanRenderer {
             buffer: staging_buffer,
             vma_allocation: staging_allocation,
             size: expected_size,
+            usage: BufferUsage::Uniform,
         });
         current_frame.recorded = true;
 
@@ -1211,7 +1212,6 @@ impl Renderer for VulkanRenderer {
             .device_context
             .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
-
         unsafe {
             device_context
                 .logical_device
@@ -1220,11 +1220,9 @@ impl Renderer for VulkanRenderer {
                 .vma_allocator
                 .destroy_image(texture.image, &mut texture.vma_allocation);
         }
-
         texture.image = ash::vk::Image::null();
         texture.image_view = ash::vk::ImageView::null();
         texture.texture_options = TextureOptions::default();
-
         Ok(())
     }
 
@@ -1384,12 +1382,11 @@ impl Renderer for VulkanRenderer {
     }
 
     fn destroy_compute_pipeline(&self, pipeline: &mut dyn RendererComputePipeline) -> Result<()> {
-        let pipeline = resource_ref::<VulkanComputePipeline>(pipeline)?;
+        let pipeline = resource_mut::<VulkanComputePipeline>(pipeline)?;
         let device_context = self
             .device_context
             .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
-
         unsafe {
             device_context
                 .logical_device
@@ -1403,6 +1400,9 @@ impl Renderer for VulkanRenderer {
                     .destroy_descriptor_set_layout(*descriptor_layout, None);
             }
         }
+        pipeline.pipeline = ash::vk::Pipeline::null();
+        pipeline.layout = ash::vk::PipelineLayout::null();
+        pipeline.descriptor_layouts.clear();
         Ok(())
     }
 
@@ -1482,7 +1482,7 @@ impl Renderer for VulkanRenderer {
         &mut self,
         pipeline: &mut dyn RendererGraphicsPipeline,
     ) -> Result<()> {
-        let pipeline = resource_ref::<VulkanGraphicsPipeline>(pipeline)?;
+        let pipeline = resource_mut::<VulkanGraphicsPipeline>(pipeline)?;
         let device_context = self
             .device_context
             .as_mut()

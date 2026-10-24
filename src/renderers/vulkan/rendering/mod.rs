@@ -41,7 +41,7 @@ pub trait VulkanRendering {
     fn destroy_graphics_pipeline(
         &mut self,
         device: &ash::Device,
-        pipeline: &VulkanGraphicsPipeline,
+        pipeline: &mut VulkanGraphicsPipeline,
     ) -> Result<()>;
     /// Starts rendering the frame.
     fn begin(

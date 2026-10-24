@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use winit::{
     event_loop::{ControlFlow, EventLoop},
@@ -63,17 +65,17 @@ impl Default for TestEnv {
 }
 
 impl TestEnv {
-    pub fn resize_window(&self, width: u32, height: u32) {
-        let _ = self
-            .window
-            .request_inner_size(winit::dpi::PhysicalSize::new(width, height));
-    }
-
     pub fn raw_window_handle(&self) -> RawWindowHandle {
         heph_expect_success!(self.window.window_handle()).as_raw()
     }
     pub fn raw_display_handle(&self) -> RawDisplayHandle {
         heph_expect_success!(self.window.display_handle()).as_raw()
+    }
+
+    pub fn resize_window(&self, width: u32, height: u32) {
+        let _ = self
+            .window
+            .request_inner_size(winit::dpi::PhysicalSize::new(width, height));
     }
 }
 

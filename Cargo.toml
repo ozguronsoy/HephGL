@@ -43,6 +43,9 @@ opengl = []
 [[test]]
 name = "vulkan"
 harness = false
+[[test]]
+name = "buffer"
+harness = false
 
 [lints.rust]
 unreachable_patterns = "deny"

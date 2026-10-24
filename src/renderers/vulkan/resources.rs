@@ -1,5 +1,5 @@
 use ash::vk::{
-    Buffer, DescriptorSet, DescriptorSetLayout, DescriptorType, Pipeline, PipelineLayout,
+    Buffer, DescriptorSet, DescriptorSetLayout, DescriptorType, Handle, Pipeline, PipelineLayout,
 };
 
 use crate::{
@@ -8,7 +8,8 @@ use crate::{
         resource_ref,
         resources::{
             BufferUsage, RendererBuffer, RendererComputePipeline, RendererGraphicsPipeline,
-            RendererSampler, RendererTexture, ResourceBinding, ResourceBindingType, TextureFormat,
+            RendererResource, RendererSampler, RendererTexture, ResourceBinding,
+            ResourceBindingType, TextureFormat,
         },
         settings::TextureOptions,
         vulkan::VulkanRenderer,
@@ -19,12 +20,10 @@ use crate::{
 /// Represents a Vulkan buffer.
 #[derive(Copy, Clone)]
 pub struct VulkanBuffer {
-    /// The Vulkan buffer.
     pub(super) buffer: Buffer,
-    /// The memory allocation.
     pub(super) vma_allocation: vk_mem::Allocation,
-    /// The size of the buffer in bytes.
     pub(super) size: usize,
+    pub(super) usage: BufferUsage,
 }
 
 /// Represents a Vulkan texture.
@@ -42,14 +41,6 @@ pub struct VulkanSampler {
     pub(super) sampler: ash::vk::Sampler,
 }
 
-/// Represents a Vulkan graphics pipeline.
-#[derive(Clone)]
-pub struct VulkanGraphicsPipeline {
-    pub(super) pipeline: ash::vk::Pipeline,
-    pub(super) layout: ash::vk::PipelineLayout,
-    pub(super) descriptor_layouts: Vec<ash::vk::DescriptorSetLayout>,
-}
-
 /// Represents a Vulkan compute pipeline.
 #[derive(Clone)]
 pub struct VulkanComputePipeline {
@@ -58,32 +49,72 @@ pub struct VulkanComputePipeline {
     pub(super) descriptor_layouts: Vec<DescriptorSetLayout>,
 }
 
+/// Represents a Vulkan graphics pipeline.
+#[derive(Clone)]
+pub struct VulkanGraphicsPipeline {
+    pub(super) pipeline: ash::vk::Pipeline,
+    pub(super) layout: ash::vk::PipelineLayout,
+    pub(super) descriptor_layouts: Vec<ash::vk::DescriptorSetLayout>,
+}
+
+impl RendererResource for VulkanGraphicsPipeline {
+    fn is_allocated(&self) -> bool {
+        !(self.pipeline.is_null() || self.layout.is_null())
+    }
+}
+impl RendererGraphicsPipeline for VulkanGraphicsPipeline {}
+
+impl RendererResource for VulkanComputePipeline {
+    fn is_allocated(&self) -> bool {
+        !(self.pipeline.is_null() || self.layout.is_null())
+    }
+}
+impl RendererComputePipeline for VulkanComputePipeline {}
+
+impl RendererResource for VulkanSampler {
+    fn is_allocated(&self) -> bool {
+        !self.sampler.is_null()
+    }
+}
+impl RendererSampler for VulkanSampler {}
+
+impl RendererResource for VulkanTexture {
+    fn is_allocated(&self) -> bool {
+        !(self.image.is_null() || self.image_view.is_null())
+    }
+}
 impl RendererTexture for VulkanTexture {
     fn width(&self) -> u32 {
         self.texture_options.width
     }
+
     fn height(&self) -> u32 {
         self.texture_options.height
     }
+
     fn format(&self) -> TextureFormat {
         self.texture_options.format
     }
+
     fn mip_level_count(&self) -> u32 {
         self.texture_options.mip_level_count
     }
 }
 
+impl RendererResource for VulkanBuffer {
+    fn is_allocated(&self) -> bool {
+        !self.buffer.is_null()
+    }
+}
 impl RendererBuffer for VulkanBuffer {
     fn size(&self) -> usize {
         self.size
     }
+
+    fn usage(&self) -> BufferUsage {
+        self.usage
+    }
 }
-
-impl RendererSampler for VulkanSampler {}
-
-impl RendererComputePipeline for VulkanComputePipeline {}
-
-impl RendererGraphicsPipeline for VulkanGraphicsPipeline {}
 
 impl VulkanRenderer {
     pub(super) fn create_compute_resource_sets(
