@@ -35,7 +35,11 @@ use crate::{
     graphics_device::{Feature, GraphicsDevice},
     renderers::{
         BufferUsage, FeatureRequest, InitializeOptions, Renderer, ResourceBinding, Settings,
-        resources::ResourceBindingType,
+        resource_mut, resource_ref,
+        resources::{
+            RendererBuffer, RendererComputePipeline, RendererGraphicsPipeline, RendererSampler,
+            RendererTexture, ResourceBindingType,
+        },
         settings::{GraphicsPipelineOptions, Msaa, SamplerOptions, TextureOptions},
         thread_context::{
             MAIN_THREAD_CONTEXT_INDEX, ThreadContextIndex, ThreadContextMask,
@@ -53,6 +57,8 @@ use crate::{
     },
     shader::Shader,
 };
+
+const MIN_API_VERSION: Version = Version::new(1, 0, 0);
 
 thread_local! {
     /// Index of the current thread context.
@@ -77,14 +83,6 @@ pub struct VulkanRenderer {
 }
 
 impl Renderer for VulkanRenderer {
-    type Buffer = VulkanBuffer;
-    type Texture = VulkanTexture;
-    type Sampler = VulkanSampler;
-    type GraphicsPipeline = VulkanGraphicsPipeline;
-    type ComputePipeline = VulkanComputePipeline;
-
-    const MIN_SUPPORTED_API_VERSION: Version = Version::new(1, 0, 0);
-
     fn new() -> Self {
         Self {
             settings: Settings::default(),
@@ -92,7 +90,7 @@ impl Renderer for VulkanRenderer {
             entry: None,
             instance: None,
             latest_api_version: Cell::new(None),
-            api_version: Self::MIN_SUPPORTED_API_VERSION,
+            api_version: MIN_API_VERSION,
 
             window_surface: None,
             window_surface_loader: None,
@@ -101,6 +99,10 @@ impl Renderer for VulkanRenderer {
 
             main_thread_id: std::thread::current().id(),
         }
+    }
+
+    fn min_api_version(&self) -> Version {
+        MIN_API_VERSION
     }
 
     fn latest_api_version(&self) -> Result<Version> {
@@ -112,7 +114,7 @@ impl Renderer for VulkanRenderer {
         let enumerate_instance_version = |entry: &ash::Entry| -> Result<Version> {
             Ok(match unsafe { entry.try_enumerate_instance_version()? } {
                 Some(v) => VulkanApiVersion(v).into(),
-                None => Self::MIN_SUPPORTED_API_VERSION,
+                None => MIN_API_VERSION,
             })
         };
 
@@ -199,7 +201,7 @@ impl Renderer for VulkanRenderer {
             return Err(Error::InvalidArgument(format!(
                 "Requested Vulkan API version is not supported (requested: `{}`, min: `{}`, max: `{}`).",
                 requested_api_version,
-                Self::MIN_SUPPORTED_API_VERSION,
+                MIN_API_VERSION,
                 self.latest_api_version()?
             )));
         }
@@ -547,7 +549,7 @@ impl Renderer for VulkanRenderer {
 
         let physical_devices = unsafe { instance.enumerate_physical_devices()? };
         let mut physical_device = None;
-        let mut physical_device_api_version = Self::MIN_SUPPORTED_API_VERSION;
+        let mut physical_device_api_version = MIN_API_VERSION;
         let mut supported_msaa_list = Vec::default();
         for pd in physical_devices {
             let properties = unsafe { instance.get_physical_device_properties(pd) };
@@ -573,11 +575,10 @@ impl Renderer for VulkanRenderer {
                 break;
             }
         }
-        if physical_device_api_version < Self::MIN_SUPPORTED_API_VERSION {
+        if physical_device_api_version < MIN_API_VERSION {
             return Err(Error::InvalidArgument(format!(
                 "Device Vulkan API version is not supported (device: `{}`, min: `{}`).",
-                physical_device_api_version,
-                Self::MIN_SUPPORTED_API_VERSION
+                physical_device_api_version, MIN_API_VERSION
             )));
         }
         let physical_device = physical_device.ok_or_else(|| {
@@ -744,7 +745,7 @@ impl Renderer for VulkanRenderer {
         Ok(&device_context.supported_msaa_list)
     }
 
-    fn create_buffer(&self, size: usize, usage: BufferUsage) -> Result<Self::Buffer> {
+    fn create_buffer(&self, size: usize, usage: BufferUsage) -> Result<Box<dyn RendererBuffer>> {
         let device_context = self
             .device_context
             .as_ref()
@@ -772,14 +773,15 @@ impl Renderer for VulkanRenderer {
                 .create_buffer(&buffer_info, &alloc_info)?
         };
 
-        Ok(VulkanBuffer {
+        Ok(Box::new(VulkanBuffer {
             buffer,
             vma_allocation,
             size,
-        })
+        }))
     }
 
-    fn write_buffer(&self, buffer: &Self::Buffer, data: &[u8]) -> Result<()> {
+    fn write_buffer(&self, buffer: &mut dyn RendererBuffer, data: &[u8]) -> Result<()> {
+        let buffer = resource_ref::<VulkanBuffer>(buffer)?;
         if data.len() > buffer.size {
             return Err(Error::fail("Data exceeds buffer size!"));
         }
@@ -803,7 +805,8 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn read_buffer(&self, buffer: &Self::Buffer, dest: &mut [u8]) -> Result<()> {
+    fn read_buffer(&self, buffer: &dyn RendererBuffer, dest: &mut [u8]) -> Result<()> {
+        let buffer = resource_ref::<VulkanBuffer>(buffer)?;
         if dest.len() > buffer.size {
             return Err(Error::fail("Destination slice is larger than buffer!"));
         }
@@ -827,7 +830,8 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn destroy_buffer(&self, buffer: &mut Self::Buffer) -> Result<()> {
+    fn destroy_buffer(&self, buffer: &mut dyn RendererBuffer) -> Result<()> {
+        let buffer = resource_mut::<VulkanBuffer>(buffer)?;
         let device_context = self
             .device_context
             .as_ref()
@@ -843,7 +847,11 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn create_texture(&mut self, options: &TextureOptions, data: &[u8]) -> Result<Self::Texture> {
+    fn create_texture(
+        &mut self,
+        options: &TextureOptions,
+        data: &[u8],
+    ) -> Result<Box<dyn RendererTexture>> {
         if options.width == 0 || options.height == 0 {
             return Err(Error::invalid_argument(
                 "Texture dimensions must be greater than zero.",
@@ -1161,15 +1169,16 @@ impl Renderer for VulkanRenderer {
         });
         current_frame.recorded = true;
 
-        Ok(VulkanTexture {
+        Ok(Box::new(VulkanTexture {
             image,
             image_view,
             vma_allocation: image_allocation,
             texture_options: *options,
-        })
+        }))
     }
 
-    fn destroy_texture(&self, texture: &mut Self::Texture) -> Result<()> {
+    fn destroy_texture(&self, texture: &mut dyn RendererTexture) -> Result<()> {
+        let texture = resource_mut::<VulkanTexture>(texture)?;
         let device_context = self
             .device_context
             .as_ref()
@@ -1191,7 +1200,7 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn create_sampler(&self, options: &SamplerOptions) -> Result<Self::Sampler> {
+    fn create_sampler(&self, options: &SamplerOptions) -> Result<Box<dyn RendererSampler>> {
         let device_context = self
             .device_context
             .as_ref()
@@ -1235,10 +1244,11 @@ impl Renderer for VulkanRenderer {
                 .logical_device
                 .create_sampler(&create_info, None)?
         };
-        Ok(VulkanSampler { sampler })
+        Ok(Box::new(VulkanSampler { sampler }))
     }
 
-    fn destroy_sampler(&self, sampler: &mut Self::Sampler) -> Result<()> {
+    fn destroy_sampler(&self, sampler: &mut dyn RendererSampler) -> Result<()> {
+        let sampler = resource_mut::<VulkanSampler>(sampler)?;
         let device_context = self
             .device_context
             .as_ref()
@@ -1252,7 +1262,7 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn create_compute_pipeline(&self, shader: &Shader) -> Result<Self::ComputePipeline> {
+    fn create_compute_pipeline(&self, shader: &Shader) -> Result<Box<dyn RendererComputePipeline>> {
         struct ShaderModuleGuard<'a> {
             module: ash::vk::ShaderModule,
             device_context: &'a DeviceContext,
@@ -1338,14 +1348,15 @@ impl Renderer for VulkanRenderer {
             )?[0]
         };
 
-        Ok(VulkanComputePipeline {
+        Ok(Box::new(VulkanComputePipeline {
             pipeline,
             layout,
             descriptor_layouts,
-        })
+        }))
     }
 
-    fn destroy_compute_pipeline(&self, pipeline: &Self::ComputePipeline) -> Result<()> {
+    fn destroy_compute_pipeline(&self, pipeline: &mut dyn RendererComputePipeline) -> Result<()> {
+        let pipeline = resource_ref::<VulkanComputePipeline>(pipeline)?;
         let device_context = self
             .device_context
             .as_ref()
@@ -1369,10 +1380,11 @@ impl Renderer for VulkanRenderer {
 
     fn record_compute_command(
         &mut self,
-        pipeline: &Self::ComputePipeline,
-        binding_sets: &[&[ResourceBinding<Self::Buffer, Self::Texture, Self::Sampler>]],
+        pipeline: &mut dyn RendererComputePipeline,
+        binding_sets: &[&[ResourceBinding<'_>]],
         group_count: (u32, u32, u32),
     ) -> Result<()> {
+        let pipeline = resource_ref::<VulkanComputePipeline>(pipeline)?;
         let mapped_sets = self.create_compute_resource_sets(pipeline, binding_sets)?;
 
         let device_context = self
@@ -1422,7 +1434,7 @@ impl Renderer for VulkanRenderer {
         &mut self,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
-    ) -> Result<Self::GraphicsPipeline> {
+    ) -> Result<Box<dyn RendererGraphicsPipeline>> {
         let device_context = self
             .device_context
             .as_mut()
@@ -1431,10 +1443,18 @@ impl Renderer for VulkanRenderer {
             .rendering
             .as_mut()
             .ok_or(Error::invalid_operation("Device is not set."))?;
-        rendering.create_graphics_pipeline(&device_context.logical_device, shaders, options)
+        Ok(Box::new(rendering.create_graphics_pipeline(
+            &device_context.logical_device,
+            shaders,
+            options,
+        )?))
     }
 
-    fn destroy_graphics_pipeline(&mut self, pipeline: &Self::GraphicsPipeline) -> Result<()> {
+    fn destroy_graphics_pipeline(
+        &mut self,
+        pipeline: &mut dyn RendererGraphicsPipeline,
+    ) -> Result<()> {
+        let pipeline = resource_ref::<VulkanGraphicsPipeline>(pipeline)?;
         let device_context = self
             .device_context
             .as_mut()
@@ -1448,11 +1468,12 @@ impl Renderer for VulkanRenderer {
 
     fn record_graphics_command(
         &mut self,
-        pipeline: &Self::GraphicsPipeline,
-        binding_sets: &[&[ResourceBinding<Self::Buffer, Self::Texture, Self::Sampler>]],
+        pipeline: &mut dyn RendererGraphicsPipeline,
+        binding_sets: &[&[ResourceBinding<'_>]],
         draw_count: u32,
         instance_count: u32,
     ) -> Result<()> {
+        let pipeline = resource_ref::<VulkanGraphicsPipeline>(pipeline)?;
         let mapped_sets = self.create_graphics_resource_sets(pipeline, binding_sets)?;
         let vertex_bindings = binding_sets
             .iter()
@@ -1463,10 +1484,13 @@ impl Renderer for VulkanRenderer {
                     usage: BufferUsage::Vertex,
                     offset,
                     size,
-                } => Some((binding.binding, handle, offset, size)),
+                } => Some(
+                    resource_ref::<VulkanBuffer>(handle)
+                        .map(|handle| (binding.binding, handle, offset, size)),
+                ),
                 _ => None,
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>>>()?;
         let index_bindings = binding_sets
             .iter()
             .flat_map(|set| set.iter())
@@ -1476,10 +1500,13 @@ impl Renderer for VulkanRenderer {
                     usage: BufferUsage::Index,
                     offset,
                     size,
-                } => Some((binding.binding, handle, offset, size)),
+                } => Some(
+                    resource_ref::<VulkanBuffer>(handle)
+                        .map(|handle| (binding.binding, handle, offset, size)),
+                ),
                 _ => None,
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>>>()?;
 
         let device_context = self
             .device_context

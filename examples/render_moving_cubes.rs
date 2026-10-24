@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use heph_gl::{
     renderers::{
         Renderer,
-        resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType},
+        resources::{BufferUsage, ResourceBinding, ResourceBindingType},
         settings::{ColorBlending, CullingMode, FrontFace, GraphicsPipelineOptions},
     },
     shader::Shader,
@@ -62,7 +62,7 @@ fn example(
         Shader::from_file(format!("{}/shapes/{}", utils::SHADERS_DIR, "cube_vert.spv")).unwrap();
     let frag_shader =
         Shader::from_file(format!("{}/shapes/{}", utils::SHADERS_DIR, "cube_frag.spv")).unwrap();
-    let pipeline = renderer
+    let mut pipeline = renderer
         .create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
@@ -90,7 +90,7 @@ fn example(
         .unwrap();
 
     renderer
-        .write_buffer(&index_buffer, bytemuck::cast_slice(&INDICES))
+        .write_buffer(index_buffer.as_mut(), bytemuck::cast_slice(&INDICES))
         .unwrap();
 
     let start = Instant::now();
@@ -104,17 +104,17 @@ fn example(
         let cube_a = cube_vertices([-0.1 + movement, -0.125, 0.5], [1.0, 0.0, 0.0, 1.0]);
         let cube_b = cube_vertices([0.1 - movement, 0.125, 0.2], [0.0, 0.0, 1.0, 0.6]);
         renderer
-            .write_buffer(&cube_a_buffer, bytemuck::cast_slice(&cube_a))
+            .write_buffer(cube_a_buffer.as_mut(), bytemuck::cast_slice(&cube_a))
             .unwrap();
         renderer
-            .write_buffer(&cube_b_buffer, bytemuck::cast_slice(&cube_b))
+            .write_buffer(cube_b_buffer.as_mut(), bytemuck::cast_slice(&cube_b))
             .unwrap();
 
         let cube_a_bindings = [
             ResourceBinding {
                 binding: 0,
                 resource: ResourceBindingType::Buffer {
-                    handle: cube_a_buffer,
+                    handle: cube_a_buffer.as_ref(),
                     usage: BufferUsage::Vertex,
                     offset: 0,
                     size: cube_a_buffer.size(),
@@ -123,7 +123,7 @@ fn example(
             ResourceBinding {
                 binding: 0,
                 resource: ResourceBindingType::Buffer {
-                    handle: index_buffer,
+                    handle: index_buffer.as_ref(),
                     usage: BufferUsage::Index,
                     offset: 0,
                     size: index_buffer.size(),
@@ -134,7 +134,7 @@ fn example(
             ResourceBinding {
                 binding: 0,
                 resource: ResourceBindingType::Buffer {
-                    handle: cube_b_buffer,
+                    handle: cube_b_buffer.as_ref(),
                     usage: BufferUsage::Vertex,
                     offset: 0,
                     size: cube_b_buffer.size(),
@@ -143,7 +143,7 @@ fn example(
             ResourceBinding {
                 binding: 0,
                 resource: ResourceBindingType::Buffer {
-                    handle: index_buffer,
+                    handle: index_buffer.as_ref(),
                     usage: BufferUsage::Index,
                     offset: 0,
                     size: index_buffer.size(),
@@ -152,10 +152,20 @@ fn example(
         ];
 
         renderer
-            .record_graphics_command(&pipeline, &[&cube_a_bindings], INDICES.len() as u32, 1)
+            .record_graphics_command(
+                pipeline.as_mut(),
+                &[&cube_a_bindings],
+                INDICES.len() as u32,
+                1,
+            )
             .unwrap();
         renderer
-            .record_graphics_command(&pipeline, &[&cube_b_bindings], INDICES.len() as u32, 1)
+            .record_graphics_command(
+                pipeline.as_mut(),
+                &[&cube_b_bindings],
+                INDICES.len() as u32,
+                1,
+            )
             .unwrap();
 
         renderer.end_frame().unwrap();
@@ -163,10 +173,12 @@ fn example(
 
     // Cleanup.
     renderer.wait_idle().unwrap();
-    renderer.destroy_buffer(&mut cube_a_buffer).unwrap();
-    renderer.destroy_buffer(&mut cube_b_buffer).unwrap();
-    renderer.destroy_buffer(&mut index_buffer).unwrap();
-    renderer.destroy_graphics_pipeline(&pipeline).unwrap();
+    renderer.destroy_buffer(cube_a_buffer.as_mut()).unwrap();
+    renderer.destroy_buffer(cube_b_buffer.as_mut()).unwrap();
+    renderer.destroy_buffer(index_buffer.as_mut()).unwrap();
+    renderer
+        .destroy_graphics_pipeline(pipeline.as_mut())
+        .unwrap();
 
     std::process::exit(0);
 }

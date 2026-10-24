@@ -1,9 +1,11 @@
+use std::sync::{Arc, Mutex};
+
 use heph_gl::{
     graphics_device::Feature::ComputeShaders,
     renderers::{
         Renderer, concurrency::RendererHandle, concurrency::RendererWorkerFactory,
-        resources::BufferUsage, resources::GpuBuffer, resources::ResourceBinding,
-        resources::ResourceBindingType, settings::FeatureRequest,
+        resources::BufferUsage, resources::ResourceBinding, resources::ResourceBindingType,
+        settings::FeatureRequest,
     },
     shader::Shader,
 };
@@ -38,7 +40,9 @@ fn example(
     // This shader takes one set of resources with 3 bindings (2 input buffers, and
     // an output buffer).
     let shader = Shader::from_file(format!("{}/{}", utils::SHADERS_DIR, "/addition.spv")).unwrap();
-    let pipeline = renderer.create_compute_pipeline(&shader).unwrap();
+    let pipeline = Arc::new(Mutex::new(
+        renderer.create_compute_pipeline(&shader).unwrap(),
+    ));
     drop(shader);
 
     std::thread::scope(|s| {
@@ -63,20 +67,20 @@ fn example(
 
                 // Create buffers in GPU, and fill them.
                 let (data_a, data_b) = create_data(thread_index);
-                let buffer_a = renderer
+                let mut buffer_a = renderer
                     .create_buffer(BUFFER_SIZE, BufferUsage::Storage)
                     .unwrap();
-                let buffer_b = renderer
+                let mut buffer_b = renderer
                     .create_buffer(BUFFER_SIZE, BufferUsage::Storage)
                     .unwrap();
                 let buffer_c = renderer
                     .create_buffer(BUFFER_SIZE, BufferUsage::Storage)
                     .unwrap();
                 renderer
-                    .write_buffer(&buffer_a, bytemuck::cast_slice(&data_a))
+                    .write_buffer(buffer_a.as_mut(), bytemuck::cast_slice(&data_a))
                     .unwrap();
                 renderer
-                    .write_buffer(&buffer_b, bytemuck::cast_slice(&data_b))
+                    .write_buffer(buffer_b.as_mut(), bytemuck::cast_slice(&data_b))
                     .unwrap();
 
                 // Bind the GPU buffers to the shader.
@@ -84,7 +88,7 @@ fn example(
                     ResourceBinding {
                         binding: 0,
                         resource: ResourceBindingType::Buffer {
-                            handle: buffer_a,
+                            handle: buffer_a.as_ref(),
                             usage: BufferUsage::Storage,
                             offset: 0,
                             size: buffer_a.size(),
@@ -93,7 +97,7 @@ fn example(
                     ResourceBinding {
                         binding: 1,
                         resource: ResourceBindingType::Buffer {
-                            handle: buffer_b,
+                            handle: buffer_b.as_ref(),
                             usage: BufferUsage::Storage,
                             offset: 0,
                             size: buffer_b.size(),
@@ -102,7 +106,7 @@ fn example(
                     ResourceBinding {
                         binding: 2,
                         resource: ResourceBindingType::Buffer {
-                            handle: buffer_c,
+                            handle: buffer_c.as_ref(),
                             usage: BufferUsage::Storage,
                             offset: 0,
                             size: buffer_c.size(),
@@ -112,7 +116,11 @@ fn example(
                 // Record a command. We will submit it to the GPU in the main thread with the
                 // other commands.
                 renderer
-                    .record_compute_command(&pipeline, &[&bindings], (1, 1, 1))
+                    .record_compute_command(
+                        pipeline.lock().unwrap().as_mut(),
+                        &[&bindings],
+                        (1, 1, 1),
+                    )
                     .unwrap();
 
                 renderer.end_frame().unwrap();
@@ -155,7 +163,7 @@ fn example(
             let mut data_c = vec![0.0f32; BUFFER_LEN];
 
             renderer
-                .read_buffer(buffer_c, bytemuck::cast_slice_mut(&mut data_c))
+                .read_buffer(buffer_c.as_ref(), bytemuck::cast_slice_mut(&mut data_c))
                 .unwrap();
 
             let index = 0;
@@ -164,14 +172,16 @@ fn example(
                 thread, data_a[index], data_b[index], data_c[index]
             );
 
-            renderer.destroy_buffer(buffer_a).unwrap();
-            renderer.destroy_buffer(buffer_b).unwrap();
-            renderer.destroy_buffer(buffer_c).unwrap();
+            renderer.destroy_buffer(buffer_a.as_mut()).unwrap();
+            renderer.destroy_buffer(buffer_b.as_mut()).unwrap();
+            renderer.destroy_buffer(buffer_c.as_mut()).unwrap();
         }
     });
 
     // Cleanup
-    renderer.destroy_compute_pipeline(&pipeline).unwrap();
+    renderer
+        .destroy_compute_pipeline(pipeline.lock().unwrap().as_mut())
+        .unwrap();
 
     std::process::exit(0);
 }

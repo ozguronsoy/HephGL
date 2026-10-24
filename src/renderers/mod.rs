@@ -13,38 +13,28 @@ use crate::{
     shader::Shader,
 };
 
+/// Represents an automatic version selection. When used, the renderer will initialize with the
+/// latest API version supported by the current hardware.
+pub const LATEST_API_VERSION: Option<crate::Version> = None;
+/// Represents an automatic device selection. When used, the renderer will set the default graphics
+/// device used in the current system.
+pub const DEFAULT_DEVICE: Option<&GraphicsDevice> = None;
+
 /// The core interface for a graphics renderer.
 pub trait Renderer {
-    /// Represents a block of memory on the GPU.
-    type Buffer: GpuBuffer;
-    /// Represents a texture allocated on the GPU.
-    type Texture: GpuTexture;
-    /// Represents a texture sampler.
-    type Sampler: Copy + Clone + Send + Sync;
-    /// Represents a compiled graphics pipeline.
-    type GraphicsPipeline: Clone + Send + Sync;
-    /// Represents a compiled compute pipeline.
-    type ComputePipeline: Clone + Send + Sync;
+    /// Creates an uninitialized instance of the renderer.
+    fn new() -> Self
+    where
+        Self: Sized;
 
     /// The minimum supported API version by the backend. Initializing a renderer with an earlier
     /// API version will result in an error.
-    const MIN_SUPPORTED_API_VERSION: crate::Version;
-    /// Represents an automatic version selection. When used, the renderer will initialize with the
-    /// latest API version supported by the current hardware.
-    const LATEST_API_VERSION: Option<crate::Version> = None;
-    /// Represents an automatic device selection. When used, the renderer will set the default
-    /// graphics device used in the current system.
-    const DEFAULT_DEVICE: Option<&GraphicsDevice> = None;
-
-    /// Creates an uninitialized instance of the renderer.
-    fn new() -> Self;
-
+    fn min_api_version(&self) -> crate::Version;
     /// Gets the latest API version supported by the current hardware.
     fn latest_api_version(&self) -> Result<crate::Version>;
     /// Checks whether the `api_version` is supported by the current hardware.
     fn is_api_version_supported(&self, api_version: crate::Version) -> Result<bool> {
-        Ok(api_version >= Self::MIN_SUPPORTED_API_VERSION
-            && api_version <= self.latest_api_version()?)
+        Ok(api_version >= self.min_api_version() && api_version <= self.latest_api_version()?)
     }
 
     /// Returns the current settings used by the renderer.
@@ -86,34 +76,37 @@ pub trait Renderer {
     fn supported_msaa_list(&self) -> Result<&Vec<Msaa>>;
 
     /// Allocates a new buffer on the GPU with the specified size and usage.
-    fn create_buffer(&self, size: usize, usage: BufferUsage) -> Result<Self::Buffer>;
+    fn create_buffer(&self, size: usize, usage: BufferUsage) -> Result<Box<dyn RendererBuffer>>;
     /// Writes data to the buffer on the GPU.
-    fn write_buffer(&self, buffer: &Self::Buffer, data: &[u8]) -> Result<()>;
+    fn write_buffer(&self, buffer: &mut dyn RendererBuffer, data: &[u8]) -> Result<()>;
     /// Reads data from the buffer on the GPU.
-    fn read_buffer(&self, buffer: &Self::Buffer, dest: &mut [u8]) -> Result<()>;
+    fn read_buffer(&self, buffer: &dyn RendererBuffer, dest: &mut [u8]) -> Result<()>;
     /// Frees the memory allocated for the provided buffer.
-    fn destroy_buffer(&self, buffer: &mut Self::Buffer) -> Result<()>;
+    fn destroy_buffer(&self, buffer: &mut dyn RendererBuffer) -> Result<()>;
 
     /// Creates a texture with the specified dimensions, format, and pixel data.
-    fn create_texture(&mut self, options: &TextureOptions, data: &[u8]) -> Result<Self::Texture>;
+    fn create_texture(
+        &mut self,
+        options: &TextureOptions,
+        data: &[u8],
+    ) -> Result<Box<dyn RendererTexture>>;
     /// Frees the resources allocated for the provided texture.
-    fn destroy_texture(&self, texture: &mut Self::Texture) -> Result<()>;
+    fn destroy_texture(&self, texture: &mut dyn RendererTexture) -> Result<()>;
 
     /// Creates a texture sampler using the provided options.
-    fn create_sampler(&self, options: &SamplerOptions) -> Result<Self::Sampler>;
+    fn create_sampler(&self, options: &SamplerOptions) -> Result<Box<dyn RendererSampler>>;
     /// Frees the resources allocated for the provided sampler.
-    fn destroy_sampler(&self, sampler: &mut Self::Sampler) -> Result<()>;
+    fn destroy_sampler(&self, sampler: &mut dyn RendererSampler) -> Result<()>;
 
     /// Creates a compute pipeline using the provided shader.
-    fn create_compute_pipeline(&self, shader: &Shader) -> Result<Self::ComputePipeline>;
+    fn create_compute_pipeline(&self, shader: &Shader) -> Result<Box<dyn RendererComputePipeline>>;
     /// Destroys the compute pipeline.
-    fn destroy_compute_pipeline(&self, pipeline: &Self::ComputePipeline) -> Result<()>;
+    fn destroy_compute_pipeline(&self, pipeline: &mut dyn RendererComputePipeline) -> Result<()>;
     /// Creates a compute workload for the GPU.
-    #[allow(clippy::type_complexity)]
     fn record_compute_command(
         &mut self,
-        pipeline: &Self::ComputePipeline,
-        binding_sets: &[&[ResourceBinding<Self::Buffer, Self::Texture, Self::Sampler>]],
+        pipeline: &mut dyn RendererComputePipeline,
+        binding_sets: &[&[ResourceBinding<'_>]],
         group_count: (u32, u32, u32),
     ) -> Result<()>;
 
@@ -122,15 +115,17 @@ pub trait Renderer {
         &mut self,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
-    ) -> Result<Self::GraphicsPipeline>;
+    ) -> Result<Box<dyn RendererGraphicsPipeline>>;
     /// Destroys the graphics pipeline.
-    fn destroy_graphics_pipeline(&mut self, pipeline: &Self::GraphicsPipeline) -> Result<()>;
+    fn destroy_graphics_pipeline(
+        &mut self,
+        pipeline: &mut dyn RendererGraphicsPipeline,
+    ) -> Result<()>;
     /// Creates a graphics workload for the GPU.
-    #[allow(clippy::type_complexity)]
     fn record_graphics_command(
         &mut self,
-        pipeline: &Self::GraphicsPipeline,
-        binding_sets: &[&[ResourceBinding<Self::Buffer, Self::Texture, Self::Sampler>]],
+        pipeline: &mut dyn RendererGraphicsPipeline,
+        binding_sets: &[&[ResourceBinding<'_>]],
         draw_count: u32,
         instance_count: u32,
     ) -> Result<()>;

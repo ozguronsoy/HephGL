@@ -6,7 +6,7 @@ use std::{
 use heph_gl::{
     Error,
     renderers::{
-        Renderer,
+        LATEST_API_VERSION, Renderer,
         concurrency::{RendererHandle, RendererWorkerFactory},
         settings::{InitializeOptions, Settings},
     },
@@ -36,7 +36,7 @@ where
                         app_name: "",
                         window_handle: dummy_window_handle!(),
                         display_handle: dummy_display_handle!(),
-                        api_version: TestRenderer::LATEST_API_VERSION,
+                        api_version: LATEST_API_VERSION,
                     }),
                     Error::invalid_operation("")
                 );

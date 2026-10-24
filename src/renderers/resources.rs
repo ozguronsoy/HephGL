@@ -1,3 +1,7 @@
+use std::any::{Any, type_name};
+
+use crate::{Error, Result};
+
 /// Defines the possible usages of a buffer.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BufferUsage {
@@ -25,12 +29,12 @@ pub enum TextureFormat {
 }
 
 /// Defines the types of resources being bound to a shader slot.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ResourceBindingType<BufferHandle, TextureHandle, SamplerHandle> {
+#[derive(Clone, Copy)]
+pub enum ResourceBindingType<'a> {
     /// A block of GPU memory.
     Buffer {
         /// The handle referencing the allocated buffer.
-        handle: BufferHandle,
+        handle: &'a dyn RendererBuffer,
         /// Specifies how the shader intends to use this buffer.
         usage: BufferUsage,
         /// The starting byte offset within the buffer where the binding begins.
@@ -41,33 +45,33 @@ pub enum ResourceBindingType<BufferHandle, TextureHandle, SamplerHandle> {
     /// The GPU texture.
     Texture {
         /// The handle referencing the GPU texture.
-        handle: TextureHandle,
+        handle: &'a dyn RendererTexture,
     },
     /// The GPU texture sampler.
     Sampler {
         /// The handle referencing the GPU texture sampler.
-        handle: SamplerHandle,
+        handle: &'a dyn RendererSampler,
     },
 }
 
 /// Represents a resource binding.
-#[derive(Debug, Clone, Copy)]
-pub struct ResourceBinding<B, T, S> {
+#[derive(Clone, Copy)]
+pub struct ResourceBinding<'a> {
     /// The binding number specified in the shader (e.g., `layout(binding =
     /// 0)`).
     pub binding: u32,
     /// The actual resource this slot binds to.
-    pub resource: ResourceBindingType<B, T, S>,
+    pub resource: ResourceBindingType<'a>,
 }
 
 /// Stores data in a GPU.
-pub trait GpuBuffer: Copy + Clone + Send + Sync {
+pub trait RendererBuffer: Any + Send + Sync {
     /// Returns the size of the buffer in bytes.
     fn size(&self) -> usize;
 }
 
 /// Represents a GPU texture.
-pub trait GpuTexture: Copy + Clone + Send + Sync {
+pub trait RendererTexture: Any + Send + Sync {
     /// Returns the texture width in pixels.
     fn width(&self) -> u32;
     /// Returns the texture height in pixels.
@@ -78,6 +82,15 @@ pub trait GpuTexture: Copy + Clone + Send + Sync {
     fn mip_level_count(&self) -> u32;
 }
 
+/// Represents a texture sampler.
+pub trait RendererSampler: Any + Send + Sync {}
+
+/// Represents a compiled compute pipeline.
+pub trait RendererComputePipeline: Any + Send + Sync {}
+
+/// Represents a compiled graphics pipeline.
+pub trait RendererGraphicsPipeline: Any + Send + Sync {}
+
 impl TextureFormat {
     /// Calculates the size of each pixel in bytes.
     pub(super) fn bytes_per_pixel(&self) -> usize {
@@ -86,6 +99,26 @@ impl TextureFormat {
             Self::Rgba8Unorm | Self::Rgba8Srgb => 4,
         }
     }
+}
+
+/// Downcasts the reference to the provided type.
+pub(super) fn resource_ref<T: Any>(resource: &dyn Any) -> Result<&T> {
+    resource.downcast_ref::<T>().ok_or_else(|| {
+        Error::invalid_argument(format!(
+            "Resource type mismatch: expected {}.",
+            type_name::<T>()
+        ))
+    })
+}
+
+/// Downcasts the mutable reference to the provided type.
+pub(super) fn resource_mut<T: Any>(resource: &mut dyn Any) -> Result<&mut T> {
+    resource.downcast_mut::<T>().ok_or_else(|| {
+        Error::invalid_argument(format!(
+            "Resource type mismatch: expected {}.",
+            type_name::<T>()
+        ))
+    })
 }
 
 #[cfg(test)]

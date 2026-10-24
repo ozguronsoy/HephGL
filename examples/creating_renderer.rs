@@ -1,7 +1,7 @@
 use heph_gl::{
     graphics_device::Feature::ComputeShaders,
     renderers::{
-        Renderer,
+        DEFAULT_DEVICE, LATEST_API_VERSION, Renderer,
         settings::{FeatureRequest, InitializeOptions},
     },
 };
@@ -29,7 +29,7 @@ fn example(
         // library of your choice (e.g., Winit, SDL).
         window_handle,
         display_handle,
-        api_version: utils::renderer::ExampleRenderer::LATEST_API_VERSION,
+        api_version: LATEST_API_VERSION,
     };
     renderer.initialize(&init_options).unwrap();
 
@@ -43,10 +43,7 @@ fn example(
     // instead of `DEFAULT_DEVICE`.
     let requested_features = [FeatureRequest::new(ComputeShaders, false)];
     renderer
-        .set_device(
-            utils::renderer::ExampleRenderer::DEFAULT_DEVICE,
-            &requested_features,
-        )
+        .set_device(DEFAULT_DEVICE, &requested_features)
         .unwrap();
 
     // Renderer is now ready to use!

@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use heph_gl::{
     graphics_device::{
         Feature::ComputeShaders,
@@ -6,7 +8,7 @@ use heph_gl::{
     renderers::{
         Renderer,
         concurrency::{RendererHandle, RendererWorkerFactory},
-        resources::{BufferUsage, GpuBuffer, ResourceBinding, ResourceBindingType},
+        resources::{BufferUsage, ResourceBinding, ResourceBindingType},
         settings::{FeatureRequest, Settings},
     },
     shader::Shader,
@@ -111,7 +113,7 @@ where
             "{}/{}",
             SHADERS_DIR, "addition.spv"
         )));
-        let pipeline = heph_expect_success!(renderer.create_compute_pipeline(&shader));
+        let mut pipeline = heph_expect_success!(renderer.create_compute_pipeline(&shader));
         drop(shader);
 
         let mut buffers = Vec::with_capacity(n_frames);
@@ -126,21 +128,25 @@ where
                 b_data[j] = ((j * 2) * (i + 1)) as f32;
             }
 
-            let buffer_a =
+            let mut buffer_a =
                 heph_expect_success!(renderer.create_buffer(BYTE_SIZE, BufferUsage::Storage));
-            let buffer_b =
+            let mut buffer_b =
                 heph_expect_success!(renderer.create_buffer(BYTE_SIZE, BufferUsage::Storage));
             let buffer_c =
                 heph_expect_success!(renderer.create_buffer(BYTE_SIZE, BufferUsage::Storage));
 
-            heph_expect_success!(renderer.write_buffer(&buffer_a, bytemuck::cast_slice(&a_data)));
-            heph_expect_success!(renderer.write_buffer(&buffer_b, bytemuck::cast_slice(&b_data)));
+            heph_expect_success!(
+                renderer.write_buffer(buffer_a.as_mut(), bytemuck::cast_slice(&a_data))
+            );
+            heph_expect_success!(
+                renderer.write_buffer(buffer_b.as_mut(), bytemuck::cast_slice(&b_data))
+            );
 
             let bindings = [
                 ResourceBinding {
                     binding: 0,
                     resource: ResourceBindingType::Buffer {
-                        handle: buffer_a,
+                        handle: buffer_a.as_ref(),
                         usage: BufferUsage::Storage,
                         offset: 0,
                         size: buffer_a.size(),
@@ -149,7 +155,7 @@ where
                 ResourceBinding {
                     binding: 1,
                     resource: ResourceBindingType::Buffer {
-                        handle: buffer_b,
+                        handle: buffer_b.as_ref(),
                         usage: BufferUsage::Storage,
                         offset: 0,
                         size: buffer_b.size(),
@@ -158,7 +164,7 @@ where
                 ResourceBinding {
                     binding: 2,
                     resource: ResourceBindingType::Buffer {
-                        handle: buffer_c,
+                        handle: buffer_c.as_ref(),
                         usage: BufferUsage::Storage,
                         offset: 0,
                         size: buffer_c.size(),
@@ -167,7 +173,7 @@ where
             ];
 
             heph_expect_success!(renderer.record_compute_command(
-                &pipeline,
+                pipeline.as_mut(),
                 &[&bindings],
                 (1, 1, 1)
             ));
@@ -186,25 +192,25 @@ where
             let mut data_c = vec![0.0f32; DATA_COUNT];
 
             heph_expect_success!(
-                renderer.read_buffer(&buffer.0, bytemuck::cast_slice_mut(&mut data_a))
+                renderer.read_buffer(buffer.0.as_ref(), bytemuck::cast_slice_mut(&mut data_a))
             );
             heph_expect_success!(
-                renderer.read_buffer(&buffer.1, bytemuck::cast_slice_mut(&mut data_b))
+                renderer.read_buffer(buffer.1.as_ref(), bytemuck::cast_slice_mut(&mut data_b))
             );
             heph_expect_success!(
-                renderer.read_buffer(&buffer.2, bytemuck::cast_slice_mut(&mut data_c))
+                renderer.read_buffer(buffer.2.as_ref(), bytemuck::cast_slice_mut(&mut data_c))
             );
 
             for i in 0..DATA_COUNT {
                 assert_eq!(data_a[i] + data_b[i], data_c[i]);
             }
 
-            heph_expect_success!(renderer.destroy_buffer(&mut buffer.0));
-            heph_expect_success!(renderer.destroy_buffer(&mut buffer.1));
-            heph_expect_success!(renderer.destroy_buffer(&mut buffer.2));
+            heph_expect_success!(renderer.destroy_buffer(buffer.0.as_mut()));
+            heph_expect_success!(renderer.destroy_buffer(buffer.1.as_mut()));
+            heph_expect_success!(renderer.destroy_buffer(buffer.2.as_mut()));
         }
 
-        heph_expect_success!(renderer.destroy_compute_pipeline(&pipeline));
+        heph_expect_success!(renderer.destroy_compute_pipeline(pipeline.as_mut()));
     }
 
     fn test_multi_threaded_compute(
@@ -227,7 +233,9 @@ where
 
         let shader_path = SHADERS_DIR.to_owned() + "/addition.spv";
         let shader = heph_expect_success!(Shader::from_file(shader_path));
-        let pipeline = heph_expect_success!(renderer.create_compute_pipeline(&shader));
+        let pipeline = Arc::new(Mutex::new(heph_expect_success!(
+            renderer.create_compute_pipeline(&shader)
+        )));
         drop(shader);
 
         std::thread::scope(|s| {
@@ -253,10 +261,10 @@ where
                         b_data[j] = ((j * 2) * i) as f32;
                     }
 
-                    let buffer_a = heph_expect_success!(
+                    let mut buffer_a = heph_expect_success!(
                         renderer_worker.create_buffer(BYTE_SIZE, BufferUsage::Storage)
                     );
-                    let buffer_b = heph_expect_success!(
+                    let mut buffer_b = heph_expect_success!(
                         renderer_worker.create_buffer(BYTE_SIZE, BufferUsage::Storage)
                     );
                     let buffer_c = heph_expect_success!(
@@ -264,17 +272,19 @@ where
                     );
 
                     heph_expect_success!(
-                        renderer_worker.write_buffer(&buffer_a, bytemuck::cast_slice(&a_data))
+                        renderer_worker
+                            .write_buffer(buffer_a.as_mut(), bytemuck::cast_slice(&a_data))
                     );
                     heph_expect_success!(
-                        renderer_worker.write_buffer(&buffer_b, bytemuck::cast_slice(&b_data))
+                        renderer_worker
+                            .write_buffer(buffer_b.as_mut(), bytemuck::cast_slice(&b_data))
                     );
 
                     let bindings = [
                         ResourceBinding {
                             binding: 0,
                             resource: ResourceBindingType::Buffer {
-                                handle: buffer_a,
+                                handle: buffer_a.as_ref(),
                                 usage: BufferUsage::Storage,
                                 offset: 0,
                                 size: buffer_a.size(),
@@ -283,7 +293,7 @@ where
                         ResourceBinding {
                             binding: 1,
                             resource: ResourceBindingType::Buffer {
-                                handle: buffer_b,
+                                handle: buffer_b.as_ref(),
                                 usage: BufferUsage::Storage,
                                 offset: 0,
                                 size: buffer_b.size(),
@@ -292,7 +302,7 @@ where
                         ResourceBinding {
                             binding: 2,
                             resource: ResourceBindingType::Buffer {
-                                handle: buffer_c,
+                                handle: buffer_c.as_ref(),
                                 usage: BufferUsage::Storage,
                                 offset: 0,
                                 size: buffer_c.size(),
@@ -300,7 +310,7 @@ where
                         },
                     ];
                     heph_expect_success!(renderer_worker.record_compute_command(
-                        &pipeline,
+                        heph_expect_success!(pipeline.lock()).as_mut(),
                         &[&bindings],
                         (1, 1, 1)
                     ));
@@ -327,20 +337,22 @@ where
             for (mut buffer_a, mut buffer_b, mut buffer_c, a_data, b_data) in cleanup_data {
                 let mut c_data = vec![0.0f32; DATA_COUNT];
                 heph_expect_success!(
-                    renderer.read_buffer(&buffer_c, bytemuck::cast_slice_mut(&mut c_data))
+                    renderer.read_buffer(buffer_c.as_ref(), bytemuck::cast_slice_mut(&mut c_data))
                 );
 
                 for j in 0..DATA_COUNT {
                     assert_eq!(a_data[j] + b_data[j], c_data[j]);
                 }
 
-                heph_expect_success!(renderer.destroy_buffer(&mut buffer_a));
-                heph_expect_success!(renderer.destroy_buffer(&mut buffer_b));
-                heph_expect_success!(renderer.destroy_buffer(&mut buffer_c));
+                heph_expect_success!(renderer.destroy_buffer(buffer_a.as_mut()));
+                heph_expect_success!(renderer.destroy_buffer(buffer_b.as_mut()));
+                heph_expect_success!(renderer.destroy_buffer(buffer_c.as_mut()));
             }
             barrier.wait();
         });
 
-        heph_expect_success!(renderer.destroy_compute_pipeline(&pipeline));
+        heph_expect_success!(
+            renderer.destroy_compute_pipeline(heph_expect_success!(pipeline.lock()).as_mut())
+        );
     }
 }
