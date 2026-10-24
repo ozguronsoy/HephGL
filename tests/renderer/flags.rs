@@ -29,6 +29,7 @@ define_renderer_test_flags!(
     test_enumerate_devices,
     test_set_device,
     test_set_settings,
+    test_buffer_io,
     test_uniform_buffer,
     test_storage_buffer,
     test_index_buffer,
