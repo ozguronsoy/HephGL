@@ -1,16 +1,12 @@
 use std::collections::HashSet;
 
 use heph_gl::{
-    Error, Version,
-    graphics_device::{
-        GraphicsDevice,
-        GraphicsDeviceFeature::{OpticalFlow, RayTracing, VideoDecoding, VideoEncoding},
-        GraphicsDeviceType,
-    },
+    Error, GraphicsDevice,
+    GraphicsDeviceFeature::{OpticalFlow, RayTracing, VideoDecoding, VideoEncoding},
+    GraphicsDeviceType, Version,
     renderers::{
-        Renderer,
-        concurrency::{RendererHandle, RendererWorkerFactory},
-        settings::{FeatureRequest, InitializeOptions, Settings},
+        FeatureRequest, InitializeOptions, Renderer, RendererHandle, RendererWorkerFactory,
+        Settings,
     },
 };
 

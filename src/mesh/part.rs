@@ -3,7 +3,7 @@ use crate::{
     material::MaterialProperties,
     math::Mat4,
     mesh::{Mesh, MeshPrimitive, MeshVertexAttribute, texture::MeshTexture},
-    renderers::settings::{PrimitiveTopology, SamplerAddressMode, SamplerFilter},
+    renderers::{PrimitiveTopology, SamplerAddressMode, SamplerFilter},
 };
 
 /// Represents one part of a 3D shape.

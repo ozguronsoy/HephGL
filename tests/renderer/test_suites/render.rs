@@ -1,27 +1,17 @@
 use std::time::{Duration, Instant};
 
 use heph_gl::{
-    camera::{Camera, Projection},
-    graphics_device::GraphicsDeviceFeature::AnisotropicFiltering,
-    light::Lighting,
-    material::MaterialProperties,
+    Camera, Font, FontOptions,
+    GraphicsDeviceFeature::AnisotropicFiltering,
+    Lighting, MaterialProperties, Mesh, MeshVertexAttribute, Projection, Shader, TextType,
+    TextVertex, Transform,
     math::{Mat4, Quat, Vec3},
-    mesh::{Mesh, MeshVertexAttribute},
     renderers::{
-        Renderer,
-        concurrency::{RendererHandle, RendererWorkerFactory},
-        resources::{BufferUsage, ResourceBinding, ResourceBindingType, TextureFormat},
-        settings::{
-            ColorBlending, CullingMode, FeatureRequest, FrontFace, GraphicsPipelineOptions,
-            PrimitiveTopology, SamplerAddressMode, SamplerOptions, Settings, TextureOptions,
-        },
+        BufferUsage, ColorBlending, CullingMode, FeatureRequest, FrontFace,
+        GraphicsPipelineOptions, PrimitiveTopology, Renderer, RendererHandle,
+        RendererWorkerFactory, ResourceBinding, ResourceBindingType, SamplerAddressMode,
+        SamplerOptions, Settings, TextureFormat, TextureOptions,
     },
-    shader::Shader,
-    text::{
-        Font, TextVertex,
-        options::{FontOptions, TextType},
-    },
-    transform::Transform,
 };
 use renkrs::RGB;
 

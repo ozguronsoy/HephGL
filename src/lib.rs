@@ -1,19 +1,22 @@
-pub use crate::error::{Error, Result};
-
-pub mod animation;
-pub mod buffer;
-pub mod camera;
-pub mod error;
-pub mod graphics_device;
-pub mod light;
-pub mod material;
+mod animation;
+mod buffer;
+mod camera;
+mod error;
+mod graphics_device;
+mod light;
+mod material;
 pub mod math;
-pub mod mesh;
+mod mesh;
 pub mod renderers;
-pub mod shader;
-pub mod skeleton;
-pub mod text;
-pub mod transform;
+mod shader;
+mod skeleton;
+mod text;
+mod transform;
+
+pub use crate::{
+    animation::*, buffer::*, camera::*, error::*, graphics_device::*, light::*, material::*,
+    mesh::*, shader::*, skeleton::*, text::*, transform::*,
+};
 
 /// Represents a version number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

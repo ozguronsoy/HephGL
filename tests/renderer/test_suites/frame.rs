@@ -1,9 +1,6 @@
 use heph_gl::{
     Error,
-    renderers::{
-        Renderer,
-        concurrency::{RendererHandle, RendererWorkerFactory},
-    },
+    renderers::{Renderer, RendererHandle, RendererWorkerFactory},
 };
 
 use crate::{heph_expect_err, heph_expect_success, renderer::RendererTests};
@@ -25,8 +22,8 @@ where
 
     pub(crate) fn test_resize_window(&self) {
         use heph_gl::{
-            renderers::settings::{GraphicsPipelineOptions, Msaa, Settings},
-            shader::Shader,
+            Shader,
+            renderers::{GraphicsPipelineOptions, Msaa, Settings},
         };
         use renkrs::RGB;
 

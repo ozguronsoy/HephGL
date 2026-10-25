@@ -1,7 +1,7 @@
 mod error;
 mod glyph;
 mod mesh;
-pub mod options;
+mod options;
 
 use std::{collections::HashMap, path::Path};
 
@@ -11,11 +11,8 @@ use fontdue::{
 };
 use glyph::{Glyph, RasterizedGlyph};
 
-use crate::{
-    Error, Result,
-    math::Vec3,
-    text::options::{FontOptions, TextType},
-};
+pub use crate::text::options::*;
+use crate::{Error, Result, math::Vec3};
 
 /// Represents a text vertex containing a 3D position, a normal, texture coordinates, and an RGBA
 /// color, in that order.

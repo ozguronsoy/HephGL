@@ -5,15 +5,10 @@ pub mod versioned_test_suite;
 use std::{marker::PhantomData, process::ExitCode};
 
 use heph_gl::{
+    GraphicsDeviceType,
+    GraphicsDeviceType::{Cpu, DiscreteGpu, IntegratedGpu, VirtualGpu},
     Version,
-    graphics_device::{
-        GraphicsDeviceType,
-        GraphicsDeviceType::{Cpu, DiscreteGpu, IntegratedGpu, VirtualGpu},
-    },
-    renderers::{
-        LATEST_API_VERSION, Renderer,
-        concurrency::{RendererHandle, RendererWorkerFactory},
-    },
+    renderers::{LATEST_API_VERSION, Renderer, RendererHandle, RendererWorkerFactory},
 };
 use libtest_mimic::{Arguments, Trial};
 

@@ -1,9 +1,6 @@
 use crate::{
     Error, Result,
-    renderers::{
-        Renderer,
-        resources::{BufferUsage, RendererBuffer, ResourceBinding, ResourceBindingType},
-    },
+    renderers::{BufferUsage, Renderer, RendererBuffer, ResourceBinding, ResourceBindingType},
 };
 
 /// An automatically managed buffer allocated by a renderer.

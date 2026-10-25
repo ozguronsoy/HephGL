@@ -13,7 +13,7 @@ use crate::{
     material::MaterialProperties,
     math::{Mat3, Mat4, Quat, Vec3, Vec4},
     mesh::{Mesh, MeshPrimitive, MeshSampler, skin::MeshSkin, texture::MeshTexture},
-    renderers::settings::{PrimitiveTopology, SamplerAddressMode, SamplerFilter},
+    renderers::{PrimitiveTopology, SamplerAddressMode, SamplerFilter},
     skeleton::{Joint, Skeleton},
     transform::Transform,
 };

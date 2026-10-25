@@ -5,21 +5,14 @@ use std::{
 };
 
 use heph_gl::{
-    camera::{Camera, Projection},
-    graphics_device::GraphicsDeviceFeature::AnisotropicFiltering,
-    light::Lighting,
+    Camera,
+    GraphicsDeviceFeature::AnisotropicFiltering,
+    Lighting, Mesh, MeshVertexAttribute, Projection, Shader, Transform,
     math::{Mat4, Quat, Vec3},
-    mesh::{Mesh, MeshVertexAttribute},
     renderers::{
-        Renderer,
-        resources::{BufferUsage, ResourceBinding, ResourceBindingType, TextureFormat},
-        settings::{
-            FeatureRequest, FrontFace, GraphicsPipelineOptions, SamplerAddressMode, SamplerOptions,
-            TextureOptions,
-        },
+        BufferUsage, FeatureRequest, FrontFace, GraphicsPipelineOptions, Renderer, ResourceBinding,
+        ResourceBindingType, SamplerAddressMode, SamplerOptions, TextureFormat, TextureOptions,
     },
-    shader::Shader,
-    transform::Transform,
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
