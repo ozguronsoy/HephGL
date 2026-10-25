@@ -44,7 +44,7 @@ opengl = []
 name = "vulkan"
 harness = false
 [[test]]
-name = "buffer"
+name = "resources"
 harness = false
 
 [lints.rust]
