@@ -64,8 +64,7 @@ fn test_buffer() {
         const BUFFER_SIZE: usize = 5;
         let renderer_buffer =
             heph_expect_success!(renderer.create_buffer(BUFFER_SIZE, BUFFER_USAGE));
-        let renderer_buffer_ptr =
-            renderer_buffer.as_ref() as *const dyn RendererBuffer as *const ();
+        let renderer_buffer_ptr = renderer_buffer.as_ref() as *const dyn RendererBuffer;
         let buffer = Buffer::from_renderer_buffer(&renderer, renderer_buffer);
         assert!(std::ptr::addr_eq(
             buffer.renderer_buffer(),
@@ -141,8 +140,7 @@ fn test_sampler() {
     {
         let renderer_sampler =
             heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
-        let renderer_sampler_ptr =
-            renderer_sampler.as_ref() as *const dyn RendererSampler as *const ();
+        let renderer_sampler_ptr = renderer_sampler.as_ref() as *const dyn RendererSampler;
         let sampler = Sampler::from_renderer_sampler(&renderer, renderer_sampler);
         assert!(sampler.renderer_sampler().is_allocated());
         assert!(std::ptr::addr_eq(
