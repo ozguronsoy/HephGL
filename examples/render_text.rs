@@ -1,22 +1,13 @@
 use std::time::{Duration, Instant};
 
 use heph_gl::{
-    camera::{Camera, Projection},
+    Camera, Font, FontOptions, Projection, Shader, TextType, TextVertex, Transform,
     math::{Mat4, Quat, Vec3},
     renderers::{
-        Renderer,
-        resources::{
-            BufferUsage, RendererBuffer, RendererGraphicsPipeline, ResourceBinding,
-            ResourceBindingType, TextureFormat,
-        },
-        settings::{ColorBlending, GraphicsPipelineOptions, SamplerOptions, TextureOptions},
+        BufferUsage, ColorBlending, GraphicsPipelineOptions, Renderer, RendererBuffer,
+        RendererGraphicsPipeline, ResourceBinding, ResourceBindingType, SamplerOptions,
+        TextureFormat, TextureOptions,
     },
-    shader::Shader,
-    text::{
-        Font, TextVertex,
-        options::{FontOptions, TextType},
-    },
-    transform::Transform,
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;

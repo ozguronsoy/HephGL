@@ -8,11 +8,9 @@ pub mod setup;
 use std::sync::{LazyLock, Mutex};
 
 use heph_gl::{
-    graphics_device::GraphicsDeviceType,
+    GraphicsDeviceType,
     renderers::{
-        Renderer,
-        concurrency::{RendererHandle, RendererWorkerFactory},
-        settings::{FeatureRequest, InitializeOptions},
+        FeatureRequest, InitializeOptions, Renderer, RendererHandle, RendererWorkerFactory,
     },
 };
 

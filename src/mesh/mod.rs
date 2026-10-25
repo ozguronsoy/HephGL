@@ -15,7 +15,7 @@ use crate::{
     animation::Animation,
     material::MaterialProperties,
     mesh::{primitive::MeshPrimitive, sampler::MeshSampler, skin::MeshSkin},
-    renderers::settings::PrimitiveTopology,
+    renderers::PrimitiveTopology,
     skeleton::Skeleton,
 };
 

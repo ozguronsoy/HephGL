@@ -1,18 +1,14 @@
 use std::sync::{Arc, Mutex};
 
 use heph_gl::{
-    graphics_device::{
-        GraphicsDeviceFeature::ComputeShaders,
-        GraphicsDeviceType,
-        GraphicsDeviceType::{Cpu, DiscreteGpu, IntegratedGpu, Other, VirtualGpu},
-    },
+    GraphicsDeviceFeature::ComputeShaders,
+    GraphicsDeviceType,
+    GraphicsDeviceType::{Cpu, DiscreteGpu, IntegratedGpu, Other, VirtualGpu},
+    Shader,
     renderers::{
-        Renderer,
-        concurrency::{RendererHandle, RendererWorkerFactory},
-        resources::{BufferUsage, ResourceBinding, ResourceBindingType},
-        settings::{FeatureRequest, Settings},
+        BufferUsage, FeatureRequest, Renderer, RendererHandle, RendererWorkerFactory,
+        ResourceBinding, ResourceBindingType, Settings,
     },
-    shader::Shader,
 };
 
 use crate::{heph_expect_success, renderer::RendererTests, utils::SHADERS_DIR};

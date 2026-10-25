@@ -1,4 +1,4 @@
-use crate::{mesh::texture::MeshTexture, renderers::settings::PrimitiveTopology};
+use crate::{mesh::texture::MeshTexture, renderers::PrimitiveTopology};
 
 #[derive(Default, Clone)]
 pub(super) struct MeshPrimitive {

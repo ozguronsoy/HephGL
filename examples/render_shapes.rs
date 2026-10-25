@@ -1,9 +1,6 @@
 use heph_gl::{
-    renderers::{
-        Renderer,
-        settings::{GraphicsPipelineOptions, PrimitiveTopology},
-    },
-    shader::Shader,
+    Shader,
+    renderers::{GraphicsPipelineOptions, PrimitiveTopology, Renderer},
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;

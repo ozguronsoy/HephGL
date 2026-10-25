@@ -1,12 +1,11 @@
 use std::time::{Duration, Instant};
 
 use heph_gl::{
+    Shader,
     renderers::{
-        Renderer,
-        resources::{BufferUsage, ResourceBinding, ResourceBindingType},
-        settings::{ColorBlending, CullingMode, FrontFace, GraphicsPipelineOptions},
+        BufferUsage, ColorBlending, CullingMode, FrontFace, GraphicsPipelineOptions, Renderer,
+        ResourceBinding, ResourceBindingType,
     },
-    shader::Shader,
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;

@@ -6,9 +6,8 @@ use std::{
 use heph_gl::{
     Error,
     renderers::{
-        LATEST_API_VERSION, Renderer,
-        concurrency::{RendererHandle, RendererWorkerFactory},
-        settings::{InitializeOptions, Settings},
+        InitializeOptions, LATEST_API_VERSION, Renderer, RendererHandle, RendererWorkerFactory,
+        Settings,
     },
 };
 

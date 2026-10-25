@@ -1,4 +1,4 @@
-use crate::renderers::settings::{SamplerAddressMode, SamplerFilter};
+use crate::renderers::{SamplerAddressMode, SamplerFilter};
 
 #[derive(Default, Clone, Copy)]
 pub(super) struct MeshSampler {

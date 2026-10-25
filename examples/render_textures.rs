@@ -1,17 +1,11 @@
 use heph_gl::{
-    graphics_device::GraphicsDeviceFeature::AnisotropicFiltering,
-    light::Lighting,
-    material::MaterialProperties,
+    GraphicsDeviceFeature::AnisotropicFiltering,
+    Lighting, MaterialProperties, Shader,
     math::Vec3,
     renderers::{
-        Renderer,
-        resources::{BufferUsage, ResourceBinding, ResourceBindingType, TextureFormat},
-        settings::{
-            FeatureRequest, GraphicsPipelineOptions, SamplerAddressMode, SamplerOptions,
-            TextureOptions,
-        },
+        BufferUsage, FeatureRequest, GraphicsPipelineOptions, Renderer, ResourceBinding,
+        ResourceBindingType, SamplerAddressMode, SamplerOptions, TextureFormat, TextureOptions,
     },
-    shader::Shader,
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;

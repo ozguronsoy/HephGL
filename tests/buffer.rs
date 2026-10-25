@@ -3,13 +3,10 @@ mod utils;
 use std::process::ExitCode;
 
 use heph_gl::{
-    Error,
-    buffer::Buffer,
+    Buffer, Error,
     renderers::{
-        DEFAULT_DEVICE, Renderer,
-        resources::{BufferUsage, RendererBuffer, ResourceBindingType},
-        settings::InitializeOptions,
-        vulkan::VulkanRenderer,
+        BufferUsage, DEFAULT_DEVICE, InitializeOptions, Renderer, RendererBuffer,
+        ResourceBindingType, vulkan::VulkanRenderer,
     },
 };
 use libtest_mimic::{Arguments, Trial};

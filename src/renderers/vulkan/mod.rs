@@ -4,7 +4,7 @@ mod frame;
 mod handle;
 mod queue;
 mod rendering;
-pub mod resources;
+mod resources;
 mod settings;
 mod swapchain;
 mod sync;
@@ -30,6 +30,7 @@ use ash::vk::{
 use renkrs::RGB;
 use vk_mem::Alloc;
 
+pub use crate::renderers::vulkan::resources::*;
 use crate::{
     Error, HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Result, Version,
     graphics_device::{GraphicsDevice, GraphicsDeviceFeature, GraphicsDeviceType},
@@ -50,7 +51,6 @@ use crate::{
             device::DeviceContext,
             frame::{Frame, FrameState},
             queue::QueueContext,
-            resources::*,
             swapchain::SwapchainContext,
             version::VulkanApiVersion,
         },

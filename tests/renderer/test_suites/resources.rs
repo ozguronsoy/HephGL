@@ -1,15 +1,10 @@
 use heph_gl::{
-    Error,
+    Error, Shader,
     renderers::{
-        Renderer,
-        concurrency::{RendererHandle, RendererWorkerFactory},
-        resources::{
-            BufferUsage, RendererBuffer, RendererComputePipeline, RendererGraphicsPipeline,
-            RendererResource, RendererSampler, RendererTexture, TextureFormat,
-        },
-        settings::{GraphicsPipelineOptions, SamplerOptions, TextureOptions},
+        BufferUsage, GraphicsPipelineOptions, Renderer, RendererBuffer, RendererComputePipeline,
+        RendererGraphicsPipeline, RendererHandle, RendererResource, RendererSampler,
+        RendererTexture, RendererWorkerFactory, SamplerOptions, TextureFormat, TextureOptions,
     },
-    shader::Shader,
 };
 
 use crate::{heph_expect_err, heph_expect_success, renderer::RendererTests, utils::SHADERS_DIR};

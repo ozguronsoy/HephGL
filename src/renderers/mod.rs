@@ -1,17 +1,14 @@
-pub mod concurrency;
-pub mod resources;
-pub mod settings;
+mod concurrency;
+mod resources;
+mod settings;
 mod thread_context;
-pub mod version;
-
+mod version;
 pub mod vulkan;
 
 use renkrs::RGB;
 
-use crate::{
-    Result, graphics_device::GraphicsDevice, renderers::resources::*, renderers::settings::*,
-    shader::Shader,
-};
+pub use crate::renderers::{concurrency::*, resources::*, settings::*, version::*};
+use crate::{Result, graphics_device::GraphicsDevice, shader::Shader};
 
 /// Represents an automatic version selection. When used, the renderer will initialize with the
 /// latest API version supported by the current hardware.

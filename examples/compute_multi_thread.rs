@@ -1,13 +1,12 @@
 use std::sync::{Arc, Mutex};
 
 use heph_gl::{
-    graphics_device::GraphicsDeviceFeature::ComputeShaders,
+    GraphicsDeviceFeature::ComputeShaders,
+    Shader,
     renderers::{
-        Renderer, concurrency::RendererHandle, concurrency::RendererWorkerFactory,
-        resources::BufferUsage, resources::ResourceBinding, resources::ResourceBindingType,
-        settings::FeatureRequest,
+        BufferUsage, FeatureRequest, Renderer, RendererHandle, RendererWorkerFactory,
+        ResourceBinding, ResourceBindingType,
     },
-    shader::Shader,
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 

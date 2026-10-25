@@ -1,9 +1,6 @@
 use heph_gl::{
-    graphics_device::GraphicsDeviceFeature::ComputeShaders,
-    renderers::{
-        DEFAULT_DEVICE, LATEST_API_VERSION, Renderer,
-        settings::{FeatureRequest, InitializeOptions},
-    },
+    GraphicsDeviceFeature::ComputeShaders,
+    renderers::{DEFAULT_DEVICE, FeatureRequest, InitializeOptions, LATEST_API_VERSION, Renderer},
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 

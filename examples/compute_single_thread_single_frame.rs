@@ -1,10 +1,7 @@
 use heph_gl::{
-    graphics_device::GraphicsDeviceFeature::ComputeShaders,
-    renderers::{
-        Renderer, resources::BufferUsage, resources::ResourceBinding,
-        resources::ResourceBindingType, settings::FeatureRequest,
-    },
-    shader::Shader,
+    GraphicsDeviceFeature::ComputeShaders,
+    Shader,
+    renderers::{BufferUsage, FeatureRequest, Renderer, ResourceBinding, ResourceBindingType},
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 

@@ -1,19 +1,15 @@
 use std::time::{Duration, Instant};
 
 use heph_gl::{
-    camera::{Camera, Projection},
-    graphics_device::GraphicsDeviceFeature::AnisotropicFiltering,
-    light::Lighting,
+    Camera,
+    GraphicsDeviceFeature::AnisotropicFiltering,
+    Lighting, Projection, Shader,
     math::{Mat4, Vec3},
-    mesh::{Mesh, MeshVertexAttribute},
     renderers::{
-        Renderer,
-        resources::{BufferUsage, ResourceBinding, ResourceBindingType, TextureFormat},
-        settings::{
-            FeatureRequest, FrontFace, GraphicsPipelineOptions, SamplerOptions, TextureOptions,
-        },
+        BufferUsage, FeatureRequest, FrontFace, GraphicsPipelineOptions, Renderer, ResourceBinding,
+        ResourceBindingType, SamplerOptions, TextureFormat, TextureOptions,
     },
-    shader::Shader,
+    {Mesh, MeshVertexAttribute},
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;

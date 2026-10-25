@@ -1,12 +1,10 @@
 #![allow(dead_code)]
 
 use heph_gl::{
-    graphics_device::{
-        GraphicsDevice,
-        GraphicsDeviceType::{DiscreteGpu, IntegratedGpu},
-    },
-    material::MaterialProperties,
-    renderers::{Renderer, settings::Msaa},
+    GraphicsDevice,
+    GraphicsDeviceType::{DiscreteGpu, IntegratedGpu},
+    MaterialProperties,
+    renderers::{Msaa, Renderer},
 };
 
 #[cfg(feature = "vulkan")]
