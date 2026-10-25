@@ -46,7 +46,7 @@ impl<'a> Buffer<'a> {
         self.renderer_buffer.as_ref()
     }
 
-    /// Returns the underlying renderer buffer.
+    /// Returns the underlying renderer buffer mutably.
     pub fn renderer_buffer_mut(&mut self) -> &mut dyn RendererBuffer {
         self.renderer_buffer.as_mut()
     }
