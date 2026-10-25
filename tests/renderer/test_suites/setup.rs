@@ -204,17 +204,17 @@ where
                 let b1 = std::sync::Arc::new(std::sync::Barrier::new(2));
                 let b2 = b1.clone();
                 let renderer_handle = RendererHandle::from(&mut renderer);
-                s.spawn(move || {
+                let _ = s.spawn(move || {
                     let _renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
-                    b2.wait();
-                    b2.wait();
+                    let _ = b2.wait();
+                    let _ = b2.wait();
                 });
-                b1.wait();
+                let _ = b1.wait();
                 heph_expect_err!(
                     renderer.set_settings(settings),
                     Error::invalid_operation("")
                 );
-                b1.wait();
+                let _ = b1.wait();
             });
         }
     }

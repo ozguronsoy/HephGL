@@ -263,7 +263,7 @@ impl Font {
                     .copy_from_slice(&rasterized_glyph.data[src_start..src_end]);
             }
 
-            self.glyphs.insert(rasterized_glyph.character, *glyph);
+            let _ = self.glyphs.insert(rasterized_glyph.character, *glyph);
             self.last_glyph = Some(rasterized_glyph.character);
         }
     }

@@ -156,7 +156,7 @@ fn example(
             ),
         ]
         .map(|(uri, format)| {
-            textures.entry(uri.to_owned()).or_insert_with(|| {
+            let _ = textures.entry(uri.to_owned()).or_insert_with(|| {
                 let image = image::open(mesh_directory.join(uri)).unwrap().to_rgba8();
                 renderer
                     .create_texture(

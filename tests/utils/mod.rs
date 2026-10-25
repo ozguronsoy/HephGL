@@ -23,18 +23,15 @@ macro_rules! heph_expect_err {
         match $expr {
             Ok(_) => panic!("Expected error, got success"),
             Err(err) => {
-                if err == expected {
-                    err
-                } else {
-                    panic!("Expected `{}` but got `{}`", expected, err)
+                if err != expected {
+                    panic!("Expected `{:?}` but got `{:?}`", expected, err)
                 }
             }
         }
     };
     ($expr: expr) => {
-        match $expr {
-            Ok(_) => panic!("Expected error, got success"),
-            Err(err) => err,
+        if $expr.is_ok() {
+            panic!("Expected error, got success");
         }
     };
 }

@@ -50,8 +50,9 @@ harness = false
 [lints.rust]
 unreachable_patterns = "deny"
 unused_variables = "deny"
-unused_imports = "deny"
+unused_results = "deny"
 unused_macros = "deny"
+unused_imports = "deny"
 unconditional_recursion = "deny"
 overflowing_literals = "deny"
 dead_code = "warn"

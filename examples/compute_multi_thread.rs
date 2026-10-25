@@ -56,7 +56,7 @@ fn example(
             let barrier = barrier.clone();
             let pipeline = pipeline.clone();
 
-            s.spawn(move || {
+            let _ = s.spawn(move || {
                 let mut renderer = renderer_handle.spawn_worker().unwrap();
 
                 // Every thread have its own internal data which must be initialized. This is
@@ -139,7 +139,7 @@ fn example(
 
                 // Wait until the main thread receives the resources from all threads, and GPU
                 // finishes processing them.
-                barrier.wait();
+                let _ = barrier.wait();
             });
         }
 
@@ -156,7 +156,7 @@ fn example(
 
         // Wait for GPU to finish processing.
         renderer.wait_idle().unwrap();
-        barrier.wait();
+        let _ = barrier.wait();
 
         for (thread, buffer_a, buffer_b, buffer_c, data_a, data_b) in &mut cleanup_data {
             // Read and print all computations.

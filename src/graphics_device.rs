@@ -302,7 +302,7 @@ mod tests {
 
         assert!(!device.to_string().contains("Supported Features:"));
 
-        device.supported_features.insert(Feature::RayTracing);
+        let _ = device.supported_features.insert(Feature::RayTracing);
         assert!(device.to_string().contains("Supported Features:"));
     }
 }

@@ -258,7 +258,7 @@ where
                 let barrier = barrier.clone();
                 let pipeline = pipeline.clone();
 
-                s.spawn(move || {
+                let _ = s.spawn(move || {
                     let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
                     heph_expect_success!(renderer_worker.begin_frame());
 
@@ -330,7 +330,7 @@ where
                     heph_expect_success!(renderer_worker.end_frame());
 
                     heph_expect_success!(tx.send((buffer_a, buffer_b, buffer_c, a_data, b_data,)));
-                    barrier.wait();
+                    let _ = barrier.wait();
                 });
             }
 
@@ -362,7 +362,7 @@ where
                 heph_expect_success!(renderer.destroy_buffer(buffer_b.as_mut()));
                 heph_expect_success!(renderer.destroy_buffer(buffer_c.as_mut()));
             }
-            barrier.wait();
+            let _ = barrier.wait();
         });
 
         heph_expect_success!(

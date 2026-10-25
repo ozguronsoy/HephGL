@@ -101,7 +101,7 @@ fn extrude_path(
         for (start, end) in [(a, b), (b, c), (c, a)] {
             let key = (start.min(end), start.max(end));
             if edges.remove(&key).is_none() {
-                edges.insert(key, (start, end));
+                let _ = edges.insert(key, (start, end));
             }
         }
     }
@@ -146,20 +146,21 @@ impl ttf_parser::OutlineBuilder for Outline {
         if self.open {
             self.builder.end(true);
         }
-        self.builder.begin(point(x, y));
+        let _ = self.builder.begin(point(x, y));
         self.open = true;
     }
 
     fn line_to(&mut self, x: f32, y: f32) {
-        self.builder.line_to(point(x, y));
+        let _ = self.builder.line_to(point(x, y));
     }
 
     fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
-        self.builder.quadratic_bezier_to(point(x1, y1), point(x, y));
+        let _ = self.builder.quadratic_bezier_to(point(x1, y1), point(x, y));
     }
 
     fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
-        self.builder
+        let _ = self
+            .builder
             .cubic_bezier_to(point(x1, y1), point(x2, y2), point(x, y));
     }
 

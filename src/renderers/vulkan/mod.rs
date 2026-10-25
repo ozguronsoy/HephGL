@@ -379,36 +379,40 @@ impl Renderer for VulkanRenderer {
             let extension_properties =
                 unsafe { instance.enumerate_device_extension_properties(physical_device)? };
             if physical_features.geometry_shader == ash::vk::TRUE {
-                supported_features.insert(crate::graphics_device::Feature::GeometryShaders);
+                let _ = supported_features.insert(crate::graphics_device::Feature::GeometryShaders);
             }
             if physical_features.fill_mode_non_solid == ash::vk::TRUE {
-                supported_features.insert(crate::graphics_device::Feature::WireframeMode);
+                let _ = supported_features.insert(crate::graphics_device::Feature::WireframeMode);
             }
             if physical_features.wide_lines == ash::vk::TRUE {
-                supported_features.insert(crate::graphics_device::Feature::WideLines);
+                let _ = supported_features.insert(crate::graphics_device::Feature::WideLines);
             }
             if physical_features.sampler_anisotropy == ash::vk::TRUE {
-                supported_features.insert(crate::graphics_device::Feature::AnisotropicFiltering);
+                let _ = supported_features
+                    .insert(crate::graphics_device::Feature::AnisotropicFiltering);
             }
             for ext in extension_properties {
                 let name = unsafe { std::ffi::CStr::from_ptr(ext.extension_name.as_ptr()) };
                 if name == ash::vk::KHR_RAY_TRACING_PIPELINE_NAME {
-                    supported_features.insert(crate::graphics_device::Feature::RayTracing);
+                    let _ = supported_features.insert(crate::graphics_device::Feature::RayTracing);
                 }
             }
             for queue_family_properties in &queue_family_properties_vec {
                 let queue_flags = queue_family_properties.queue_flags;
                 if queue_flags.contains(QueueFlags::COMPUTE) {
-                    supported_features.insert(crate::graphics_device::Feature::ComputeShaders);
+                    let _ =
+                        supported_features.insert(crate::graphics_device::Feature::ComputeShaders);
                 }
                 if queue_flags.contains(QueueFlags::VIDEO_DECODE_KHR) {
-                    supported_features.insert(crate::graphics_device::Feature::VideoDecoding);
+                    let _ =
+                        supported_features.insert(crate::graphics_device::Feature::VideoDecoding);
                 }
                 if queue_flags.contains(QueueFlags::VIDEO_ENCODE_KHR) {
-                    supported_features.insert(crate::graphics_device::Feature::VideoEncoding);
+                    let _ =
+                        supported_features.insert(crate::graphics_device::Feature::VideoEncoding);
                 }
                 if queue_flags.contains(QueueFlags::OPTICAL_FLOW_NV) {
-                    supported_features.insert(crate::graphics_device::Feature::OpticalFlow);
+                    let _ = supported_features.insert(crate::graphics_device::Feature::OpticalFlow);
                 }
                 // Vulkan guarantees that the main graphics family will also support
                 // TRANSFER. Thus, we only consider families that support TRANSFER
@@ -418,7 +422,8 @@ impl Renderer for VulkanRenderer {
                     && !queue_flags.contains(QueueFlags::GRAPHICS)
                     && !queue_flags.contains(QueueFlags::COMPUTE)
                 {
-                    supported_features.insert(crate::graphics_device::Feature::AsyncTransfer);
+                    let _ =
+                        supported_features.insert(crate::graphics_device::Feature::AsyncTransfer);
                 }
             }
 
