@@ -3,10 +3,10 @@ mod utils;
 use std::process::ExitCode;
 
 use heph_gl::{
-    Buffer, Error,
+    Buffer, Error, Sampler,
     renderers::{
-        BufferUsage, DEFAULT_DEVICE, InitializeOptions, Renderer, RendererBuffer,
-        ResourceBindingType, vulkan::VulkanRenderer,
+        BufferUsage, DEFAULT_DEVICE, InitializeOptions, Renderer, RendererBuffer, RendererSampler,
+        ResourceBindingType, SamplerOptions, vulkan::VulkanRenderer,
     },
 };
 use libtest_mimic::{Arguments, Trial};
@@ -21,10 +21,16 @@ fn main() -> ExitCode {
 
     let args = Arguments::from_args();
 
-    let tests = vec![Trial::test("test_buffer", move || {
-        test_buffer();
-        Ok(())
-    })];
+    let tests = vec![
+        Trial::test("test_buffer", move || {
+            test_buffer();
+            Ok(())
+        }),
+        Trial::test("test_sampler", move || {
+            test_sampler();
+            Ok(())
+        }),
+    ];
 
     libtest_mimic::run(&args, tests).exit_code()
 }
@@ -32,16 +38,8 @@ fn main() -> ExitCode {
 fn test_buffer() {
     const BUFFER_USAGE: BufferUsage = BufferUsage::Storage;
 
-    let env = TestEnv::default();
-    let mut renderer = VulkanRenderer::new();
+    let renderer = create_renderer();
     let p_renderer = &renderer as *const VulkanRenderer;
-    heph_expect_success!(renderer.initialize(&InitializeOptions {
-        app_name: "Test Buffers",
-        api_version: Some(renderer.min_api_version()),
-        window_handle: env.raw_window_handle(),
-        display_handle: env.raw_display_handle(),
-    }));
-    heph_expect_success!(renderer.set_device(DEFAULT_DEVICE, &[]));
 
     {
         const BUFFER_SIZE: usize = 1;
@@ -66,8 +64,7 @@ fn test_buffer() {
         const BUFFER_SIZE: usize = 5;
         let renderer_buffer =
             heph_expect_success!(renderer.create_buffer(BUFFER_SIZE, BUFFER_USAGE));
-        let renderer_buffer_ptr =
-            renderer_buffer.as_ref() as *const dyn RendererBuffer as *const ();
+        let renderer_buffer_ptr = renderer_buffer.as_ref() as *const dyn RendererBuffer;
         let buffer = Buffer::from_renderer_buffer(&renderer, renderer_buffer);
         assert!(std::ptr::addr_eq(
             buffer.renderer_buffer(),
@@ -130,4 +127,38 @@ fn test_buffer() {
             Error::invalid_argument("")
         );
     }
+}
+
+fn test_sampler() {
+    let renderer = create_renderer();
+
+    {
+        let sampler = heph_expect_success!(Sampler::new(&renderer, &SamplerOptions::default()));
+        assert!(sampler.renderer_sampler().is_allocated());
+    }
+
+    {
+        let renderer_sampler =
+            heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
+        let renderer_sampler_ptr = renderer_sampler.as_ref() as *const dyn RendererSampler;
+        let sampler = Sampler::from_renderer_sampler(&renderer, renderer_sampler);
+        assert!(sampler.renderer_sampler().is_allocated());
+        assert!(std::ptr::addr_eq(
+            sampler.renderer_sampler(),
+            renderer_sampler_ptr
+        ));
+    }
+}
+
+fn create_renderer() -> VulkanRenderer {
+    let env = TestEnv::default();
+    let mut renderer = VulkanRenderer::new();
+    heph_expect_success!(renderer.initialize(&InitializeOptions {
+        app_name: "Test Buffers",
+        api_version: Some(renderer.min_api_version()),
+        window_handle: env.raw_window_handle(),
+        display_handle: env.raw_display_handle(),
+    }));
+    heph_expect_success!(renderer.set_device(DEFAULT_DEVICE, &[]));
+    renderer
 }
