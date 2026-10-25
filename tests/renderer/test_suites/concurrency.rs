@@ -25,7 +25,7 @@ where
         let mut renderer = self.create_renderer_with_any_device(&[]);
         let renderer_handle = RendererHandle::from(&mut renderer);
         std::thread::scope(|s| {
-            s.spawn(move || {
+            let _ = s.spawn(move || {
                 let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
                 heph_expect_err!(
                     renderer_worker.set_settings(Settings::default()),
@@ -55,15 +55,15 @@ where
         let renderer_handle = RendererHandle::from(&mut renderer);
 
         std::thread::scope(|s| {
-            s.spawn(move || {
+            let _ = s.spawn(move || {
                 // We can spawn another worker after the first one is dropped.
-                heph_expect_success!(renderer_handle.spawn_worker());
-                heph_expect_success!(renderer_handle.spawn_worker());
+                let _ = heph_expect_success!(renderer_handle.spawn_worker());
+                let _ = heph_expect_success!(renderer_handle.spawn_worker());
             });
         });
 
         std::thread::scope(|s| {
-            s.spawn(move || {
+            let _ = s.spawn(move || {
                 let _w1 = heph_expect_success!(renderer_handle.spawn_worker());
                 heph_expect_err!(renderer_handle.spawn_worker(), Error::invalid_operation(""));
             });
@@ -90,7 +90,7 @@ where
             for _ in 0..THREAD_COUNT {
                 let ready_tx = ready_tx.clone();
                 let begin_tx = begin_tx.clone();
-                s.spawn(move || {
+                let _ = s.spawn(move || {
                     let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
                     heph_expect_success!(ready_tx.send(()));
                     for _ in 0..N_FRAMES {
@@ -135,20 +135,20 @@ where
             for _ in 1..thread_count {
                 let barrier = barrier.clone();
                 let fail_count_ref = &fail_count;
-                s.spawn(move || {
+                let _ = s.spawn(move || {
                     let result = renderer_handle.spawn_worker();
                     if let Err(e) = result {
                         if e == Error::fail("") {
-                            fail_count_ref.fetch_add(1, Ordering::Relaxed);
+                            let _ = fail_count_ref.fetch_add(1, Ordering::Relaxed);
                         }
-                        barrier.wait();
+                        let _ = barrier.wait();
                     } else {
                         let _worker = heph_expect_success!(result);
-                        barrier.wait();
+                        let _ = barrier.wait();
                     }
                 });
             }
-            barrier.wait();
+            let _ = barrier.wait();
             assert_ne!(fail_count.load(Ordering::Relaxed), 0);
         });
     }

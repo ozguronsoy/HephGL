@@ -261,25 +261,25 @@ mod tests {
             for i in 0..THREAD_CONTEXT_COUNT {
                 let barrier = barrier.clone();
                 let masks = &masks;
-                s.spawn(move || {
+                let _ = s.spawn(move || {
                     let result = register(
                         &INDEX,
                         &mut masks.lock().unwrap(),
                         i == MAIN_THREAD_CONTEXT_INDEX,
                     );
                     assert!(result.is_ok());
-                    barrier.wait();
-                    barrier.wait();
+                    let _ = barrier.wait();
+                    let _ = barrier.wait();
                     unregister(&INDEX, &mut masks.lock().unwrap());
-                    barrier.wait();
+                    let _ = barrier.wait();
                 });
             }
-            barrier.wait();
+            let _ = barrier.wait();
             for mask in *masks.lock().unwrap() {
                 assert_eq!(mask, ThreadContextMask::MAX);
             }
-            barrier.wait();
-            barrier.wait();
+            let _ = barrier.wait();
+            let _ = barrier.wait();
             for mask in *masks.lock().unwrap() {
                 assert_eq!(mask, 0);
             }

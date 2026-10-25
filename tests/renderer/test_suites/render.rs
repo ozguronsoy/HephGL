@@ -935,7 +935,7 @@ where
                 ),
             ]
             .map(|(uri, format)| {
-                textures.entry(uri.to_owned()).or_insert_with(|| {
+                let _ = textures.entry(uri.to_owned()).or_insert_with(|| {
                     let image =
                         heph_expect_success!(image::open(mesh_directory.join(uri))).to_rgba8();
                     heph_expect_success!(renderer.create_texture(
