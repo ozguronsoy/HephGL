@@ -1,4 +1,4 @@
-use crate::renderers::resources::TextureFormat;
+use crate::{graphics_device::GraphicsDeviceFeature, renderers::resources::TextureFormat};
 
 /// Defines the multisample anti-aliasing sample count used when rendering.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
@@ -121,7 +121,7 @@ pub struct InitializeOptions<'a> {
 #[derive(Clone, Copy)]
 pub struct FeatureRequest {
     /// The feature that is being requested.
-    pub feature: crate::graphics_device::Feature,
+    pub feature: GraphicsDeviceFeature,
     /// Indicates whether the graphics device must support the requested
     /// feature.
     pub required: bool,
@@ -210,7 +210,7 @@ impl Default for GraphicsPipelineOptions {
 
 impl FeatureRequest {
     /// Creates a new instance.
-    pub fn new(feature: crate::graphics_device::Feature, required: bool) -> Self {
+    pub fn new(feature: GraphicsDeviceFeature, required: bool) -> Self {
         Self { feature, required }
     }
 }

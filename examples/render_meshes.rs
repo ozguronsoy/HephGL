@@ -6,7 +6,7 @@ use std::{
 
 use heph_gl::{
     camera::{Camera, Projection},
-    graphics_device::Feature::AnisotropicFiltering,
+    graphics_device::GraphicsDeviceFeature::AnisotropicFiltering,
     light::Lighting,
     math::{Mat4, Quat, Vec3},
     mesh::{Mesh, MeshVertexAttribute},

@@ -32,7 +32,7 @@ use vk_mem::Alloc;
 
 use crate::{
     Error, HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Result, Version,
-    graphics_device::{Feature, GraphicsDevice},
+    graphics_device::{GraphicsDevice, GraphicsDeviceFeature, GraphicsDeviceType},
     renderers::{
         BufferUsage, FeatureRequest, InitializeOptions, Renderer, ResourceBinding, Settings,
         resource_mut, resource_ref,
@@ -348,12 +348,12 @@ impl Renderer for VulkanRenderer {
             };
 
             let device_type = match properties.device_type {
-                PhysicalDeviceType::DISCRETE_GPU => crate::graphics_device::Type::DiscreteGpu,
-                PhysicalDeviceType::INTEGRATED_GPU => crate::graphics_device::Type::IntegratedGpu,
-                PhysicalDeviceType::VIRTUAL_GPU => crate::graphics_device::Type::VirtualGpu,
-                PhysicalDeviceType::CPU => crate::graphics_device::Type::Cpu,
-                PhysicalDeviceType::OTHER => crate::graphics_device::Type::Other,
-                _ => crate::graphics_device::Type::Invalid,
+                PhysicalDeviceType::DISCRETE_GPU => GraphicsDeviceType::DiscreteGpu,
+                PhysicalDeviceType::INTEGRATED_GPU => GraphicsDeviceType::IntegratedGpu,
+                PhysicalDeviceType::VIRTUAL_GPU => GraphicsDeviceType::VirtualGpu,
+                PhysicalDeviceType::CPU => GraphicsDeviceType::Cpu,
+                PhysicalDeviceType::OTHER => GraphicsDeviceType::Other,
+                _ => GraphicsDeviceType::Invalid,
             };
 
             let device_vendor_id = properties.vendor_id;
@@ -375,44 +375,40 @@ impl Renderer for VulkanRenderer {
                 }
             }
 
-            let mut supported_features = HashSet::<crate::graphics_device::Feature>::default();
+            let mut supported_features = HashSet::<GraphicsDeviceFeature>::default();
             let extension_properties =
                 unsafe { instance.enumerate_device_extension_properties(physical_device)? };
             if physical_features.geometry_shader == ash::vk::TRUE {
-                let _ = supported_features.insert(crate::graphics_device::Feature::GeometryShaders);
+                let _ = supported_features.insert(GraphicsDeviceFeature::GeometryShaders);
             }
             if physical_features.fill_mode_non_solid == ash::vk::TRUE {
-                let _ = supported_features.insert(crate::graphics_device::Feature::WireframeMode);
+                let _ = supported_features.insert(GraphicsDeviceFeature::WireframeMode);
             }
             if physical_features.wide_lines == ash::vk::TRUE {
-                let _ = supported_features.insert(crate::graphics_device::Feature::WideLines);
+                let _ = supported_features.insert(GraphicsDeviceFeature::WideLines);
             }
             if physical_features.sampler_anisotropy == ash::vk::TRUE {
-                let _ = supported_features
-                    .insert(crate::graphics_device::Feature::AnisotropicFiltering);
+                let _ = supported_features.insert(GraphicsDeviceFeature::AnisotropicFiltering);
             }
             for ext in extension_properties {
                 let name = unsafe { std::ffi::CStr::from_ptr(ext.extension_name.as_ptr()) };
                 if name == ash::vk::KHR_RAY_TRACING_PIPELINE_NAME {
-                    let _ = supported_features.insert(crate::graphics_device::Feature::RayTracing);
+                    let _ = supported_features.insert(GraphicsDeviceFeature::RayTracing);
                 }
             }
             for queue_family_properties in &queue_family_properties_vec {
                 let queue_flags = queue_family_properties.queue_flags;
                 if queue_flags.contains(QueueFlags::COMPUTE) {
-                    let _ =
-                        supported_features.insert(crate::graphics_device::Feature::ComputeShaders);
+                    let _ = supported_features.insert(GraphicsDeviceFeature::ComputeShaders);
                 }
                 if queue_flags.contains(QueueFlags::VIDEO_DECODE_KHR) {
-                    let _ =
-                        supported_features.insert(crate::graphics_device::Feature::VideoDecoding);
+                    let _ = supported_features.insert(GraphicsDeviceFeature::VideoDecoding);
                 }
                 if queue_flags.contains(QueueFlags::VIDEO_ENCODE_KHR) {
-                    let _ =
-                        supported_features.insert(crate::graphics_device::Feature::VideoEncoding);
+                    let _ = supported_features.insert(GraphicsDeviceFeature::VideoEncoding);
                 }
                 if queue_flags.contains(QueueFlags::OPTICAL_FLOW_NV) {
-                    let _ = supported_features.insert(crate::graphics_device::Feature::OpticalFlow);
+                    let _ = supported_features.insert(GraphicsDeviceFeature::OpticalFlow);
                 }
                 // Vulkan guarantees that the main graphics family will also support
                 // TRANSFER. Thus, we only consider families that support TRANSFER
@@ -422,8 +418,7 @@ impl Renderer for VulkanRenderer {
                     && !queue_flags.contains(QueueFlags::GRAPHICS)
                     && !queue_flags.contains(QueueFlags::COMPUTE)
                 {
-                    let _ =
-                        supported_features.insert(crate::graphics_device::Feature::AsyncTransfer);
+                    let _ = supported_features.insert(GraphicsDeviceFeature::AsyncTransfer);
                 }
             }
 
@@ -477,7 +472,7 @@ impl Renderer for VulkanRenderer {
 
         // Create logical device and queues.
 
-        let mut available_features = Vec::<Feature>::default();
+        let mut available_features = Vec::default();
         for requested_feature in requested_features {
             if device
                 .supported_features
@@ -508,7 +503,8 @@ impl Renderer for VulkanRenderer {
 
         // Use DMA Transfer family if available. Otherwise, use the main graphics
         // family.
-        let transfer_family = if available_features.contains(&Feature::AsyncTransfer) {
+        let transfer_family = if available_features.contains(&GraphicsDeviceFeature::AsyncTransfer)
+        {
             queue_families
                 .iter()
                 .find(|f| {
@@ -527,7 +523,7 @@ impl Renderer for VulkanRenderer {
         // Use the pure compute family if available. Otherwise, use the main graphics
         // family.
         let mut compute_family = None;
-        if available_features.contains(&Feature::ComputeShaders) {
+        if available_features.contains(&GraphicsDeviceFeature::ComputeShaders) {
             let compute_family = compute_family.insert(
                 queue_families
                     .iter()
@@ -604,16 +600,16 @@ impl Renderer for VulkanRenderer {
             device_extension_names.push(ash::vk::KHR_PORTABILITY_SUBSET_NAME.as_ptr());
         }
         let mut physical_features2 = PhysicalDeviceFeatures2::default();
-        if available_features.contains(&Feature::GeometryShaders) {
+        if available_features.contains(&GraphicsDeviceFeature::GeometryShaders) {
             physical_features2.features.geometry_shader = ash::vk::TRUE;
         }
-        if available_features.contains(&Feature::WireframeMode) {
+        if available_features.contains(&GraphicsDeviceFeature::WireframeMode) {
             physical_features2.features.fill_mode_non_solid = ash::vk::TRUE;
         }
-        if available_features.contains(&Feature::WideLines) {
+        if available_features.contains(&GraphicsDeviceFeature::WideLines) {
             physical_features2.features.wide_lines = ash::vk::TRUE;
         }
-        if available_features.contains(&Feature::AnisotropicFiltering) {
+        if available_features.contains(&GraphicsDeviceFeature::AnisotropicFiltering) {
             physical_features2.features.sampler_anisotropy = ash::vk::TRUE;
         }
 
@@ -1246,7 +1242,7 @@ impl Renderer for VulkanRenderer {
                 if !device_context
                     .graphics_device
                     .supported_features
-                    .contains(&Feature::AnisotropicFiltering)
+                    .contains(&GraphicsDeviceFeature::AnisotropicFiltering)
                 {
                     return Err(Error::invalid_operation(
                         "Anisotropic filtering is not supported by this device.",

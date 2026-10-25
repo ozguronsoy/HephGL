@@ -7,10 +7,13 @@ pub mod setup;
 
 use std::sync::{LazyLock, Mutex};
 
-use heph_gl::renderers::{
-    Renderer,
-    concurrency::{RendererHandle, RendererWorkerFactory},
-    settings::{FeatureRequest, InitializeOptions},
+use heph_gl::{
+    graphics_device::GraphicsDeviceType,
+    renderers::{
+        Renderer,
+        concurrency::{RendererHandle, RendererWorkerFactory},
+        settings::{FeatureRequest, InitializeOptions},
+    },
 };
 
 use crate::{heph_expect_success, renderer::RendererTests, utils::TestEnv};
@@ -58,7 +61,7 @@ where
 
     pub(super) fn create_renderer_with_target_device(
         &self,
-        target_device_type: heph_gl::graphics_device::Type,
+        target_device_type: GraphicsDeviceType,
         requested_features: &[FeatureRequest],
         target_device_type_required: bool,
     ) -> Option<TestRenderer> {
@@ -67,7 +70,7 @@ where
         let target_device = devices.iter().find(|d| d.device_type == target_device_type);
         if target_device.is_none() {
             if target_device_type_required {
-                panic!("Invalid Test Env: No {} found.", target_device_type);
+                panic!("Invalid Test Env: No {:?} found.", target_device_type);
             } else {
                 return None;
             }

@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use heph_gl::{
-    graphics_device::Feature::ComputeShaders,
+    graphics_device::GraphicsDeviceFeature::ComputeShaders,
     renderers::{
         Renderer, concurrency::RendererHandle, concurrency::RendererWorkerFactory,
         resources::BufferUsage, resources::ResourceBinding, resources::ResourceBindingType,

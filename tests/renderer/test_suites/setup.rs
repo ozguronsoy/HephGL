@@ -3,8 +3,9 @@ use std::collections::HashSet;
 use heph_gl::{
     Error, Version,
     graphics_device::{
-        Feature::{OpticalFlow, RayTracing, VideoDecoding, VideoEncoding},
         GraphicsDevice,
+        GraphicsDeviceFeature::{OpticalFlow, RayTracing, VideoDecoding, VideoEncoding},
+        GraphicsDeviceType,
     },
     renderers::{
         Renderer,
@@ -147,19 +148,11 @@ where
             renderer.set_device(
                 Some(&GraphicsDevice {
                     name: "".to_string(),
-                    device_type: heph_gl::graphics_device::Type::Other,
+                    device_type: GraphicsDeviceType::Other,
                     vendor_id: u32::MAX,
                     device_id: u32::MAX,
-                    api_version: heph_gl::Version {
-                        major: 0,
-                        minor: 0,
-                        patch: 0,
-                    },
-                    driver_version: heph_gl::Version {
-                        major: 0,
-                        minor: 0,
-                        patch: 0,
-                    },
+                    api_version: heph_gl::Version::new(0, 0, 0),
+                    driver_version: heph_gl::Version::new(0, 0, 0),
                     vram: 0,
                     max_sampler_anisotropy: 1.0,
                     supported_features: HashSet::default(),

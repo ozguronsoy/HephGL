@@ -6,7 +6,10 @@ use std::{marker::PhantomData, process::ExitCode};
 
 use heph_gl::{
     Version,
-    graphics_device::Type::{Cpu, DiscreteGpu, IntegratedGpu, VirtualGpu},
+    graphics_device::{
+        GraphicsDeviceType,
+        GraphicsDeviceType::{Cpu, DiscreteGpu, IntegratedGpu, VirtualGpu},
+    },
     renderers::{
         LATEST_API_VERSION, Renderer,
         concurrency::{RendererHandle, RendererWorkerFactory},
@@ -44,7 +47,7 @@ where
 
         let args = Arguments::from_args();
 
-        let device_type_exists = |device_type: heph_gl::graphics_device::Type| -> bool {
+        let device_type_exists = |device_type: GraphicsDeviceType| -> bool {
             let renderer = Self::new(LATEST_API_VERSION).create_renderer();
             let devices = heph_expect_success!(renderer.enumerate_devices());
             devices
@@ -56,7 +59,7 @@ where
         let skip_integrated_gpu_device_tests = !device_type_exists(IntegratedGpu);
         let skip_cpu_device_tests = !device_type_exists(Cpu);
         let skip_virtual_gpu_device_tests = !device_type_exists(VirtualGpu);
-        let skip_other_device_tests = !device_type_exists(heph_gl::graphics_device::Type::Other);
+        let skip_other_device_tests = !device_type_exists(GraphicsDeviceType::Other);
 
         macro_rules! create_trial {
             ($versioned_test_suite:ident, $tfn:ident) => {

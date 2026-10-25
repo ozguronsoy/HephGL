@@ -3,7 +3,7 @@
 use heph_gl::{
     graphics_device::{
         GraphicsDevice,
-        Type::{DiscreteGpu, IntegratedGpu},
+        GraphicsDeviceType::{DiscreteGpu, IntegratedGpu},
     },
     material::MaterialProperties,
     renderers::{Renderer, settings::Msaa},
