@@ -1,5 +1,5 @@
 use heph_gl::{
-    graphics_device::Feature::AnisotropicFiltering,
+    graphics_device::GraphicsDeviceFeature::AnisotropicFiltering,
     light::Lighting,
     material::MaterialProperties,
     math::Vec3,

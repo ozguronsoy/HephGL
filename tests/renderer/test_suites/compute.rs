@@ -2,8 +2,9 @@ use std::sync::{Arc, Mutex};
 
 use heph_gl::{
     graphics_device::{
-        Feature::ComputeShaders,
-        Type::{Cpu, DiscreteGpu, IntegratedGpu, Other, VirtualGpu},
+        GraphicsDeviceFeature::ComputeShaders,
+        GraphicsDeviceType,
+        GraphicsDeviceType::{Cpu, DiscreteGpu, IntegratedGpu, Other, VirtualGpu},
     },
     renderers::{
         Renderer,
@@ -24,69 +25,68 @@ where
     RendererHandle<TestRenderer>: RendererWorkerFactory<TestRenderer>,
 {
     pub(crate) fn test_single_threaded_compute_discrete_gpu(&self) {
-        const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = DiscreteGpu;
+        const TARGET_DEVICE_TYPE: GraphicsDeviceType = DiscreteGpu;
         self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
         self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
         self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
     }
 
     pub(crate) fn test_single_threaded_compute_integrated_gpu(&self) {
-        const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = IntegratedGpu;
+        const TARGET_DEVICE_TYPE: GraphicsDeviceType = IntegratedGpu;
         self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
         self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
         self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
     }
 
     pub(crate) fn test_single_threaded_compute_cpu(&self) {
-        const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = Cpu;
+        const TARGET_DEVICE_TYPE: GraphicsDeviceType = Cpu;
         self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
         self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
         self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
     }
 
     pub(crate) fn test_single_threaded_compute_virtual_gpu(&self) {
-        const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = VirtualGpu;
+        const TARGET_DEVICE_TYPE: GraphicsDeviceType = VirtualGpu;
         self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
         self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
         self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
     }
 
     pub(crate) fn test_single_threaded_compute_other(&self) {
-        const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = Other;
+        const TARGET_DEVICE_TYPE: GraphicsDeviceType = Other;
         self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 1, 10);
         self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 2, 10);
         self.test_single_threaded_compute(TARGET_DEVICE_TYPE, 3, 10);
     }
 
     pub(crate) fn test_multi_threaded_compute_discrete_gpu(&self) {
-        const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = DiscreteGpu;
+        const TARGET_DEVICE_TYPE: GraphicsDeviceType = DiscreteGpu;
         self.test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
     }
 
     pub(crate) fn test_multi_threaded_compute_integrated_gpu(&self) {
-        const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = IntegratedGpu;
+        const TARGET_DEVICE_TYPE: GraphicsDeviceType = IntegratedGpu;
         self.test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
     }
 
     pub(crate) fn test_multi_threaded_compute_cpu(&self) {
-        const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = Cpu;
+        const TARGET_DEVICE_TYPE: GraphicsDeviceType = Cpu;
         self.test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
     }
 
     pub(crate) fn test_multi_threaded_compute_virtual_gpu(&self) {
-        const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type = VirtualGpu;
+        const TARGET_DEVICE_TYPE: GraphicsDeviceType = VirtualGpu;
         self.test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
     }
 
     pub(crate) fn test_multi_threaded_compute_other(&self) {
-        const TARGET_DEVICE_TYPE: heph_gl::graphics_device::Type =
-            heph_gl::graphics_device::Type::Other;
+        const TARGET_DEVICE_TYPE: GraphicsDeviceType = GraphicsDeviceType::Other;
         self.test_multi_threaded_compute(TARGET_DEVICE_TYPE, 10);
     }
 
     fn test_single_threaded_compute(
         &self,
-        target_device_type: heph_gl::graphics_device::Type,
+        target_device_type: GraphicsDeviceType,
         frames_in_flight: usize,
         n_frames: usize,
     ) {
@@ -225,7 +225,7 @@ where
 
     fn test_multi_threaded_compute(
         &self,
-        target_device_type: heph_gl::graphics_device::Type,
+        target_device_type: GraphicsDeviceType,
         n_threads: usize,
     ) {
         let create_renderer_result = self.create_renderer_with_target_device(

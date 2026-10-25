@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use heph_gl::{
     camera::{Camera, Projection},
-    graphics_device::Feature::AnisotropicFiltering,
+    graphics_device::GraphicsDeviceFeature::AnisotropicFiltering,
     light::Lighting,
     material::MaterialProperties,
     math::{Mat4, Quat, Vec3},

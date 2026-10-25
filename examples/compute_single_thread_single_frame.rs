@@ -1,5 +1,5 @@
 use heph_gl::{
-    graphics_device::Feature::ComputeShaders,
+    graphics_device::GraphicsDeviceFeature::ComputeShaders,
     renderers::{
         Renderer, resources::BufferUsage, resources::ResourceBinding,
         resources::ResourceBindingType, settings::FeatureRequest,

@@ -1,3 +1,5 @@
+use crate::graphics_device::GraphicsDeviceFeature;
+
 /// Defines the error types.
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -10,7 +12,7 @@ pub enum Error {
     /// A general error or failure occurred.
     Fail(String),
     /// A requested graphics device feature marked as required is not supported.
-    UnsupportedRequiredFeature(crate::graphics_device::Feature),
+    UnsupportedRequiredFeature(GraphicsDeviceFeature),
     /// The shader uses an unsupported language or bytecode format.
     UnsupportedShaderLanguage,
     /// An error occurred while reading or writing data.
@@ -114,7 +116,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::graphics_device::Feature::ComputeShaders;
+    use crate::graphics_device::GraphicsDeviceFeature::ComputeShaders;
 
     #[test]
     fn test_error_display() {
