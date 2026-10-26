@@ -10,6 +10,7 @@ pub struct Sampler<'a> {
 }
 
 impl<'a> Sampler<'a> {
+    /// Creates a renderer sampler with the provided options.
     pub fn new(renderer: &'a dyn Renderer, options: &SamplerOptions) -> Result<Self> {
         Ok(Self {
             renderer,

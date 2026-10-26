@@ -119,15 +119,12 @@ pub trait Renderer {
 
     /// Creates a graphics pipeline using the provided shaders.
     fn create_graphics_pipeline(
-        &mut self,
+        &self,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
     ) -> Result<Box<dyn RendererGraphicsPipeline>>;
     /// Destroys the graphics pipeline.
-    fn destroy_graphics_pipeline(
-        &mut self,
-        pipeline: &mut dyn RendererGraphicsPipeline,
-    ) -> Result<()>;
+    fn destroy_graphics_pipeline(&self, pipeline: &mut dyn RendererGraphicsPipeline) -> Result<()>;
     /// Creates a graphics workload for the GPU.
     fn record_graphics_command(
         &mut self,

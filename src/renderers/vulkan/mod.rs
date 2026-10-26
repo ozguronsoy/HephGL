@@ -1460,17 +1460,17 @@ impl Renderer for VulkanRenderer {
     }
 
     fn create_graphics_pipeline(
-        &mut self,
+        &self,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
     ) -> Result<Box<dyn RendererGraphicsPipeline>> {
         let device_context = self
             .device_context
-            .as_mut()
+            .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let rendering = device_context
             .rendering
-            .as_mut()
+            .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         Ok(Box::new(rendering.create_graphics_pipeline(
             &device_context.logical_device,
@@ -1479,18 +1479,15 @@ impl Renderer for VulkanRenderer {
         )?))
     }
 
-    fn destroy_graphics_pipeline(
-        &mut self,
-        pipeline: &mut dyn RendererGraphicsPipeline,
-    ) -> Result<()> {
+    fn destroy_graphics_pipeline(&self, pipeline: &mut dyn RendererGraphicsPipeline) -> Result<()> {
         let pipeline = resource_mut::<VulkanGraphicsPipeline>(pipeline)?;
         let device_context = self
             .device_context
-            .as_mut()
+            .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let rendering = device_context
             .rendering
-            .as_mut()
+            .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         rendering.destroy_graphics_pipeline(&device_context.logical_device, pipeline)
     }

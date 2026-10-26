@@ -7,6 +7,7 @@ mod light;
 mod material;
 pub mod math;
 mod mesh;
+mod pipeline;
 pub mod renderers;
 mod sampler;
 mod shader;
@@ -16,7 +17,7 @@ mod transform;
 
 pub use crate::{
     animation::*, buffer::*, camera::*, error::*, graphics_device::*, light::*, material::*,
-    mesh::*, sampler::*, shader::*, skeleton::*, text::*, transform::*,
+    mesh::*, pipeline::*, sampler::*, shader::*, skeleton::*, text::*, transform::*,
 };
 
 /// Represents a version number.

@@ -3,15 +3,16 @@ mod utils;
 use std::process::ExitCode;
 
 use heph_gl::{
-    Buffer, Error, Sampler,
+    Buffer, ComputePipeline, Error, GraphicsPipeline, Sampler, Shader,
     renderers::{
-        BufferUsage, DEFAULT_DEVICE, InitializeOptions, Renderer, RendererBuffer, RendererSampler,
+        BufferUsage, DEFAULT_DEVICE, GraphicsPipelineOptions, InitializeOptions, Renderer,
+        RendererBuffer, RendererComputePipeline, RendererGraphicsPipeline, RendererSampler,
         ResourceBindingType, SamplerOptions, vulkan::VulkanRenderer,
     },
 };
 use libtest_mimic::{Arguments, Trial};
 
-use crate::utils::TestEnv;
+use crate::utils::{SHADERS_DIR, TestEnv};
 
 fn main() -> ExitCode {
     if std::env::var("NEXTEST").is_err() {
@@ -28,6 +29,14 @@ fn main() -> ExitCode {
         }),
         Trial::test("test_sampler", move || {
             test_sampler();
+            Ok(())
+        }),
+        Trial::test("test_compute_pipeline", move || {
+            test_compute_pipeline();
+            Ok(())
+        }),
+        Trial::test("test_graphics_pipeline", move || {
+            test_graphics_pipeline();
             Ok(())
         }),
     ];
@@ -146,6 +155,69 @@ fn test_sampler() {
         assert!(std::ptr::addr_eq(
             sampler.renderer_sampler(),
             renderer_sampler_ptr
+        ));
+    }
+}
+
+fn test_compute_pipeline() {
+    let renderer = create_renderer();
+    let shader = heph_expect_success!(Shader::from_file(format!(
+        "{}/{}",
+        SHADERS_DIR, "addition.spv"
+    )));
+
+    {
+        let pipeline = heph_expect_success!(ComputePipeline::new(&renderer, &shader));
+        assert!(pipeline.renderer_compute_pipeline().is_allocated());
+    }
+
+    {
+        let renderer_pipeline = heph_expect_success!(renderer.create_compute_pipeline(&shader));
+        let renderer_pipeline_ptr =
+            renderer_pipeline.as_ref() as *const dyn RendererComputePipeline;
+        let pipeline =
+            ComputePipeline::from_renderer_compute_pipeline(&renderer, renderer_pipeline);
+        assert!(pipeline.renderer_compute_pipeline().is_allocated());
+        assert!(std::ptr::addr_eq(
+            pipeline.renderer_compute_pipeline(),
+            renderer_pipeline_ptr
+        ));
+    }
+}
+
+fn test_graphics_pipeline() {
+    let renderer = create_renderer();
+    let vert_shader = heph_expect_success!(Shader::from_file(format!(
+        "{}/shapes/{}",
+        SHADERS_DIR, "basic_triangle_vert.spv"
+    )));
+    let frag_shader = heph_expect_success!(Shader::from_file(format!(
+        "{}/shapes/{}",
+        SHADERS_DIR, "basic_triangle_frag.spv"
+    )));
+
+    {
+        let pipeline = heph_expect_success!(GraphicsPipeline::new(
+            &renderer,
+            &[&vert_shader, &frag_shader],
+            &GraphicsPipelineOptions::default()
+        ));
+        assert!(pipeline.renderer_graphics_pipeline().is_allocated());
+    }
+
+    {
+        let renderer_pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+            &[&vert_shader, &frag_shader],
+            &GraphicsPipelineOptions::default()
+        ));
+        let renderer_pipeline_ptr =
+            renderer_pipeline.as_ref() as *const dyn RendererGraphicsPipeline;
+        let pipeline =
+            GraphicsPipeline::from_renderer_graphics_pipeline(&renderer, renderer_pipeline);
+        assert!(pipeline.renderer_graphics_pipeline().is_allocated());
+        assert!(std::ptr::addr_eq(
+            pipeline.renderer_graphics_pipeline(),
+            renderer_pipeline_ptr
         ));
     }
 }

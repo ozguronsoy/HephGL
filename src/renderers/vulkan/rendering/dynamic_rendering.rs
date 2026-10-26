@@ -57,7 +57,7 @@ impl VulkanRendering for DynamicRendering {
         })
     }
     fn create_graphics_pipeline(
-        &mut self,
+        &self,
         device: &ash::Device,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
@@ -272,7 +272,7 @@ impl VulkanRendering for DynamicRendering {
         })
     }
     fn destroy_graphics_pipeline(
-        &mut self,
+        &self,
         device: &ash::Device,
         pipeline: &mut VulkanGraphicsPipeline,
     ) -> Result<()> {
