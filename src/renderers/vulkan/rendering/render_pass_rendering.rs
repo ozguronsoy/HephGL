@@ -201,7 +201,7 @@ impl VulkanRendering for RenderPassRendering {
         })
     }
     fn create_graphics_pipeline(
-        &mut self,
+        &self,
         device: &ash::Device,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
@@ -414,7 +414,7 @@ impl VulkanRendering for RenderPassRendering {
         })
     }
     fn destroy_graphics_pipeline(
-        &mut self,
+        &self,
         device: &ash::Device,
         pipeline: &mut VulkanGraphicsPipeline,
     ) -> Result<()> {

@@ -32,14 +32,14 @@ pub trait VulkanRendering {
         Self: Sized;
     /// Creates a graphics pipeline using the provided shaders.
     fn create_graphics_pipeline(
-        &mut self,
+        &self,
         device: &ash::Device,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
     ) -> Result<VulkanGraphicsPipeline>;
     /// Destroys the graphics pipeline.
     fn destroy_graphics_pipeline(
-        &mut self,
+        &self,
         device: &ash::Device,
         pipeline: &mut VulkanGraphicsPipeline,
     ) -> Result<()>;

@@ -327,7 +327,7 @@ where
     }
 
     pub(crate) fn test_graphics_pipeline(&self) {
-        let mut renderer = self.create_renderer_with_any_device(&[]);
+        let renderer = self.create_renderer_with_any_device(&[]);
         let frag_shader = heph_expect_success!(Shader::from_file(format!(
             "{}/shapes/basic_triangle_frag.spv",
             SHADERS_DIR
