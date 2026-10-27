@@ -780,7 +780,7 @@ where
     pub(crate) fn test_render_meshes(&self) {
         use std::{collections::HashMap, path::Path};
 
-        const MESH_PATH: &str = "assets/ship/ship_pinnace_4k.gltf";
+        const MESH_PATH: &str = "assets/ship/ship_pinnace_1k.gltf";
         const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 
         let mut renderer = self

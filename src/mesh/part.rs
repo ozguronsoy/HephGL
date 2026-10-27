@@ -387,7 +387,7 @@ mod tests {
 
     #[test]
     fn test_vertices_interleaves_vertex_attributes() {
-        const FILE_PATH: &str = "assets/ship/ship_pinnace_4k.gltf";
+        const FILE_PATH: &str = "assets/ship/ship_pinnace_1k.gltf";
         let mesh = Mesh::from_file(FILE_PATH).unwrap();
         let attributes = [
             MeshVertexAttribute::TextureCoordinates(0),
