@@ -158,12 +158,12 @@ mod tests {
     #[test]
     fn test_from_file() {
         {
-            const FILE_PATH: &str = "assets/ship/ship_pinnace_4k.gltf";
+            const FILE_PATH: &str = "assets/ship/ship_pinnace_1k.gltf";
             assert!(Mesh::from_file(FILE_PATH).is_ok());
         }
 
         {
-            const FILE_PATH: &str = "assets/ship/textures/ship_pinnace_hull_diff_4k.jpg";
+            const FILE_PATH: &str = "assets/ship/textures/ship_pinnace_hull_diff_1k.jpg";
             assert!(matches!(Mesh::from_file(FILE_PATH), Err(Error::Io(_))));
         }
     }

@@ -19,7 +19,7 @@ use renkrs::RGB;
 
 mod utils;
 
-const MESH_PATH: &str = "assets/ship/ship_pinnace_4k.gltf";
+const MESH_PATH: &str = "assets/ship/ship_pinnace_1k.gltf";
 const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 
 fn example(
