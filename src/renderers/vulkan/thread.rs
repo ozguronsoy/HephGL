@@ -52,7 +52,6 @@ impl VulkanRenderer {
 
         self.create_command_pools()?;
         self.create_command_buffers()?;
-        self.create_descriptor_pools()?;
 
         Ok(())
     }

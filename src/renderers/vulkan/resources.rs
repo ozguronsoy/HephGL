@@ -118,7 +118,7 @@ impl RendererBuffer for VulkanBuffer {
 
 impl VulkanRenderer {
     pub(super) fn create_compute_resource_sets(
-        &self,
+        &mut self,
         pipeline: &VulkanComputePipeline,
         binding_sets: &[&[ResourceBinding<'_>]],
     ) -> Result<Vec<DescriptorSet>> {
@@ -129,28 +129,20 @@ impl VulkanRenderer {
         // TODO: Verify group count and bindings.
         let device_context = self
             .device_context
-            .as_ref()
+            .as_mut()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let compute_queue_context =
             device_context
                 .compute_queue_context
-                .as_ref()
+                .as_mut()
                 .ok_or(Error::invalid_operation(
                     "Device is not initialized with `ComputeShaders` feature.",
                 ))?;
         let thread_context_index = Self::thread_context_index()?;
-        let current_frame = &compute_queue_context.frames[device_context.current_frame_index]
-            .thread_contexts[thread_context_index];
-        let descriptor_pool = current_frame.descriptor_pool;
-
-        let alloc_info = ash::vk::DescriptorSetAllocateInfo::default()
-            .descriptor_pool(descriptor_pool)
-            .set_layouts(&pipeline.descriptor_layouts);
-        let descriptor_sets = unsafe {
-            device_context
-                .logical_device
-                .allocate_descriptor_sets(&alloc_info)?
-        };
+        let descriptor_sets = compute_queue_context.frames[device_context.current_frame_index]
+            .thread_contexts[thread_context_index]
+            .descriptor_pools
+            .allocate(&device_context.logical_device, &pipeline.descriptor_layouts)?;
 
         for (i, &binding_set) in binding_sets.iter().enumerate() {
             let mut buffer_infos = Vec::new();
@@ -256,7 +248,7 @@ impl VulkanRenderer {
     }
 
     pub(super) fn create_graphics_resource_sets(
-        &self,
+        &mut self,
         pipeline: &VulkanGraphicsPipeline,
         binding_sets: &[&[ResourceBinding<'_>]],
     ) -> Result<Vec<DescriptorSet>> {
@@ -267,22 +259,14 @@ impl VulkanRenderer {
         // TODO: Verify group count and bindings.
         let device_context = self
             .device_context
-            .as_ref()
+            .as_mut()
             .ok_or(Error::invalid_operation("Device is not set."))?;
-        let graphics_queue_context = &device_context.graphics_queue_context;
         let thread_context_index = Self::thread_context_index()?;
-        let current_frame = &graphics_queue_context.frames[device_context.current_frame_index]
-            .thread_contexts[thread_context_index];
-        let descriptor_pool = current_frame.descriptor_pool;
-
-        let alloc_info = ash::vk::DescriptorSetAllocateInfo::default()
-            .descriptor_pool(descriptor_pool)
-            .set_layouts(&pipeline.descriptor_layouts);
-        let descriptor_sets = unsafe {
-            device_context
-                .logical_device
-                .allocate_descriptor_sets(&alloc_info)?
-        };
+        let descriptor_sets = device_context.graphics_queue_context.frames
+            [device_context.current_frame_index]
+            .thread_contexts[thread_context_index]
+            .descriptor_pools
+            .allocate(&device_context.logical_device, &pipeline.descriptor_layouts)?;
 
         for (i, &binding_set) in binding_sets.iter().enumerate() {
             if i >= descriptor_sets.len() {
