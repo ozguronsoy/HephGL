@@ -1,3 +1,4 @@
+mod descriptor_pool;
 mod device;
 mod error;
 mod frame;
@@ -20,12 +21,11 @@ use std::{
 
 use ash::vk::{
     ApplicationInfo, BufferCreateInfo, BufferUsageFlags, CommandBufferBeginInfo,
-    CommandBufferUsageFlags, ComputePipelineCreateInfo, DescriptorPoolResetFlags,
-    DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DeviceCreateInfo,
-    DeviceQueueCreateInfo, InstanceCreateInfo, MemoryHeapFlags, PhysicalDeviceFeatures2,
-    PhysicalDeviceType, PipelineBindPoint, PipelineCache, PipelineLayoutCreateInfo,
-    PipelineShaderStageCreateInfo, QueueFlags, ShaderModuleCreateInfo, StructureType, SubmitInfo,
-    SurfaceKHR, SwapchainKHR,
+    CommandBufferUsageFlags, ComputePipelineCreateInfo, DescriptorSetLayoutBinding,
+    DescriptorSetLayoutCreateInfo, DeviceCreateInfo, DeviceQueueCreateInfo, InstanceCreateInfo,
+    MemoryHeapFlags, PhysicalDeviceFeatures2, PhysicalDeviceType, PipelineBindPoint, PipelineCache,
+    PipelineLayoutCreateInfo, PipelineShaderStageCreateInfo, QueueFlags, ShaderModuleCreateInfo,
+    StructureType, SubmitInfo, SurfaceKHR, SwapchainKHR,
 };
 use renkrs::RGB;
 use vk_mem::Alloc;
@@ -1695,10 +1695,9 @@ impl Renderer for VulkanRenderer {
                     current_frame.command_pool,
                     ash::vk::CommandPoolResetFlags::empty(),
                 )?;
-                device_context.logical_device.reset_descriptor_pool(
-                    current_frame.descriptor_pool,
-                    DescriptorPoolResetFlags::empty(),
-                )?;
+                current_frame
+                    .descriptor_pools
+                    .reset(&device_context.logical_device)?;
                 for transfer_buffer in &mut current_frame.transfer_buffers {
                     device_context
                         .vma_allocator

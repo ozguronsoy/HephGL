@@ -1,14 +1,16 @@
 use ash::vk::{
     CommandBuffer, CommandBufferAllocateInfo, CommandBufferLevel, CommandPool,
-    CommandPoolCreateFlags, CommandPoolCreateInfo, DescriptorPool, DescriptorPoolCreateInfo,
-    DescriptorPoolSize, DescriptorType,
+    CommandPoolCreateFlags, CommandPoolCreateInfo,
 };
 
 use crate::{
     Error, Result,
     renderers::{
         thread_context::ThreadContextArray,
-        vulkan::{VulkanRenderer, queue::QueueContext, resources::VulkanBuffer},
+        vulkan::{
+            VulkanRenderer, descriptor_pool::DescriptorPools, queue::QueueContext,
+            resources::VulkanBuffer,
+        },
     },
 };
 
@@ -31,8 +33,9 @@ pub struct ThreadContext {
     pub command_pool: CommandPool,
     /// The primary command buffer used to record commands for this thread.
     pub command_buffer: CommandBuffer,
-    /// The descriptor pool allocated for resources used during this thread.
-    pub descriptor_pool: DescriptorPool,
+    /// The descriptor pools used for allocating the descriptor sets of this thread. They are
+    /// created on demand, and grow as more sets are needed.
+    pub descriptor_pools: DescriptorPools,
     /// The temporary buffers used for transfering data to the GPU.
     pub transfer_buffers: Vec<VulkanBuffer>,
     /// Indicates whether any command has been recorded in this thread.
@@ -128,59 +131,6 @@ impl VulkanRenderer {
         Ok(())
     }
 
-    /// Creates descriptor pools for the current thread of each frame.
-    pub(super) fn create_descriptor_pools(&mut self) -> Result<()> {
-        const DESCRIPTOR_COUNT: u32 = 1000;
-        const DESCRIPTOR_MAX_SETS: u32 = 1000;
-
-        self.destroy_descriptor_pools()?;
-
-        let device_context = self
-            .device_context
-            .as_mut()
-            .ok_or(Error::invalid_operation("Device is not set."))?;
-        let thread_context_index = Self::thread_context_index()?;
-
-        let pool_sizes = [
-            DescriptorPoolSize::default()
-                .ty(DescriptorType::UNIFORM_BUFFER)
-                .descriptor_count(DESCRIPTOR_COUNT),
-            DescriptorPoolSize::default()
-                .ty(DescriptorType::STORAGE_BUFFER)
-                .descriptor_count(DESCRIPTOR_COUNT),
-            DescriptorPoolSize::default()
-                .ty(DescriptorType::SAMPLED_IMAGE)
-                .descriptor_count(DESCRIPTOR_COUNT),
-            DescriptorPoolSize::default()
-                .ty(DescriptorType::SAMPLER)
-                .descriptor_count(DESCRIPTOR_COUNT),
-        ];
-
-        let pool_info = DescriptorPoolCreateInfo::default()
-            .max_sets(DESCRIPTOR_MAX_SETS)
-            .pool_sizes(&pool_sizes);
-
-        let allocate_pool = |queue_context: &mut QueueContext, frame_index: usize| -> Result<()> {
-            unsafe {
-                queue_context.frames[frame_index].thread_contexts[thread_context_index]
-                    .descriptor_pool = device_context
-                    .logical_device
-                    .create_descriptor_pool(&pool_info, None)?;
-                Ok(())
-            }
-        };
-
-        for frame_index in 0..self.settings.frames_in_flight {
-            allocate_pool(&mut device_context.graphics_queue_context, frame_index)?;
-            allocate_pool(&mut device_context.transfer_queue_context, frame_index)?;
-            if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-                allocate_pool(compute_queue_context, frame_index)?;
-            }
-        }
-
-        Ok(())
-    }
-
     /// Destroys the command pools of the current thread if there are any.
     pub(super) fn destroy_command_pools(&mut self) -> Result<()> {
         let device_context = self
@@ -244,20 +194,17 @@ impl VulkanRenderer {
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
 
-        let destroy_desc_pool = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
-            let frame = &mut queue_context.frames[frame_index];
-            device_context.logical_device.destroy_descriptor_pool(
-                frame.thread_contexts[thread_context_index].descriptor_pool,
-                None,
-            );
-            frame.thread_contexts[thread_context_index].descriptor_pool = DescriptorPool::default();
+        let destroy_desc_pools = |queue_context: &mut QueueContext, frame_index: usize| {
+            queue_context.frames[frame_index].thread_contexts[thread_context_index]
+                .descriptor_pools
+                .destroy(&device_context.logical_device);
         };
 
         for frame_index in 0..self.settings.frames_in_flight {
-            destroy_desc_pool(&mut device_context.graphics_queue_context, frame_index);
-            destroy_desc_pool(&mut device_context.transfer_queue_context, frame_index);
+            destroy_desc_pools(&mut device_context.graphics_queue_context, frame_index);
+            destroy_desc_pools(&mut device_context.transfer_queue_context, frame_index);
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-                destroy_desc_pool(compute_queue_context, frame_index);
+                destroy_desc_pools(compute_queue_context, frame_index);
             }
         }
 
