@@ -78,3 +78,13 @@ jobs:
 
       - name: Generate Report
         run: cargo llvm-cov report --fail-under-functions 80 --fail-under-lines 80 --fail-under-regions 80
+
+      - name: Generate LCOV
+        run: cargo llvm-cov report --lcov --output-path lcov.info
+
+      - name: Upload to Coveralls
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: lcov.info
+          format: lcov
