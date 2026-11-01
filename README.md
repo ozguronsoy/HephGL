@@ -1,5 +1,8 @@
 # HephGL
 
+[![Examples](https://github.com/ozguronsoy/HephGL/actions/workflows/examples.yml/badge.svg?branch=main&event=push)](https://github.com/ozguronsoy/HephGL/actions/workflows/examples.yml)
+[![Tests](https://github.com/ozguronsoy/HephGL/actions/workflows/test.yml/badge.svg?branch=main&event=push)](https://github.com/ozguronsoy/HephGL/actions/workflows/test.yml)
+
 - [Introduction](#introduction)
 - [Setup](#setup)
     - [Install](#install)
