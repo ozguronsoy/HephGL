@@ -228,9 +228,9 @@ mod tests {
 
     #[test]
     fn test_fonts() {
-        fn assert_family(family_name: &'static str, result: Result<Font>) {
+        fn assert_family(family: Family<'static>, result: Result<Font>) {
             let query = Query {
-                families: &[Family::Name(family_name)],
+                families: &[family],
                 weight: Weight::NORMAL,
                 stretch: Stretch::Normal,
                 style: Style::Normal,
@@ -238,52 +238,88 @@ mod tests {
             let is_installed = SYSTEM_FONTS.query(&query).is_some();
 
             match result {
-                Ok(_) => assert!(is_installed, "{family_name} should not fall back"),
+                Ok(_) => assert!(is_installed, "{family:?} should not fall back"),
                 Err(Error::Font(message)) if message == "Font not found." => {
-                    assert!(
-                        !is_installed,
-                        "{family_name} is installed but failed to load"
-                    )
+                    assert!(!is_installed, "{family:?} is installed but failed to load")
                 }
-                Err(error) => panic!("Failed to load {family_name}: {error}"),
+                Err(error) => panic!("Failed to load {family:?}: {error}"),
             }
         }
 
-        assert_family("Arial", arial(&FontOptions::default()));
-        assert_family("Arial Black", arial_black(&FontOptions::default()));
-        assert_family("Baskerville", baskerville(&FontOptions::default()));
-        assert_family("Comic Sans MS", comic_sans_ms(&FontOptions::default()));
-        assert_family("Consolas", consolas(&FontOptions::default()));
-        assert_family("Courier New", courier_new(&FontOptions::default()));
-        assert_family("DejaVu Sans", dejavu_sans(&FontOptions::default()));
-        assert_family("Garamond", garamond(&FontOptions::default()));
-        assert_family("Georgia", georgia(&FontOptions::default()));
-        assert_family("Helvetica Neue", helvetica_neue(&FontOptions::default()));
-        assert_family("Impact", impact(&FontOptions::default()));
-        assert_family("Inter", inter(&FontOptions::default()));
-        assert_family("Lato", lato(&FontOptions::default()));
-        assert_family("Menlo", menlo(&FontOptions::default()));
-        assert_family("Monaco", monaco(&FontOptions::default()));
-        assert_family("Noto Sans", noto_sans(&FontOptions::default()));
-        assert_family("Noto Sans Mono", noto_sans_mono(&FontOptions::default()));
-        assert_family("Noto Serif", noto_serif(&FontOptions::default()));
-        assert_family("Open Sans", open_sans(&FontOptions::default()));
-        assert_family("Palatino", palatino(&FontOptions::default()));
-        assert_family("Roboto", roboto(&FontOptions::default()));
-        assert_family("SF Pro", sf_pro(&FontOptions::default()));
-        assert_family("Segoe UI", segoe_ui(&FontOptions::default()));
-        assert_family("Source Code Pro", source_code_pro(&FontOptions::default()));
-        assert_family("Tahoma", tahoma(&FontOptions::default()));
-        assert_family("Times New Roman", times_new_roman(&FontOptions::default()));
-        assert_family("Trebuchet MS", trebuchet_ms(&FontOptions::default()));
-        assert_family("Ubuntu", ubuntu(&FontOptions::default()));
-        assert_family("Verdana", verdana(&FontOptions::default()));
+        assert_family(Family::Cursive, cursive(&FontOptions::default()));
+        assert_family(Family::Fantasy, fantasy(&FontOptions::default()));
+        assert_family(Family::Monospace, monospace(&FontOptions::default()));
+        assert_family(Family::Serif, serif(&FontOptions::default()));
+        assert_family(Family::SansSerif, sans_serif(&FontOptions::default()));
 
-        assert!(cursive(&FontOptions::default()).is_ok());
-        assert!(fantasy(&FontOptions::default()).is_ok());
-        assert!(monospace(&FontOptions::default()).is_ok());
-        assert!(serif(&FontOptions::default()).is_ok());
-        assert!(sans_serif(&FontOptions::default()).is_ok());
+        assert_family(Family::Name("Arial"), arial(&FontOptions::default()));
+        assert_family(
+            Family::Name("Arial Black"),
+            arial_black(&FontOptions::default()),
+        );
+        assert_family(
+            Family::Name("Baskerville"),
+            baskerville(&FontOptions::default()),
+        );
+        assert_family(
+            Family::Name("Comic Sans MS"),
+            comic_sans_ms(&FontOptions::default()),
+        );
+        assert_family(Family::Name("Consolas"), consolas(&FontOptions::default()));
+        assert_family(
+            Family::Name("Courier New"),
+            courier_new(&FontOptions::default()),
+        );
+        assert_family(
+            Family::Name("DejaVu Sans"),
+            dejavu_sans(&FontOptions::default()),
+        );
+        assert_family(Family::Name("Garamond"), garamond(&FontOptions::default()));
+        assert_family(Family::Name("Georgia"), georgia(&FontOptions::default()));
+        assert_family(
+            Family::Name("Helvetica Neue"),
+            helvetica_neue(&FontOptions::default()),
+        );
+        assert_family(Family::Name("Impact"), impact(&FontOptions::default()));
+        assert_family(Family::Name("Inter"), inter(&FontOptions::default()));
+        assert_family(Family::Name("Lato"), lato(&FontOptions::default()));
+        assert_family(Family::Name("Menlo"), menlo(&FontOptions::default()));
+        assert_family(Family::Name("Monaco"), monaco(&FontOptions::default()));
+        assert_family(
+            Family::Name("Noto Sans"),
+            noto_sans(&FontOptions::default()),
+        );
+        assert_family(
+            Family::Name("Noto Sans Mono"),
+            noto_sans_mono(&FontOptions::default()),
+        );
+        assert_family(
+            Family::Name("Noto Serif"),
+            noto_serif(&FontOptions::default()),
+        );
+        assert_family(
+            Family::Name("Open Sans"),
+            open_sans(&FontOptions::default()),
+        );
+        assert_family(Family::Name("Palatino"), palatino(&FontOptions::default()));
+        assert_family(Family::Name("Roboto"), roboto(&FontOptions::default()));
+        assert_family(Family::Name("SF Pro"), sf_pro(&FontOptions::default()));
+        assert_family(Family::Name("Segoe UI"), segoe_ui(&FontOptions::default()));
+        assert_family(
+            Family::Name("Source Code Pro"),
+            source_code_pro(&FontOptions::default()),
+        );
+        assert_family(Family::Name("Tahoma"), tahoma(&FontOptions::default()));
+        assert_family(
+            Family::Name("Times New Roman"),
+            times_new_roman(&FontOptions::default()),
+        );
+        assert_family(
+            Family::Name("Trebuchet MS"),
+            trebuchet_ms(&FontOptions::default()),
+        );
+        assert_family(Family::Name("Ubuntu"), ubuntu(&FontOptions::default()));
+        assert_family(Family::Name("Verdana"), verdana(&FontOptions::default()));
 
         assert!(!system_font_names().is_empty());
     }
