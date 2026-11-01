@@ -141,7 +141,7 @@ impl VulkanRenderer {
         let thread_context_index = Self::thread_context_index()?;
         let descriptor_sets = compute_queue_context.frames[device_context.current_frame_index]
             .thread_contexts[thread_context_index]
-            .descriptor_pools
+            .descriptor_pool_manager
             .allocate(&device_context.logical_device, &pipeline.descriptor_layouts)?;
 
         for (i, &binding_set) in binding_sets.iter().enumerate() {
@@ -265,7 +265,7 @@ impl VulkanRenderer {
         let descriptor_sets = device_context.graphics_queue_context.frames
             [device_context.current_frame_index]
             .thread_contexts[thread_context_index]
-            .descriptor_pools
+            .descriptor_pool_manager
             .allocate(&device_context.logical_device, &pipeline.descriptor_layouts)?;
 
         for (i, &binding_set) in binding_sets.iter().enumerate() {

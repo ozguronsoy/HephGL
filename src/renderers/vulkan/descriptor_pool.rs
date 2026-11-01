@@ -18,8 +18,8 @@ const DESCRIPTOR_TYPES: [DescriptorType; 4] = [
     DescriptorType::SAMPLER,
 ];
 
-/// A growable collection of descriptor pools.
-pub struct DescriptorPools {
+/// Manages a growable collection of descriptor pools.
+pub struct DescriptorPoolManager {
     pools: Vec<DescriptorPool>,
     /// The index of the pool the sets are currently allocated from.
     current_index: usize,
@@ -27,7 +27,7 @@ pub struct DescriptorPools {
     next_max_sets: u32,
 }
 
-impl Default for DescriptorPools {
+impl Default for DescriptorPoolManager {
     fn default() -> Self {
         Self {
             pools: Vec::new(),
@@ -37,7 +37,7 @@ impl Default for DescriptorPools {
     }
 }
 
-impl DescriptorPools {
+impl DescriptorPoolManager {
     /// Allocates one descriptor set for each layout. Creates a larger pool if the existing ones
     /// don't have enough space.
     pub fn allocate(
@@ -141,10 +141,10 @@ mod tests {
 
     #[test]
     fn test_default() {
-        let pools = DescriptorPools::default();
-        assert!(pools.pools.is_empty());
-        assert_eq!(pools.current_index, 0);
-        assert_eq!(pools.next_max_sets, INITIAL_MAX_SETS);
+        let descriptor_pool_manager = DescriptorPoolManager::default();
+        assert!(descriptor_pool_manager.pools.is_empty());
+        assert_eq!(descriptor_pool_manager.current_index, 0);
+        assert_eq!(descriptor_pool_manager.next_max_sets, INITIAL_MAX_SETS);
     }
 
     #[test]
