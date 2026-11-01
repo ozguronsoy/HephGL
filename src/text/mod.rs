@@ -1,5 +1,5 @@
 mod error;
-mod fonts;
+pub mod fonts;
 mod glyph;
 mod mesh;
 mod options;
@@ -12,7 +12,6 @@ use fontdue::{
 };
 use glyph::{Glyph, RasterizedGlyph};
 
-pub use crate::text::fonts::*;
 pub use crate::text::options::*;
 use crate::{Error, Result, math::Vec3};
 
