@@ -7,8 +7,8 @@ on:
   workflow_call:
 
 jobs:
-  unit-tests:
-    name: Run Unit Tests (${{ matrix.os }} - ${{ matrix.build.name }})
+  build:
+    name: Build (${{ matrix.os }} - ${{ matrix.build.name }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -26,6 +26,37 @@ jobs:
 
       - name: Setup Environment
         uses: ./.github/actions/setup-env
+        with:
+          cache-key: ${{ matrix.os }}-${{ matrix.build.name }}
+
+      - name: Build Project
+        run: |
+          cargo build ${{ matrix.build.flag }}
+          cargo test --no-run ${{ matrix.build.flag }}
+          cargo nextest run --no-run ${{ matrix.build.flag }}
+
+  unit-tests:
+    name: Run Unit Tests (${{ matrix.os }} - ${{ matrix.build.name }})
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        build:
+          - name: debug
+            flag: ""
+          - name: release
+            flag: "--release"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup-env
+        with:
+          cache-key: ${{ matrix.os }}-${{ matrix.build.name }}
 
       - name: Run Tests
         run: cargo test ${{ matrix.build.flag }}
@@ -52,6 +83,7 @@ jobs:
         uses: ./.github/actions/setup-env
         with:
           nextest: true
+          cache-key: ${{ matrix.os }}-${{ matrix.build.name }}
 
       - name: Run Tests
         shell: bash
@@ -71,6 +103,7 @@ jobs:
         with:
           nextest: true
           llvm-cov: true
+          cache-key: ubuntu-latest-debug
 
       - name: Run Code Coverage
         shell: bash
