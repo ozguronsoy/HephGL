@@ -28,7 +28,7 @@ jobs:
         uses: ./.github/actions/setup-env
         with:
           nextest: true
-          cache-key: ${{ matrix.os }}-${{ matrix.build.name }}
+          cache-key: tests-${{ matrix.os }}-${{ matrix.build.name }}
 
       - name: Build Project
         shell: bash
@@ -58,7 +58,7 @@ jobs:
       - name: Setup Environment
         uses: ./.github/actions/setup-env
         with:
-          cache-key: ${{ matrix.os }}-${{ matrix.build.name }}
+          cache-key: tests-${{ matrix.os }}-${{ matrix.build.name }}
 
       - name: Run Tests
         run: cargo test ${{ matrix.build.flag }}
@@ -85,7 +85,7 @@ jobs:
         uses: ./.github/actions/setup-env
         with:
           nextest: true
-          cache-key: ${{ matrix.os }}-${{ matrix.build.name }}
+          cache-key: tests-${{ matrix.os }}-${{ matrix.build.name }}
 
       - name: Run Tests
         shell: bash
@@ -105,7 +105,7 @@ jobs:
         with:
           nextest: true
           llvm-cov: true
-          cache-key: ubuntu-latest-debug
+          cache-key: coverage
 
       - name: Run Code Coverage
         shell: bash
