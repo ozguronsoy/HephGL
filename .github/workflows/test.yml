@@ -80,9 +80,11 @@ jobs:
         run: cargo llvm-cov report --fail-under-functions 80 --fail-under-lines 80 --fail-under-regions 80
 
       - name: Generate LCOV
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: cargo llvm-cov report --lcov --output-path lcov.info
 
       - name: Upload to Coveralls
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
