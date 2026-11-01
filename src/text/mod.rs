@@ -1,4 +1,5 @@
 mod error;
+pub mod fonts;
 mod glyph;
 mod mesh;
 mod options;
