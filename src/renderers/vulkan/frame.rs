@@ -8,7 +8,7 @@ use crate::{
     renderers::{
         thread_context::ThreadContextArray,
         vulkan::{
-            VulkanRenderer, descriptor_pool::DescriptorPools, queue::QueueContext,
+            VulkanRenderer, descriptor_pool::DescriptorPoolManager, queue::QueueContext,
             resources::VulkanBuffer,
         },
     },
@@ -33,9 +33,9 @@ pub struct ThreadContext {
     pub command_pool: CommandPool,
     /// The primary command buffer used to record commands for this thread.
     pub command_buffer: CommandBuffer,
-    /// The descriptor pools used for allocating the descriptor sets of this thread. They are
-    /// created on demand, and grow as more sets are needed.
-    pub descriptor_pools: DescriptorPools,
+    /// Manages descriptor pools for allocating this thread's descriptor sets. Pools are created on
+    /// demand and grow as needed.
+    pub descriptor_pool_manager: DescriptorPoolManager,
     /// The temporary buffers used for transfering data to the GPU.
     pub transfer_buffers: Vec<VulkanBuffer>,
     /// Indicates whether any command has been recorded in this thread.
@@ -196,7 +196,7 @@ impl VulkanRenderer {
 
         let destroy_desc_pools = |queue_context: &mut QueueContext, frame_index: usize| {
             queue_context.frames[frame_index].thread_contexts[thread_context_index]
-                .descriptor_pools
+                .descriptor_pool_manager
                 .destroy(&device_context.logical_device);
         };
 

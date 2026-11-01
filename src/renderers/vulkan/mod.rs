@@ -1696,7 +1696,7 @@ impl Renderer for VulkanRenderer {
                     ash::vk::CommandPoolResetFlags::empty(),
                 )?;
                 current_frame
-                    .descriptor_pools
+                    .descriptor_pool_manager
                     .reset(&device_context.logical_device)?;
                 for transfer_buffer in &mut current_frame.transfer_buffers {
                     device_context
