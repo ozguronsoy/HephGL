@@ -284,5 +284,7 @@ mod tests {
         assert!(monospace(&FontOptions::default()).is_ok());
         assert!(serif(&FontOptions::default()).is_ok());
         assert!(sans_serif(&FontOptions::default()).is_ok());
+
+        assert!(!system_font_names().is_empty());
     }
 }
