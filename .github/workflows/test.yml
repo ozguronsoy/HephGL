@@ -31,10 +31,11 @@ jobs:
           cache-key: ${{ matrix.os }}-${{ matrix.build.name }}
 
       - name: Build Project
+        shell: bash
         run: |
           cargo build ${{ matrix.build.flag }}
           cargo test --no-run ${{ matrix.build.flag }}
-          cargo nextest run --no-run ${{ matrix.build.flag }}
+          $HEPHGL_GUI_PREFIX cargo nextest run --no-run ${{ matrix.build.flag }}
 
   unit-tests:
     name: Run Unit Tests (${{ matrix.os }} - ${{ matrix.build.name }})
