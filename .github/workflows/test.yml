@@ -27,6 +27,7 @@ jobs:
       - name: Setup Environment
         uses: ./.github/actions/setup-env
         with:
+          nextest: true
           cache-key: ${{ matrix.os }}-${{ matrix.build.name }}
 
       - name: Build Project
