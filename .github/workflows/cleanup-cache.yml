@@ -1,0 +1,140 @@
+
+name: Cleanup Actions Cache
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  actions: write
+  pull-requests: read
+
+concurrency:
+  group: actions-cache-cleanup-${{ github.ref }}
+  queue: max
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+
+    env:
+      PRS_BETWEEN_CACHE_CLEANUPS: 10
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Restore cleanup state
+        uses: actions/cache/restore@v6
+        with:
+          path: .cache/actions-cache-cleanup
+          key: actions-cache-cleanup-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            actions-cache-cleanup-
+
+      - name: Count merged PRs
+        id: count
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          STATE_FILE=".cache/actions-cache-cleanup/state.json"
+          mkdir -p "$(dirname "$STATE_FILE")"
+
+          if [[ ! -s "$STATE_FILE" ]]; then
+            NOW=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+
+            jq -n \
+              --arg timestamp "$NOW" \
+              '{last_cleanup_at: $timestamp, last_cleanup_pr_numbers: []}' \
+              > "$STATE_FILE"
+
+            echo "Initialized baseline: $NOW"
+            echo "initialize=true" >> "$GITHUB_OUTPUT"
+            echo "should_cleanup=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          LAST_CLEANUP_AT=$(jq -r '.last_cleanup_at' "$STATE_FILE")
+          LAST_CLEANUP_PR_NUMBERS=$(jq -c '.last_cleanup_pr_numbers' "$STATE_FILE")
+
+          echo "Last cleanup: $LAST_CLEANUP_AT"
+
+          ALL_MERGED_PRS="$RUNNER_TEMP/merged-prs.jsonl"
+
+          gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/pulls?state=closed&per_page=100" |
+          jq -c '
+            .[]
+            | select(.merged_at != null and .base.ref == "main")
+            | {number, merged_at}
+          ' > "$ALL_MERGED_PRS"
+
+          NEW_MERGED_PRS="$RUNNER_TEMP/new-merged-prs.jsonl"
+
+          jq -c \
+            --arg baseline "$LAST_CLEANUP_AT" \
+            --argjson baseline_numbers "$LAST_CLEANUP_PR_NUMBERS" '
+              .number as $number
+              | select(
+                  .merged_at > $baseline
+                  or (
+                    .merged_at == $baseline
+                    and (($baseline_numbers | index($number)) == null)
+                  )
+                )
+            ' "$ALL_MERGED_PRS" > "$NEW_MERGED_PRS"
+
+          COUNT=$(jq -s 'length' "$NEW_MERGED_PRS")
+
+          echo "Merged PRs since last cleanup: $COUNT"
+          echo "Cleanup threshold: $PRS_BETWEEN_CACHE_CLEANUPS"
+
+          echo "merged_pr_count=$COUNT" >> "$GITHUB_OUTPUT"
+
+          if (( COUNT >= PRS_BETWEEN_CACHE_CLEANUPS )); then
+            echo "should_cleanup=true" >> "$GITHUB_OUTPUT"
+
+            LATEST_MERGE=$(jq -sr 'map(.merged_at) | max' "$NEW_MERGED_PRS")
+
+            LATEST_PR_NUMBERS=$(jq -sc \
+              --arg timestamp "$LATEST_MERGE" '
+                [.[] | select(.merged_at == $timestamp) | .number]
+              ' "$ALL_MERGED_PRS")
+
+            echo "new_baseline_at=$LATEST_MERGE" >> "$GITHUB_OUTPUT"
+            echo "new_baseline_pr_numbers=$LATEST_PR_NUMBERS" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_cleanup=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Delete Actions caches
+        if: steps.count.outputs.should_cleanup == 'true'
+        run: |
+          echo "Threshold reached. Deleting all Actions caches..."
+
+          gh cache delete --all \
+            --repo "$GITHUB_REPOSITORY" \
+            --succeed-on-no-caches
+
+          echo "Cache cleanup completed."
+
+      - name: Update cleanup baseline
+        if: steps.count.outputs.should_cleanup == 'true'
+        env:
+          NEW_BASELINE_AT: ${{ steps.count.outputs.new_baseline_at }}
+          NEW_BASELINE_PR_NUMBERS: ${{ steps.count.outputs.new_baseline_pr_numbers }}
+        run: |
+          jq -n \
+            --arg timestamp "$NEW_BASELINE_AT" \
+            --argjson numbers "$NEW_BASELINE_PR_NUMBERS" \
+            '{
+              last_cleanup_at: $timestamp,
+              last_cleanup_pr_numbers: $numbers
+            }' > .cache/actions-cache-cleanup/state.json
+
+      - name: Save cleanup state
+        if: steps.count.outputs.initialize == 'true' || steps.count.outputs.should_cleanup == 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .cache/actions-cache-cleanup
+          key: actions-cache-cleanup-${{ github.run_id }}-${{ github.run_attempt }}

@@ -23,7 +23,7 @@ jobs:
         uses: ./.github/actions/setup-env
         with:
           nextest: true
-          cache-key: ${{ matrix.os }}-examples
+          cache-key: examples-${{ matrix.os }}
 
       - name: Run Examples
         shell: bash
