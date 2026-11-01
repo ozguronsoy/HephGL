@@ -1,4 +1,4 @@
-use std::sync::LazyLock;
+use std::{collections::BTreeSet, sync::LazyLock};
 
 use fontdb::{Family, Query, Stretch, Style, Weight};
 
@@ -24,6 +24,16 @@ static SYSTEM_FONTS: LazyLock<fontdb::Database> = LazyLock::new(|| {
     database.load_fonts_dir(SYSTEM_FONTS_DIRECTORY);
     database
 });
+
+/// Gets the font family names available on the system.
+pub fn system_font_names() -> Vec<String> {
+    SYSTEM_FONTS
+        .faces()
+        .flat_map(|face| face.families.iter().map(|(name, _)| name.clone()))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
 
 /// Loads the Baskerville font family.
 pub fn baskerville(options: &FontOptions) -> Result<Font> {
