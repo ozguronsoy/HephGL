@@ -12,7 +12,7 @@ categories = ["graphics"]
 
 [dependencies]
 renkrs = "0.1.1"
-glam = "0.33.2"
+glam = "0.34.1"
 raw-window-handle = "0.6.2"
 ash = "0.38.0"
 ash-window = "0.13.0"
