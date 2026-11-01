@@ -18,6 +18,9 @@ inputs:
     description: 'Indicates whether to install llvm-cov.'
     required: false
     default: 'false'
+  cache-key:
+    description: 'The key used to separate Rust build caches.'
+    required: true
 
 runs:
   using: "composite"
@@ -48,7 +51,8 @@ runs:
     - name: Cache Rust dependencies
       uses: Swatinem/rust-cache@v2
       with:
-        key: ${{ runner.os }}
+        shared-key: ${{ inputs.cache-key }}
+        cache-workspace-crates: true
 
     - name: Install Vulkan SDK
       if: inputs.nextest == 'true'
