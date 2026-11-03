@@ -49,8 +49,7 @@ impl DescriptorPoolManager {
             return Ok(Vec::new());
         }
 
-        // The pools are reset every frame, so a pool that is too full for this request is skipped
-        // until the next reset.
+        // A pool that is too full for this request is skipped until the manager is reset.
         while let Some(&pool) = self.pools.get(self.current_index) {
             let sets = Self::try_allocate(device, pool, layouts)?;
             if !sets.is_empty() {
