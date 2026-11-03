@@ -272,6 +272,7 @@ impl VulkanRendering for DynamicRendering {
             descriptor_layouts,
             descriptor_binding_counts,
             descriptor_set_cache_per_frame: Vec::new(),
+            resource_handles_per_frame: Vec::new(),
             thread_id: std::thread::current().id(),
         })
     }
