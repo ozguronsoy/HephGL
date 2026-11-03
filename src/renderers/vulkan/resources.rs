@@ -68,6 +68,7 @@ pub struct VulkanGraphicsPipeline {
     /// This is used to detect when the pipeline is cloned to a worker thread so we can clean the
     /// `descriptor_sets` vector to avoid using the resources of another thread.
     pub(super) thread_id: std::thread::ThreadId,
+    pub(super) time_stamps: Vec<std::time::Instant>,
 }
 
 impl RendererResource for VulkanGraphicsPipeline {
@@ -273,23 +274,37 @@ impl VulkanRenderer {
             .as_mut()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
+        let time_stamp = device_context.graphics_queue_context.frames
+            [device_context.current_frame_index]
+            .thread_contexts[thread_context_index]
+            .descriptor_pool_manager
+            .time_stamp();
 
         let binding_count = pipeline.descriptor_binding_counts.iter().sum();
 
         if pipeline.descriptor_layouts.is_empty() || binding_count == 0 {
             return Ok(Vec::new());
         }
-        if self.settings.frames_in_flight != pipeline.descriptor_set_cache_per_frame.len() {
-            // TODO: This is a temporary fix for when the frames in flight setting is changed at
-            // runtime. We need to clear the descriptor sets whenever they are invalidated. We can
-            // use a timestamp in the `DescriptorPoolManager` to determine validity.
+        if pipeline.descriptor_set_cache_per_frame.len() != self.settings.frames_in_flight {
             pipeline.descriptor_set_cache_per_frame.clear();
+            pipeline.resource_handles_per_frame.clear();
+            pipeline.time_stamps.clear();
             pipeline
                 .descriptor_set_cache_per_frame
                 .resize(self.settings.frames_in_flight, Vec::new());
             pipeline
                 .resource_handles_per_frame
                 .resize(self.settings.frames_in_flight, Vec::new());
+            pipeline
+                .time_stamps
+                .resize(self.settings.frames_in_flight, std::time::Instant::now());
+        }
+        if let Some(time_stamp) = time_stamp
+            && pipeline.time_stamps[device_context.current_frame_index] != time_stamp
+        {
+            pipeline.descriptor_set_cache_per_frame[device_context.current_frame_index].clear();
+            pipeline.resource_handles_per_frame[device_context.current_frame_index].clear();
+            pipeline.time_stamps[device_context.current_frame_index] = time_stamp;
         }
         if !pipeline.descriptor_set_cache_per_frame[device_context.current_frame_index]
             .len()
@@ -308,6 +323,8 @@ impl VulkanRenderer {
             pipeline.descriptor_set_cache_per_frame[device_context.current_frame_index].clear();
             pipeline.resource_handles_per_frame[device_context.current_frame_index].clear();
             pipeline.thread_id = std::thread::current().id();
+            pipeline.time_stamps[device_context.current_frame_index] =
+                time_stamp.unwrap_or(std::time::Instant::now());
         }
 
         Self::verify_binding_sets(
@@ -338,6 +355,16 @@ impl VulkanRenderer {
                 binding_sets,
                 &descriptor_sets,
             )?;
+            if time_stamp.is_none() {
+                // This is the first pool/set allocation.
+                pipeline.time_stamps[device_context.current_frame_index] = device_context
+                    .graphics_queue_context
+                    .frames[device_context.current_frame_index]
+                    .thread_contexts[thread_context_index]
+                    .descriptor_pool_manager
+                    .time_stamp()
+                    .unwrap();
+            }
         } else if !update_sets {
             return Ok(descriptor_sets);
         }

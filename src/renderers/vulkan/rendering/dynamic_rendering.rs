@@ -274,6 +274,7 @@ impl VulkanRendering for DynamicRendering {
             descriptor_set_cache_per_frame: Vec::new(),
             resource_handles_per_frame: Vec::new(),
             thread_id: std::thread::current().id(),
+            time_stamps: Vec::new(),
         })
     }
     fn destroy_graphics_pipeline(
