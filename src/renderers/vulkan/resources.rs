@@ -63,6 +63,7 @@ pub struct VulkanGraphicsPipeline {
     pub(super) layout: PipelineLayout,
     pub(super) descriptor_layouts: Vec<DescriptorSetLayout>,
     pub(super) descriptor_binding_counts: Vec<usize>,
+    /// Each frame has it's own descriptor pools/sets.
     pub(super) descriptor_set_cache_per_frame: Vec<Vec<DescriptorSet>>,
     pub(super) resource_handles_per_frame: Vec<Vec<VulkanResourceHandle>>,
     /// This is used to detect when the pipeline is cloned to a worker thread so we can clean the
@@ -528,6 +529,13 @@ impl VulkanRenderer {
         Ok(())
     }
 
+    /// Number of binding sets and the number of bindings in each set are constant. Thus we can
+    /// split the cached descriptor sets and resource handles to chunks. If we find a chunk of
+    /// resource handles that match the `binding_sets` input, that's a cache-hit. We use that
+    /// chunk's position to get the cached descriptor sets since they are guaranteed to be in the
+    /// same chunk position.
+    ///
+    /// TODO: Return descriptor sets as a slice to reduce allocations.
     fn get_cached_descriptor_sets(
         layout_count: usize,
         binding_count: usize,
