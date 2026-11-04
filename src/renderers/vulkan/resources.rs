@@ -20,7 +20,7 @@ use crate::{
 #[derive(Clone, Copy)]
 pub(super) enum VulkanResourceHandle {
     Buffer(Buffer, BufferUsage, usize, usize),
-    Texture(ash::vk::Image),
+    Texture(ash::vk::ImageView),
     Sampler(ash::vk::Sampler),
 }
 
@@ -579,7 +579,7 @@ impl VulkanRenderer {
                             }
                             update |= r_usage != usage || r_offset != offset || r_size != size;
                         }
-                        VulkanResourceHandle::Texture(image) => {
+                        VulkanResourceHandle::Texture(image_view) => {
                             let ResourceBindingType::Texture { handle, .. } = binding.resource
                             else {
                                 return false;
@@ -587,10 +587,9 @@ impl VulkanRenderer {
                             let Ok(vulkan_texture) = resource_ref::<VulkanTexture>(handle) else {
                                 return false;
                             };
-                            if vulkan_texture.image != image {
+                            if vulkan_texture.image_view != image_view {
                                 return false;
                             }
-                            // TODO: Make sampler updatable?
                         }
                         VulkanResourceHandle::Sampler(sampler) => {
                             let ResourceBindingType::Sampler { handle, .. } = binding.resource
@@ -645,7 +644,7 @@ impl VulkanRenderer {
                     }
                     ResourceBindingType::Texture { handle } => {
                         let vulkan_texture = resource_ref::<VulkanTexture>(handle)?;
-                        VulkanResourceHandle::Texture(vulkan_texture.image)
+                        VulkanResourceHandle::Texture(vulkan_texture.image_view)
                     }
                     ResourceBindingType::Sampler { handle } => {
                         let vulkan_sampler = resource_ref::<VulkanSampler>(handle)?;
