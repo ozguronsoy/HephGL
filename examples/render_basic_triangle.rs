@@ -44,7 +44,14 @@ fn example(
     const VERTEX_COUNT: u32 = 3;
     const INSTANCE_COUNT: u32 = 1;
     renderer
-        .record_graphics_command(pipeline.as_mut(), &[], VERTEX_COUNT, INSTANCE_COUNT)
+        .record_graphics_command(
+            pipeline.as_mut(),
+            None,
+            &[],
+            &[],
+            VERTEX_COUNT,
+            INSTANCE_COUNT,
+        )
         .unwrap();
 
     renderer.end_frame().unwrap();
