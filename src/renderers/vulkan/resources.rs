@@ -305,7 +305,17 @@ impl VulkanRenderer {
             pipeline.descriptor_set_caches.clear();
             pipeline
                 .descriptor_set_caches
-                .resize(self.settings.frames_in_flight, DescriptorSetCache::new());
+                .resize_with(self.settings.frames_in_flight, DescriptorSetCache::new);
+        }
+        if pipeline.thread_id != std::thread::current().id() {
+            // The pipeline is cloned to a worker thread, we need to clear the descriptor sets
+            // since they are not valid for this thread.
+            for descriptor_set_cache in &mut pipeline.descriptor_set_caches {
+                descriptor_set_cache.descriptor_sets.clear();
+                descriptor_set_cache.resource_handles.clear();
+                descriptor_set_cache.time_stamp = time_stamp.unwrap_or(std::time::Instant::now());
+            }
+            pipeline.thread_id = std::thread::current().id();
         }
 
         let descriptor_set_cache =
@@ -317,26 +327,22 @@ impl VulkanRenderer {
             descriptor_set_cache.resource_handles.clear();
             descriptor_set_cache.time_stamp = time_stamp;
         }
-        if !descriptor_set_cache
-            .descriptor_sets
-            .len()
-            .is_multiple_of(pipeline.descriptor_layouts.len())
-            || !descriptor_set_cache
+
+        let is_cache_consistent = {
+            let descriptor_sets = descriptor_set_cache
+                .descriptor_sets
+                .chunks_exact(pipeline.descriptor_layouts.len());
+            let resource_handles = descriptor_set_cache
                 .resource_handles
-                .len()
-                .is_multiple_of(binding_count)
-        {
+                .chunks_exact(binding_count);
+            descriptor_sets.remainder().is_empty()
+                && resource_handles.remainder().is_empty()
+                && descriptor_sets.len() == resource_handles.len()
+        };
+        if !is_cache_consistent {
             // The descriptor sets pipeline is corrupted somehow.
             descriptor_set_cache.descriptor_sets.clear();
             descriptor_set_cache.resource_handles.clear();
-        }
-        if pipeline.thread_id != std::thread::current().id() {
-            // The pipeline is cloned to a worker thread, we need to clear the descriptor sets
-            // since they are not valid for this thread.
-            descriptor_set_cache.descriptor_sets.clear();
-            descriptor_set_cache.resource_handles.clear();
-            pipeline.thread_id = std::thread::current().id();
-            descriptor_set_cache.time_stamp = time_stamp.unwrap_or(std::time::Instant::now());
         }
 
         Self::verify_binding_sets(
@@ -345,37 +351,36 @@ impl VulkanRenderer {
             binding_sets,
         )?;
 
-        let (mut descriptor_sets, update_sets) = Self::get_cached_descriptor_sets(
+        let mut descriptor_sets = Self::get_cached_descriptor_sets(
             pipeline.descriptor_layouts.len(),
             binding_count,
             descriptor_set_cache,
             binding_sets,
         );
+        if !descriptor_sets.is_empty() {
+            return Ok(descriptor_sets);
+        }
 
-        if descriptor_sets.is_empty() {
-            descriptor_sets = device_context.graphics_queue_context.frames
+        descriptor_sets = device_context.graphics_queue_context.frames
+            [device_context.current_frame_index]
+            .thread_contexts[thread_context_index]
+            .descriptor_pool_manager
+            .allocate(&device_context.logical_device, &pipeline.descriptor_layouts)?;
+        Self::extend_cached_descriptor_sets(
+            pipeline.descriptor_layouts.len(),
+            binding_count,
+            descriptor_set_cache,
+            binding_sets,
+            &descriptor_sets,
+        )?;
+        if time_stamp.is_none() {
+            // This is the first pool/set allocation.
+            descriptor_set_cache.time_stamp = device_context.graphics_queue_context.frames
                 [device_context.current_frame_index]
                 .thread_contexts[thread_context_index]
                 .descriptor_pool_manager
-                .allocate(&device_context.logical_device, &pipeline.descriptor_layouts)?;
-            Self::extend_cached_descriptor_sets(
-                pipeline.descriptor_layouts.len(),
-                binding_count,
-                descriptor_set_cache,
-                binding_sets,
-                &descriptor_sets,
-            )?;
-            if time_stamp.is_none() {
-                // This is the first pool/set allocation.
-                descriptor_set_cache.time_stamp = device_context.graphics_queue_context.frames
-                    [device_context.current_frame_index]
-                    .thread_contexts[thread_context_index]
-                    .descriptor_pool_manager
-                    .time_stamp()
-                    .unwrap();
-            }
-        } else if !update_sets {
-            return Ok(descriptor_sets);
+                .time_stamp()
+                .unwrap();
         }
 
         for (i, &binding_set) in binding_sets.iter().enumerate() {
@@ -549,9 +554,8 @@ impl VulkanRenderer {
         binding_count: usize,
         cache: &DescriptorSetCache,
         binding_sets: &[&[ResourceBinding<'_>]],
-    ) -> (Vec<DescriptorSet>, bool) {
-        let mut update = false;
-        let cached_sets = cache
+    ) -> Vec<DescriptorSet> {
+        cache
             .resource_handles
             .chunks_exact(binding_count)
             .position(|chunk| {
@@ -582,10 +586,13 @@ impl VulkanRenderer {
                             let Ok(vulkan_buffer) = resource_ref::<VulkanBuffer>(handle) else {
                                 return false;
                             };
-                            if vulkan_buffer.buffer != buffer {
+                            if vulkan_buffer.buffer != buffer
+                                || r_usage != usage
+                                || r_offset != offset
+                                || r_size != size
+                            {
                                 return false;
                             }
-                            update |= r_usage != usage || r_offset != offset || r_size != size;
                         }
                         VulkanResourceHandle::Texture(image_view) => {
                             let ResourceBindingType::Texture { handle, .. } = binding.resource
@@ -617,9 +624,7 @@ impl VulkanRenderer {
             })
             .and_then(|p| cache.descriptor_sets.chunks_exact(layout_count).nth(p))
             .unwrap_or_default()
-            .to_vec();
-        update |= cached_sets.is_empty();
-        (cached_sets, update)
+            .to_vec()
     }
 
     fn extend_cached_descriptor_sets(
