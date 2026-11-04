@@ -3,7 +3,7 @@ use std::any::{Any, type_name};
 use crate::{Error, Result};
 
 /// Defines the possible usages of a buffer.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq)]
 pub enum BufferUsage {
     /// The buffer is used to store general purpose data.
     Storage,

@@ -1,3 +1,8 @@
+use std::{
+    collections::HashMap,
+    hash::{DefaultHasher, Hash, Hasher},
+};
+
 use ash::vk::{
     Buffer, DescriptorSet, DescriptorSetLayout, DescriptorType, Handle, Pipeline, PipelineLayout,
 };
@@ -17,17 +22,10 @@ use crate::{
     shader::ShaderBindingType,
 };
 
-#[derive(Clone, Copy)]
-pub(super) enum VulkanResourceHandle {
-    Buffer(u32, Buffer, BufferUsage, usize, usize),
-    Texture(u32, ash::vk::ImageView),
-    Sampler(u32, ash::vk::Sampler),
-}
-
 #[derive(Clone)]
 pub(super) struct DescriptorSetCache {
     descriptor_sets: Vec<DescriptorSet>,
-    resource_handles: Vec<VulkanResourceHandle>,
+    chunk_indices: HashMap<u64, usize>,
     generation: Option<u64>,
     /// This is used to detect when the pipeline is cloned to a worker thread so we can clean the
     /// cache to avoid using the resources of another thread.
@@ -139,7 +137,7 @@ impl DescriptorSetCache {
     pub(super) fn new() -> Self {
         Self {
             descriptor_sets: Vec::new(),
-            resource_handles: Vec::new(),
+            chunk_indices: HashMap::new(),
             generation: None,
             thread_id: std::thread::current().id(),
         }
@@ -295,32 +293,31 @@ impl VulkanRenderer {
             .descriptor_pool_manager
             .generation();
 
-        let binding_count = pipeline.descriptor_binding_counts.iter().sum();
-
-        if pipeline.descriptor_layouts.is_empty() || binding_count == 0 {
+        if pipeline.descriptor_layouts.is_empty()
+            || pipeline.descriptor_binding_counts.iter().sum::<usize>() == 0
+        {
             return Ok(Vec::new());
         }
         if pipeline.descriptor_set_cache.thread_id != std::thread::current().id() {
             // The pipeline is cloned to a worker thread, we need to clear the descriptor sets
             // since they are not valid for this thread.
             pipeline.descriptor_set_cache.descriptor_sets.clear();
-            pipeline.descriptor_set_cache.resource_handles.clear();
+            pipeline.descriptor_set_cache.chunk_indices.clear();
             pipeline.descriptor_set_cache.generation = Some(pool_generation);
             pipeline.descriptor_set_cache.thread_id = std::thread::current().id();
         }
         if pipeline.descriptor_set_cache.generation != Some(pool_generation) {
             pipeline.descriptor_set_cache.descriptor_sets.clear();
-            pipeline.descriptor_set_cache.resource_handles.clear();
+            pipeline.descriptor_set_cache.chunk_indices.clear();
             pipeline.descriptor_set_cache.generation = Some(pool_generation);
         }
         if !Self::validate_cache_consistency(
             pipeline.descriptor_layouts.len(),
-            binding_count,
             &pipeline.descriptor_set_cache,
         ) {
             // The descriptor sets pipeline is corrupted somehow.
             pipeline.descriptor_set_cache.descriptor_sets.clear();
-            pipeline.descriptor_set_cache.resource_handles.clear();
+            pipeline.descriptor_set_cache.chunk_indices.clear();
         }
 
         Self::validate_binding_sets(
@@ -328,12 +325,12 @@ impl VulkanRenderer {
             &pipeline.descriptor_binding_counts,
             binding_sets,
         )?;
+        let hash = Self::hash_resource_bindings(binding_sets)?;
 
         let mut descriptor_sets = Self::get_cached_descriptor_sets(
             pipeline.descriptor_layouts.len(),
-            binding_count,
             &pipeline.descriptor_set_cache,
-            binding_sets,
+            hash,
         );
         if !descriptor_sets.is_empty() {
             return Ok(descriptor_sets);
@@ -346,9 +343,8 @@ impl VulkanRenderer {
             .allocate(&device_context.logical_device, &pipeline.descriptor_layouts)?;
         Self::extend_cached_descriptor_sets(
             pipeline.descriptor_layouts.len(),
-            binding_count,
             &mut pipeline.descriptor_set_cache,
-            binding_sets,
+            hash,
             &descriptor_sets,
         )?;
 
@@ -477,16 +473,9 @@ impl VulkanRenderer {
         }
     }
 
-    fn validate_cache_consistency(
-        layout_count: usize,
-        binding_count: usize,
-        cache: &DescriptorSetCache,
-    ) -> bool {
+    fn validate_cache_consistency(layout_count: usize, cache: &DescriptorSetCache) -> bool {
         let descriptor_sets = cache.descriptor_sets.chunks_exact(layout_count);
-        let resource_handles = cache.resource_handles.chunks_exact(binding_count);
-        descriptor_sets.remainder().is_empty()
-            && resource_handles.remainder().is_empty()
-            && descriptor_sets.len() == resource_handles.len()
+        descriptor_sets.remainder().is_empty() && descriptor_sets.len() == cache.chunk_indices.len()
     }
 
     fn validate_binding_sets(
@@ -523,136 +512,86 @@ impl VulkanRenderer {
         Ok(())
     }
 
-    /// Number of binding sets and the number of bindings in each set are constant. Thus we can
-    /// split the cached descriptor sets and resource handles to chunks. If we find a chunk of
-    /// resource handles that match the `binding_sets` input, that's a cache-hit. We use that
-    /// chunk's position to get the cached descriptor sets since they are guaranteed to be in the
-    /// same chunk position.
-    ///
+    fn hash_resource_bindings(binding_sets: &[&[ResourceBinding<'_>]]) -> Result<u64> {
+        let mut hasher = DefaultHasher::new();
+        for binding in binding_sets.iter().flat_map(|s| {
+            s.iter().filter(|binding| {
+                // Exclude vertex and index buffers from the count since they are not
+                // part of the descriptor set.
+                !matches!(
+                    binding.resource,
+                    ResourceBindingType::Buffer {
+                        usage: BufferUsage::Vertex | BufferUsage::Index,
+                        ..
+                    }
+                )
+            })
+        }) {
+            binding.binding.hash(&mut hasher);
+            match binding.resource {
+                ResourceBindingType::Buffer {
+                    handle,
+                    usage,
+                    offset,
+                    size,
+                } => {
+                    let Ok(vulkan_buffer) = resource_ref::<VulkanBuffer>(handle) else {
+                        return Err(Error::invalid_argument(
+                            "Invalid buffer type, expected a VulkanBuffer.",
+                        ));
+                    };
+                    vulkan_buffer.buffer.hash(&mut hasher);
+                    usage.hash(&mut hasher);
+                    offset.hash(&mut hasher);
+                    size.hash(&mut hasher);
+                }
+                ResourceBindingType::Texture { handle } => {
+                    let Ok(vulkan_texture) = resource_ref::<VulkanTexture>(handle) else {
+                        return Err(Error::invalid_argument(
+                            "Invalid buffer type, expected a VulkanTexture.",
+                        ));
+                    };
+                    vulkan_texture.image.hash(&mut hasher);
+                    vulkan_texture.image_view.hash(&mut hasher);
+                }
+                ResourceBindingType::Sampler { handle } => {
+                    let Ok(vulkan_sampler) = resource_ref::<VulkanSampler>(handle) else {
+                        return Err(Error::invalid_argument(
+                            "Invalid buffer type, expected a VulkanSampler.",
+                        ));
+                    };
+                    vulkan_sampler.sampler.hash(&mut hasher);
+                }
+            }
+        }
+        Ok(hasher.finish())
+    }
+
     /// TODO: Return descriptor sets as a slice to reduce allocations.
     fn get_cached_descriptor_sets(
         layout_count: usize,
-        binding_count: usize,
         cache: &DescriptorSetCache,
-        binding_sets: &[&[ResourceBinding<'_>]],
+        hash: u64,
     ) -> Vec<DescriptorSet> {
-        cache
-            .resource_handles
-            .chunks_exact(binding_count)
-            .position(|chunk| {
-                for (&handle, &binding) in chunk.iter().zip(binding_sets.iter().flat_map(|&s| {
-                    s.iter().filter(|binding| {
-                        // Exclude vertex and index buffers from the count since they are not
-                        // part of the descriptor set.
-                        !matches!(
-                            binding.resource,
-                            ResourceBindingType::Buffer {
-                                usage: BufferUsage::Vertex | BufferUsage::Index,
-                                ..
-                            }
-                        )
-                    })
-                })) {
-                    match handle {
-                        VulkanResourceHandle::Buffer(b, buffer, r_usage, r_offset, r_size) => {
-                            let ResourceBindingType::Buffer {
-                                handle,
-                                usage,
-                                offset,
-                                size,
-                            } = binding.resource
-                            else {
-                                return false;
-                            };
-                            let Ok(vulkan_buffer) = resource_ref::<VulkanBuffer>(handle) else {
-                                return false;
-                            };
-                            if b != binding.binding
-                                || vulkan_buffer.buffer != buffer
-                                || r_usage != usage
-                                || r_offset != offset
-                                || r_size != size
-                            {
-                                return false;
-                            }
-                        }
-                        VulkanResourceHandle::Texture(b, image_view) => {
-                            let ResourceBindingType::Texture { handle, .. } = binding.resource
-                            else {
-                                return false;
-                            };
-                            let Ok(vulkan_texture) = resource_ref::<VulkanTexture>(handle) else {
-                                return false;
-                            };
-                            if b != binding.binding || vulkan_texture.image_view != image_view {
-                                return false;
-                            }
-                        }
-                        VulkanResourceHandle::Sampler(b, sampler) => {
-                            let ResourceBindingType::Sampler { handle, .. } = binding.resource
-                            else {
-                                return false;
-                            };
-                            let Ok(vulkan_sampler) = resource_ref::<VulkanSampler>(handle) else {
-                                return false;
-                            };
-                            if b != binding.binding || vulkan_sampler.sampler != sampler {
-                                return false;
-                            }
-                        }
-                    }
-                }
-                true
-            })
-            .and_then(|p| cache.descriptor_sets.chunks_exact(layout_count).nth(p))
-            .unwrap_or_default()
-            .to_vec()
+        match cache.chunk_indices.get(&hash) {
+            Some(&chunk_index) => cache
+                .descriptor_sets
+                .chunks_exact(layout_count)
+                .nth(chunk_index)
+                .map_or_default(|c| c.to_vec()),
+            None => Vec::new(),
+        }
     }
 
     fn extend_cached_descriptor_sets(
         layout_count: usize,
-        binding_count: usize,
         cache: &mut DescriptorSetCache,
-        binding_sets: &[&[ResourceBinding<'_>]],
+        hash: u64,
         descriptor_sets: &[ash::vk::DescriptorSet],
     ) -> Result<()> {
-        cache.descriptor_sets.reserve(layout_count);
-        cache.resource_handles.reserve(binding_count);
-        for (&binding_set, &descriptor_set) in binding_sets.iter().zip(descriptor_sets) {
-            cache.descriptor_sets.push(descriptor_set);
-            for binding in binding_set {
-                cache.resource_handles.push(match binding.resource {
-                    ResourceBindingType::Buffer {
-                        handle,
-                        usage,
-                        offset,
-                        size,
-                    } => {
-                        let vulkan_buffer = resource_ref::<VulkanBuffer>(handle)?;
-                        if vulkan_buffer.usage == BufferUsage::Vertex
-                            || vulkan_buffer.usage == BufferUsage::Index
-                        {
-                            continue;
-                        }
-                        VulkanResourceHandle::Buffer(
-                            binding.binding,
-                            vulkan_buffer.buffer,
-                            usage,
-                            offset,
-                            size,
-                        )
-                    }
-                    ResourceBindingType::Texture { handle } => {
-                        let vulkan_texture = resource_ref::<VulkanTexture>(handle)?;
-                        VulkanResourceHandle::Texture(binding.binding, vulkan_texture.image_view)
-                    }
-                    ResourceBindingType::Sampler { handle } => {
-                        let vulkan_sampler = resource_ref::<VulkanSampler>(handle)?;
-                        VulkanResourceHandle::Sampler(binding.binding, vulkan_sampler.sampler)
-                    }
-                });
-            }
-        }
+        let index = cache.descriptor_sets.chunks_exact(layout_count).len();
+        cache.descriptor_sets.extend(descriptor_sets);
+        let _ = cache.chunk_indices.insert(hash, index);
         Ok(())
     }
 }
