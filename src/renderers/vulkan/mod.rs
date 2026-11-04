@@ -1499,7 +1499,7 @@ impl Renderer for VulkanRenderer {
         draw_count: u32,
         instance_count: u32,
     ) -> Result<()> {
-        let pipeline = resource_ref::<VulkanGraphicsPipeline>(pipeline)?;
+        let pipeline = resource_mut::<VulkanGraphicsPipeline>(pipeline)?;
         let mapped_sets = self.create_graphics_resource_sets(pipeline, binding_sets)?;
         let vertex_bindings = binding_sets
             .iter()
@@ -1695,9 +1695,11 @@ impl Renderer for VulkanRenderer {
                     current_frame.command_pool,
                     ash::vk::CommandPoolResetFlags::empty(),
                 )?;
-                current_frame
-                    .descriptor_pool_manager
-                    .reset(&device_context.logical_device)?;
+                if !is_graphics {
+                    current_frame
+                        .descriptor_pool_manager
+                        .reset(&device_context.logical_device)?;
+                }
                 for transfer_buffer in &mut current_frame.transfer_buffers {
                     device_context
                         .vma_allocator

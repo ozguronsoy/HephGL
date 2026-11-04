@@ -25,6 +25,8 @@ pub struct DescriptorPoolManager {
     current_index: usize,
     /// The number of sets the next created pool can hold.
     next_max_sets: u32,
+    /// Used for validating descriptor sets.
+    generation: u64,
 }
 
 impl Default for DescriptorPoolManager {
@@ -33,11 +35,17 @@ impl Default for DescriptorPoolManager {
             pools: Vec::new(),
             current_index: 0,
             next_max_sets: INITIAL_MAX_SETS,
+            generation: 0,
         }
     }
 }
 
 impl DescriptorPoolManager {
+    /// Gets the time when the first pool was allocated or reseted, or `None` if no pools available.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
     /// Allocates one descriptor set for each layout. Creates a larger pool if the existing ones
     /// don't have enough space.
     pub fn allocate(
@@ -49,8 +57,7 @@ impl DescriptorPoolManager {
             return Ok(Vec::new());
         }
 
-        // The pools are reset every frame, so a pool that is too full for this request is skipped
-        // until the next reset.
+        // A pool that is too full for this request is skipped until the manager is reset.
         while let Some(&pool) = self.pools.get(self.current_index) {
             let sets = Self::try_allocate(device, pool, layouts)?;
             if !sets.is_empty() {
@@ -89,6 +96,7 @@ impl DescriptorPoolManager {
             unsafe { device.reset_descriptor_pool(*pool, DescriptorPoolResetFlags::empty())? };
         }
         self.current_index = 0;
+        self.generation += 1;
         Ok(())
     }
 
@@ -99,6 +107,7 @@ impl DescriptorPoolManager {
         }
         self.current_index = 0;
         self.next_max_sets = INITIAL_MAX_SETS;
+        self.generation += 1;
     }
 
     fn try_allocate(

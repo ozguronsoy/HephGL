@@ -20,7 +20,7 @@ use crate::{
     renderers::{
         settings::{GraphicsPipelineOptions, Msaa, Settings},
         vulkan::{
-            VulkanRenderer,
+            DescriptorSetCache, VulkanRenderer,
             rendering::{
                 VulkanRendering,
                 lifetime_guards::{PipelineResources, ShaderModules},
@@ -292,6 +292,7 @@ impl VulkanRendering for RenderPassRendering {
             layout: None,
             descriptor_layouts: Vec::with_capacity(binding_sets.len()),
         };
+        let descriptor_binding_counts = binding_sets.iter().map(Vec::len).collect();
         for binding_set in &mut binding_sets {
             binding_set.sort_by_key(|binding| binding.binding);
 
@@ -411,6 +412,8 @@ impl VulkanRendering for RenderPassRendering {
             pipeline,
             layout: pipeline_layout,
             descriptor_layouts,
+            descriptor_binding_counts,
+            descriptor_set_cache: DescriptorSetCache::new(),
         })
     }
     fn destroy_graphics_pipeline(
@@ -428,6 +431,7 @@ impl VulkanRendering for RenderPassRendering {
         pipeline.pipeline = ash::vk::Pipeline::null();
         pipeline.layout = ash::vk::PipelineLayout::null();
         pipeline.descriptor_layouts.clear();
+        pipeline.descriptor_binding_counts.clear();
         Ok(())
     }
     fn begin(
