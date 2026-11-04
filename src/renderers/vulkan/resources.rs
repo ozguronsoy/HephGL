@@ -28,7 +28,7 @@ pub(super) enum VulkanResourceHandle {
 pub(super) struct DescriptorSetCache {
     descriptor_sets: Vec<DescriptorSet>,
     resource_handles: Vec<VulkanResourceHandle>,
-    time_stamp: std::time::Instant,
+    generation: Option<u64>,
 }
 
 /// Represents a Vulkan buffer.
@@ -141,7 +141,7 @@ impl DescriptorSetCache {
         Self {
             descriptor_sets: Vec::new(),
             resource_handles: Vec::new(),
-            time_stamp: std::time::Instant::now(),
+            generation: None,
         }
     }
 }
@@ -290,11 +290,11 @@ impl VulkanRenderer {
             .as_mut()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
-        let time_stamp = device_context.graphics_queue_context.frames
+        let pool_generation = device_context.graphics_queue_context.frames
             [device_context.current_frame_index]
             .thread_contexts[thread_context_index]
             .descriptor_pool_manager
-            .time_stamp();
+            .generation();
 
         let binding_count = pipeline.descriptor_binding_counts.iter().sum();
 
@@ -313,19 +313,17 @@ impl VulkanRenderer {
             for descriptor_set_cache in &mut pipeline.descriptor_set_caches {
                 descriptor_set_cache.descriptor_sets.clear();
                 descriptor_set_cache.resource_handles.clear();
-                descriptor_set_cache.time_stamp = time_stamp.unwrap_or(std::time::Instant::now());
+                descriptor_set_cache.generation = Some(pool_generation);
             }
             pipeline.thread_id = std::thread::current().id();
         }
 
         let descriptor_set_cache =
             &mut pipeline.descriptor_set_caches[device_context.current_frame_index];
-        if let Some(time_stamp) = time_stamp
-            && descriptor_set_cache.time_stamp != time_stamp
-        {
+        if descriptor_set_cache.generation != Some(pool_generation) {
             descriptor_set_cache.descriptor_sets.clear();
             descriptor_set_cache.resource_handles.clear();
-            descriptor_set_cache.time_stamp = time_stamp;
+            descriptor_set_cache.generation = Some(pool_generation);
         }
 
         let is_cache_consistent = {
@@ -373,15 +371,6 @@ impl VulkanRenderer {
             binding_sets,
             &descriptor_sets,
         )?;
-        if time_stamp.is_none() {
-            // This is the first pool/set allocation.
-            descriptor_set_cache.time_stamp = device_context.graphics_queue_context.frames
-                [device_context.current_frame_index]
-                .thread_contexts[thread_context_index]
-                .descriptor_pool_manager
-                .time_stamp()
-                .unwrap();
-        }
 
         for (i, &binding_set) in binding_sets.iter().enumerate() {
             if i >= descriptor_sets.len() {

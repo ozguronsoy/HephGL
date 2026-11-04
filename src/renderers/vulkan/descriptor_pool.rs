@@ -26,7 +26,7 @@ pub struct DescriptorPoolManager {
     /// The number of sets the next created pool can hold.
     next_max_sets: u32,
     /// Used for validating descriptor sets.
-    time_stamp: Option<std::time::Instant>,
+    generation: u64,
 }
 
 impl Default for DescriptorPoolManager {
@@ -35,15 +35,15 @@ impl Default for DescriptorPoolManager {
             pools: Vec::new(),
             current_index: 0,
             next_max_sets: INITIAL_MAX_SETS,
-            time_stamp: None,
+            generation: 0,
         }
     }
 }
 
 impl DescriptorPoolManager {
     /// Gets the time when the first pool was allocated or reseted, or `None` if no pools available.
-    pub fn time_stamp(&self) -> Option<std::time::Instant> {
-        self.time_stamp
+    pub fn generation(&self) -> u64 {
+        self.generation
     }
 
     /// Allocates one descriptor set for each layout. Creates a larger pool if the existing ones
@@ -55,10 +55,6 @@ impl DescriptorPoolManager {
     ) -> Result<Vec<DescriptorSet>> {
         if layouts.is_empty() {
             return Ok(Vec::new());
-        }
-
-        if self.time_stamp.is_none() {
-            self.time_stamp = Some(std::time::Instant::now());
         }
 
         // A pool that is too full for this request is skipped until the manager is reset.
@@ -100,7 +96,7 @@ impl DescriptorPoolManager {
             unsafe { device.reset_descriptor_pool(*pool, DescriptorPoolResetFlags::empty())? };
         }
         self.current_index = 0;
-        self.time_stamp = Some(std::time::Instant::now());
+        self.generation += 1;
         Ok(())
     }
 
@@ -111,7 +107,7 @@ impl DescriptorPoolManager {
         }
         self.current_index = 0;
         self.next_max_sets = INITIAL_MAX_SETS;
-        self.time_stamp = None;
+        self.generation += 1;
     }
 
     fn try_allocate(
