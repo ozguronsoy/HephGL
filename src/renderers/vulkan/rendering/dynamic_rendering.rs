@@ -18,7 +18,7 @@ use crate::{
     renderers::{
         settings::{GraphicsPipelineOptions, Msaa, Settings},
         vulkan::{
-            VulkanRenderer,
+            DescriptorSetCache, VulkanRenderer,
             rendering::{
                 VulkanRendering,
                 lifetime_guards::{PipelineResources, ShaderModules},
@@ -271,7 +271,7 @@ impl VulkanRendering for DynamicRendering {
             layout: pipeline_layout,
             descriptor_layouts,
             descriptor_binding_counts,
-            descriptor_set_caches: Vec::new(),
+            descriptor_set_cache: DescriptorSetCache::new(),
             thread_id: std::thread::current().id(),
         })
     }
