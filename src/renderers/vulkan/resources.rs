@@ -19,9 +19,9 @@ use crate::{
 
 #[derive(Clone, Copy)]
 pub(super) enum VulkanResourceHandle {
-    Buffer(Buffer, BufferUsage, usize, usize),
-    Texture(ash::vk::ImageView),
-    Sampler(ash::vk::Sampler),
+    Buffer(u32, Buffer, BufferUsage, usize, usize),
+    Texture(u32, ash::vk::ImageView),
+    Sampler(u32, ash::vk::Sampler),
 }
 
 #[derive(Clone)]
@@ -573,7 +573,7 @@ impl VulkanRenderer {
                     })
                 })) {
                     match handle {
-                        VulkanResourceHandle::Buffer(buffer, r_usage, r_offset, r_size) => {
+                        VulkanResourceHandle::Buffer(b, buffer, r_usage, r_offset, r_size) => {
                             let ResourceBindingType::Buffer {
                                 handle,
                                 usage,
@@ -586,7 +586,8 @@ impl VulkanRenderer {
                             let Ok(vulkan_buffer) = resource_ref::<VulkanBuffer>(handle) else {
                                 return false;
                             };
-                            if vulkan_buffer.buffer != buffer
+                            if b != binding.binding
+                                || vulkan_buffer.buffer != buffer
                                 || r_usage != usage
                                 || r_offset != offset
                                 || r_size != size
@@ -594,7 +595,7 @@ impl VulkanRenderer {
                                 return false;
                             }
                         }
-                        VulkanResourceHandle::Texture(image_view) => {
+                        VulkanResourceHandle::Texture(b, image_view) => {
                             let ResourceBindingType::Texture { handle, .. } = binding.resource
                             else {
                                 return false;
@@ -602,11 +603,11 @@ impl VulkanRenderer {
                             let Ok(vulkan_texture) = resource_ref::<VulkanTexture>(handle) else {
                                 return false;
                             };
-                            if vulkan_texture.image_view != image_view {
+                            if b != binding.binding || vulkan_texture.image_view != image_view {
                                 return false;
                             }
                         }
-                        VulkanResourceHandle::Sampler(sampler) => {
+                        VulkanResourceHandle::Sampler(b, sampler) => {
                             let ResourceBindingType::Sampler { handle, .. } = binding.resource
                             else {
                                 return false;
@@ -614,7 +615,7 @@ impl VulkanRenderer {
                             let Ok(vulkan_sampler) = resource_ref::<VulkanSampler>(handle) else {
                                 return false;
                             };
-                            if vulkan_sampler.sampler != sampler {
+                            if b != binding.binding || vulkan_sampler.sampler != sampler {
                                 return false;
                             }
                         }
@@ -652,15 +653,21 @@ impl VulkanRenderer {
                         {
                             continue;
                         }
-                        VulkanResourceHandle::Buffer(vulkan_buffer.buffer, usage, offset, size)
+                        VulkanResourceHandle::Buffer(
+                            binding.binding,
+                            vulkan_buffer.buffer,
+                            usage,
+                            offset,
+                            size,
+                        )
                     }
                     ResourceBindingType::Texture { handle } => {
                         let vulkan_texture = resource_ref::<VulkanTexture>(handle)?;
-                        VulkanResourceHandle::Texture(vulkan_texture.image_view)
+                        VulkanResourceHandle::Texture(binding.binding, vulkan_texture.image_view)
                     }
                     ResourceBindingType::Sampler { handle } => {
                         let vulkan_sampler = resource_ref::<VulkanSampler>(handle)?;
-                        VulkanResourceHandle::Sampler(vulkan_sampler.sampler)
+                        VulkanResourceHandle::Sampler(binding.binding, vulkan_sampler.sampler)
                     }
                 });
             }
