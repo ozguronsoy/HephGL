@@ -24,6 +24,13 @@ pub(super) enum VulkanResourceHandle {
     Sampler(ash::vk::Sampler),
 }
 
+#[derive(Clone)]
+pub(super) struct DescriptorSetCache {
+    descriptor_sets: Vec<DescriptorSet>,
+    resource_handles: Vec<VulkanResourceHandle>,
+    time_stamp: std::time::Instant,
+}
+
 /// Represents a Vulkan buffer.
 #[derive(Copy, Clone)]
 pub struct VulkanBuffer {
@@ -63,13 +70,11 @@ pub struct VulkanGraphicsPipeline {
     pub(super) layout: PipelineLayout,
     pub(super) descriptor_layouts: Vec<DescriptorSetLayout>,
     pub(super) descriptor_binding_counts: Vec<usize>,
-    /// Each frame has it's own descriptor pools/sets.
-    pub(super) descriptor_set_cache_per_frame: Vec<Vec<DescriptorSet>>,
-    pub(super) resource_handles_per_frame: Vec<Vec<VulkanResourceHandle>>,
+    /// Per frame.
+    pub(super) descriptor_set_caches: Vec<DescriptorSetCache>,
     /// This is used to detect when the pipeline is cloned to a worker thread so we can clean the
     /// `descriptor_sets` vector to avoid using the resources of another thread.
     pub(super) thread_id: std::thread::ThreadId,
-    pub(super) time_stamps: Vec<std::time::Instant>,
 }
 
 impl RendererResource for VulkanGraphicsPipeline {
@@ -128,6 +133,16 @@ impl RendererBuffer for VulkanBuffer {
 
     fn usage(&self) -> BufferUsage {
         self.usage
+    }
+}
+
+impl DescriptorSetCache {
+    pub(super) fn new() -> Self {
+        Self {
+            descriptor_sets: Vec::new(),
+            resource_handles: Vec::new(),
+            time_stamp: std::time::Instant::now(),
+        }
     }
 }
 
@@ -286,46 +301,42 @@ impl VulkanRenderer {
         if pipeline.descriptor_layouts.is_empty() || binding_count == 0 {
             return Ok(Vec::new());
         }
-        if pipeline.descriptor_set_cache_per_frame.len() != self.settings.frames_in_flight {
-            pipeline.descriptor_set_cache_per_frame.clear();
-            pipeline.resource_handles_per_frame.clear();
-            pipeline.time_stamps.clear();
+        if pipeline.descriptor_set_caches.len() != self.settings.frames_in_flight {
+            pipeline.descriptor_set_caches.clear();
             pipeline
-                .descriptor_set_cache_per_frame
-                .resize(self.settings.frames_in_flight, Vec::new());
-            pipeline
-                .resource_handles_per_frame
-                .resize(self.settings.frames_in_flight, Vec::new());
-            pipeline
-                .time_stamps
-                .resize(self.settings.frames_in_flight, std::time::Instant::now());
+                .descriptor_set_caches
+                .resize(self.settings.frames_in_flight, DescriptorSetCache::new());
         }
+
+        let descriptor_set_cache =
+            &mut pipeline.descriptor_set_caches[device_context.current_frame_index];
         if let Some(time_stamp) = time_stamp
-            && pipeline.time_stamps[device_context.current_frame_index] != time_stamp
+            && descriptor_set_cache.time_stamp != time_stamp
         {
-            pipeline.descriptor_set_cache_per_frame[device_context.current_frame_index].clear();
-            pipeline.resource_handles_per_frame[device_context.current_frame_index].clear();
-            pipeline.time_stamps[device_context.current_frame_index] = time_stamp;
+            descriptor_set_cache.descriptor_sets.clear();
+            descriptor_set_cache.resource_handles.clear();
+            descriptor_set_cache.time_stamp = time_stamp;
         }
-        if !pipeline.descriptor_set_cache_per_frame[device_context.current_frame_index]
+        if !descriptor_set_cache
+            .descriptor_sets
             .len()
             .is_multiple_of(pipeline.descriptor_layouts.len())
-            || !pipeline.resource_handles_per_frame[device_context.current_frame_index]
+            || !descriptor_set_cache
+                .resource_handles
                 .len()
                 .is_multiple_of(binding_count)
         {
             // The descriptor sets pipeline is corrupted somehow.
-            pipeline.descriptor_set_cache_per_frame[device_context.current_frame_index].clear();
-            pipeline.resource_handles_per_frame[device_context.current_frame_index].clear();
+            descriptor_set_cache.descriptor_sets.clear();
+            descriptor_set_cache.resource_handles.clear();
         }
         if pipeline.thread_id != std::thread::current().id() {
             // The pipeline is cloned to a worker thread, we need to clear the descriptor sets
             // since they are not valid for this thread.
-            pipeline.descriptor_set_cache_per_frame[device_context.current_frame_index].clear();
-            pipeline.resource_handles_per_frame[device_context.current_frame_index].clear();
+            descriptor_set_cache.descriptor_sets.clear();
+            descriptor_set_cache.resource_handles.clear();
             pipeline.thread_id = std::thread::current().id();
-            pipeline.time_stamps[device_context.current_frame_index] =
-                time_stamp.unwrap_or(std::time::Instant::now());
+            descriptor_set_cache.time_stamp = time_stamp.unwrap_or(std::time::Instant::now());
         }
 
         Self::verify_binding_sets(
@@ -337,8 +348,7 @@ impl VulkanRenderer {
         let (mut descriptor_sets, update_sets) = Self::get_cached_descriptor_sets(
             pipeline.descriptor_layouts.len(),
             binding_count,
-            &pipeline.descriptor_set_cache_per_frame[device_context.current_frame_index],
-            &pipeline.resource_handles_per_frame[device_context.current_frame_index],
+            descriptor_set_cache,
             binding_sets,
         );
 
@@ -351,16 +361,14 @@ impl VulkanRenderer {
             Self::extend_cached_descriptor_sets(
                 pipeline.descriptor_layouts.len(),
                 binding_count,
-                &mut pipeline.descriptor_set_cache_per_frame[device_context.current_frame_index],
-                &mut pipeline.resource_handles_per_frame[device_context.current_frame_index],
+                descriptor_set_cache,
                 binding_sets,
                 &descriptor_sets,
             )?;
             if time_stamp.is_none() {
                 // This is the first pool/set allocation.
-                pipeline.time_stamps[device_context.current_frame_index] = device_context
-                    .graphics_queue_context
-                    .frames[device_context.current_frame_index]
+                descriptor_set_cache.time_stamp = device_context.graphics_queue_context.frames
+                    [device_context.current_frame_index]
                     .thread_contexts[thread_context_index]
                     .descriptor_pool_manager
                     .time_stamp()
@@ -539,12 +547,12 @@ impl VulkanRenderer {
     fn get_cached_descriptor_sets(
         layout_count: usize,
         binding_count: usize,
-        cache: &[DescriptorSet],
-        handles: &[VulkanResourceHandle],
+        cache: &DescriptorSetCache,
         binding_sets: &[&[ResourceBinding<'_>]],
     ) -> (Vec<DescriptorSet>, bool) {
         let mut update = false;
-        let cached_sets = handles
+        let cached_sets = cache
+            .resource_handles
             .chunks_exact(binding_count)
             .position(|chunk| {
                 for (&handle, &binding) in chunk.iter().zip(binding_sets.iter().flat_map(|&s| {
@@ -607,7 +615,7 @@ impl VulkanRenderer {
                 }
                 true
             })
-            .and_then(|p| cache.chunks_exact(layout_count).nth(p))
+            .and_then(|p| cache.descriptor_sets.chunks_exact(layout_count).nth(p))
             .unwrap_or_default()
             .to_vec();
         update |= cached_sets.is_empty();
@@ -617,17 +625,16 @@ impl VulkanRenderer {
     fn extend_cached_descriptor_sets(
         layout_count: usize,
         binding_count: usize,
-        cache: &mut Vec<ash::vk::DescriptorSet>,
-        handles: &mut Vec<VulkanResourceHandle>,
+        cache: &mut DescriptorSetCache,
         binding_sets: &[&[ResourceBinding<'_>]],
         descriptor_sets: &[ash::vk::DescriptorSet],
     ) -> Result<()> {
-        cache.reserve(layout_count);
-        handles.reserve(binding_count);
+        cache.descriptor_sets.reserve(layout_count);
+        cache.resource_handles.reserve(binding_count);
         for (&binding_set, &descriptor_set) in binding_sets.iter().zip(descriptor_sets) {
-            cache.push(descriptor_set);
+            cache.descriptor_sets.push(descriptor_set);
             for binding in binding_set {
-                handles.push(match binding.resource {
+                cache.resource_handles.push(match binding.resource {
                     ResourceBindingType::Buffer {
                         handle,
                         usage,

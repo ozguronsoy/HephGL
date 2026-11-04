@@ -413,10 +413,8 @@ impl VulkanRendering for RenderPassRendering {
             layout: pipeline_layout,
             descriptor_layouts,
             descriptor_binding_counts,
-            descriptor_set_cache_per_frame: Vec::new(),
-            resource_handles_per_frame: Vec::new(),
+            descriptor_set_caches: Vec::new(),
             thread_id: std::thread::current().id(),
-            time_stamps: Vec::new(),
         })
     }
     fn destroy_graphics_pipeline(
