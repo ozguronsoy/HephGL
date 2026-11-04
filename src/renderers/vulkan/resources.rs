@@ -176,46 +176,41 @@ impl VulkanRenderer {
             let mut buffer_infos = Vec::new();
             let mut image_infos = Vec::new();
             for binding in binding_set {
-                match &binding.resource {
+                match binding.resource {
                     ResourceBindingType::Buffer {
-                        handle,
-                        usage,
+                        buffer,
                         offset,
                         size,
                     } => {
-                        let handle = resource_ref::<VulkanBuffer>(*handle)?;
-                        if offset + size > handle.size {
+                        let buffer = resource_ref::<VulkanBuffer>(buffer)?;
+                        if offset + size > buffer.size {
                             return Err(Error::invalid_argument(
                                 "Buffer overflow when binding resources.",
                             ));
                         }
-                        match usage {
+                        match buffer.usage {
                             BufferUsage::Storage | BufferUsage::Uniform => {}
-                            _ => {
-                                return Err(Error::invalid_argument(
-                                    "Invalid buffer usage for descriptor resource binding.",
-                                ));
-                            }
+                            _ => unreachable!(),
                         }
                         buffer_infos.push(
                             ash::vk::DescriptorBufferInfo::default()
-                                .buffer(handle.buffer)
-                                .offset(*offset as u64)
-                                .range(*size as u64),
+                                .buffer(buffer.buffer)
+                                .offset(offset as u64)
+                                .range(size as u64),
                         );
                     }
-                    ResourceBindingType::Texture { handle } => {
-                        let handle = resource_ref::<VulkanTexture>(*handle)?;
+                    ResourceBindingType::Texture { texture } => {
+                        let texture = resource_ref::<VulkanTexture>(texture)?;
                         image_infos.push(
                             ash::vk::DescriptorImageInfo::default()
-                                .image_view(handle.image_view)
+                                .image_view(texture.image_view)
                                 .image_layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL),
                         );
                     }
-                    ResourceBindingType::Sampler { handle } => {
-                        let handle = resource_ref::<VulkanSampler>(*handle)?;
+                    ResourceBindingType::Sampler { sampler } => {
+                        let sampler = resource_ref::<VulkanSampler>(sampler)?;
                         image_infos
-                            .push(ash::vk::DescriptorImageInfo::default().sampler(handle.sampler));
+                            .push(ash::vk::DescriptorImageInfo::default().sampler(sampler.sampler));
                     }
                 }
             }
@@ -225,8 +220,8 @@ impl VulkanRenderer {
             let mut writes = Vec::with_capacity(binding_set.len());
             for binding in binding_set {
                 let write = match binding.resource {
-                    ResourceBindingType::Buffer { usage, .. } => {
-                        let descriptor_type = match usage {
+                    ResourceBindingType::Buffer { buffer, .. } => {
+                        let descriptor_type = match buffer.usage() {
                             BufferUsage::Storage => ash::vk::DescriptorType::STORAGE_BUFFER,
                             BufferUsage::Uniform => ash::vk::DescriptorType::UNIFORM_BUFFER,
                             _ => unreachable!(),
@@ -358,10 +353,8 @@ impl VulkanRenderer {
                 .filter(|binding| {
                     matches!(
                         binding.resource,
-                        ResourceBindingType::Buffer {
-                            usage: BufferUsage::Storage | BufferUsage::Uniform,
-                            ..
-                        } | ResourceBindingType::Texture { .. }
+                        ResourceBindingType::Buffer { .. }
+                            | ResourceBindingType::Texture { .. }
                             | ResourceBindingType::Sampler { .. }
                     )
                 })
@@ -371,38 +364,38 @@ impl VulkanRenderer {
             let mut image_infos = Vec::new();
 
             for binding in &descriptor_bindings {
-                match &binding.resource {
+                match binding.resource {
                     ResourceBindingType::Buffer {
-                        handle,
+                        buffer,
                         offset,
                         size,
                         ..
                     } => {
-                        let handle = resource_ref::<VulkanBuffer>(*handle)?;
-                        if offset + size > handle.size {
+                        let buffer = resource_ref::<VulkanBuffer>(buffer)?;
+                        if offset + size > buffer.size {
                             return Err(Error::invalid_argument(
                                 "Buffer overflow when binding resources.",
                             ));
                         }
                         buffer_infos.push(
                             ash::vk::DescriptorBufferInfo::default()
-                                .buffer(handle.buffer)
-                                .offset(*offset as u64)
-                                .range(*size as u64),
+                                .buffer(buffer.buffer)
+                                .offset(offset as u64)
+                                .range(size as u64),
                         );
                     }
-                    ResourceBindingType::Texture { handle } => {
-                        let handle = resource_ref::<VulkanTexture>(*handle)?;
+                    ResourceBindingType::Texture { texture } => {
+                        let texture = resource_ref::<VulkanTexture>(texture)?;
                         image_infos.push(
                             ash::vk::DescriptorImageInfo::default()
-                                .image_view(handle.image_view)
+                                .image_view(texture.image_view)
                                 .image_layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL),
                         );
                     }
-                    ResourceBindingType::Sampler { handle } => {
-                        let handle = resource_ref::<VulkanSampler>(*handle)?;
+                    ResourceBindingType::Sampler { sampler } => {
+                        let sampler = resource_ref::<VulkanSampler>(sampler)?;
                         image_infos
-                            .push(ash::vk::DescriptorImageInfo::default().sampler(handle.sampler));
+                            .push(ash::vk::DescriptorImageInfo::default().sampler(sampler.sampler));
                     }
                 }
             }
@@ -412,8 +405,8 @@ impl VulkanRenderer {
             let mut writes = Vec::with_capacity(descriptor_bindings.len());
             for binding in descriptor_bindings {
                 let write = match binding.resource {
-                    ResourceBindingType::Buffer { usage, .. } => {
-                        let descriptor_type = match usage {
+                    ResourceBindingType::Buffer { buffer, .. } => {
+                        let descriptor_type = match buffer.usage() {
                             BufferUsage::Storage => ash::vk::DescriptorType::STORAGE_BUFFER,
                             BufferUsage::Uniform => ash::vk::DescriptorType::UNIFORM_BUFFER,
                             _ => unreachable!(),
@@ -483,26 +476,30 @@ impl VulkanRenderer {
         descriptor_binding_counts: &[usize],
         binding_sets: &[&[ResourceBinding<'_>]],
     ) -> Result<()> {
+        for binding in binding_sets.iter().flat_map(|&s| s.iter()) {
+            if let ResourceBindingType::Buffer {
+                buffer,
+                offset,
+                size,
+            } = binding.resource
+            {
+                if offset.checked_add(size).is_none_or(|x| x > buffer.size()) {
+                    return Err(Error::invalid_argument(
+                        "Buffer overflow while binding resources.",
+                    ));
+                }
+                if matches!(buffer.usage(), BufferUsage::Index | BufferUsage::Vertex) {
+                    return Err(Error::invalid_argument(
+                        "Index and vertex buffers are not allowed in binding sets.",
+                    ));
+                }
+            }
+        }
         if binding_sets.len() != descriptor_layouts.len()
-            || binding_sets.iter().zip(descriptor_binding_counts).any(
-                |(&binding_set, &binding_count)| {
-                    binding_set
-                        .iter()
-                        .filter(|binding| {
-                            // Exclude vertex and index buffers from the count since they are not
-                            // part of the descriptor set.
-                            !matches!(
-                                binding.resource,
-                                ResourceBindingType::Buffer {
-                                    usage: BufferUsage::Vertex | BufferUsage::Index,
-                                    ..
-                                }
-                            )
-                        })
-                        .count()
-                        != binding_count
-                },
-            )
+            || binding_sets
+                .iter()
+                .zip(descriptor_binding_counts)
+                .any(|(&binding_set, &binding_count)| binding_set.len() != binding_count)
         {
             return Err(Error::invalid_argument(
                 "Binding sets do not match the pipeline layout.",
@@ -514,53 +511,40 @@ impl VulkanRenderer {
 
     fn hash_resource_bindings(binding_sets: &[&[ResourceBinding<'_>]]) -> Result<u64> {
         let mut hasher = DefaultHasher::new();
-        for binding in binding_sets.iter().flat_map(|s| {
-            s.iter().filter(|binding| {
-                // Exclude vertex and index buffers from the count since they are not
-                // part of the descriptor set.
-                !matches!(
-                    binding.resource,
-                    ResourceBindingType::Buffer {
-                        usage: BufferUsage::Vertex | BufferUsage::Index,
-                        ..
-                    }
-                )
-            })
-        }) {
+        for binding in binding_sets.iter().flat_map(|&s| s.iter()) {
             binding.binding.hash(&mut hasher);
             match binding.resource {
                 ResourceBindingType::Buffer {
-                    handle,
-                    usage,
+                    buffer,
                     offset,
                     size,
                 } => {
-                    let Ok(vulkan_buffer) = resource_ref::<VulkanBuffer>(handle) else {
+                    let Ok(buffer) = resource_ref::<VulkanBuffer>(buffer) else {
                         return Err(Error::invalid_argument(
                             "Invalid buffer type, expected a VulkanBuffer.",
                         ));
                     };
-                    vulkan_buffer.buffer.hash(&mut hasher);
-                    usage.hash(&mut hasher);
+                    buffer.buffer.hash(&mut hasher);
+                    buffer.usage.hash(&mut hasher);
                     offset.hash(&mut hasher);
                     size.hash(&mut hasher);
                 }
-                ResourceBindingType::Texture { handle } => {
-                    let Ok(vulkan_texture) = resource_ref::<VulkanTexture>(handle) else {
+                ResourceBindingType::Texture { texture } => {
+                    let Ok(texture) = resource_ref::<VulkanTexture>(texture) else {
                         return Err(Error::invalid_argument(
                             "Invalid buffer type, expected a VulkanTexture.",
                         ));
                     };
-                    vulkan_texture.image.hash(&mut hasher);
-                    vulkan_texture.image_view.hash(&mut hasher);
+                    texture.image.hash(&mut hasher);
+                    texture.image_view.hash(&mut hasher);
                 }
-                ResourceBindingType::Sampler { handle } => {
-                    let Ok(vulkan_sampler) = resource_ref::<VulkanSampler>(handle) else {
+                ResourceBindingType::Sampler { sampler } => {
+                    let Ok(sampler) = resource_ref::<VulkanSampler>(sampler) else {
                         return Err(Error::invalid_argument(
                             "Invalid buffer type, expected a VulkanSampler.",
                         ));
                     };
-                    vulkan_sampler.sampler.hash(&mut hasher);
+                    sampler.sampler.hash(&mut hasher);
                 }
             }
         }

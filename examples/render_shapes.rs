@@ -59,7 +59,14 @@ fn example(
     for (pipeline, draw_count) in pipelines.iter_mut() {
         const INSTANCE_COUNT: u32 = 1;
         renderer
-            .record_graphics_command(pipeline.as_mut(), &[], *draw_count, INSTANCE_COUNT)
+            .record_graphics_command(
+                pipeline.as_mut(),
+                None,
+                &[],
+                &[],
+                *draw_count,
+                INSTANCE_COUNT,
+            )
             .unwrap();
     }
 

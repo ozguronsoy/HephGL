@@ -63,6 +63,8 @@ where
                     heph_expect_success!(renderer.clear(RGB::default()));
                     heph_expect_success!(renderer.record_graphics_command(
                         pipeline.as_mut(),
+                        None,
+                        &[],
                         &[],
                         3,
                         1

@@ -33,25 +33,14 @@ pub enum TextureFormat {
 pub enum ResourceBindingType<'a> {
     /// A block of GPU memory.
     Buffer {
-        /// The handle referencing the allocated buffer.
-        handle: &'a dyn RendererBuffer,
-        /// Specifies how the shader intends to use this buffer.
-        usage: BufferUsage,
-        /// The starting byte offset within the buffer where the binding begins.
+        buffer: &'a dyn RendererBuffer,
         offset: usize,
-        /// The size in bytes of the buffer region being bound.
         size: usize,
     },
     /// The GPU texture.
-    Texture {
-        /// The handle referencing the GPU texture.
-        handle: &'a dyn RendererTexture,
-    },
+    Texture { texture: &'a dyn RendererTexture },
     /// The GPU texture sampler.
-    Sampler {
-        /// The handle referencing the GPU texture sampler.
-        handle: &'a dyn RendererSampler,
-    },
+    Sampler { sampler: &'a dyn RendererSampler },
 }
 
 /// Represents a resource binding.

@@ -284,54 +284,43 @@ fn example(
             .write_buffer(joint_buffer.as_mut(), 0, bytemuck::cast_slice(&joints))
             .unwrap();
 
-        let bindings = [
-            ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Buffer {
-                    handle: vertex_buffer.as_ref(),
-                    usage: BufferUsage::Vertex,
-                    offset: 0,
-                    size: vertex_buffer.size(),
-                },
+        let vertex_bindings = [ResourceBinding {
+            binding: 0,
+            resource: ResourceBindingType::Buffer {
+                buffer: vertex_buffer.as_ref(),
+                offset: 0,
+                size: vertex_buffer.size(),
             },
-            ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Buffer {
-                    handle: index_buffer.as_ref(),
-                    usage: BufferUsage::Index,
-                    offset: 0,
-                    size: index_buffer.size(),
-                },
-            },
+        }];
+        let resource_bindings = [
             ResourceBinding {
                 binding: 0,
                 resource: ResourceBindingType::Texture {
-                    handle: texture.as_ref(),
+                    texture: texture.as_ref(),
                 },
             },
             ResourceBinding {
                 binding: 1,
                 resource: ResourceBindingType::Sampler {
-                    handle: sampler.as_ref(),
+                    sampler: sampler.as_ref(),
                 },
             },
             ResourceBinding {
                 binding: 2,
                 resource: ResourceBindingType::Texture {
-                    handle: arm_texture.as_ref(),
+                    texture: arm_texture.as_ref(),
                 },
             },
             ResourceBinding {
                 binding: 3,
                 resource: ResourceBindingType::Texture {
-                    handle: normal_texture.as_ref(),
+                    texture: normal_texture.as_ref(),
                 },
             },
             ResourceBinding {
                 binding: 4,
                 resource: ResourceBindingType::Buffer {
-                    handle: material_buffer.as_ref(),
-                    usage: BufferUsage::Uniform,
+                    buffer: material_buffer.as_ref(),
                     offset: 0,
                     size: material_buffer.size(),
                 },
@@ -339,8 +328,7 @@ fn example(
             ResourceBinding {
                 binding: 5,
                 resource: ResourceBindingType::Buffer {
-                    handle: uniform_buffer.as_ref(),
-                    usage: BufferUsage::Uniform,
+                    buffer: uniform_buffer.as_ref(),
                     offset: 0,
                     size: uniform_buffer.size(),
                 },
@@ -348,15 +336,21 @@ fn example(
             ResourceBinding {
                 binding: 6,
                 resource: ResourceBindingType::Buffer {
-                    handle: joint_buffer.as_ref(),
-                    usage: BufferUsage::Storage,
+                    buffer: joint_buffer.as_ref(),
                     offset: 0,
                     size: joint_buffer.size(),
                 },
             },
         ];
         renderer
-            .record_graphics_command(pipeline.as_mut(), &[&bindings], indices.len() as u32, 1)
+            .record_graphics_command(
+                pipeline.as_mut(),
+                Some(index_buffer.as_ref()),
+                &vertex_bindings,
+                &[&resource_bindings],
+                indices.len() as u32,
+                1,
+            )
             .unwrap();
 
         renderer.end_frame().unwrap();

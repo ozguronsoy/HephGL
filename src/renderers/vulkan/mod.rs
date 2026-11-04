@@ -1495,44 +1495,14 @@ impl Renderer for VulkanRenderer {
     fn record_graphics_command(
         &mut self,
         pipeline: &mut dyn RendererGraphicsPipeline,
+        index_buffer: Option<&dyn RendererBuffer>,
+        vertex_bindings: &[ResourceBinding<'_>],
         binding_sets: &[&[ResourceBinding<'_>]],
         draw_count: u32,
         instance_count: u32,
     ) -> Result<()> {
         let pipeline = resource_mut::<VulkanGraphicsPipeline>(pipeline)?;
         let mapped_sets = self.create_graphics_resource_sets(pipeline, binding_sets)?;
-        let vertex_bindings = binding_sets
-            .iter()
-            .flat_map(|set| set.iter())
-            .filter_map(|binding| match binding.resource {
-                ResourceBindingType::Buffer {
-                    handle,
-                    usage: BufferUsage::Vertex,
-                    offset,
-                    size,
-                } => Some(
-                    resource_ref::<VulkanBuffer>(handle)
-                        .map(|handle| (binding.binding, handle, offset, size)),
-                ),
-                _ => None,
-            })
-            .collect::<Result<Vec<_>>>()?;
-        let index_bindings = binding_sets
-            .iter()
-            .flat_map(|set| set.iter())
-            .filter_map(|binding| match binding.resource {
-                ResourceBindingType::Buffer {
-                    handle,
-                    usage: BufferUsage::Index,
-                    offset,
-                    size,
-                } => Some(
-                    resource_ref::<VulkanBuffer>(handle)
-                        .map(|handle| (binding.binding, handle, offset, size)),
-                ),
-                _ => None,
-            })
-            .collect::<Result<Vec<_>>>()?;
 
         let device_context = self
             .device_context
@@ -1558,31 +1528,52 @@ impl Renderer for VulkanRenderer {
                     &[],
                 );
             }
-            for (binding, handle, offset, size) in vertex_bindings {
-                if offset + size > handle.size {
+            for vertex_binding in vertex_bindings {
+                let ResourceBindingType::Buffer {
+                    buffer,
+                    offset,
+                    size,
+                } = vertex_binding.resource
+                else {
                     return Err(Error::invalid_argument(
-                        "Buffer overflow when binding vertex buffer.",
+                        "Vertex binding type must be a buffer",
+                    ));
+                };
+                if buffer.usage() != BufferUsage::Vertex {
+                    return Err(Error::invalid_argument(
+                        "Vertex buffer's usage must be `BufferUsage::Vertex`.",
                     ));
                 }
 
+                let vertex_buffer = resource_ref::<VulkanBuffer>(buffer)?;
+                if offset
+                    .checked_add(size)
+                    .is_none_or(|x| x > vertex_buffer.size)
+                {
+                    return Err(Error::invalid_argument(
+                        "Buffer overflow while binding the vertex buffer.",
+                    ));
+                }
                 device_context.logical_device.cmd_bind_vertex_buffers(
                     current_frame.command_buffer,
-                    binding,
-                    std::slice::from_ref(&handle.buffer),
+                    vertex_binding.binding,
+                    std::slice::from_ref(&vertex_buffer.buffer),
                     std::slice::from_ref(&(offset as u64)),
                 );
             }
 
-            if !index_bindings.is_empty() {
-                if index_bindings.len() > 1 {
+            if let Some(index_buffer) = index_buffer {
+                if index_buffer.usage() != BufferUsage::Index {
                     return Err(Error::invalid_argument(
-                        "Only one index buffer can be bound per draw.",
+                        "Index buffer's usage must be `BufferUsage::Index`.",
                     ));
                 }
+
+                let index_buffer = resource_ref::<VulkanBuffer>(index_buffer)?;
                 device_context.logical_device.cmd_bind_index_buffer(
                     current_frame.command_buffer,
-                    index_bindings[0].1.buffer,
-                    index_bindings[0].2 as u64,
+                    index_buffer.buffer,
+                    0,
                     ash::vk::IndexType::UINT32,
                 );
                 device_context.logical_device.cmd_draw_indexed(

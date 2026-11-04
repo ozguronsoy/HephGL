@@ -129,6 +129,8 @@ pub trait Renderer {
     fn record_graphics_command(
         &mut self,
         pipeline: &mut dyn RendererGraphicsPipeline,
+        index_buffer: Option<&dyn RendererBuffer>,
+        vertex_bindings: &[ResourceBinding<'_>],
         binding_sets: &[&[ResourceBinding<'_>]],
         draw_count: u32,
         instance_count: u32,

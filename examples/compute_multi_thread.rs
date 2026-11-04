@@ -87,8 +87,7 @@ fn example(
                     ResourceBinding {
                         binding: 0,
                         resource: ResourceBindingType::Buffer {
-                            handle: buffer_a.as_ref(),
-                            usage: BufferUsage::Storage,
+                            buffer: buffer_a.as_ref(),
                             offset: 0,
                             size: buffer_a.size(),
                         },
@@ -96,8 +95,7 @@ fn example(
                     ResourceBinding {
                         binding: 1,
                         resource: ResourceBindingType::Buffer {
-                            handle: buffer_b.as_ref(),
-                            usage: BufferUsage::Storage,
+                            buffer: buffer_b.as_ref(),
                             offset: 0,
                             size: buffer_b.size(),
                         },
@@ -105,8 +103,7 @@ fn example(
                     ResourceBinding {
                         binding: 2,
                         resource: ResourceBindingType::Buffer {
-                            handle: buffer_c.as_ref(),
-                            usage: BufferUsage::Storage,
+                            buffer: buffer_c.as_ref(),
                             offset: 0,
                             size: buffer_c.size(),
                         },

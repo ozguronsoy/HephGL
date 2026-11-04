@@ -384,7 +384,7 @@ where
             Error::invalid_argument("")
         );
         heph_expect_err!(
-            renderer.record_graphics_command(graphics_pipeline.as_mut(), &[], 3, 1),
+            renderer.record_graphics_command(graphics_pipeline.as_mut(), None, &[], &[], 3, 1),
             Error::invalid_argument("")
         );
         heph_expect_err!(
