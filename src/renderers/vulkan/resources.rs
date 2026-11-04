@@ -29,6 +29,9 @@ pub(super) struct DescriptorSetCache {
     descriptor_sets: Vec<DescriptorSet>,
     resource_handles: Vec<VulkanResourceHandle>,
     generation: Option<u64>,
+    /// This is used to detect when the pipeline is cloned to a worker thread so we can clean the
+    /// cache to avoid using the resources of another thread.
+    pub(super) thread_id: std::thread::ThreadId,
 }
 
 /// Represents a Vulkan buffer.
@@ -71,9 +74,6 @@ pub struct VulkanGraphicsPipeline {
     pub(super) descriptor_layouts: Vec<DescriptorSetLayout>,
     pub(super) descriptor_binding_counts: Vec<usize>,
     pub(super) descriptor_set_cache: DescriptorSetCache,
-    /// This is used to detect when the pipeline is cloned to a worker thread so we can clean the
-    /// `descriptor_sets` vector to avoid using the resources of another thread.
-    pub(super) thread_id: std::thread::ThreadId,
 }
 
 impl RendererResource for VulkanGraphicsPipeline {
@@ -141,6 +141,7 @@ impl DescriptorSetCache {
             descriptor_sets: Vec::new(),
             resource_handles: Vec::new(),
             generation: None,
+            thread_id: std::thread::current().id(),
         }
     }
 }
@@ -299,13 +300,13 @@ impl VulkanRenderer {
         if pipeline.descriptor_layouts.is_empty() || binding_count == 0 {
             return Ok(Vec::new());
         }
-        if pipeline.thread_id != std::thread::current().id() {
+        if pipeline.descriptor_set_cache.thread_id != std::thread::current().id() {
             // The pipeline is cloned to a worker thread, we need to clear the descriptor sets
             // since they are not valid for this thread.
             pipeline.descriptor_set_cache.descriptor_sets.clear();
             pipeline.descriptor_set_cache.resource_handles.clear();
             pipeline.descriptor_set_cache.generation = Some(pool_generation);
-            pipeline.thread_id = std::thread::current().id();
+            pipeline.descriptor_set_cache.thread_id = std::thread::current().id();
         }
         if pipeline.descriptor_set_cache.generation != Some(pool_generation) {
             pipeline.descriptor_set_cache.descriptor_sets.clear();

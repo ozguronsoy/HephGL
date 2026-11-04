@@ -272,7 +272,6 @@ impl VulkanRendering for DynamicRendering {
             descriptor_layouts,
             descriptor_binding_counts,
             descriptor_set_cache: DescriptorSetCache::new(),
-            thread_id: std::thread::current().id(),
         })
     }
     fn destroy_graphics_pipeline(
