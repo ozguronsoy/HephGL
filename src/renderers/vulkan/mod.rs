@@ -1416,7 +1416,7 @@ impl Renderer for VulkanRenderer {
         group_count: (u32, u32, u32),
     ) -> Result<()> {
         let pipeline = resource_mut::<VulkanComputePipeline>(pipeline)?;
-        let mapped_sets = self.create_compute_resource_sets(pipeline, binding_sets)?;
+        let mapped_range = self.create_compute_resource_sets(pipeline, binding_sets)?;
 
         let device_context = self
             .device_context
@@ -1439,13 +1439,13 @@ impl Renderer for VulkanRenderer {
                 PipelineBindPoint::COMPUTE,
                 pipeline.pipeline,
             );
-            if !mapped_sets.is_empty() {
+            if !mapped_range.is_empty() {
                 device_context.logical_device.cmd_bind_descriptor_sets(
                     current_frame.command_buffer,
                     PipelineBindPoint::COMPUTE,
                     pipeline.layout,
                     0,
-                    &mapped_sets,
+                    &pipeline.descriptor_set_cache.descriptor_sets[mapped_range],
                     &[],
                 );
             }
@@ -1504,7 +1504,7 @@ impl Renderer for VulkanRenderer {
         instance_count: u32,
     ) -> Result<()> {
         let pipeline = resource_mut::<VulkanGraphicsPipeline>(pipeline)?;
-        let mapped_sets = self.create_graphics_resource_sets(pipeline, binding_sets)?;
+        let mapped_range = self.create_graphics_resource_sets(pipeline, binding_sets)?;
 
         let device_context = self
             .device_context
@@ -1520,13 +1520,13 @@ impl Renderer for VulkanRenderer {
                 PipelineBindPoint::GRAPHICS,
                 pipeline.pipeline,
             );
-            if !mapped_sets.is_empty() {
+            if !mapped_range.is_empty() {
                 device_context.logical_device.cmd_bind_descriptor_sets(
                     current_frame.command_buffer,
                     PipelineBindPoint::GRAPHICS,
                     pipeline.layout,
                     0,
-                    &mapped_sets,
+                    &pipeline.descriptor_set_cache.descriptor_sets[mapped_range],
                     &[],
                 );
             }

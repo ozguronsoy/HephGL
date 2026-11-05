@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     hash::{DefaultHasher, Hash, Hasher},
+    ops::Range,
 };
 
 use ash::vk::{
@@ -24,7 +25,7 @@ use crate::{
 
 #[derive(Clone)]
 pub(super) struct DescriptorSetCache {
-    descriptor_sets: Vec<DescriptorSet>,
+    pub(super) descriptor_sets: Vec<DescriptorSet>,
     chunk_indices: HashMap<u64, usize>,
     generation: Option<u64>,
     /// This is used to detect when the pipeline is cloned to a worker thread so we can clean the
@@ -151,7 +152,7 @@ impl VulkanRenderer {
         &mut self,
         pipeline: &mut VulkanComputePipeline,
         binding_sets: &[&[ResourceBinding<'_>]],
-    ) -> Result<Vec<DescriptorSet>> {
+    ) -> Result<Range<usize>> {
         let device_context = self
             .device_context
             .as_mut()
@@ -171,7 +172,7 @@ impl VulkanRenderer {
         if pipeline.descriptor_layouts.is_empty()
             || pipeline.descriptor_binding_counts.iter().sum::<usize>() == 0
         {
-            return Ok(Vec::new());
+            return Ok(0..0);
         }
         if pipeline.descriptor_set_cache.thread_id != std::thread::current().id() {
             // The pipeline is cloned to a worker thread, we need to clear the descriptor sets
@@ -202,20 +203,19 @@ impl VulkanRenderer {
         )?;
         let hash = Self::hash_resource_bindings(binding_sets)?;
 
-        let mut descriptor_sets = Self::get_cached_descriptor_sets(
+        if let Some(range) = Self::get_cached_descriptor_sets(
             pipeline.descriptor_layouts.len(),
             &pipeline.descriptor_set_cache,
             hash,
-        );
-        if !descriptor_sets.is_empty() {
-            return Ok(descriptor_sets);
+        ) {
+            return Ok(range);
         }
 
-        descriptor_sets = compute_queue_context.frames[device_context.current_frame_index]
+        let descriptor_sets = compute_queue_context.frames[device_context.current_frame_index]
             .thread_contexts[thread_context_index]
             .descriptor_pool_manager
             .allocate(&device_context.logical_device, &pipeline.descriptor_layouts)?;
-        Self::extend_cached_descriptor_sets(
+        let range = Self::extend_cached_descriptor_sets(
             pipeline.descriptor_layouts.len(),
             &mut pipeline.descriptor_set_cache,
             hash,
@@ -227,14 +227,14 @@ impl VulkanRenderer {
             binding_sets,
         )?;
 
-        Ok(descriptor_sets)
+        Ok(range)
     }
 
     pub(super) fn create_graphics_resource_sets(
         &mut self,
         pipeline: &mut VulkanGraphicsPipeline,
         binding_sets: &[&[ResourceBinding<'_>]],
-    ) -> Result<Vec<DescriptorSet>> {
+    ) -> Result<Range<usize>> {
         let device_context = self
             .device_context
             .as_mut()
@@ -248,7 +248,7 @@ impl VulkanRenderer {
         if pipeline.descriptor_layouts.is_empty()
             || pipeline.descriptor_binding_counts.iter().sum::<usize>() == 0
         {
-            return Ok(Vec::new());
+            return Ok(0..0);
         }
         if pipeline.descriptor_set_cache.thread_id != std::thread::current().id() {
             // The pipeline is cloned to a worker thread, we need to clear the descriptor sets
@@ -279,21 +279,20 @@ impl VulkanRenderer {
         )?;
         let hash = Self::hash_resource_bindings(binding_sets)?;
 
-        let mut descriptor_sets = Self::get_cached_descriptor_sets(
+        if let Some(range) = Self::get_cached_descriptor_sets(
             pipeline.descriptor_layouts.len(),
             &pipeline.descriptor_set_cache,
             hash,
-        );
-        if !descriptor_sets.is_empty() {
-            return Ok(descriptor_sets);
+        ) {
+            return Ok(range);
         }
 
-        descriptor_sets = device_context.graphics_queue_context.frames
+        let descriptor_sets = device_context.graphics_queue_context.frames
             [device_context.current_frame_index]
             .thread_contexts[thread_context_index]
             .descriptor_pool_manager
             .allocate(&device_context.logical_device, &pipeline.descriptor_layouts)?;
-        Self::extend_cached_descriptor_sets(
+        let range = Self::extend_cached_descriptor_sets(
             pipeline.descriptor_layouts.len(),
             &mut pipeline.descriptor_set_cache,
             hash,
@@ -305,7 +304,7 @@ impl VulkanRenderer {
             binding_sets,
         )?;
 
-        Ok(descriptor_sets)
+        Ok(range)
     }
 
     pub(super) fn convert_shader_stage(
@@ -404,32 +403,29 @@ impl VulkanRenderer {
         Ok(hasher.finish())
     }
 
-    /// TODO: Return descriptor sets as a slice to reduce allocations.
     fn get_cached_descriptor_sets(
         layout_count: usize,
         cache: &DescriptorSetCache,
         hash: u64,
-    ) -> Vec<DescriptorSet> {
-        match cache.chunk_indices.get(&hash) {
-            Some(&chunk_index) => cache
-                .descriptor_sets
-                .chunks_exact(layout_count)
-                .nth(chunk_index)
-                .map_or_default(|c| c.to_vec()),
-            None => Vec::new(),
-        }
+    ) -> Option<Range<usize>> {
+        // The cache size is validated in an earlier step, so overflow is not possible.
+        let start = cache.chunk_indices.get(&hash)? * layout_count;
+        Some(start..start + layout_count)
     }
 
+    /// Appends the descriptor sets to the cache and returns their range in
+    /// `cache.descriptor_sets`.
     fn extend_cached_descriptor_sets(
         layout_count: usize,
         cache: &mut DescriptorSetCache,
         hash: u64,
         descriptor_sets: &[ash::vk::DescriptorSet],
-    ) -> Result<()> {
+    ) -> Result<Range<usize>> {
         let index = cache.descriptor_sets.chunks_exact(layout_count).len();
+        let start = cache.descriptor_sets.len();
         cache.descriptor_sets.extend(descriptor_sets);
         let _ = cache.chunk_indices.insert(hash, index);
-        Ok(())
+        Ok(start..cache.descriptor_sets.len())
     }
 
     fn write_descriptor_sets(
