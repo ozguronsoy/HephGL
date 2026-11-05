@@ -20,7 +20,8 @@ inputs:
     default: 'false'
   cache-key:
     description: 'The key used to separate Rust build caches.'
-    required: true
+    required: false
+    default: ''
 
 runs:
   using: "composite"
@@ -49,6 +50,7 @@ runs:
       uses: taiki-e/install-action@cargo-llvm-cov
 
     - name: Cache Rust dependencies
+      if: inputs.cache-key != ''
       uses: Swatinem/rust-cache@v2
       with:
         shared-key: ${{ inputs.cache-key }}
