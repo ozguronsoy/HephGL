@@ -1379,6 +1379,8 @@ impl Renderer for VulkanRenderer {
             pipeline,
             layout,
             descriptor_layouts,
+            descriptor_binding_counts: binding_sets.iter().map(Vec::len).collect(),
+            descriptor_set_cache: DescriptorSetCache::new(),
         }))
     }
 
@@ -1413,7 +1415,7 @@ impl Renderer for VulkanRenderer {
         binding_sets: &[&[ResourceBinding<'_>]],
         group_count: (u32, u32, u32),
     ) -> Result<()> {
-        let pipeline = resource_ref::<VulkanComputePipeline>(pipeline)?;
+        let pipeline = resource_mut::<VulkanComputePipeline>(pipeline)?;
         let mapped_sets = self.create_compute_resource_sets(pipeline, binding_sets)?;
 
         let device_context = self

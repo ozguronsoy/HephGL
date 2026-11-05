@@ -62,6 +62,8 @@ pub struct VulkanComputePipeline {
     pub(super) pipeline: Pipeline,
     pub(super) layout: PipelineLayout,
     pub(super) descriptor_layouts: Vec<DescriptorSetLayout>,
+    pub(super) descriptor_binding_counts: Vec<usize>,
+    pub(super) descriptor_set_cache: DescriptorSetCache,
 }
 
 /// Represents a Vulkan graphics pipeline.
@@ -147,14 +149,9 @@ impl DescriptorSetCache {
 impl VulkanRenderer {
     pub(super) fn create_compute_resource_sets(
         &mut self,
-        pipeline: &VulkanComputePipeline,
+        pipeline: &mut VulkanComputePipeline,
         binding_sets: &[&[ResourceBinding<'_>]],
     ) -> Result<Vec<DescriptorSet>> {
-        if binding_sets.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        // TODO: Verify group count and bindings.
         let device_context = self
             .device_context
             .as_mut()
@@ -167,10 +164,63 @@ impl VulkanRenderer {
                     "Device is not initialized with `ComputeShaders` feature.",
                 ))?;
         let thread_context_index = Self::thread_context_index()?;
-        let descriptor_sets = compute_queue_context.frames[device_context.current_frame_index]
+        let pool_generation = compute_queue_context.frames[0].thread_contexts[thread_context_index]
+            .descriptor_pool_manager
+            .generation();
+
+        if pipeline.descriptor_layouts.is_empty()
+            || pipeline.descriptor_binding_counts.iter().sum::<usize>() == 0
+        {
+            return Ok(Vec::new());
+        }
+        if pipeline.descriptor_set_cache.thread_id != std::thread::current().id() {
+            // The pipeline is cloned to a worker thread, we need to clear the descriptor sets
+            // since they are not valid for this thread.
+            pipeline.descriptor_set_cache.descriptor_sets.clear();
+            pipeline.descriptor_set_cache.chunk_indices.clear();
+            pipeline.descriptor_set_cache.generation = Some(pool_generation);
+            pipeline.descriptor_set_cache.thread_id = std::thread::current().id();
+        }
+        if pipeline.descriptor_set_cache.generation != Some(pool_generation) {
+            pipeline.descriptor_set_cache.descriptor_sets.clear();
+            pipeline.descriptor_set_cache.chunk_indices.clear();
+            pipeline.descriptor_set_cache.generation = Some(pool_generation);
+        }
+        if !Self::validate_cache_consistency(
+            pipeline.descriptor_layouts.len(),
+            &pipeline.descriptor_set_cache,
+        ) {
+            // The descriptor sets pipeline is corrupted somehow.
+            pipeline.descriptor_set_cache.descriptor_sets.clear();
+            pipeline.descriptor_set_cache.chunk_indices.clear();
+        }
+
+        Self::validate_binding_sets(
+            &pipeline.descriptor_layouts,
+            &pipeline.descriptor_binding_counts,
+            binding_sets,
+        )?;
+        let hash = Self::hash_resource_bindings(binding_sets)?;
+
+        let mut descriptor_sets = Self::get_cached_descriptor_sets(
+            pipeline.descriptor_layouts.len(),
+            &pipeline.descriptor_set_cache,
+            hash,
+        );
+        if !descriptor_sets.is_empty() {
+            return Ok(descriptor_sets);
+        }
+
+        descriptor_sets = compute_queue_context.frames[device_context.current_frame_index]
             .thread_contexts[thread_context_index]
             .descriptor_pool_manager
             .allocate(&device_context.logical_device, &pipeline.descriptor_layouts)?;
+        Self::extend_cached_descriptor_sets(
+            pipeline.descriptor_layouts.len(),
+            &mut pipeline.descriptor_set_cache,
+            hash,
+            &descriptor_sets,
+        )?;
 
         for (i, &binding_set) in binding_sets.iter().enumerate() {
             let mut buffer_infos = Vec::new();
@@ -275,9 +325,6 @@ impl VulkanRenderer {
         pipeline: &mut VulkanGraphicsPipeline,
         binding_sets: &[&[ResourceBinding<'_>]],
     ) -> Result<Vec<DescriptorSet>> {
-        // TODO: Take the vertex and index buffers as separate args rather than in the binding sets
-        // since they are not part of the descriptor sets.
-
         let device_context = self
             .device_context
             .as_mut()
