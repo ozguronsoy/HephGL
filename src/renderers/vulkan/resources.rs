@@ -30,7 +30,7 @@ pub(super) struct DescriptorSetCache {
     generation: Option<u64>,
     /// This is used to detect when the pipeline is cloned to a worker thread so we can clean the
     /// cache to avoid using the resources of another thread.
-    pub(super) thread_id: std::thread::ThreadId,
+    thread_id: std::thread::ThreadId,
 }
 
 /// Represents a Vulkan buffer.
