@@ -1694,11 +1694,6 @@ impl Renderer for VulkanRenderer {
                     current_frame.command_pool,
                     ash::vk::CommandPoolResetFlags::empty(),
                 )?;
-                if !is_graphics {
-                    current_frame
-                        .descriptor_pool_manager
-                        .reset(&device_context.logical_device)?;
-                }
                 for transfer_buffer in &mut current_frame.transfer_buffers {
                     device_context
                         .vma_allocator

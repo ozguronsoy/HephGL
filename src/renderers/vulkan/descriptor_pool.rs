@@ -1,6 +1,6 @@
 use ash::vk::{
-    DescriptorPool, DescriptorPoolCreateInfo, DescriptorPoolResetFlags, DescriptorPoolSize,
-    DescriptorSet, DescriptorSetAllocateInfo, DescriptorSetLayout, DescriptorType,
+    DescriptorPool, DescriptorPoolCreateInfo, DescriptorPoolSize, DescriptorSet,
+    DescriptorSetAllocateInfo, DescriptorSetLayout, DescriptorType,
 };
 
 use crate::Result;
@@ -88,16 +88,6 @@ impl DescriptorPoolManager {
                 }
             }
         }
-    }
-
-    /// Frees all the sets allocated from the pools, so the pools can be used again.
-    pub fn reset(&mut self, device: &ash::Device) -> Result<()> {
-        for pool in &self.pools {
-            unsafe { device.reset_descriptor_pool(*pool, DescriptorPoolResetFlags::empty())? };
-        }
-        self.current_index = 0;
-        self.generation += 1;
-        Ok(())
     }
 
     /// Destroys all pools.
