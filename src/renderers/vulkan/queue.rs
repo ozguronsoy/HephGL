@@ -2,13 +2,6 @@ use ash::vk::{Queue, QueueFlags};
 
 use crate::renderers::vulkan::{frame::Frame, sync::VulkanFrameSync};
 
-#[derive(PartialEq)]
-pub(super) enum QueueType {
-    Compute,
-    Graphics,
-    Transfer,
-}
-
 /// Represents a Vulkan queue family.
 pub struct QueueFamily {
     /// The index of the graphics family.
