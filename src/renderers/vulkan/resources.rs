@@ -433,87 +433,51 @@ impl VulkanRenderer {
         descriptor_sets: &[DescriptorSet],
         binding_sets: &[&[ResourceBinding<'_>]],
     ) -> Result<()> {
-        for (i, &binding_set) in binding_sets.iter().enumerate() {
-            let mut buffer_infos = Vec::new();
-            let mut image_infos = Vec::new();
+        for (&descriptor_set, &binding_set) in descriptor_sets.iter().zip(binding_sets) {
             for binding in binding_set {
+                let write = ash::vk::WriteDescriptorSet::default()
+                    .dst_set(descriptor_set)
+                    .dst_binding(binding.binding);
                 match binding.resource {
                     ResourceBindingType::Buffer {
                         buffer,
                         offset,
                         size,
                     } => {
-                        let buffer = resource_ref::<VulkanBuffer>(buffer)?;
-                        buffer_infos.push(
-                            ash::vk::DescriptorBufferInfo::default()
-                                .buffer(buffer.buffer)
-                                .offset(offset as u64)
-                                .range(size as u64),
-                        );
-                    }
-                    ResourceBindingType::Texture { texture } => {
-                        let texture = resource_ref::<VulkanTexture>(texture)?;
-                        image_infos.push(
-                            ash::vk::DescriptorImageInfo::default()
-                                .image_view(texture.image_view)
-                                .image_layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL),
-                        );
-                    }
-                    ResourceBindingType::Sampler { sampler } => {
-                        let sampler = resource_ref::<VulkanSampler>(sampler)?;
-                        image_infos
-                            .push(ash::vk::DescriptorImageInfo::default().sampler(sampler.sampler));
-                    }
-                }
-            }
-
-            let mut buffer_index = 0;
-            let mut image_index = 0;
-            let mut writes = Vec::with_capacity(binding_set.len());
-            for binding in binding_set {
-                let write = match binding.resource {
-                    ResourceBindingType::Buffer { buffer, .. } => {
                         let descriptor_type = match buffer.usage() {
                             BufferUsage::Storage => ash::vk::DescriptorType::STORAGE_BUFFER,
                             BufferUsage::Uniform => ash::vk::DescriptorType::UNIFORM_BUFFER,
                             _ => unreachable!(),
                         };
-
-                        let info = &buffer_infos[buffer_index];
-                        buffer_index += 1;
-
-                        ash::vk::WriteDescriptorSet::default()
-                            .dst_set(descriptor_sets[i])
-                            .dst_binding(binding.binding)
+                        let buffer = resource_ref::<VulkanBuffer>(buffer)?;
+                        let info = ash::vk::DescriptorBufferInfo::default()
+                            .buffer(buffer.buffer)
+                            .offset(offset as u64)
+                            .range(size as u64);
+                        let write = write
                             .descriptor_type(descriptor_type)
-                            .buffer_info(std::slice::from_ref(info))
+                            .buffer_info(std::slice::from_ref(&info));
+                        unsafe { logical_device.update_descriptor_sets(&[write], &[]) };
                     }
-                    ResourceBindingType::Texture { .. } => {
-                        let info = &image_infos[image_index];
-                        image_index += 1;
-
-                        ash::vk::WriteDescriptorSet::default()
-                            .dst_set(descriptor_sets[i])
-                            .dst_binding(binding.binding)
+                    ResourceBindingType::Texture { texture } => {
+                        let texture = resource_ref::<VulkanTexture>(texture)?;
+                        let info = ash::vk::DescriptorImageInfo::default()
+                            .image_view(texture.image_view)
+                            .image_layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+                        let write = write
                             .descriptor_type(ash::vk::DescriptorType::SAMPLED_IMAGE)
-                            .image_info(std::slice::from_ref(info))
+                            .image_info(std::slice::from_ref(&info));
+                        unsafe { logical_device.update_descriptor_sets(&[write], &[]) };
                     }
-                    ResourceBindingType::Sampler { .. } => {
-                        let info = &image_infos[image_index];
-                        image_index += 1;
-
-                        ash::vk::WriteDescriptorSet::default()
-                            .dst_set(descriptor_sets[i])
-                            .dst_binding(binding.binding)
+                    ResourceBindingType::Sampler { sampler } => {
+                        let sampler = resource_ref::<VulkanSampler>(sampler)?;
+                        let info = ash::vk::DescriptorImageInfo::default().sampler(sampler.sampler);
+                        let write = write
                             .descriptor_type(ash::vk::DescriptorType::SAMPLER)
-                            .image_info(std::slice::from_ref(info))
+                            .image_info(std::slice::from_ref(&info));
+                        unsafe { logical_device.update_descriptor_sets(&[write], &[]) };
                     }
-                };
-                writes.push(write);
-            }
-
-            unsafe {
-                logical_device.update_descriptor_sets(&writes, &[]);
+                }
             }
         }
 
