@@ -226,3 +226,12 @@ impl Default for Settings {
         }
     }
 }
+impl Settings {
+    /// Gets the number of array layers the render targets need.
+    pub(super) fn array_layer_count(&self) -> u32 {
+        match self.stereoscopic_3d_rendering {
+            true => 2,
+            false => 1,
+        }
+    }
+}
