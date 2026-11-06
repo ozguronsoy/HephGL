@@ -1434,11 +1434,14 @@ impl Renderer for VulkanRenderer {
             .thread_contexts[thread_context_index];
 
         unsafe {
-            device_context.logical_device.cmd_bind_pipeline(
-                current_frame.command_buffer,
-                PipelineBindPoint::COMPUTE,
-                pipeline.pipeline,
-            );
+            if current_frame.bound_compute_pipeline != Some(pipeline.pipeline) {
+                device_context.logical_device.cmd_bind_pipeline(
+                    current_frame.command_buffer,
+                    PipelineBindPoint::COMPUTE,
+                    pipeline.pipeline,
+                );
+                current_frame.bound_compute_pipeline = Some(pipeline.pipeline);
+            }
             if !mapped_range.is_empty() {
                 device_context.logical_device.cmd_bind_descriptor_sets(
                     current_frame.command_buffer,
@@ -1515,11 +1518,14 @@ impl Renderer for VulkanRenderer {
         let current_frame = &mut graphics_queue_context.frames[device_context.current_frame_index]
             .thread_contexts[thread_context_index];
         unsafe {
-            device_context.logical_device.cmd_bind_pipeline(
-                current_frame.command_buffer,
-                PipelineBindPoint::GRAPHICS,
-                pipeline.pipeline,
-            );
+            if current_frame.bound_graphics_pipeline != Some(pipeline.pipeline) {
+                device_context.logical_device.cmd_bind_pipeline(
+                    current_frame.command_buffer,
+                    PipelineBindPoint::GRAPHICS,
+                    pipeline.pipeline,
+                );
+                current_frame.bound_graphics_pipeline = Some(pipeline.pipeline);
+            }
             if !mapped_range.is_empty() {
                 device_context.logical_device.cmd_bind_descriptor_sets(
                     current_frame.command_buffer,
@@ -1705,6 +1711,8 @@ impl Renderer for VulkanRenderer {
                 device_context
                     .logical_device
                     .begin_command_buffer(current_frame.command_buffer, &begin_info)?;
+                current_frame.bound_graphics_pipeline = None;
+                current_frame.bound_compute_pipeline = None;
                 if is_graphics {
                     let layer_count = match self.settings.stereoscopic_3d_rendering {
                         true => 2,

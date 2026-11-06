@@ -38,6 +38,10 @@ pub struct ThreadContext {
     pub descriptor_pool_manager: DescriptorPoolManager,
     /// The temporary buffers used for transfering data to the GPU.
     pub transfer_buffers: Vec<VulkanBuffer>,
+    /// The pipeline currently bound to the graphics bind point of the command buffer.
+    pub bound_graphics_pipeline: Option<ash::vk::Pipeline>,
+    /// The pipeline currently bound to the compute bind point of the command buffer.
+    pub bound_compute_pipeline: Option<ash::vk::Pipeline>,
     /// Indicates whether any command has been recorded in this thread.
     pub recorded: bool,
     /// Indicates whether the current thread began the current frame.
