@@ -1709,10 +1709,7 @@ impl Renderer for VulkanRenderer {
                 current_frame.bound_graphics_pipeline = None;
                 current_frame.bound_compute_pipeline = None;
                 if is_graphics {
-                    let layer_count = match self.settings.stereoscopic_3d_rendering {
-                        true => 2,
-                        false => 1,
-                    };
+                    let layer_count = self.settings.array_layer_count();
                     Self::transition_image_layout(
                         &device_context.logical_device,
                         current_frame.command_buffer,
@@ -1855,10 +1852,7 @@ impl Renderer for VulkanRenderer {
                         ash::vk::ImageAspectFlags::COLOR,
                         0,
                         1,
-                        match self.settings.stereoscopic_3d_rendering {
-                            true => 2,
-                            false => 1,
-                        },
+                        self.settings.array_layer_count(),
                     );
                 }
                 device_context
@@ -2055,10 +2049,7 @@ impl Renderer for VulkanRenderer {
                 extent: device_context.swapchain_context.extent,
             })
             .base_array_layer(0)
-            .layer_count(match self.settings.stereoscopic_3d_rendering {
-                true => 2,
-                false => 1,
-            });
+            .layer_count(self.settings.array_layer_count());
         unsafe {
             device_context.logical_device.cmd_clear_attachments(
                 current_frame.command_buffer,

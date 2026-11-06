@@ -35,7 +35,7 @@ pub struct DynamicRendering {
     color_format: ash::vk::Format,
     depth_format: ash::vk::Format,
     msaa: Msaa,
-    stereoscopic_3d_rendering: bool,
+    layer_count: u32,
 }
 
 impl VulkanRendering for DynamicRendering {
@@ -53,7 +53,7 @@ impl VulkanRendering for DynamicRendering {
             // TODO: Get this from swapchain context?
             depth_format: ash::vk::Format::D32_SFLOAT,
             msaa: settings.msaa,
-            stereoscopic_3d_rendering: settings.stereoscopic_3d_rendering,
+            layer_count: settings.array_layer_count(),
         })
     }
     fn create_graphics_pipeline(
@@ -332,10 +332,7 @@ impl VulkanRendering for DynamicRendering {
                 offset: ash::vk::Offset2D { x: 0, y: 0 },
                 extent: swapchain_context.extent,
             })
-            .layer_count(match self.stereoscopic_3d_rendering {
-                true => 2,
-                false => 1,
-            })
+            .layer_count(self.layer_count)
             .color_attachments(std::slice::from_ref(&color_attachment_info))
             .depth_attachment(&depth_attachment_info);
         unsafe {

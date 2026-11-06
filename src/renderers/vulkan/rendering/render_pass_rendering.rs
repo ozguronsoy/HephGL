@@ -143,10 +143,7 @@ impl VulkanRendering for RenderPassRendering {
             }
         };
 
-        let layer_count = match settings.stereoscopic_3d_rendering {
-            true => 2,
-            false => 1,
-        };
+        let layer_count = settings.array_layer_count();
         let mut framebuffers = Vec::with_capacity(swapchain_context.image_views.len());
         for swapchain_image_view in &swapchain_context.image_views {
             let framebuffer = if sample_count == SampleCountFlags::TYPE_1 {
