@@ -50,7 +50,7 @@ use crate::{
         vulkan::{
             device::DeviceContext,
             frame::{Frame, FrameState},
-            queue::QueueContext,
+            queue::{QueueContext, QueueType},
             swapchain::SwapchainContext,
             version::VulkanApiVersion,
         },
@@ -1679,7 +1679,9 @@ impl Renderer for VulkanRenderer {
             .rendering
             .as_mut()
             .ok_or(Error::invalid_operation("Device is not set."))?;
-        let mut begin_queue = |queue_context: &mut QueueContext, is_graphics: bool| -> Result<()> {
+        let mut begin_queue = |queue_context: &mut QueueContext,
+                               queue_type: QueueType|
+         -> Result<()> {
             let current_frame = &mut queue_context.frames[device_context.current_frame_index]
                 .thread_contexts[thread_context_index];
             let (state_mutex, cv) = &current_frame.sync_state;
@@ -1694,7 +1696,7 @@ impl Renderer for VulkanRenderer {
                     current_frame.command_pool,
                     ash::vk::CommandPoolResetFlags::empty(),
                 )?;
-                if !is_graphics {
+                if queue_type == QueueType::Transfer {
                     current_frame
                         .descriptor_pool_manager
                         .reset(&device_context.logical_device)?;
@@ -1713,7 +1715,7 @@ impl Renderer for VulkanRenderer {
                     .begin_command_buffer(current_frame.command_buffer, &begin_info)?;
                 current_frame.bound_graphics_pipeline = None;
                 current_frame.bound_compute_pipeline = None;
-                if is_graphics {
+                if queue_type == QueueType::Graphics {
                     let layer_count = match self.settings.stereoscopic_3d_rendering {
                         true => 2,
                         false => 1,
@@ -1806,10 +1808,16 @@ impl Renderer for VulkanRenderer {
             cv.notify_all();
             Ok(())
         };
-        begin_queue(&mut device_context.graphics_queue_context, true)?;
-        begin_queue(&mut device_context.transfer_queue_context, false)?;
+        begin_queue(
+            &mut device_context.graphics_queue_context,
+            QueueType::Graphics,
+        )?;
+        begin_queue(
+            &mut device_context.transfer_queue_context,
+            QueueType::Transfer,
+        )?;
         if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-            begin_queue(compute_queue_context, false)?;
+            begin_queue(compute_queue_context, QueueType::Compute)?;
         }
 
         Ok(())
@@ -1833,7 +1841,9 @@ impl Renderer for VulkanRenderer {
             false => None,
         };
 
-        let mut end_queue = |queue_context: &mut QueueContext, is_graphics: bool| -> Result<()> {
+        let mut end_queue = |queue_context: &mut QueueContext,
+                             queue_type: QueueType|
+         -> Result<()> {
             let current_frame = &mut queue_context.frames[device_context.current_frame_index]
                 .thread_contexts[thread_context_index];
             let (state_mutex, cv) = &current_frame.sync_state;
@@ -1844,7 +1854,7 @@ impl Renderer for VulkanRenderer {
                 ));
             }
             unsafe {
-                if is_graphics {
+                if queue_type == QueueType::Graphics {
                     rendering.end(&device_context.logical_device, current_frame.command_buffer)?;
                     Self::transition_image_layout(
                         &device_context.logical_device,
@@ -1874,10 +1884,16 @@ impl Renderer for VulkanRenderer {
             cv.notify_one();
             Ok(())
         };
-        end_queue(&mut device_context.graphics_queue_context, true)?;
-        end_queue(&mut device_context.transfer_queue_context, false)?;
+        end_queue(
+            &mut device_context.graphics_queue_context,
+            QueueType::Graphics,
+        )?;
+        end_queue(
+            &mut device_context.transfer_queue_context,
+            QueueType::Transfer,
+        )?;
         if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-            end_queue(compute_queue_context, false)?;
+            end_queue(compute_queue_context, QueueType::Compute)?;
         }
 
         if is_in_main_thread {
