@@ -63,3 +63,6 @@ while_true = "deny"
 non_camel_case_types = "deny"
 non_snake_case = "deny"
 non_upper_case_globals = "deny"
+
+[lints.clippy]
+too_many_arguments = "allow"

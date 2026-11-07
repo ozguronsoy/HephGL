@@ -1,3 +1,4 @@
+mod canvas;
 mod descriptor_pool;
 mod device;
 mod error;
@@ -35,11 +36,11 @@ use crate::{
     Error, HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Result, Version,
     graphics_device::{GraphicsDevice, GraphicsDeviceFeature, GraphicsDeviceType},
     renderers::{
-        BufferUsage, FeatureRequest, InitializeOptions, Renderer, ResourceBinding, Settings,
-        resource_mut, resource_ref,
+        BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererCanvas, ResourceBinding,
+        Settings, resource_mut, resource_ref,
         resources::{
-            RendererBuffer, RendererComputePipeline, RendererGraphicsPipeline, RendererSampler,
-            RendererTexture, ResourceBindingType,
+            RendererBuffer, RendererComputePipeline, RendererGraphicsPipeline, RendererResource,
+            RendererSampler, RendererTexture, TextureFormat,
         },
         settings::{GraphicsPipelineOptions, Msaa, SamplerOptions, TextureOptions},
         thread_context::{
@@ -48,6 +49,7 @@ use crate::{
         },
         version::DriverVersion,
         vulkan::{
+            canvas::{AttachmentImage, VulkanCanvas},
             device::DeviceContext,
             frame::{Frame, FrameState},
             queue::QueueContext,
@@ -705,18 +707,12 @@ impl Renderer for VulkanRenderer {
                 format: ash::vk::Format::default(),
                 extent: ash::vk::Extent2D::default(),
                 images: Vec::default(),
-                image_views: Vec::default(),
                 semaphores: Vec::default(),
-                depth_image: ash::vk::Image::null(),
-                depth_image_allocation: None,
-                depth_image_view: ash::vk::ImageView::null(),
-                msaa_color_image: ash::vk::Image::null(),
-                msaa_color_image_allocation: None,
-                msaa_color_image_view: ash::vk::ImageView::null(),
                 current_image_index: 0,
                 image_avaliable_semaphore_index: SwapchainContext::INVALID_INDEX,
             },
             rendering: None,
+            display_canvas: None,
 
             physical_device,
             logical_device,
@@ -1506,105 +1502,202 @@ impl Renderer for VulkanRenderer {
         draw_count: u32,
         instance_count: u32,
     ) -> Result<()> {
-        let pipeline = resource_mut::<VulkanGraphicsPipeline>(pipeline)?;
-        let mapped_range = self.create_graphics_resource_sets(pipeline, binding_sets)?;
+        self.record_draw(
+            None,
+            pipeline,
+            index_buffer,
+            vertex_bindings,
+            binding_sets,
+            draw_count,
+            instance_count,
+        )
+    }
+
+    fn create_canvas(&self, width: u32, height: u32) -> Result<Box<dyn RendererCanvas>> {
+        if width == 0 || height == 0 {
+            return Err(Error::invalid_argument(
+                "Canvas dimensions must be greater than zero.",
+            ));
+        }
+
+        let instance = self
+            .instance
+            .as_ref()
+            .ok_or(Error::invalid_operation("Renderer is not initialized"))?;
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(Error::invalid_operation("Device is not set."))?;
+        let rendering = device_context
+            .rendering
+            .as_ref()
+            .ok_or(Error::invalid_operation("Device is not set."))?;
+
+        let limits = unsafe {
+            instance
+                .get_physical_device_properties(device_context.physical_device)
+                .limits
+        };
+        let max_width = limits
+            .max_image_dimension2_d
+            .min(limits.max_framebuffer_width);
+        let max_height = limits
+            .max_image_dimension2_d
+            .min(limits.max_framebuffer_height);
+        if width > max_width || height > max_height {
+            return Err(Error::InvalidArgument(format!(
+                "Canvas dimensions cannot exceed {max_width}x{max_height}."
+            )));
+        }
+
+        let format = device_context.swapchain_context.format;
+        let texture_format = TextureFormat::try_from(format)?;
+        let extent = ash::vk::Extent2D { width, height };
+        let layer_count = self.settings.array_layer_count();
+        let sample_count: ash::vk::SampleCountFlags = self.settings.msaa.into();
+
+        let color_image = Self::create_attachment_image(
+            device_context,
+            format,
+            extent,
+            layer_count,
+            ash::vk::SampleCountFlags::TYPE_1,
+            ash::vk::ImageUsageFlags::COLOR_ATTACHMENT
+                | ash::vk::ImageUsageFlags::SAMPLED
+                | ash::vk::ImageUsageFlags::TRANSFER_SRC,
+            ash::vk::ImageAspectFlags::COLOR,
+        )?;
+        let msaa_color_image = match sample_count {
+            ash::vk::SampleCountFlags::TYPE_1 => None,
+            _ => Some(
+                match Self::create_attachment_image(
+                    device_context,
+                    format,
+                    extent,
+                    layer_count,
+                    sample_count,
+                    ash::vk::ImageUsageFlags::COLOR_ATTACHMENT,
+                    ash::vk::ImageAspectFlags::COLOR,
+                ) {
+                    Ok(msaa_color_image) => msaa_color_image,
+                    Err(error) => {
+                        Self::destroy_attachment_image(device_context, color_image);
+                        return Err(error);
+                    }
+                },
+            ),
+        };
+        let depth_image = match Self::create_attachment_image(
+            device_context,
+            ash::vk::Format::D32_SFLOAT,
+            extent,
+            layer_count,
+            sample_count,
+            ash::vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            ash::vk::ImageAspectFlags::DEPTH,
+        ) {
+            Ok(depth_image) => depth_image,
+            Err(error) => {
+                Self::destroy_attachment_image(device_context, color_image);
+                if let Some(msaa_color_image) = msaa_color_image {
+                    Self::destroy_attachment_image(device_context, msaa_color_image);
+                }
+                return Err(error);
+            }
+        };
+
+        let mut canvas = VulkanCanvas {
+            texture: VulkanTexture {
+                image: color_image.image,
+                image_view: color_image.view,
+                vma_allocation: color_image.allocation,
+                texture_options: TextureOptions {
+                    width,
+                    height,
+                    format: texture_format,
+                    mip_level_count: 1,
+                },
+            },
+            msaa_color_image,
+            depth_image,
+            render_pass: ash::vk::RenderPass::null(),
+            framebuffer: ash::vk::Framebuffer::null(),
+            msaa: self.settings.msaa,
+            layer_count,
+            layout: ash::vk::ImageLayout::UNDEFINED,
+        };
+        if let Err(error) =
+            rendering.create_canvas_framebuffer(&device_context.logical_device, &mut canvas)
+        {
+            self.destroy_canvas(&mut canvas)?;
+            return Err(error);
+        }
+
+        Ok(Box::new(canvas))
+    }
+
+    fn destroy_canvas(&self, canvas: &mut dyn RendererCanvas) -> Result<()> {
+        let canvas = resource_mut::<VulkanCanvas>(canvas)?;
+        if !canvas.texture.is_allocated() {
+            return Ok(());
+        }
 
         let device_context = self
             .device_context
-            .as_mut()
+            .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
-        let graphics_queue_context = &mut device_context.graphics_queue_context;
-        let thread_context_index = Self::thread_context_index()?;
-        let current_frame = &mut graphics_queue_context.frames[device_context.current_frame_index]
-            .thread_contexts[thread_context_index];
+
         unsafe {
-            if current_frame.bound_graphics_pipeline != Some(pipeline.pipeline) {
-                device_context.logical_device.cmd_bind_pipeline(
-                    current_frame.command_buffer,
-                    PipelineBindPoint::GRAPHICS,
-                    pipeline.pipeline,
-                );
-                current_frame.bound_graphics_pipeline = Some(pipeline.pipeline);
-            }
-            if !mapped_range.is_empty() {
-                device_context.logical_device.cmd_bind_descriptor_sets(
-                    current_frame.command_buffer,
-                    PipelineBindPoint::GRAPHICS,
-                    pipeline.layout,
-                    0,
-                    &pipeline.descriptor_set_cache.descriptor_sets[mapped_range],
-                    &[],
-                );
-            }
-            for vertex_binding in vertex_bindings {
-                let ResourceBindingType::Buffer {
-                    buffer,
-                    offset,
-                    size,
-                } = vertex_binding.resource
-                else {
-                    return Err(Error::invalid_argument(
-                        "Vertex binding type must be a buffer",
-                    ));
-                };
-                if buffer.usage() != BufferUsage::Vertex {
-                    return Err(Error::invalid_argument(
-                        "Vertex buffer's usage must be `BufferUsage::Vertex`.",
-                    ));
-                }
-
-                let vertex_buffer = resource_ref::<VulkanBuffer>(buffer)?;
-                if offset
-                    .checked_add(size)
-                    .is_none_or(|x| x > vertex_buffer.size)
-                {
-                    return Err(Error::invalid_argument(
-                        "Buffer overflow while binding the vertex buffer.",
-                    ));
-                }
-                device_context.logical_device.cmd_bind_vertex_buffers(
-                    current_frame.command_buffer,
-                    vertex_binding.binding,
-                    std::slice::from_ref(&vertex_buffer.buffer),
-                    std::slice::from_ref(&(offset as u64)),
-                );
-            }
-
-            if let Some(index_buffer) = index_buffer {
-                if index_buffer.usage() != BufferUsage::Index {
-                    return Err(Error::invalid_argument(
-                        "Index buffer's usage must be `BufferUsage::Index`.",
-                    ));
-                }
-
-                let index_buffer = resource_ref::<VulkanBuffer>(index_buffer)?;
-                device_context.logical_device.cmd_bind_index_buffer(
-                    current_frame.command_buffer,
-                    index_buffer.buffer,
-                    0,
-                    ash::vk::IndexType::UINT32,
-                );
-                device_context.logical_device.cmd_draw_indexed(
-                    current_frame.command_buffer,
-                    draw_count,
-                    instance_count,
-                    0,
-                    0,
-                    0,
-                );
-            } else {
-                device_context.logical_device.cmd_draw(
-                    current_frame.command_buffer,
-                    draw_count,
-                    instance_count,
-                    0,
-                    0,
-                );
-            }
+            device_context
+                .logical_device
+                .destroy_framebuffer(canvas.framebuffer, None);
+            device_context
+                .logical_device
+                .destroy_render_pass(canvas.render_pass, None);
         }
+        if let Some(msaa_color_image) = canvas.msaa_color_image.take() {
+            Self::destroy_attachment_image(device_context, msaa_color_image);
+        }
+        Self::destroy_attachment_image(device_context, canvas.depth_image);
+        Self::destroy_attachment_image(
+            device_context,
+            AttachmentImage {
+                image: canvas.texture.image,
+                view: canvas.texture.image_view,
+                allocation: canvas.texture.vma_allocation,
+            },
+        );
 
-        current_frame.recorded = true;
+        canvas.framebuffer = ash::vk::Framebuffer::null();
+        canvas.render_pass = ash::vk::RenderPass::null();
+        canvas.depth_image.image = ash::vk::Image::null();
+        canvas.depth_image.view = ash::vk::ImageView::null();
+        canvas.texture.image = ash::vk::Image::null();
+        canvas.texture.image_view = ash::vk::ImageView::null();
+        canvas.texture.texture_options = TextureOptions::default();
+        canvas.layout = ash::vk::ImageLayout::UNDEFINED;
         Ok(())
+    }
+
+    fn record_canvas_command(
+        &mut self,
+        canvas: &mut dyn RendererCanvas,
+        pipeline: &mut dyn RendererGraphicsPipeline,
+        index_buffer: Option<&dyn RendererBuffer>,
+        vertex_bindings: &[ResourceBinding<'_>],
+        binding_sets: &[&[ResourceBinding<'_>]],
+        draw_count: u32,
+        instance_count: u32,
+    ) -> Result<()> {
+        self.record_draw(
+            Some(resource_mut::<VulkanCanvas>(canvas)?),
+            pipeline,
+            index_buffer,
+            vertex_bindings,
+            binding_sets,
+            draw_count,
+            instance_count,
+        )
     }
 
     fn begin_frame(&mut self) -> Result<()> {
@@ -1675,11 +1768,7 @@ impl Renderer for VulkanRenderer {
             }
         }
 
-        let rendering = device_context
-            .rendering
-            .as_mut()
-            .ok_or(Error::invalid_operation("Device is not set."))?;
-        let mut begin_queue = |queue_context: &mut QueueContext, is_graphics: bool| -> Result<()> {
+        let begin_queue = |queue_context: &mut QueueContext, is_graphics: bool| -> Result<()> {
             let current_frame = &mut queue_context.frames[device_context.current_frame_index]
                 .thread_contexts[thread_context_index];
             let (state_mutex, cv) = &current_frame.sync_state;
@@ -1709,89 +1798,7 @@ impl Renderer for VulkanRenderer {
                 current_frame.bound_graphics_pipeline = None;
                 current_frame.bound_compute_pipeline = None;
                 if is_graphics {
-                    let layer_count = self.settings.array_layer_count();
-                    Self::transition_image_layout(
-                        &device_context.logical_device,
-                        current_frame.command_buffer,
-                        device_context.swapchain_context.images
-                            [device_context.swapchain_context.current_image_index],
-                        ash::vk::ImageLayout::UNDEFINED,
-                        ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                        ash::vk::AccessFlags::empty(),
-                        ash::vk::AccessFlags::COLOR_ATTACHMENT_READ
-                            | ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                        ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                        ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                        ash::vk::ImageAspectFlags::COLOR,
-                        0,
-                        1,
-                        layer_count,
-                    );
-                    Self::transition_image_layout(
-                        &device_context.logical_device,
-                        current_frame.command_buffer,
-                        device_context.swapchain_context.depth_image,
-                        ash::vk::ImageLayout::UNDEFINED,
-                        ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                        ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-                        ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                            | ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-                        ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
-                            | ash::vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
-                        ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
-                            | ash::vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
-                        ash::vk::ImageAspectFlags::DEPTH,
-                        0,
-                        1,
-                        layer_count,
-                    );
-                    if self.settings.msaa != Msaa::X1 {
-                        Self::transition_image_layout(
-                            &device_context.logical_device,
-                            current_frame.command_buffer,
-                            device_context.swapchain_context.msaa_color_image,
-                            ash::vk::ImageLayout::UNDEFINED,
-                            ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                            ash::vk::AccessFlags::empty(),
-                            ash::vk::AccessFlags::COLOR_ATTACHMENT_READ
-                                | ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                            ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                            ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                            ash::vk::ImageAspectFlags::COLOR,
-                            0,
-                            1,
-                            layer_count,
-                        );
-                    }
-                    rendering.begin(
-                        &device_context.logical_device,
-                        current_frame.command_buffer,
-                        &device_context.swapchain_context,
-                    )?;
-
-                    let extent = device_context.swapchain_context.extent;
-                    let viewport = ash::vk::Viewport {
-                        x: 0.0,
-                        y: 0.0,
-                        width: extent.width as f32,
-                        height: extent.height as f32,
-                        min_depth: 0.0,
-                        max_depth: 1.0,
-                    };
-                    let scissor = ash::vk::Rect2D {
-                        offset: ash::vk::Offset2D { x: 0, y: 0 },
-                        extent,
-                    };
-                    device_context.logical_device.cmd_set_viewport(
-                        current_frame.command_buffer,
-                        0,
-                        std::slice::from_ref(&viewport),
-                    );
-                    device_context.logical_device.cmd_set_scissor(
-                        current_frame.command_buffer,
-                        0,
-                        std::slice::from_ref(&scissor),
-                    );
+                    current_frame.render_target = None;
                 }
             }
             *state = FrameState::Started;
@@ -1825,6 +1832,7 @@ impl Renderer for VulkanRenderer {
             false => None,
         };
 
+        let mut present = false;
         let mut end_queue = |queue_context: &mut QueueContext, is_graphics: bool| -> Result<()> {
             let current_frame = &mut queue_context.frames[device_context.current_frame_index]
                 .thread_contexts[thread_context_index];
@@ -1836,24 +1844,31 @@ impl Renderer for VulkanRenderer {
                 ));
             }
             unsafe {
-                if is_graphics {
-                    rendering.end(&device_context.logical_device, current_frame.command_buffer)?;
-                    Self::transition_image_layout(
+                if is_graphics && let Some(image) = current_frame.render_target.take() {
+                    Self::end_rendering(
                         &device_context.logical_device,
+                        rendering.as_mut(),
                         current_frame.command_buffer,
-                        device_context.swapchain_context.images
-                            [device_context.swapchain_context.current_image_index],
-                        ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                        ash::vk::ImageLayout::PRESENT_SRC_KHR,
-                        ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                        ash::vk::AccessFlags::empty(),
-                        ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                        ash::vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-                        ash::vk::ImageAspectFlags::COLOR,
-                        0,
-                        1,
+                        image,
                         self.settings.array_layer_count(),
-                    );
+                    )?;
+                }
+                if is_graphics && is_in_main_thread {
+                    let display_canvas = device_context
+                        .display_canvas
+                        .as_ref()
+                        .ok_or(Error::invalid_operation("Device is not set."))?;
+                    if display_canvas.layout != ash::vk::ImageLayout::UNDEFINED {
+                        Self::copy_display_canvas(
+                            &device_context.logical_device,
+                            current_frame.command_buffer,
+                            display_canvas,
+                            device_context.swapchain_context.images[image_index],
+                            self.settings.array_layer_count(),
+                        );
+                        current_frame.recorded = true;
+                        present = true;
+                    }
                 }
                 device_context
                     .logical_device
@@ -1878,7 +1893,7 @@ impl Renderer for VulkanRenderer {
             let render_finished_semaphores = [device_context.swapchain_context.semaphores
                 [device_context.swapchain_context.current_image_index]
                 .1];
-            let wait_stages = [ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+            let wait_stages = [ash::vk::PipelineStageFlags::TRANSFER];
 
             let mut graphics_command_buffers = Vec::new();
             let mut transfer_command_buffers = Vec::new();
@@ -1932,10 +1947,10 @@ impl Renderer for VulkanRenderer {
 
             let submit_commands = |queue_context: &mut QueueContext,
                                    command_buffers: &Vec<ash::vk::CommandBuffer>,
-                                   is_graphics: bool|
+                                   present: bool|
              -> Result<()> {
                 if !command_buffers.is_empty() {
-                    let submit_info = match is_graphics {
+                    let submit_info = match present {
                         true => SubmitInfo::default()
                             .command_buffers(command_buffers)
                             .wait_semaphores(&image_available_semaphores)
@@ -1966,13 +1981,13 @@ impl Renderer for VulkanRenderer {
             submit_commands(
                 &mut device_context.graphics_queue_context,
                 &graphics_command_buffers,
-                true,
+                present,
             )?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 submit_commands(compute_queue_context, &compute_command_buffers, false)?;
             }
 
-            if !graphics_command_buffers.is_empty() {
+            if present {
                 let wait_semaphores = [device_context.swapchain_context.semaphores[image_index].1];
                 let swapchains = [device_context.swapchain_context.swapchain];
                 let image_indices = [image_index as u32];
@@ -2019,47 +2034,11 @@ impl Renderer for VulkanRenderer {
     }
 
     fn clear(&mut self, color: RGB<f32>) -> Result<()> {
-        let device_context = self
-            .device_context
-            .as_mut()
-            .ok_or(Error::invalid_operation("Device is not set."))?;
-        let thread_context_index = Self::thread_context_index()?;
-        let current_frame = &mut device_context.graphics_queue_context.frames
-            [device_context.current_frame_index]
-            .thread_contexts[thread_context_index];
+        self.record_clear(None, color)
+    }
 
-        {
-            let state = current_frame.sync_state.0.lock()?;
-            if *state != FrameState::Started {
-                return Err(Error::invalid_operation("Cannot clear outside of a frame."));
-            }
-        }
-
-        let clear_attachment = ash::vk::ClearAttachment::default()
-            .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
-            .color_attachment(0)
-            .clear_value(ash::vk::ClearValue {
-                color: ash::vk::ClearColorValue {
-                    float32: [color.r, color.g, color.b, 1.0],
-                },
-            });
-        let clear_rect = ash::vk::ClearRect::default()
-            .rect(ash::vk::Rect2D {
-                offset: ash::vk::Offset2D { x: 0, y: 0 },
-                extent: device_context.swapchain_context.extent,
-            })
-            .base_array_layer(0)
-            .layer_count(self.settings.array_layer_count());
-        unsafe {
-            device_context.logical_device.cmd_clear_attachments(
-                current_frame.command_buffer,
-                std::slice::from_ref(&clear_attachment),
-                std::slice::from_ref(&clear_rect),
-            );
-        }
-
-        current_frame.recorded = true;
-        Ok(())
+    fn clear_canvas(&mut self, canvas: &mut dyn RendererCanvas, color: RGB<f32>) -> Result<()> {
+        self.record_clear(Some(resource_mut::<VulkanCanvas>(canvas)?), color)
     }
 }
 

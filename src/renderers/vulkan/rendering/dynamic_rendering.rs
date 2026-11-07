@@ -16,9 +16,11 @@ use ash::vk::{
 use crate::{
     Error, Result,
     renderers::{
+        RendererCanvas,
         settings::{GraphicsPipelineOptions, Msaa, Settings},
         vulkan::{
             DescriptorSetCache, VulkanRenderer,
+            canvas::VulkanCanvas,
             rendering::{
                 VulkanRendering,
                 lifetime_guards::{PipelineResources, ShaderModules},
@@ -35,7 +37,6 @@ pub struct DynamicRendering {
     color_format: ash::vk::Format,
     depth_format: ash::vk::Format,
     msaa: Msaa,
-    layer_count: u32,
 }
 
 impl VulkanRendering for DynamicRendering {
@@ -53,7 +54,6 @@ impl VulkanRendering for DynamicRendering {
             // TODO: Get this from swapchain context?
             depth_format: ash::vk::Format::D32_SFLOAT,
             msaa: settings.msaa,
-            layer_count: settings.array_layer_count(),
         })
     }
     fn create_graphics_pipeline(
@@ -292,35 +292,36 @@ impl VulkanRendering for DynamicRendering {
         pipeline.descriptor_binding_counts.clear();
         Ok(())
     }
+    fn create_canvas_framebuffer(&self, _: &ash::Device, _: &mut VulkanCanvas) -> Result<()> {
+        // Dynamic rendering uses the image views of the canvas directly.
+        Ok(())
+    }
     fn begin(
         &mut self,
         device: &ash::Device,
         command_buffer: CommandBuffer,
-        swapchain_context: &SwapchainContext,
+        canvas: &VulkanCanvas,
     ) -> Result<()> {
-        let color_attachment_info = if self.msaa == Msaa::X1 {
-            RenderingAttachmentInfo::default()
-                .image_view(swapchain_context.image_views[swapchain_context.current_image_index])
+        let color_attachment_info = match &canvas.msaa_color_image {
+            None => RenderingAttachmentInfo::default()
+                .image_view(canvas.texture.image_view)
                 .image_layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .load_op(AttachmentLoadOp::DONT_CARE)
+                .load_op(AttachmentLoadOp::LOAD)
+                .store_op(AttachmentStoreOp::STORE),
+            Some(msaa_color_image) => RenderingAttachmentInfo::default()
+                .image_view(msaa_color_image.view)
+                .image_layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                .load_op(AttachmentLoadOp::LOAD)
                 .store_op(AttachmentStoreOp::STORE)
-        } else {
-            RenderingAttachmentInfo::default()
-                .image_view(swapchain_context.msaa_color_image_view)
-                .image_layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .load_op(AttachmentLoadOp::DONT_CARE)
-                .store_op(AttachmentStoreOp::DONT_CARE)
                 .resolve_mode(ash::vk::ResolveModeFlags::AVERAGE)
-                .resolve_image_view(
-                    swapchain_context.image_views[swapchain_context.current_image_index],
-                )
-                .resolve_image_layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                .resolve_image_view(canvas.texture.image_view)
+                .resolve_image_layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL),
         };
         let depth_attachment_info = RenderingAttachmentInfo::default()
-            .image_view(swapchain_context.depth_image_view)
+            .image_view(canvas.depth_image.view)
             .image_layout(ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
             .load_op(AttachmentLoadOp::CLEAR)
-            .store_op(AttachmentStoreOp::STORE)
+            .store_op(AttachmentStoreOp::DONT_CARE)
             .clear_value(ash::vk::ClearValue {
                 depth_stencil: ClearDepthStencilValue {
                     depth: 1.0,
@@ -330,9 +331,12 @@ impl VulkanRendering for DynamicRendering {
         let rendering_info = RenderingInfo::default()
             .render_area(ash::vk::Rect2D {
                 offset: ash::vk::Offset2D { x: 0, y: 0 },
-                extent: swapchain_context.extent,
+                extent: ash::vk::Extent2D {
+                    width: canvas.width(),
+                    height: canvas.height(),
+                },
             })
-            .layer_count(self.layer_count)
+            .layer_count(canvas.layer_count)
             .color_attachments(std::slice::from_ref(&color_attachment_info))
             .depth_attachment(&depth_attachment_info);
         unsafe {

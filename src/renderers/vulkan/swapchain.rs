@@ -1,13 +1,15 @@
 use ash::vk::{
-    ColorSpaceKHR, CompositeAlphaFlagsKHR, Extent3D, ImageCreateInfo, ImageLayout,
-    ImageSubresourceRange, ImageTiling, ImageUsageFlags, ImageViewCreateInfo, PresentModeKHR,
-    SampleCountFlags, SemaphoreCreateInfo, SharingMode, SwapchainCreateInfoKHR, SwapchainKHR,
+    AccessFlags, ColorSpaceKHR, CompositeAlphaFlagsKHR, Extent3D, ImageAspectFlags, ImageCopy,
+    ImageLayout, ImageSubresourceLayers, ImageUsageFlags, PipelineStageFlags, PresentModeKHR,
+    SemaphoreCreateInfo, SharingMode, SwapchainCreateInfoKHR, SwapchainKHR,
 };
-use vk_mem::Alloc;
 
 use crate::{
     Error, Result,
-    renderers::{Renderer, vulkan::VulkanRenderer},
+    renderers::{
+        Renderer, RendererCanvas,
+        vulkan::{VulkanRenderer, canvas::VulkanCanvas},
+    },
 };
 
 /// Represents the Vulkan swapchain and its associated resources required for presentation.
@@ -22,24 +24,10 @@ pub struct SwapchainContext {
     pub format: ash::vk::Format,
     /// The width and height of the swapchain images.
     pub extent: ash::vk::Extent2D,
-    /// The Vulkan images.
+    /// The Vulkan images, which the display canvas is copied into.
     pub images: Vec<ash::vk::Image>,
-    /// The views required to draw into the Vulkan images as color attachments.
-    pub image_views: Vec<ash::vk::ImageView>,
     /// The image available and render finished semaphores.
     pub semaphores: Vec<(ash::vk::Semaphore, ash::vk::Semaphore)>,
-    /// The depth buffer.
-    pub depth_image: ash::vk::Image,
-    /// The allocation of depth buffer.
-    pub depth_image_allocation: Option<vk_mem::Allocation>,
-    /// The depth buffer view.
-    pub depth_image_view: ash::vk::ImageView,
-    /// The color image that will be used if MSAA is enabled.
-    pub msaa_color_image: ash::vk::Image,
-    /// The allocation of color image that will be used if MSAA is enabled.
-    pub msaa_color_image_allocation: Option<vk_mem::Allocation>,
-    /// The color image view that will be used if MSAA is enabled.
-    pub msaa_color_image_view: ash::vk::ImageView,
     /// The index of the image currently used for rendering.
     pub current_image_index: usize,
     /// The index of the semaphore used for acquiring an image.
@@ -52,8 +40,7 @@ impl SwapchainContext {
 }
 
 impl VulkanRenderer {
-    /// Creates the swapchain, images, image views, semaphores, and the depth buffer for the
-    /// renderer.
+    /// Creates the swapchain, images, and semaphores for the renderer.
     pub(super) fn create_swapchain(&mut self) -> Result<()> {
         let window_surface_loader = self
             .window_surface_loader
@@ -85,6 +72,15 @@ impl VulkanRenderer {
         {
             return Err(Error::fail(
                 "Current device does not support rendering to the target window.",
+            ));
+        }
+        // The display canvas is copied into the swapchain images.
+        if !surface_capabilities
+            .supported_usage_flags
+            .contains(ImageUsageFlags::TRANSFER_DST)
+        {
+            return Err(Error::fail(
+                "Current device does not support copying images into the target window.",
             ));
         }
 
@@ -119,6 +115,10 @@ impl VulkanRenderer {
         device_context.swapchain_context.format = format;
         device_context.swapchain_context.extent = extent;
 
+        let array_layer_count = self
+            .settings
+            .array_layer_count()
+            .min(surface_capabilities.max_image_array_layers);
         // `0` means there is no limit for number of images.
         let requested_image_count = match surface_capabilities.max_image_count == 0 {
             true => frames_in_flight.max(surface_capabilities.min_image_count),
@@ -127,14 +127,6 @@ impl VulkanRenderer {
                 surface_capabilities.max_image_count,
             ),
         };
-        let (array_layer_count, image_view_type) = match self.settings.stereoscopic_3d_rendering {
-            true => (
-                2.min(surface_capabilities.max_image_array_layers),
-                ash::vk::ImageViewType::TYPE_2D_ARRAY,
-            ),
-            false => (1, ash::vk::ImageViewType::TYPE_2D),
-        };
-
         if requested_image_count < frames_in_flight {
             return Err(Error::Fail(format!(
                 "Failed to create `{}` amount of frames.",
@@ -142,7 +134,7 @@ impl VulkanRenderer {
             )));
         }
 
-        // Create the swapchain, image views, and semaphores.
+        // Create the swapchain and semaphores.
         unsafe {
             let swapchain_create_info = SwapchainCreateInfoKHR::default()
                 .surface(window_surface)
@@ -151,7 +143,7 @@ impl VulkanRenderer {
                 .image_color_space(color_space)
                 .image_extent(device_context.swapchain_context.extent)
                 .image_array_layers(array_layer_count)
-                .image_usage(ImageUsageFlags::COLOR_ATTACHMENT)
+                .image_usage(ImageUsageFlags::TRANSFER_DST)
                 .image_sharing_mode(SharingMode::EXCLUSIVE)
                 .pre_transform(surface_capabilities.current_transform)
                 .composite_alpha(CompositeAlphaFlagsKHR::OPAQUE)
@@ -174,33 +166,8 @@ impl VulkanRenderer {
                 .get_swapchain_images(device_context.swapchain_context.swapchain)?;
 
             let image_count = device_context.swapchain_context.images.len();
-            device_context.swapchain_context.image_views = Vec::with_capacity(image_count);
             device_context.swapchain_context.semaphores = Vec::with_capacity(image_count);
-            for image in &device_context.swapchain_context.images {
-                let image_view_create_info = ImageViewCreateInfo::default()
-                    .image(*image)
-                    .view_type(image_view_type)
-                    .format(device_context.swapchain_context.format)
-                    .components(ash::vk::ComponentMapping {
-                        r: ash::vk::ComponentSwizzle::R,
-                        g: ash::vk::ComponentSwizzle::G,
-                        b: ash::vk::ComponentSwizzle::B,
-                        a: ash::vk::ComponentSwizzle::A,
-                    })
-                    .subresource_range(
-                        ash::vk::ImageSubresourceRange::default()
-                            .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
-                            .base_mip_level(0)
-                            .level_count(1)
-                            .base_array_layer(0)
-                            .layer_count(array_layer_count),
-                    );
-                device_context.swapchain_context.image_views.push(
-                    device_context
-                        .logical_device
-                        .create_image_view(&image_view_create_info, None)?,
-                );
-
+            for _ in 0..image_count {
                 let semaphore_create_info = SemaphoreCreateInfo::default();
                 device_context.swapchain_context.semaphores.push((
                     device_context
@@ -220,97 +187,6 @@ impl VulkanRenderer {
             return Err(Error::invalid_argument(
                 "Requested MSAA sample count is not supported by the selected device.",
             ));
-        }
-        let sample_count: SampleCountFlags = self.settings.msaa.into();
-
-        // Create depth buffer.
-        unsafe {
-            let depth_format = ash::vk::Format::D32_SFLOAT;
-            let depth_image_create_info = ImageCreateInfo::default()
-                .image_type(ash::vk::ImageType::TYPE_2D)
-                .format(depth_format)
-                .extent(Extent3D {
-                    width: device_context.swapchain_context.extent.width,
-                    height: device_context.swapchain_context.extent.height,
-                    depth: 1,
-                })
-                .mip_levels(1)
-                .array_layers(array_layer_count)
-                .samples(sample_count)
-                .tiling(ImageTiling::OPTIMAL)
-                .usage(ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
-                .initial_layout(ImageLayout::UNDEFINED);
-            let allocation_info = vk_mem::AllocationCreateInfo {
-                usage: vk_mem::MemoryUsage::AutoPreferDevice,
-                ..Default::default()
-            };
-            let (depth_image, dept_image_allocation) = device_context
-                .vma_allocator
-                .create_image(&depth_image_create_info, &allocation_info)?;
-            device_context.swapchain_context.depth_image = depth_image;
-            device_context.swapchain_context.depth_image_allocation = Some(dept_image_allocation);
-
-            let depth_image_view_create_info = ImageViewCreateInfo::default()
-                .image(device_context.swapchain_context.depth_image)
-                .view_type(image_view_type)
-                .format(depth_format)
-                .subresource_range(ImageSubresourceRange {
-                    aspect_mask: ash::vk::ImageAspectFlags::DEPTH,
-                    level_count: 1,
-                    base_mip_level: 0,
-                    base_array_layer: 0,
-                    layer_count: array_layer_count,
-                });
-            device_context.swapchain_context.depth_image_view = device_context
-                .logical_device
-                .create_image_view(&depth_image_view_create_info, None)?;
-        }
-
-        // Create MSAA image.
-        if sample_count != SampleCountFlags::TYPE_1 {
-            let color_image_create_info = ImageCreateInfo::default()
-                .image_type(ash::vk::ImageType::TYPE_2D)
-                .format(device_context.swapchain_context.format)
-                .extent(Extent3D {
-                    width: device_context.swapchain_context.extent.width,
-                    height: device_context.swapchain_context.extent.height,
-                    depth: 1,
-                })
-                .mip_levels(1)
-                .array_layers(array_layer_count)
-                .samples(sample_count)
-                .tiling(ImageTiling::OPTIMAL)
-                .usage(ImageUsageFlags::COLOR_ATTACHMENT | ImageUsageFlags::TRANSIENT_ATTACHMENT)
-                .initial_layout(ImageLayout::UNDEFINED);
-            let allocation_info = vk_mem::AllocationCreateInfo {
-                usage: vk_mem::MemoryUsage::AutoPreferDevice,
-                ..Default::default()
-            };
-            let (image, allocation) = unsafe {
-                device_context
-                    .vma_allocator
-                    .create_image(&color_image_create_info, &allocation_info)?
-            };
-            device_context.swapchain_context.msaa_color_image = image;
-            device_context.swapchain_context.msaa_color_image_allocation = Some(allocation);
-
-            let image_view_create_info = ImageViewCreateInfo::default()
-                .image(image)
-                .view_type(image_view_type)
-                .format(device_context.swapchain_context.format)
-                .subresource_range(
-                    ImageSubresourceRange::default()
-                        .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
-                        .base_mip_level(0)
-                        .level_count(1)
-                        .base_array_layer(0)
-                        .layer_count(array_layer_count),
-                );
-            device_context.swapchain_context.msaa_color_image_view = unsafe {
-                device_context
-                    .logical_device
-                    .create_image_view(&image_view_create_info, None)?
-            };
         }
 
         device_context
@@ -337,8 +213,19 @@ impl VulkanRenderer {
                 .ok_or(Error::invalid_operation("Device is not set."))?;
             let swapchain_context = &mut device_context.swapchain_context;
 
-            if swapchain_context.image_avaliable_semaphore_index != SwapchainContext::INVALID_INDEX
-            {
+            let semaphore_index = swapchain_context.image_avaliable_semaphore_index;
+            if semaphore_index != SwapchainContext::INVALID_INDEX {
+                // The image is acquired by an earlier frame that only rendered into canvases. Move
+                // its semaphore to the current frame, so it is not reused for acquiring an image
+                // before the current frame finishes.
+                let frame_index = device_context.current_frame_index;
+                if semaphore_index != frame_index {
+                    let semaphore = swapchain_context.semaphores[semaphore_index].0;
+                    swapchain_context.semaphores[semaphore_index].0 =
+                        swapchain_context.semaphores[frame_index].0;
+                    swapchain_context.semaphores[frame_index].0 = semaphore;
+                    swapchain_context.image_avaliable_semaphore_index = frame_index;
+                }
                 return Ok(());
             }
 
@@ -379,7 +266,7 @@ impl VulkanRenderer {
         Ok(())
     }
 
-    /// Destroys the swapchain, images, image views, semaphores, and the depth buffer.
+    /// Destroys the swapchain, images, and semaphores.
     pub(super) fn destroy_swapchain(&mut self) -> Result<()> {
         let device_context = self
             .device_context
@@ -388,28 +275,6 @@ impl VulkanRenderer {
 
         let swapchain = &mut device_context.swapchain_context;
         unsafe {
-            device_context
-                .logical_device
-                .destroy_image_view(swapchain.depth_image_view, None);
-            swapchain.depth_image_view = ash::vk::ImageView::null();
-            if let Some(mut allocation) = swapchain.depth_image_allocation.take() {
-                device_context
-                    .vma_allocator
-                    .destroy_image(swapchain.depth_image, &mut allocation);
-            }
-            swapchain.depth_image = ash::vk::Image::null();
-
-            device_context
-                .logical_device
-                .destroy_image_view(swapchain.msaa_color_image_view, None);
-            swapchain.msaa_color_image_view = ash::vk::ImageView::null();
-            if let Some(mut allocation) = swapchain.msaa_color_image_allocation.take() {
-                device_context
-                    .vma_allocator
-                    .destroy_image(swapchain.msaa_color_image, &mut allocation);
-            }
-            swapchain.msaa_color_image = ash::vk::Image::null();
-
             for (image_available, render_finished) in swapchain.semaphores.drain(..) {
                 device_context
                     .logical_device
@@ -419,9 +284,6 @@ impl VulkanRenderer {
                     .destroy_semaphore(render_finished, None);
             }
 
-            for view in swapchain.image_views.drain(..) {
-                device_context.logical_device.destroy_image_view(view, None);
-            }
             swapchain
                 .loader
                 .destroy_swapchain(swapchain.swapchain, None);
@@ -435,7 +297,102 @@ impl VulkanRenderer {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
+    /// Copies the display canvas into the swapchain image, and prepares the image for presentation.
+    pub(super) fn copy_display_canvas(
+        device: &ash::Device,
+        command_buffer: ash::vk::CommandBuffer,
+        display_canvas: &VulkanCanvas,
+        swapchain_image: ash::vk::Image,
+        layer_count: u32,
+    ) {
+        Self::transition_image_layout(
+            device,
+            command_buffer,
+            display_canvas.texture.image,
+            ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            ImageLayout::TRANSFER_SRC_OPTIMAL,
+            AccessFlags::empty(),
+            AccessFlags::TRANSFER_READ,
+            PipelineStageFlags::VERTEX_SHADER | PipelineStageFlags::FRAGMENT_SHADER,
+            PipelineStageFlags::TRANSFER,
+            ImageAspectFlags::COLOR,
+            0,
+            1,
+            layer_count,
+        );
+        Self::transition_image_layout(
+            device,
+            command_buffer,
+            swapchain_image,
+            ImageLayout::UNDEFINED,
+            ImageLayout::TRANSFER_DST_OPTIMAL,
+            AccessFlags::empty(),
+            AccessFlags::TRANSFER_WRITE,
+            PipelineStageFlags::TRANSFER,
+            PipelineStageFlags::TRANSFER,
+            ImageAspectFlags::COLOR,
+            0,
+            1,
+            layer_count,
+        );
+
+        let subresource = ImageSubresourceLayers::default()
+            .aspect_mask(ImageAspectFlags::COLOR)
+            .mip_level(0)
+            .base_array_layer(0)
+            .layer_count(layer_count);
+        let region = ImageCopy::default()
+            .src_subresource(subresource)
+            .dst_subresource(subresource)
+            .extent(Extent3D {
+                width: display_canvas.width(),
+                height: display_canvas.height(),
+                depth: 1,
+            });
+        unsafe {
+            device.cmd_copy_image(
+                command_buffer,
+                display_canvas.texture.image,
+                ImageLayout::TRANSFER_SRC_OPTIMAL,
+                swapchain_image,
+                ImageLayout::TRANSFER_DST_OPTIMAL,
+                std::slice::from_ref(&region),
+            );
+        }
+
+        Self::transition_image_layout(
+            device,
+            command_buffer,
+            swapchain_image,
+            ImageLayout::TRANSFER_DST_OPTIMAL,
+            ImageLayout::PRESENT_SRC_KHR,
+            AccessFlags::TRANSFER_WRITE,
+            AccessFlags::empty(),
+            PipelineStageFlags::TRANSFER,
+            PipelineStageFlags::BOTTOM_OF_PIPE,
+            ImageAspectFlags::COLOR,
+            0,
+            1,
+            layer_count,
+        );
+        // Restore the layout the canvas has while it is not rendered into.
+        Self::transition_image_layout(
+            device,
+            command_buffer,
+            display_canvas.texture.image,
+            ImageLayout::TRANSFER_SRC_OPTIMAL,
+            ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            AccessFlags::empty(),
+            AccessFlags::SHADER_READ,
+            PipelineStageFlags::TRANSFER,
+            PipelineStageFlags::VERTEX_SHADER | PipelineStageFlags::FRAGMENT_SHADER,
+            ImageAspectFlags::COLOR,
+            0,
+            1,
+            layer_count,
+        );
+    }
+
     pub(super) fn transition_image_layout(
         device: &ash::Device,
         command_buffer: ash::vk::CommandBuffer,
