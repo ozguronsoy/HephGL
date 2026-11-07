@@ -182,6 +182,7 @@ impl VulkanRenderer {
         let graphics_queue_context = &mut device_context.graphics_queue_context;
         let thread_context_index = Self::thread_context_index()?;
         let current_frame = &mut graphics_queue_context.frames[device_context.current_frame_index]
+            .base
             .thread_contexts[thread_context_index];
         let canvas = match canvas {
             Some(canvas) => canvas,
@@ -305,6 +306,7 @@ impl VulkanRenderer {
         let thread_context_index = Self::thread_context_index()?;
         let current_frame = &mut device_context.graphics_queue_context.frames
             [device_context.current_frame_index]
+            .base
             .thread_contexts[thread_context_index];
 
         {

@@ -52,7 +52,7 @@ use crate::{
         vulkan::{
             canvas::{AttachmentImage, VulkanCanvas},
             device::DeviceContext,
-            frame::{Frame, FrameState},
+            frame::{ComputeFrame, FrameState, GraphicsFrame, TransferFrame, VulkanFrame},
             pipeline::{VulkanComputePipeline, VulkanGraphicsPipeline},
             queue::QueueContext,
             rendering::VulkanRendering,
@@ -157,11 +157,11 @@ impl Renderer for VulkanRenderer {
 
             let device_context = self.device_context.as_mut().unwrap();
 
-            fn resize_frames<ThreadContext: VulkanThreadContext>(
+            fn resize_frames<Frame: VulkanFrame>(
                 thread_context_masks: &Mutex<ThreadContextMaskArray>,
                 settings: &mut Settings,
                 temp_settings: Settings,
-                queue_context: &mut QueueContext<ThreadContext>,
+                queue_context: &mut QueueContext<Frame>,
             ) -> Result<()> {
                 let masks = thread_context_masks.lock()?;
 
@@ -707,24 +707,24 @@ impl Renderer for VulkanRenderer {
                 queue: graphics_queue,
                 queue_family_index: graphics_family.index,
                 frames: (0..self.settings.frames_in_flight)
-                    .map(|_| Frame::default())
-                    .collect::<Vec<Frame<GraphicsThreadContext>>>(),
+                    .map(|_| GraphicsFrame::default())
+                    .collect(),
                 frame_sync: None,
             },
             transfer_queue_context: QueueContext {
                 queue: transfer_queue,
                 queue_family_index: transfer_family.index,
                 frames: (0..self.settings.frames_in_flight)
-                    .map(|_| Frame::default())
-                    .collect::<Vec<Frame<TransferThreadContext>>>(),
+                    .map(|_| TransferFrame::default())
+                    .collect(),
                 frame_sync: None,
             },
             compute_queue_context: compute_queue.map(|queue| QueueContext {
                 queue,
                 queue_family_index: compute_family.unwrap().index,
                 frames: (0..self.settings.frames_in_flight)
-                    .map(|_| Frame::default())
-                    .collect::<Vec<Frame<ComputeThreadContext>>>(),
+                    .map(|_| ComputeFrame::default())
+                    .collect(),
                 frame_sync: None,
             }),
 
@@ -945,6 +945,7 @@ impl Renderer for VulkanRenderer {
         let thread_context_index = Self::thread_context_index()?;
         let current_frame = &mut device_context.transfer_queue_context.frames
             [device_context.current_frame_index]
+            .base
             .thread_contexts[thread_context_index];
 
         let staging_buffer_info = ash::vk::BufferCreateInfo::default()
@@ -1455,6 +1456,7 @@ impl Renderer for VulkanRenderer {
                 ))?;
         let thread_context_index = Self::thread_context_index()?;
         let current_frame = &mut compute_queue_context.frames[device_context.current_frame_index]
+            .base
             .thread_contexts[thread_context_index];
 
         unsafe {
@@ -1739,9 +1741,9 @@ impl Renderer for VulkanRenderer {
 
         // Wait for current frame to finish.
         if is_in_main_thread {
-            fn wait_frame_sync<ThreadContext: VulkanThreadContext>(
+            fn wait_frame_sync<Frame: VulkanFrame>(
                 logical_device: &ash::Device,
-                queue_context: &mut QueueContext<ThreadContext>,
+                queue_context: &mut QueueContext<Frame>,
                 frame_index: usize,
             ) -> Result<()> {
                 let frame_sync = queue_context
@@ -1777,6 +1779,7 @@ impl Renderer for VulkanRenderer {
             let mut _mutex_guard = device_context.current_frame_index_sync.lock()?;
             let (state_mutex, cv) = &device_context.graphics_queue_context.frames
                 [device_context.current_frame_index]
+                .base
                 .thread_contexts[thread_context_index]
                 .base
                 .sync_state;
@@ -1792,12 +1795,12 @@ impl Renderer for VulkanRenderer {
 
             // Wait for the main thread to begin the current frame before we can start recording
             // commands.
-            fn wait_main_thread_begin_current_frame<ThreadContext: VulkanThreadContext>(
-                queue_context: &QueueContext<ThreadContext>,
+            fn wait_main_thread_begin_current_frame<Frame: VulkanFrame>(
+                queue_context: &QueueContext<Frame>,
                 frame_index: usize,
             ) -> Result<()> {
-                let main_frame =
-                    &queue_context.frames[frame_index].thread_contexts[MAIN_THREAD_CONTEXT_INDEX];
+                let main_frame = &queue_context.frames[frame_index].base().thread_contexts
+                    [MAIN_THREAD_CONTEXT_INDEX];
                 let (state_mutex, cv) = &main_frame.base().sync_state;
                 let mut state = state_mutex.lock()?;
                 while *state != FrameState::Started {
@@ -1821,15 +1824,15 @@ impl Renderer for VulkanRenderer {
             }
         }
 
-        fn begin_queue<ThreadContext: VulkanThreadContext>(
+        fn begin_queue<Frame: VulkanFrame>(
             logical_device: &ash::Device,
             vma_allocator: &vk_mem::Allocator,
-            queue_context: &mut QueueContext<ThreadContext>,
+            queue_context: &mut QueueContext<Frame>,
             frame_index: usize,
             thread_context_index: usize,
         ) -> Result<()> {
-            let current_frame =
-                &mut queue_context.frames[frame_index].thread_contexts[thread_context_index];
+            let current_frame = &mut queue_context.frames[frame_index].base_mut().thread_contexts
+                [thread_context_index];
             if *current_frame.base().sync_state.0.lock()? != FrameState::Idle {
                 return Err(Error::invalid_operation(
                     "Invalid frame state, did you forget to call `end_frame`?",
@@ -1918,7 +1921,7 @@ impl Renderer for VulkanRenderer {
         };
 
         let mut present = false;
-        fn end_queue<ThreadContext: VulkanThreadContext>(
+        fn end_queue<Frame: VulkanFrame>(
             logical_device: &ash::Device,
             rendering: &mut dyn VulkanRendering,
             display_canvas: Option<&VulkanCanvas>,
@@ -1926,13 +1929,13 @@ impl Renderer for VulkanRenderer {
             image_index: usize,
             layer_count: u32,
             is_in_main_thread: bool,
-            queue_context: &mut QueueContext<ThreadContext>,
+            queue_context: &mut QueueContext<Frame>,
             frame_index: usize,
             thread_context_index: usize,
             present: &mut bool,
         ) -> Result<()> {
-            let current_frame =
-                &mut queue_context.frames[frame_index].thread_contexts[thread_context_index];
+            let current_frame = &mut queue_context.frames[frame_index].base_mut().thread_contexts
+                [thread_context_index];
             if *current_frame.base().sync_state.0.lock()? != FrameState::Started {
                 return Err(Error::invalid_operation(
                     "Cannot end a frame that hasn't started yet.",
@@ -2025,7 +2028,6 @@ impl Renderer for VulkanRenderer {
             let render_finished_semaphores = [device_context.swapchain_context.semaphores
                 [device_context.swapchain_context.current_image_index]
                 .1];
-            let wait_stages = [ash::vk::PipelineStageFlags::TRANSFER];
 
             let mut graphics_command_buffers = Vec::new();
             let mut transfer_command_buffers = Vec::new();
@@ -2036,14 +2038,15 @@ impl Renderer for VulkanRenderer {
                     continue;
                 }
 
-                fn add_command_buffer<ThreadContext: VulkanThreadContext>(
-                    queue_context: &mut QueueContext<ThreadContext>,
+                fn add_command_buffer<Frame: VulkanFrame>(
+                    queue_context: &mut QueueContext<Frame>,
                     frame_index: usize,
                     thread_context_index: usize,
                     command_buffers: &mut Vec<ash::vk::CommandBuffer>,
                 ) -> Result<()> {
-                    let current_frame = queue_context.frames[frame_index].thread_contexts
-                        [thread_context_index]
+                    let current_frame = queue_context.frames[frame_index]
+                        .base_mut()
+                        .thread_contexts[thread_context_index]
                         .base_mut();
 
                     // Wait for the worker thread to signal the frame is finished.
@@ -2089,25 +2092,23 @@ impl Renderer for VulkanRenderer {
                 }
             }
 
-            fn submit_commands<ThreadContext: VulkanThreadContext>(
+            fn submit_commands<Frame: VulkanFrame>(
                 logical_device: &ash::Device,
-                queue_context: &mut QueueContext<ThreadContext>,
+                queue_context: &mut QueueContext<Frame>,
                 frame_index: usize,
                 command_buffers: &[ash::vk::CommandBuffer],
-                present: bool,
-                image_available_semaphores: &[ash::vk::Semaphore],
+                wait_semaphores: &[ash::vk::Semaphore],
                 wait_stages: &[ash::vk::PipelineStageFlags],
-                render_finished_semaphores: &[ash::vk::Semaphore],
+                signal_semaphores: &[ash::vk::Semaphore],
             ) -> Result<()> {
-                if !command_buffers.is_empty() {
-                    let submit_info = match present {
-                        true => SubmitInfo::default()
-                            .command_buffers(command_buffers)
-                            .wait_semaphores(image_available_semaphores)
-                            .wait_dst_stage_mask(wait_stages)
-                            .signal_semaphores(render_finished_semaphores),
-                        false => SubmitInfo::default().command_buffers(command_buffers),
-                    };
+                // Submit even without commands when there is a wait, so the semaphore is
+                // unsignaled.
+                if !command_buffers.is_empty() || !wait_semaphores.is_empty() {
+                    let submit_info = SubmitInfo::default()
+                        .command_buffers(command_buffers)
+                        .wait_semaphores(wait_semaphores)
+                        .wait_dst_stage_mask(wait_stages)
+                        .signal_semaphores(signal_semaphores);
                     let frame_sync = queue_context
                         .frame_sync
                         .as_mut()
@@ -2121,27 +2122,45 @@ impl Renderer for VulkanRenderer {
                 }
                 Ok(())
             }
-            // TODO: This works when the device does not support `AsyncTransfer`. Implement
-            // synchronization via semaphores when asynchronous transfers are supported.
+            let transfer_semaphore = match transfer_command_buffers.is_empty() {
+                true => None,
+                false => {
+                    device_context.transfer_queue_context.frames[device_context.current_frame_index]
+                        .semaphore
+                }
+            };
+            let mut graphics_wait_semaphores = Vec::with_capacity(2);
+            let mut graphics_wait_stages = Vec::with_capacity(2);
+            if present {
+                graphics_wait_semaphores.extend_from_slice(&image_available_semaphores);
+                graphics_wait_stages.push(ash::vk::PipelineStageFlags::TRANSFER);
+            }
+            if let Some(transfer_semaphore) = transfer_semaphore {
+                graphics_wait_semaphores.push(transfer_semaphore);
+                graphics_wait_stages.push(ash::vk::PipelineStageFlags::ALL_COMMANDS);
+            }
+            let graphics_signal_semaphores: &[ash::vk::Semaphore] = match present {
+                true => &render_finished_semaphores,
+                false => &[],
+            };
+
             submit_commands(
                 &device_context.logical_device,
                 &mut device_context.transfer_queue_context,
                 device_context.current_frame_index,
                 &transfer_command_buffers,
-                false,
-                &image_available_semaphores,
-                &wait_stages,
-                &render_finished_semaphores,
+                &[],
+                &[],
+                transfer_semaphore.as_slice(),
             )?;
             submit_commands(
                 &device_context.logical_device,
                 &mut device_context.graphics_queue_context,
                 device_context.current_frame_index,
                 &graphics_command_buffers,
-                present,
-                &image_available_semaphores,
-                &wait_stages,
-                &render_finished_semaphores,
+                &graphics_wait_semaphores,
+                &graphics_wait_stages,
+                graphics_signal_semaphores,
             )?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
                 submit_commands(
@@ -2149,10 +2168,9 @@ impl Renderer for VulkanRenderer {
                     compute_queue_context,
                     device_context.current_frame_index,
                     &compute_command_buffers,
-                    false,
-                    &image_available_semaphores,
-                    &wait_stages,
-                    &render_finished_semaphores,
+                    &[],
+                    &[],
+                    &[],
                 )?;
             }
 

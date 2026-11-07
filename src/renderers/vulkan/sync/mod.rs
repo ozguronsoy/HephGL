@@ -1,15 +1,15 @@
 pub mod fence;
 pub mod timeline_semaphore;
 
-use ash::vk::{Queue, SubmitInfo};
+use ash::vk::{Queue, SemaphoreCreateInfo, SubmitInfo};
 
 use crate::{
     Error, Result,
     renderers::vulkan::{
         VulkanRenderer,
+        frame::VulkanFrame,
         queue::QueueContext,
         sync::{fence::FenceFrameSync, timeline_semaphore::TimelineSemaphoreFrameSync},
-        thread::VulkanThreadContext,
     },
 };
 
@@ -43,11 +43,11 @@ impl VulkanRenderer {
             .as_mut()
             .ok_or(Error::invalid_operation("Device is not set."))?;
 
-        fn create_queue_frame_sync<ThreadContext: VulkanThreadContext>(
+        fn create_queue_frame_sync<Frame: VulkanFrame>(
             logical_device: &ash::Device,
             supports_timeline_semaphore: bool,
             frames_in_flight: usize,
-            queue_context: &mut QueueContext<ThreadContext>,
+            queue_context: &mut QueueContext<Frame>,
         ) -> Result<()> {
             if supports_timeline_semaphore {
                 queue_context.frame_sync = Some(Box::new(TimelineSemaphoreFrameSync::new(
@@ -82,6 +82,19 @@ impl VulkanRenderer {
                 compute_queue_context,
             )?;
         }
+
+        if device_context.transfer_queue_context.queue
+            != device_context.graphics_queue_context.queue
+        {
+            let create_info = SemaphoreCreateInfo::default();
+            for frame in &mut device_context.transfer_queue_context.frames {
+                frame.semaphore = Some(unsafe {
+                    device_context
+                        .logical_device
+                        .create_semaphore(&create_info, None)?
+                });
+            }
+        }
         Ok(())
     }
 
@@ -92,9 +105,9 @@ impl VulkanRenderer {
             .as_mut()
             .ok_or(Error::invalid_operation("Device is not set."))?;
 
-        fn destroy_queue_frame_sync<ThreadContext: VulkanThreadContext>(
+        fn destroy_queue_frame_sync<Frame: VulkanFrame>(
             logical_device: &ash::Device,
-            queue_context: &mut QueueContext<ThreadContext>,
+            queue_context: &mut QueueContext<Frame>,
         ) -> Result<()> {
             if let Some(mut frame_sync) = queue_context.frame_sync.take() {
                 frame_sync.destroy(logical_device)?;
@@ -111,6 +124,16 @@ impl VulkanRenderer {
         )?;
         if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
             destroy_queue_frame_sync(&device_context.logical_device, compute_queue_context)?;
+        }
+
+        for frame in &mut device_context.transfer_queue_context.frames {
+            if let Some(semaphore) = frame.semaphore.take() {
+                unsafe {
+                    device_context
+                        .logical_device
+                        .destroy_semaphore(semaphore, None);
+                }
+            }
         }
         Ok(())
     }

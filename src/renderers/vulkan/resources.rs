@@ -131,7 +131,8 @@ impl VulkanRenderer {
                     "Device is not initialized with `ComputeShaders` feature.",
                 ))?;
         let thread_context_index = Self::thread_context_index()?;
-        let pool_generation = compute_queue_context.frames[0].thread_contexts[thread_context_index]
+        let pool_generation = compute_queue_context.frames[0].base.thread_contexts
+            [thread_context_index]
             .descriptor_pool_manager
             .generation();
 
@@ -178,6 +179,7 @@ impl VulkanRenderer {
         }
 
         let descriptor_sets = compute_queue_context.frames[device_context.current_frame_index]
+            .base
             .thread_contexts[thread_context_index]
             .descriptor_pool_manager
             .allocate(&device_context.logical_device, &pipeline.descriptor_layouts)?;
@@ -206,8 +208,9 @@ impl VulkanRenderer {
             .as_mut()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
-        let pool_generation = device_context.graphics_queue_context.frames[0].thread_contexts
-            [thread_context_index]
+        let pool_generation = device_context.graphics_queue_context.frames[0]
+            .base
+            .thread_contexts[thread_context_index]
             .descriptor_pool_manager
             .generation();
 
@@ -255,6 +258,7 @@ impl VulkanRenderer {
 
         let descriptor_sets = device_context.graphics_queue_context.frames
             [device_context.current_frame_index]
+            .base
             .thread_contexts[thread_context_index]
             .descriptor_pool_manager
             .allocate(&device_context.logical_device, &pipeline.descriptor_layouts)?;

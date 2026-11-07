@@ -10,10 +10,10 @@ use crate::{
         vulkan::{
             VulkanRenderer,
             canvas::VulkanCanvas,
+            frame::{ComputeFrame, GraphicsFrame, TransferFrame},
             queue::{QueueContext, QueueFamily},
             rendering::VulkanRendering,
             swapchain::SwapchainContext,
-            thread::{ComputeThreadContext, GraphicsThreadContext, TransferThreadContext},
         },
     },
 };
@@ -28,9 +28,9 @@ pub struct DeviceContext {
 
     pub vma_allocator: vk_mem::Allocator,
 
-    pub graphics_queue_context: QueueContext<GraphicsThreadContext>,
-    pub transfer_queue_context: QueueContext<TransferThreadContext>,
-    pub compute_queue_context: Option<QueueContext<ComputeThreadContext>>,
+    pub graphics_queue_context: QueueContext<GraphicsFrame>,
+    pub transfer_queue_context: QueueContext<TransferFrame>,
+    pub compute_queue_context: Option<QueueContext<ComputeFrame>>,
 
     pub swapchain_context: SwapchainContext,
     pub rendering: Option<Box<dyn VulkanRendering>>,
