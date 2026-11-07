@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use ash::vk::{
     CommandBuffer, CommandBufferAllocateInfo, CommandBufferLevel, CommandPool,
     CommandPoolCreateFlags, CommandPoolCreateInfo,
@@ -11,29 +13,91 @@ use crate::{
     },
 };
 
-/// Represents the per-thread resources used for recording commands.
+/// Represents the base struct per-thread resources used for recording commands.
 #[derive(Default)]
-pub struct ThreadContext {
+pub struct ThreadContextBase {
     /// The command pool allocated exclusively for this thread.
     pub command_pool: CommandPool,
     /// The primary command buffer used to record commands for this thread.
     pub command_buffer: CommandBuffer,
-    /// Manages descriptor pools for allocating this thread's descriptor sets. Pools are created on
-    /// demand and grow as needed.
-    pub descriptor_pool_manager: DescriptorPoolManager,
-    /// The temporary buffers used for transfering data to the GPU.
-    pub transfer_buffers: Vec<VulkanBuffer>,
-    /// The pipeline currently bound to the graphics bind point of the command buffer.
-    pub bound_graphics_pipeline: Option<ash::vk::Pipeline>,
-    /// The pipeline currently bound to the compute bind point of the command buffer.
-    pub bound_compute_pipeline: Option<ash::vk::Pipeline>,
-    /// The texture image of the canvas that the command buffer is rendering into, or `None` if it
-    /// is not rendering.
-    pub render_target: Option<ash::vk::Image>,
     /// Indicates whether any command has been recorded in this thread.
     pub recorded: bool,
     /// Indicates whether the current thread began the current frame.
     pub sync_state: (std::sync::Mutex<FrameState>, std::sync::Condvar),
+}
+
+/// Represents the per-thread resources used for recording commands to the compute queue.
+#[derive(Default)]
+pub struct ComputeThreadContext {
+    /// The base per-thread resources.
+    pub base: ThreadContextBase,
+    /// Manages descriptor pools for allocating this thread's descriptor sets. Pools are created on
+    /// demand and grow as needed.
+    pub descriptor_pool_manager: DescriptorPoolManager,
+    /// The pipeline currently bound to the command buffer.
+    pub bound_pipeline: Option<ash::vk::Pipeline>,
+}
+
+/// Represents the per-thread resources used for recording commands to the graphics queue.
+#[derive(Default)]
+pub struct GraphicsThreadContext {
+    /// The base per-thread resources.
+    pub base: ThreadContextBase,
+    /// Manages descriptor pools for allocating this thread's descriptor sets. Pools are created on
+    /// demand and grow as needed.
+    pub descriptor_pool_manager: DescriptorPoolManager,
+    /// The pipeline currently bound to the command buffer.
+    pub bound_pipeline: Option<ash::vk::Pipeline>,
+    /// The texture image of the canvas that the command buffer is rendering into, or `None` if it
+    /// is not rendering.
+    pub render_target: Option<ash::vk::Image>,
+}
+
+/// Represents the per-thread resources used for recording commands to the transfer queue.
+#[derive(Default)]
+pub struct TransferThreadContext {
+    /// The base per-thread resources.
+    pub base: ThreadContextBase,
+    /// The temporary buffers used for transfering data to the GPU.
+    pub transfer_buffers: Vec<VulkanBuffer>,
+}
+
+/// Provides access to the base per-thread resources of a queue's thread context.
+pub trait VulkanThreadContext: Any + Default {
+    /// Gets the base per-thread resources.
+    fn base(&self) -> &ThreadContextBase;
+    /// Gets the base per-thread resources as mutable.
+    fn base_mut(&mut self) -> &mut ThreadContextBase;
+}
+
+impl VulkanThreadContext for TransferThreadContext {
+    fn base(&self) -> &ThreadContextBase {
+        &self.base
+    }
+
+    fn base_mut(&mut self) -> &mut ThreadContextBase {
+        &mut self.base
+    }
+}
+
+impl VulkanThreadContext for GraphicsThreadContext {
+    fn base(&self) -> &ThreadContextBase {
+        &self.base
+    }
+
+    fn base_mut(&mut self) -> &mut ThreadContextBase {
+        &mut self.base
+    }
+}
+
+impl VulkanThreadContext for ComputeThreadContext {
+    fn base(&self) -> &ThreadContextBase {
+        &self.base
+    }
+
+    fn base_mut(&mut self) -> &mut ThreadContextBase {
+        &mut self.base
+    }
 }
 
 impl VulkanRenderer {
@@ -99,25 +163,42 @@ impl VulkanRenderer {
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
 
-        let create_command_pool =
-            |queue_context: &mut QueueContext, frame_index: usize| -> Result<()> {
-                let pool_info = CommandPoolCreateInfo::default()
-                    .flags(CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-                    .queue_family_index(queue_context.queue_family_index);
-                unsafe {
-                    queue_context.frames[frame_index].thread_contexts[thread_context_index]
-                        .command_pool = device_context
-                        .logical_device
-                        .create_command_pool(&pool_info, None)?;
-                }
-                Ok(())
-            };
-
+        fn create_command_pool<ThreadContext: VulkanThreadContext>(
+            logical_device: &ash::Device,
+            queue_context: &mut QueueContext<ThreadContext>,
+            frame_index: usize,
+            thread_context_index: usize,
+        ) -> Result<()> {
+            let pool_info = CommandPoolCreateInfo::default()
+                .flags(CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+                .queue_family_index(queue_context.queue_family_index);
+            unsafe {
+                queue_context.frames[frame_index].thread_contexts[thread_context_index]
+                    .base_mut()
+                    .command_pool = logical_device.create_command_pool(&pool_info, None)?;
+            }
+            Ok(())
+        }
         for frame_index in 0..self.settings.frames_in_flight {
-            create_command_pool(&mut device_context.graphics_queue_context, frame_index)?;
-            create_command_pool(&mut device_context.transfer_queue_context, frame_index)?;
+            create_command_pool(
+                &device_context.logical_device,
+                &mut device_context.graphics_queue_context,
+                frame_index,
+                thread_context_index,
+            )?;
+            create_command_pool(
+                &device_context.logical_device,
+                &mut device_context.transfer_queue_context,
+                frame_index,
+                thread_context_index,
+            )?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-                create_command_pool(compute_queue_context, frame_index)?;
+                create_command_pool(
+                    &device_context.logical_device,
+                    compute_queue_context,
+                    frame_index,
+                    thread_context_index,
+                )?;
             }
         }
 
@@ -134,26 +215,44 @@ impl VulkanRenderer {
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
 
-        let allocate_buffers =
-            |queue_context: &mut QueueContext, frame_index: usize| -> Result<()> {
-                let frame = &mut queue_context.frames[frame_index];
-                let alloc_info = CommandBufferAllocateInfo::default()
-                    .command_pool(frame.thread_contexts[thread_context_index].command_pool)
-                    .level(CommandBufferLevel::PRIMARY)
-                    .command_buffer_count(1);
-                unsafe {
-                    frame.thread_contexts[thread_context_index].command_buffer = device_context
-                        .logical_device
-                        .allocate_command_buffers(&alloc_info)?[0];
-                }
-                Ok(())
-            };
-
+        fn allocate_buffers<ThreadContext: VulkanThreadContext>(
+            logical_device: &ash::Device,
+            queue_context: &mut QueueContext<ThreadContext>,
+            frame_index: usize,
+            thread_context_index: usize,
+        ) -> Result<()> {
+            let thread_context =
+                queue_context.frames[frame_index].thread_contexts[thread_context_index].base_mut();
+            let alloc_info = CommandBufferAllocateInfo::default()
+                .command_pool(thread_context.command_pool)
+                .level(CommandBufferLevel::PRIMARY)
+                .command_buffer_count(1);
+            unsafe {
+                thread_context.command_buffer =
+                    logical_device.allocate_command_buffers(&alloc_info)?[0];
+            }
+            Ok(())
+        }
         for frame_index in 0..self.settings.frames_in_flight {
-            allocate_buffers(&mut device_context.graphics_queue_context, frame_index)?;
-            allocate_buffers(&mut device_context.transfer_queue_context, frame_index)?;
+            allocate_buffers(
+                &device_context.logical_device,
+                &mut device_context.graphics_queue_context,
+                frame_index,
+                thread_context_index,
+            )?;
+            allocate_buffers(
+                &device_context.logical_device,
+                &mut device_context.transfer_queue_context,
+                frame_index,
+                thread_context_index,
+            )?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-                allocate_buffers(compute_queue_context, frame_index)?;
+                allocate_buffers(
+                    &device_context.logical_device,
+                    compute_queue_context,
+                    frame_index,
+                    thread_context_index,
+                )?;
             }
         }
 
@@ -197,19 +296,39 @@ impl VulkanRenderer {
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
 
-        let destroy_command_pool = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
-            let frame = &mut queue_context.frames[frame_index];
-            device_context.logical_device.destroy_command_pool(
-                frame.thread_contexts[thread_context_index].command_pool,
-                None,
-            );
-            frame.thread_contexts[thread_context_index].command_pool = CommandPool::default();
-        };
+        fn destroy_command_pool<ThreadContext: VulkanThreadContext>(
+            logical_device: &ash::Device,
+            queue_context: &mut QueueContext<ThreadContext>,
+            frame_index: usize,
+            thread_context_index: usize,
+        ) {
+            let thread_context =
+                queue_context.frames[frame_index].thread_contexts[thread_context_index].base_mut();
+            unsafe {
+                logical_device.destroy_command_pool(thread_context.command_pool, None);
+            }
+            thread_context.command_pool = CommandPool::default();
+        }
         for frame_index in 0..self.settings.frames_in_flight {
-            destroy_command_pool(&mut device_context.graphics_queue_context, frame_index);
-            destroy_command_pool(&mut device_context.transfer_queue_context, frame_index);
+            destroy_command_pool(
+                &device_context.logical_device,
+                &mut device_context.graphics_queue_context,
+                frame_index,
+                thread_context_index,
+            );
+            destroy_command_pool(
+                &device_context.logical_device,
+                &mut device_context.transfer_queue_context,
+                frame_index,
+                thread_context_index,
+            );
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-                destroy_command_pool(compute_queue_context, frame_index);
+                destroy_command_pool(
+                    &device_context.logical_device,
+                    compute_queue_context,
+                    frame_index,
+                    thread_context_index,
+                );
             }
         }
 
@@ -224,20 +343,42 @@ impl VulkanRenderer {
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
 
-        let destroy_command_buffer = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
-            let frame = &mut queue_context.frames[frame_index];
-            device_context.logical_device.free_command_buffers(
-                frame.thread_contexts[thread_context_index].command_pool,
-                &[frame.thread_contexts[thread_context_index].command_buffer],
-            );
-            frame.thread_contexts[thread_context_index].command_buffer = CommandBuffer::default();
-        };
-
+        fn destroy_command_buffer<ThreadContext: VulkanThreadContext>(
+            logical_device: &ash::Device,
+            queue_context: &mut QueueContext<ThreadContext>,
+            frame_index: usize,
+            thread_context_index: usize,
+        ) {
+            let thread_context =
+                queue_context.frames[frame_index].thread_contexts[thread_context_index].base_mut();
+            unsafe {
+                logical_device.free_command_buffers(
+                    thread_context.command_pool,
+                    &[thread_context.command_buffer],
+                );
+            }
+            thread_context.command_buffer = CommandBuffer::default();
+        }
         for frame_index in 0..self.settings.frames_in_flight {
-            destroy_command_buffer(&mut device_context.graphics_queue_context, frame_index);
-            destroy_command_buffer(&mut device_context.transfer_queue_context, frame_index);
+            destroy_command_buffer(
+                &device_context.logical_device,
+                &mut device_context.graphics_queue_context,
+                frame_index,
+                thread_context_index,
+            );
+            destroy_command_buffer(
+                &device_context.logical_device,
+                &mut device_context.transfer_queue_context,
+                frame_index,
+                thread_context_index,
+            );
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-                destroy_command_buffer(compute_queue_context, frame_index);
+                destroy_command_buffer(
+                    &device_context.logical_device,
+                    compute_queue_context,
+                    frame_index,
+                    thread_context_index,
+                );
             }
         }
 
@@ -252,17 +393,15 @@ impl VulkanRenderer {
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
 
-        let destroy_desc_pools = |queue_context: &mut QueueContext, frame_index: usize| {
-            queue_context.frames[frame_index].thread_contexts[thread_context_index]
+        for frame_index in 0..self.settings.frames_in_flight {
+            device_context.graphics_queue_context.frames[frame_index].thread_contexts
+                [thread_context_index]
                 .descriptor_pool_manager
                 .destroy(&device_context.logical_device);
-        };
-
-        for frame_index in 0..self.settings.frames_in_flight {
-            destroy_desc_pools(&mut device_context.graphics_queue_context, frame_index);
-            destroy_desc_pools(&mut device_context.transfer_queue_context, frame_index);
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-                destroy_desc_pools(compute_queue_context, frame_index);
+                compute_queue_context.frames[frame_index].thread_contexts[thread_context_index]
+                    .descriptor_pool_manager
+                    .destroy(&device_context.logical_device);
             }
         }
 
@@ -277,23 +416,18 @@ impl VulkanRenderer {
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
 
-        let destroy_transfer_buffers = |queue_context: &mut QueueContext, frame_index: usize| unsafe {
-            let frame = &mut queue_context.frames[frame_index];
-            for mut transfer_buffer in frame.thread_contexts[thread_context_index]
+        for frame_index in 0..self.settings.frames_in_flight {
+            for mut transfer_buffer in device_context.transfer_queue_context.frames[frame_index]
+                .thread_contexts[thread_context_index]
                 .transfer_buffers
                 .drain(..)
             {
-                device_context
-                    .vma_allocator
-                    .destroy_buffer(transfer_buffer.buffer, &mut transfer_buffer.vma_allocation);
-            }
-        };
-
-        for frame_index in 0..self.settings.frames_in_flight {
-            destroy_transfer_buffers(&mut device_context.graphics_queue_context, frame_index);
-            destroy_transfer_buffers(&mut device_context.transfer_queue_context, frame_index);
-            if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-                destroy_transfer_buffers(compute_queue_context, frame_index);
+                unsafe {
+                    device_context.vma_allocator.destroy_buffer(
+                        transfer_buffer.buffer,
+                        &mut transfer_buffer.vma_allocation,
+                    );
+                }
             }
         }
 

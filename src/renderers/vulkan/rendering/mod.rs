@@ -196,17 +196,17 @@ impl VulkanRenderer {
             canvas,
         )?;
         unsafe {
-            if current_frame.bound_graphics_pipeline != Some(pipeline.pipeline) {
+            if current_frame.bound_pipeline != Some(pipeline.pipeline) {
                 device_context.logical_device.cmd_bind_pipeline(
-                    current_frame.command_buffer,
+                    current_frame.base.command_buffer,
                     PipelineBindPoint::GRAPHICS,
                     pipeline.pipeline,
                 );
-                current_frame.bound_graphics_pipeline = Some(pipeline.pipeline);
+                current_frame.bound_pipeline = Some(pipeline.pipeline);
             }
             if !mapped_range.is_empty() {
                 device_context.logical_device.cmd_bind_descriptor_sets(
-                    current_frame.command_buffer,
+                    current_frame.base.command_buffer,
                     PipelineBindPoint::GRAPHICS,
                     pipeline.layout,
                     0,
@@ -241,7 +241,7 @@ impl VulkanRenderer {
                     ));
                 }
                 device_context.logical_device.cmd_bind_vertex_buffers(
-                    current_frame.command_buffer,
+                    current_frame.base.command_buffer,
                     vertex_binding.binding,
                     std::slice::from_ref(&vertex_buffer.buffer),
                     std::slice::from_ref(&(offset as u64)),
@@ -257,13 +257,13 @@ impl VulkanRenderer {
 
                 let index_buffer = resource_ref::<VulkanBuffer>(index_buffer)?;
                 device_context.logical_device.cmd_bind_index_buffer(
-                    current_frame.command_buffer,
+                    current_frame.base.command_buffer,
                     index_buffer.buffer,
                     0,
                     ash::vk::IndexType::UINT32,
                 );
                 device_context.logical_device.cmd_draw_indexed(
-                    current_frame.command_buffer,
+                    current_frame.base.command_buffer,
                     draw_count,
                     instance_count,
                     0,
@@ -272,7 +272,7 @@ impl VulkanRenderer {
                 );
             } else {
                 device_context.logical_device.cmd_draw(
-                    current_frame.command_buffer,
+                    current_frame.base.command_buffer,
                     draw_count,
                     instance_count,
                     0,
@@ -281,7 +281,7 @@ impl VulkanRenderer {
             }
         }
 
-        current_frame.recorded = true;
+        current_frame.base.recorded = true;
         Ok(())
     }
 
@@ -305,7 +305,7 @@ impl VulkanRenderer {
             .thread_contexts[thread_context_index];
 
         {
-            let state = current_frame.sync_state.0.lock()?;
+            let state = current_frame.base.sync_state.0.lock()?;
             if *state != FrameState::Started {
                 return Err(Error::invalid_operation("Cannot clear outside of a frame."));
             }
@@ -347,13 +347,13 @@ impl VulkanRenderer {
             .layer_count(canvas.layer_count);
         unsafe {
             device_context.logical_device.cmd_clear_attachments(
-                current_frame.command_buffer,
+                current_frame.base.command_buffer,
                 std::slice::from_ref(&clear_attachment),
                 std::slice::from_ref(&clear_rect),
             );
         }
 
-        current_frame.recorded = true;
+        current_frame.base.recorded = true;
         Ok(())
     }
 }

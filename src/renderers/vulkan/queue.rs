@@ -1,6 +1,6 @@
 use ash::vk::{Queue, QueueFlags};
 
-use crate::renderers::vulkan::{frame::Frame, sync::VulkanFrameSync};
+use crate::renderers::vulkan::{frame::Frame, sync::VulkanFrameSync, thread::VulkanThreadContext};
 
 /// Represents a Vulkan queue family.
 pub struct QueueFamily {
@@ -14,7 +14,7 @@ pub struct QueueFamily {
 }
 
 /// Represents context and state for a Vulkan queue.
-pub struct QueueContext {
+pub struct QueueContext<ThreadContext: VulkanThreadContext> {
     /// The Vulkan queue instance.
     pub queue: Queue,
     /// The index of the queue family.
@@ -23,7 +23,7 @@ pub struct QueueContext {
     ///
     /// ### Note
     /// Length of this must always be equal to `settings.frames_in_flight`.
-    pub frames: Vec<Frame>,
+    pub frames: Vec<Frame<ThreadContext>>,
     /// Provides frame synchronization.
     pub frame_sync: Option<Box<dyn VulkanFrameSync>>,
 }
