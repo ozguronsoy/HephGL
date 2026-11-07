@@ -179,6 +179,24 @@ flowchart TD
     H --> I[Wait for GPU completion and release resources]
 ```
 
+### [render_canvas](render_canvas.rs)
+
+Renders into an off-screen canvas, then samples the canvas texture while rendering into the
+display. Commands execute in the order they are recorded, so a canvas can be rendered into and then
+sampled within the same frame.
+
+```mermaid
+flowchart TD
+    A[Configure renderer and graphics pipelines] --> B[Create canvas, sampler, and vertex buffer]
+    B --> C[Begin frame and clear the display]
+    C --> D[Clear the canvas and record draws into it]
+    D --> E[Bind the canvas texture and record draws into the display]
+    E --> F[End frame]
+    F --> G{Animation finished?}
+    G -- No --> C
+    G -- Yes --> H[Wait for GPU completion and release resources]
+```
+
 ### [render_text](render_text.rs)
 
 Generates renderable text from a font for screen-space, world-space, or extruded rendering.
