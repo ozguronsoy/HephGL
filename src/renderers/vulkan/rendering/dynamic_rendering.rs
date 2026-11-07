@@ -19,13 +19,14 @@ use crate::{
         RendererCanvas,
         settings::{GraphicsPipelineOptions, Msaa, Settings},
         vulkan::{
-            DescriptorSetCache, VulkanRenderer,
+            VulkanRenderer,
             canvas::VulkanCanvas,
+            pipeline::VulkanGraphicsPipeline,
             rendering::{
                 VulkanRendering,
                 lifetime_guards::{PipelineResources, ShaderModules},
             },
-            resources::VulkanGraphicsPipeline,
+            resources::DescriptorSetCache,
             swapchain::SwapchainContext,
         },
     },

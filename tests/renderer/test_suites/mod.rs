@@ -1,6 +1,7 @@
 pub mod compute;
 pub mod concurrency;
 pub mod frame;
+pub mod pipeline;
 pub mod render;
 pub mod resources;
 pub mod setup;

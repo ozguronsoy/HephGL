@@ -8,8 +8,8 @@ use ash::vk::{
 use crate::{
     Error, Result,
     renderers::vulkan::{
-        THREAD_CONTEXT_INDEX, VulkanBuffer, VulkanRenderer, descriptor_pool::DescriptorPoolManager,
-        frame::FrameState, queue::QueueContext,
+        THREAD_CONTEXT_INDEX, VulkanRenderer, descriptor_pool::DescriptorPoolManager,
+        frame::FrameState, queue::QueueContext, resources::VulkanBuffer,
     },
 };
 

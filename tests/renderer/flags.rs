@@ -40,6 +40,7 @@ define_renderer_test_flags!(
     test_compute_pipeline,
     test_graphics_pipeline,
     test_reject_foreign_resources,
+    test_reject_foreign_pipelines,
     test_begin_twice,
     test_end_without_begin,
     test_resize_window,

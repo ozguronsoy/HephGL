@@ -4,21 +4,21 @@ use std::{
     ops::Range,
 };
 
-use ash::vk::{
-    Buffer, DescriptorSet, DescriptorSetLayout, DescriptorType, Handle, Pipeline, PipelineLayout,
-};
+use ash::vk::{Buffer, DescriptorSet, DescriptorType, Handle};
 
 use crate::{
     Error, Result,
     renderers::{
         resource_ref,
         resources::{
-            BufferUsage, RendererBuffer, RendererComputePipeline, RendererGraphicsPipeline,
-            RendererResource, RendererSampler, RendererTexture, ResourceBinding,
-            ResourceBindingType, TextureFormat,
+            BufferUsage, RendererBuffer, RendererResource, RendererSampler, RendererTexture,
+            ResourceBinding, ResourceBindingType, TextureFormat,
         },
         settings::TextureOptions,
-        vulkan::VulkanRenderer,
+        vulkan::{
+            VulkanRenderer,
+            pipeline::{VulkanComputePipeline, VulkanGraphicsPipeline},
+        },
     },
     shader::ShaderBindingType,
 };
@@ -35,7 +35,7 @@ pub(super) struct DescriptorSetCache {
 
 /// Represents a Vulkan buffer.
 #[derive(Copy, Clone)]
-pub struct VulkanBuffer {
+pub(super) struct VulkanBuffer {
     pub(super) buffer: Buffer,
     pub(super) vma_allocation: vk_mem::Allocation,
     pub(super) size: usize,
@@ -44,7 +44,7 @@ pub struct VulkanBuffer {
 
 /// Represents a Vulkan texture.
 #[derive(Copy, Clone)]
-pub struct VulkanTexture {
+pub(super) struct VulkanTexture {
     pub(super) image: ash::vk::Image,
     pub(super) image_view: ash::vk::ImageView,
     pub(super) vma_allocation: vk_mem::Allocation,
@@ -53,43 +53,9 @@ pub struct VulkanTexture {
 
 /// Represents a Vulkan texture sampler.
 #[derive(Copy, Clone)]
-pub struct VulkanSampler {
+pub(super) struct VulkanSampler {
     pub(super) sampler: ash::vk::Sampler,
 }
-
-/// Represents a Vulkan compute pipeline.
-#[derive(Clone)]
-pub struct VulkanComputePipeline {
-    pub(super) pipeline: Pipeline,
-    pub(super) layout: PipelineLayout,
-    pub(super) descriptor_layouts: Vec<DescriptorSetLayout>,
-    pub(super) descriptor_binding_counts: Vec<usize>,
-    pub(super) descriptor_set_cache: DescriptorSetCache,
-}
-
-/// Represents a Vulkan graphics pipeline.
-#[derive(Clone)]
-pub struct VulkanGraphicsPipeline {
-    pub(super) pipeline: Pipeline,
-    pub(super) layout: PipelineLayout,
-    pub(super) descriptor_layouts: Vec<DescriptorSetLayout>,
-    pub(super) descriptor_binding_counts: Vec<usize>,
-    pub(super) descriptor_set_cache: DescriptorSetCache,
-}
-
-impl RendererResource for VulkanGraphicsPipeline {
-    fn is_allocated(&self) -> bool {
-        !(self.pipeline.is_null() || self.layout.is_null())
-    }
-}
-impl RendererGraphicsPipeline for VulkanGraphicsPipeline {}
-
-impl RendererResource for VulkanComputePipeline {
-    fn is_allocated(&self) -> bool {
-        !(self.pipeline.is_null() || self.layout.is_null())
-    }
-}
-impl RendererComputePipeline for VulkanComputePipeline {}
 
 impl RendererResource for VulkanSampler {
     fn is_allocated(&self) -> bool {

@@ -1,5 +1,6 @@
 mod canvas;
 mod concurrency;
+mod pipeline;
 mod resources;
 mod settings;
 mod thread_context;
@@ -8,7 +9,9 @@ pub mod vulkan;
 
 use renkrs::RGB;
 
-pub use crate::renderers::{canvas::*, concurrency::*, resources::*, settings::*, version::*};
+pub use crate::renderers::{
+    canvas::*, concurrency::*, pipeline::*, resources::*, settings::*, version::*,
+};
 use crate::{Result, graphics_device::GraphicsDevice, shader::Shader};
 
 /// Represents an automatic version selection. When used, the renderer will initialize with the

@@ -4,6 +4,7 @@ mod device;
 mod error;
 mod frame;
 mod handle;
+mod pipeline;
 mod queue;
 mod rendering;
 mod resources;
@@ -32,16 +33,15 @@ use ash::vk::{
 use renkrs::RGB;
 use vk_mem::Alloc;
 
-pub use crate::renderers::vulkan::resources::*;
 use crate::{
     Error, HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Result, Version,
     graphics_device::{GraphicsDevice, GraphicsDeviceFeature, GraphicsDeviceType},
     renderers::{
-        BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererCanvas, ResourceBinding,
-        Settings, resource_mut, resource_ref,
+        BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererCanvas,
+        RendererComputePipeline, RendererGraphicsPipeline, ResourceBinding, Settings, resource_mut,
+        resource_ref,
         resources::{
-            RendererBuffer, RendererComputePipeline, RendererGraphicsPipeline, RendererResource,
-            RendererSampler, RendererTexture, TextureFormat,
+            RendererBuffer, RendererResource, RendererSampler, RendererTexture, TextureFormat,
         },
         settings::{GraphicsPipelineOptions, Msaa, SamplerOptions, TextureOptions},
         thread_context::{
@@ -53,8 +53,10 @@ use crate::{
             canvas::{AttachmentImage, VulkanCanvas},
             device::DeviceContext,
             frame::{Frame, FrameState},
+            pipeline::{VulkanComputePipeline, VulkanGraphicsPipeline},
             queue::QueueContext,
             rendering::VulkanRendering,
+            resources::{DescriptorSetCache, VulkanBuffer, VulkanSampler, VulkanTexture},
             swapchain::SwapchainContext,
             thread::{
                 ComputeThreadContext, GraphicsThreadContext, TransferThreadContext,

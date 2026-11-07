@@ -84,12 +84,6 @@ pub trait RendererTexture: RendererResource {
 /// Represents a texture sampler.
 pub trait RendererSampler: RendererResource {}
 
-/// Represents a compiled compute pipeline.
-pub trait RendererComputePipeline: RendererResource {}
-
-/// Represents a compiled graphics pipeline.
-pub trait RendererGraphicsPipeline: RendererResource {}
-
 impl TextureFormat {
     /// Calculates the size of each pixel in bytes.
     pub(super) fn bytes_per_pixel(&self) -> usize {
@@ -103,20 +97,14 @@ impl TextureFormat {
 /// Downcasts the reference to the provided type.
 pub(super) fn resource_ref<T: Any>(resource: &dyn Any) -> Result<&T> {
     resource.downcast_ref::<T>().ok_or_else(|| {
-        Error::invalid_argument(format!(
-            "Resource type mismatch: expected {}.",
-            type_name::<T>()
-        ))
+        Error::invalid_argument(format!("Type mismatch: expected {}.", type_name::<T>()))
     })
 }
 
 /// Downcasts the mutable reference to the provided type.
 pub(super) fn resource_mut<T: Any>(resource: &mut dyn Any) -> Result<&mut T> {
     resource.downcast_mut::<T>().ok_or_else(|| {
-        Error::invalid_argument(format!(
-            "Resource type mismatch: expected {}.",
-            type_name::<T>()
-        ))
+        Error::invalid_argument(format!("Type mismatch: expected {}.", type_name::<T>()))
     })
 }
 
@@ -129,5 +117,6 @@ mod tests {
         assert_eq!(TextureFormat::R8Unorm.bytes_per_pixel(), 1);
         assert_eq!(TextureFormat::Rgba8Unorm.bytes_per_pixel(), 4);
         assert_eq!(TextureFormat::Rgba8Srgb.bytes_per_pixel(), 4);
+        assert_eq!(TextureFormat::Bgra8Srgb.bytes_per_pixel(), 4);
     }
 }
