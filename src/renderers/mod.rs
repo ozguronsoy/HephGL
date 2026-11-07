@@ -1,3 +1,4 @@
+mod canvas;
 mod concurrency;
 mod resources;
 mod settings;
@@ -7,7 +8,7 @@ pub mod vulkan;
 
 use renkrs::RGB;
 
-pub use crate::renderers::{concurrency::*, resources::*, settings::*, version::*};
+pub use crate::renderers::{canvas::*, concurrency::*, resources::*, settings::*, version::*};
 use crate::{Result, graphics_device::GraphicsDevice, shader::Shader};
 
 /// Represents an automatic version selection. When used, the renderer will initialize with the
@@ -125,9 +126,26 @@ pub trait Renderer {
     ) -> Result<Box<dyn RendererGraphicsPipeline>>;
     /// Destroys the graphics pipeline.
     fn destroy_graphics_pipeline(&self, pipeline: &mut dyn RendererGraphicsPipeline) -> Result<()>;
-    /// Creates a graphics workload for the GPU.
+    /// Creates a graphics workload for the GPU that renders into the display.
     fn record_graphics_command(
         &mut self,
+        pipeline: &mut dyn RendererGraphicsPipeline,
+        index_buffer: Option<&dyn RendererBuffer>,
+        vertex_bindings: &[ResourceBinding<'_>],
+        binding_sets: &[&[ResourceBinding<'_>]],
+        draw_count: u32,
+        instance_count: u32,
+    ) -> Result<()>;
+
+    /// Creates an off-screen canvas with the specified dimensions.
+    fn create_canvas(&self, width: u32, height: u32) -> Result<Box<dyn RendererCanvas>>;
+    /// Frees the resources allocated for the provided canvas.
+    fn destroy_canvas(&self, canvas: &mut dyn RendererCanvas) -> Result<()>;
+    /// Creates a graphics workload for the GPU that renders into the canvas.
+    #[allow(clippy::too_many_arguments)]
+    fn record_canvas_command(
+        &mut self,
+        canvas: &mut dyn RendererCanvas,
         pipeline: &mut dyn RendererGraphicsPipeline,
         index_buffer: Option<&dyn RendererBuffer>,
         vertex_bindings: &[ResourceBinding<'_>],
@@ -150,6 +168,8 @@ pub trait Renderer {
 
     /// Clears the current render target with the specified color.
     fn clear(&mut self, color: RGB<f32>) -> Result<()>;
+    /// Clears the canvas with the specified color.
+    fn clear_canvas(&mut self, canvas: &mut dyn RendererCanvas, color: RGB<f32>) -> Result<()>;
 }
 
 /// Gets the maximum number of threads that can execute concurrently.

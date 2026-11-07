@@ -42,6 +42,9 @@ pub struct ThreadContext {
     pub bound_graphics_pipeline: Option<ash::vk::Pipeline>,
     /// The pipeline currently bound to the compute bind point of the command buffer.
     pub bound_compute_pipeline: Option<ash::vk::Pipeline>,
+    /// The texture image of the canvas that the command buffer is rendering into, or `None` if it
+    /// is not rendering.
+    pub render_target: Option<ash::vk::Image>,
     /// Indicates whether any command has been recorded in this thread.
     pub recorded: bool,
     /// Indicates whether the current thread began the current frame.

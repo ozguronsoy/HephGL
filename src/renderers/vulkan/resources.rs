@@ -502,6 +502,23 @@ impl From<TextureFormat> for ash::vk::Format {
             TextureFormat::R8Unorm => Self::R8_UNORM,
             TextureFormat::Rgba8Unorm => Self::R8G8B8A8_UNORM,
             TextureFormat::Rgba8Srgb => Self::R8G8B8A8_SRGB,
+            TextureFormat::Bgra8Srgb => Self::B8G8R8A8_SRGB,
+        }
+    }
+}
+
+impl TryFrom<ash::vk::Format> for TextureFormat {
+    type Error = Error;
+
+    fn try_from(value: ash::vk::Format) -> Result<Self> {
+        match value {
+            ash::vk::Format::R8_UNORM => Ok(Self::R8Unorm),
+            ash::vk::Format::R8G8B8A8_UNORM => Ok(Self::Rgba8Unorm),
+            ash::vk::Format::R8G8B8A8_SRGB => Ok(Self::Rgba8Srgb),
+            ash::vk::Format::B8G8R8A8_SRGB => Ok(Self::Bgra8Srgb),
+            _ => Err(Error::InvalidArgument(format!(
+                "Vulkan format `{value:?}` has no matching texture format."
+            ))),
         }
     }
 }

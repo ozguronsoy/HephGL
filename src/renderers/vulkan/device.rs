@@ -9,6 +9,7 @@ use crate::{
         thread_context::ThreadContextMaskArray,
         vulkan::{
             VulkanRenderer,
+            canvas::VulkanCanvas,
             queue::{QueueContext, QueueFamily},
             rendering::VulkanRendering,
             swapchain::SwapchainContext,
@@ -32,6 +33,7 @@ pub struct DeviceContext {
 
     pub swapchain_context: SwapchainContext,
     pub rendering: Option<Box<dyn VulkanRendering>>,
+    pub display_canvas: Option<VulkanCanvas>,
 
     pub physical_device: ash::vk::PhysicalDevice,
     pub logical_device: ash::Device,

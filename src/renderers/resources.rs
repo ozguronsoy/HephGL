@@ -26,6 +26,8 @@ pub enum TextureFormat {
     /// 8-bit RGBA using the sRGB color space.
     #[default]
     Rgba8Srgb,
+    /// 8-bit BGRA using the sRGB color space.
+    Bgra8Srgb,
 }
 
 /// Defines the types of resources being bound to a shader slot.
@@ -93,7 +95,7 @@ impl TextureFormat {
     pub(super) fn bytes_per_pixel(&self) -> usize {
         match self {
             Self::R8Unorm => 1,
-            Self::Rgba8Unorm | Self::Rgba8Srgb => 4,
+            Self::Rgba8Unorm | Self::Rgba8Srgb | Self::Bgra8Srgb => 4,
         }
     }
 }

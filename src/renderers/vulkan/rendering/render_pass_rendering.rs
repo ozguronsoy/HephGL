@@ -3,8 +3,8 @@ use std::ffi::CString;
 use ash::vk::{
     AttachmentDescription, AttachmentLoadOp, AttachmentReference, AttachmentStoreOp,
     ClearDepthStencilValue, ClearValue, CommandBuffer, DescriptorSetLayoutBinding,
-    DescriptorSetLayoutCreateInfo, DescriptorType, DynamicState, Framebuffer,
-    FramebufferCreateInfo, GraphicsPipelineCreateInfo, PipelineBindPoint, PipelineCache,
+    DescriptorSetLayoutCreateInfo, DescriptorType, DynamicState, FramebufferCreateInfo,
+    GraphicsPipelineCreateInfo, PipelineBindPoint, PipelineCache,
     PipelineColorBlendStateCreateInfo, PipelineDepthStencilStateCreateInfo,
     PipelineDynamicStateCreateInfo, PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
     PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
@@ -18,9 +18,11 @@ use ash::vk::{
 use crate::{
     Error, Result,
     renderers::{
+        RendererCanvas,
         settings::{GraphicsPipelineOptions, Msaa, Settings},
         vulkan::{
             DescriptorSetCache, VulkanRenderer,
+            canvas::VulkanCanvas,
             rendering::{
                 VulkanRendering,
                 lifetime_guards::{PipelineResources, ShaderModules},
@@ -35,7 +37,6 @@ use crate::{
 /// Implements rendering via render pass.
 pub struct RenderPassRendering {
     render_pass: RenderPass,
-    framebuffers: Vec<Framebuffer>,
     msaa: Msaa,
 }
 
@@ -48,152 +49,12 @@ impl VulkanRendering for RenderPassRendering {
     where
         Self: Sized,
     {
-        let sample_count: SampleCountFlags = settings.msaa.into();
-        let depth_format = ash::vk::Format::D32_SFLOAT;
-        let render_pass = if sample_count == SampleCountFlags::TYPE_1 {
-            let attachments = [
-                AttachmentDescription::default()
-                    .format(swapchain_context.format)
-                    .samples(sample_count)
-                    .load_op(AttachmentLoadOp::DONT_CARE)
-                    .store_op(AttachmentStoreOp::STORE)
-                    .stencil_load_op(AttachmentLoadOp::DONT_CARE)
-                    .stencil_store_op(AttachmentStoreOp::DONT_CARE)
-                    .initial_layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                    .final_layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL),
-                AttachmentDescription::default()
-                    .format(depth_format)
-                    .samples(sample_count)
-                    .load_op(AttachmentLoadOp::CLEAR)
-                    .store_op(AttachmentStoreOp::STORE)
-                    .stencil_load_op(AttachmentLoadOp::DONT_CARE)
-                    .stencil_store_op(AttachmentStoreOp::DONT_CARE)
-                    .initial_layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-                    .final_layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL),
-            ];
-            let color_attachment = [AttachmentReference::default()
-                .attachment(0)
-                .layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)];
-            let depth_attachment = AttachmentReference::default()
-                .attachment(1)
-                .layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-            let subpass = SubpassDescription::default()
-                .pipeline_bind_point(PipelineBindPoint::GRAPHICS)
-                .color_attachments(&color_attachment)
-                .depth_stencil_attachment(&depth_attachment);
-            unsafe {
-                device.create_render_pass(
-                    &RenderPassCreateInfo::default()
-                        .attachments(&attachments)
-                        .subpasses(std::slice::from_ref(&subpass)),
-                    None,
-                )?
-            }
-        } else {
-            let attachments = [
-                AttachmentDescription::default()
-                    .format(swapchain_context.format)
-                    .samples(sample_count)
-                    .load_op(AttachmentLoadOp::DONT_CARE)
-                    .store_op(AttachmentStoreOp::DONT_CARE)
-                    .stencil_load_op(AttachmentLoadOp::DONT_CARE)
-                    .stencil_store_op(AttachmentStoreOp::DONT_CARE)
-                    .initial_layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                    .final_layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL),
-                AttachmentDescription::default()
-                    .format(depth_format)
-                    .samples(sample_count)
-                    .load_op(AttachmentLoadOp::CLEAR)
-                    .store_op(AttachmentStoreOp::STORE)
-                    .stencil_load_op(AttachmentLoadOp::DONT_CARE)
-                    .stencil_store_op(AttachmentStoreOp::DONT_CARE)
-                    .initial_layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-                    .final_layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL),
-                AttachmentDescription::default()
-                    .format(swapchain_context.format)
-                    .samples(SampleCountFlags::TYPE_1)
-                    .load_op(AttachmentLoadOp::DONT_CARE)
-                    .store_op(AttachmentStoreOp::STORE)
-                    .stencil_load_op(AttachmentLoadOp::DONT_CARE)
-                    .stencil_store_op(AttachmentStoreOp::DONT_CARE)
-                    .initial_layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                    .final_layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL),
-            ];
-            let color_attachment = [AttachmentReference::default()
-                .attachment(0)
-                .layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)];
-            let depth_attachment = AttachmentReference::default()
-                .attachment(1)
-                .layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-            let resolve_attachment = [AttachmentReference::default()
-                .attachment(2)
-                .layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)];
-            let subpass = SubpassDescription::default()
-                .pipeline_bind_point(PipelineBindPoint::GRAPHICS)
-                .color_attachments(&color_attachment)
-                .resolve_attachments(&resolve_attachment)
-                .depth_stencil_attachment(&depth_attachment);
-            unsafe {
-                device.create_render_pass(
-                    &RenderPassCreateInfo::default()
-                        .attachments(&attachments)
-                        .subpasses(std::slice::from_ref(&subpass)),
-                    None,
-                )?
-            }
-        };
-
-        let layer_count = settings.array_layer_count();
-        let mut framebuffers = Vec::with_capacity(swapchain_context.image_views.len());
-        for swapchain_image_view in &swapchain_context.image_views {
-            let framebuffer = if sample_count == SampleCountFlags::TYPE_1 {
-                let attachments = [*swapchain_image_view, swapchain_context.depth_image_view];
-                unsafe {
-                    device.create_framebuffer(
-                        &FramebufferCreateInfo::default()
-                            .render_pass(render_pass)
-                            .attachments(&attachments)
-                            .width(swapchain_context.extent.width)
-                            .height(swapchain_context.extent.height)
-                            .layers(layer_count),
-                        None,
-                    )
-                }
-            } else {
-                let attachments = [
-                    swapchain_context.msaa_color_image_view,
-                    swapchain_context.depth_image_view,
-                    *swapchain_image_view,
-                ];
-                unsafe {
-                    device.create_framebuffer(
-                        &FramebufferCreateInfo::default()
-                            .render_pass(render_pass)
-                            .attachments(&attachments)
-                            .width(swapchain_context.extent.width)
-                            .height(swapchain_context.extent.height)
-                            .layers(layer_count),
-                        None,
-                    )
-                }
-            };
-            match framebuffer {
-                Ok(framebuffer) => framebuffers.push(framebuffer),
-                Err(error) => {
-                    unsafe {
-                        for framebuffer in &framebuffers {
-                            device.destroy_framebuffer(*framebuffer, None);
-                        }
-                        device.destroy_render_pass(render_pass, None);
-                    }
-                    return Err(error.into());
-                }
-            }
-        }
-
         Ok(Self {
-            render_pass,
-            framebuffers,
+            render_pass: Self::create_render_pass(
+                device,
+                swapchain_context.format,
+                settings.msaa.into(),
+            )?,
             msaa: settings.msaa,
         })
     }
@@ -431,11 +292,42 @@ impl VulkanRendering for RenderPassRendering {
         pipeline.descriptor_binding_counts.clear();
         Ok(())
     }
+    fn create_canvas_framebuffer(
+        &self,
+        device: &ash::Device,
+        canvas: &mut VulkanCanvas,
+    ) -> Result<()> {
+        canvas.render_pass = Self::create_render_pass(
+            device,
+            canvas.texture.texture_options.format.into(),
+            canvas.msaa.into(),
+        )?;
+        let views: &[ash::vk::ImageView] = match &canvas.msaa_color_image {
+            None => &[canvas.texture.image_view, canvas.depth_image.view],
+            Some(msaa_color_image) => &[
+                msaa_color_image.view,
+                canvas.depth_image.view,
+                canvas.texture.image_view,
+            ],
+        };
+        canvas.framebuffer = unsafe {
+            device.create_framebuffer(
+                &FramebufferCreateInfo::default()
+                    .render_pass(canvas.render_pass)
+                    .attachments(views)
+                    .width(canvas.width())
+                    .height(canvas.height())
+                    .layers(canvas.layer_count),
+                None,
+            )?
+        };
+        Ok(())
+    }
     fn begin(
         &mut self,
         device: &ash::Device,
         command_buffer: CommandBuffer,
-        swapchain_context: &SwapchainContext,
+        canvas: &VulkanCanvas,
     ) -> Result<()> {
         let clear_values = [
             ClearValue::default(),
@@ -447,11 +339,14 @@ impl VulkanRendering for RenderPassRendering {
             },
         ];
         let begin_info = RenderPassBeginInfo::default()
-            .render_pass(self.render_pass)
-            .framebuffer(self.framebuffers[swapchain_context.current_image_index])
+            .render_pass(canvas.render_pass)
+            .framebuffer(canvas.framebuffer)
             .render_area(ash::vk::Rect2D {
                 offset: ash::vk::Offset2D { x: 0, y: 0 },
-                extent: swapchain_context.extent,
+                extent: ash::vk::Extent2D {
+                    width: canvas.width(),
+                    height: canvas.height(),
+                },
             })
             .clear_values(&clear_values);
         unsafe {
@@ -467,11 +362,68 @@ impl VulkanRendering for RenderPassRendering {
     }
     fn destroy(&mut self, device: &ash::Device) -> Result<()> {
         unsafe {
-            for framebuffer in self.framebuffers.drain(..) {
-                device.destroy_framebuffer(framebuffer, None);
-            }
             device.destroy_render_pass(self.render_pass, None);
         }
         Ok(())
+    }
+}
+
+impl RenderPassRendering {
+    /// Creates a render pass that renders into a canvas. The color is loaded so the canvas keeps
+    /// its content between render passes. Render passes created with the same color format and
+    /// sample count are compatible with each other.
+    fn create_render_pass(
+        device: &ash::Device,
+        color_format: ash::vk::Format,
+        sample_count: SampleCountFlags,
+    ) -> Result<RenderPass> {
+        let color_attachment = AttachmentDescription::default()
+            .format(color_format)
+            .samples(sample_count)
+            .load_op(AttachmentLoadOp::LOAD)
+            .store_op(AttachmentStoreOp::STORE)
+            .stencil_load_op(AttachmentLoadOp::DONT_CARE)
+            .stencil_store_op(AttachmentStoreOp::DONT_CARE)
+            .initial_layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .final_layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
+        let depth_attachment = AttachmentDescription::default()
+            .format(ash::vk::Format::D32_SFLOAT)
+            .samples(sample_count)
+            .load_op(AttachmentLoadOp::CLEAR)
+            .store_op(AttachmentStoreOp::DONT_CARE)
+            .stencil_load_op(AttachmentLoadOp::DONT_CARE)
+            .stencil_store_op(AttachmentStoreOp::DONT_CARE)
+            .initial_layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+            .final_layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        let resolve_attachment = color_attachment
+            .samples(SampleCountFlags::TYPE_1)
+            .load_op(AttachmentLoadOp::DONT_CARE);
+        let color_reference = [AttachmentReference::default()
+            .attachment(0)
+            .layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)];
+        let depth_reference = AttachmentReference::default()
+            .attachment(1)
+            .layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        let resolve_reference = [AttachmentReference::default()
+            .attachment(2)
+            .layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)];
+        let mut subpass = SubpassDescription::default()
+            .pipeline_bind_point(PipelineBindPoint::GRAPHICS)
+            .color_attachments(&color_reference)
+            .depth_stencil_attachment(&depth_reference);
+        let attachments: &[AttachmentDescription] = if sample_count == SampleCountFlags::TYPE_1 {
+            &[color_attachment, depth_attachment]
+        } else {
+            subpass = subpass.resolve_attachments(&resolve_reference);
+            &[color_attachment, depth_attachment, resolve_attachment]
+        };
+        unsafe {
+            Ok(device.create_render_pass(
+                &RenderPassCreateInfo::default()
+                    .attachments(attachments)
+                    .subpasses(std::slice::from_ref(&subpass)),
+                None,
+            )?)
+        }
     }
 }
