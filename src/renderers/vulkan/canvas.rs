@@ -12,8 +12,8 @@ use crate::{
         resources::{RendererResource, RendererTexture},
         settings::{Msaa, Settings},
         vulkan::{
-            VulkanRenderer, device::DeviceContext, frame::ThreadContext,
-            rendering::VulkanRendering, resources::VulkanTexture,
+            VulkanRenderer, device::DeviceContext, rendering::VulkanRendering,
+            resources::VulkanTexture, thread::ThreadContext,
         },
     },
 };
