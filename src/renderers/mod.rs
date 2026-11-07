@@ -142,7 +142,6 @@ pub trait Renderer {
     /// Frees the resources allocated for the provided canvas.
     fn destroy_canvas(&self, canvas: &mut dyn RendererCanvas) -> Result<()>;
     /// Creates a graphics workload for the GPU that renders into the canvas.
-    #[allow(clippy::too_many_arguments)]
     fn record_canvas_command(
         &mut self,
         canvas: &mut dyn RendererCanvas,

@@ -155,7 +155,6 @@ impl VulkanRenderer {
 
     /// Records a draw command that renders into the canvas, or into the display canvas if there is
     /// no canvas.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn record_draw(
         &mut self,
         canvas: Option<&mut VulkanCanvas>,

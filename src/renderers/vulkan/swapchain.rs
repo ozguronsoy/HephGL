@@ -393,7 +393,6 @@ impl VulkanRenderer {
         );
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn transition_image_layout(
         device: &ash::Device,
         command_buffer: ash::vk::CommandBuffer,
