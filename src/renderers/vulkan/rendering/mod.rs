@@ -10,17 +10,20 @@ use renkrs::RGB;
 use crate::{
     Error, Result,
     renderers::{
-        BufferUsage, Renderer, RendererCanvas, ResourceBinding, resource_mut, resource_ref,
-        resources::{RendererBuffer, RendererGraphicsPipeline, ResourceBindingType},
+        BufferUsage, Renderer, RendererCanvas, ResourceBinding,
+        pipeline::RendererGraphicsPipeline,
+        resource_mut, resource_ref,
+        resources::{RendererBuffer, ResourceBindingType},
         settings::{GraphicsPipelineOptions, Settings},
         vulkan::{
             VulkanRenderer,
             canvas::VulkanCanvas,
             frame::FrameState,
+            pipeline::VulkanGraphicsPipeline,
             rendering::{
                 dynamic_rendering::DynamicRendering, render_pass_rendering::RenderPassRendering,
             },
-            resources::{VulkanBuffer, VulkanGraphicsPipeline},
+            resources::VulkanBuffer,
             swapchain::SwapchainContext,
         },
     },
