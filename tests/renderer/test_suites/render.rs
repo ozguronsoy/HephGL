@@ -177,56 +177,62 @@ where
             })
         };
 
-        heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(RGB::default()));
+        let start = Instant::now();
+        while start.elapsed() < ANIMATION_DURATION {
+            heph_expect_success!(renderer.begin_frame());
+            heph_expect_success!(renderer.clear(RGB::default()));
 
-        let cube_a = cube_vertices([-0.5, -0.125, 0.5], [1.0, 0.0, 0.0, 1.0]);
-        let cube_b = cube_vertices([0.5, 0.125, 0.2], [0.0, 0.0, 1.0, 0.5]);
-        heph_expect_success!(renderer.write_buffer(
-            cube_a_buffer.as_mut(),
-            0,
-            bytemuck::cast_slice(&cube_a)
-        ));
-        heph_expect_success!(renderer.write_buffer(
-            cube_b_buffer.as_mut(),
-            0,
-            bytemuck::cast_slice(&cube_b)
-        ));
+            let time = start.elapsed().as_secs_f32();
+            let movement = (time * 2.0).sin() * 0.2;
 
-        let cube_a_vertex_bindings = [ResourceBinding {
-            binding: 0,
-            resource: ResourceBindingType::Buffer {
-                buffer: cube_a_buffer.as_ref(),
-                offset: 0,
-                size: cube_a_buffer.size(),
-            },
-        }];
-        let cube_b_vertex_bindings = [ResourceBinding {
-            binding: 0,
-            resource: ResourceBindingType::Buffer {
-                buffer: cube_b_buffer.as_ref(),
-                offset: 0,
-                size: cube_b_buffer.size(),
-            },
-        }];
-        heph_expect_success!(renderer.record_graphics_command(
-            pipeline.as_mut(),
-            Some(index_buffer.as_ref()),
-            &cube_a_vertex_bindings,
-            &[],
-            INDICES.len() as u32,
-            1
-        ));
-        heph_expect_success!(renderer.record_graphics_command(
-            pipeline.as_mut(),
-            Some(index_buffer.as_ref()),
-            &cube_b_vertex_bindings,
-            &[],
-            INDICES.len() as u32,
-            1
-        ));
+            let cube_a = cube_vertices([-0.1 + movement, -0.125, 0.5], [1.0, 0.0, 0.0, 1.0]);
+            let cube_b = cube_vertices([0.1 - movement, 0.125, 0.2], [0.0, 0.0, 1.0, 0.6]);
+            heph_expect_success!(renderer.write_buffer(
+                cube_a_buffer.as_mut(),
+                0,
+                bytemuck::cast_slice(&cube_a)
+            ));
+            heph_expect_success!(renderer.write_buffer(
+                cube_b_buffer.as_mut(),
+                0,
+                bytemuck::cast_slice(&cube_b)
+            ));
 
-        heph_expect_success!(renderer.end_frame());
+            let cube_a_vertex_bindings = [ResourceBinding {
+                binding: 0,
+                resource: ResourceBindingType::Buffer {
+                    buffer: cube_a_buffer.as_ref(),
+                    offset: 0,
+                    size: cube_a_buffer.size(),
+                },
+            }];
+            let cube_b_vertex_bindings = [ResourceBinding {
+                binding: 0,
+                resource: ResourceBindingType::Buffer {
+                    buffer: cube_b_buffer.as_ref(),
+                    offset: 0,
+                    size: cube_b_buffer.size(),
+                },
+            }];
+            heph_expect_success!(renderer.record_graphics_command(
+                pipeline.as_mut(),
+                Some(index_buffer.as_ref()),
+                &cube_a_vertex_bindings,
+                &[],
+                INDICES.len() as u32,
+                1
+            ));
+            heph_expect_success!(renderer.record_graphics_command(
+                pipeline.as_mut(),
+                Some(index_buffer.as_ref()),
+                &cube_b_vertex_bindings,
+                &[],
+                INDICES.len() as u32,
+                1
+            ));
+
+            heph_expect_success!(renderer.end_frame());
+        }
 
         heph_expect_success!(renderer.wait_idle());
         heph_expect_success!(renderer.destroy_buffer(cube_a_buffer.as_mut()));
