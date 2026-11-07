@@ -14,6 +14,7 @@ mod thread;
 mod version;
 
 use std::{
+    any::Any,
     cell::Cell,
     collections::{HashMap, HashSet},
     ffi::CString,
@@ -45,7 +46,7 @@ use crate::{
         settings::{GraphicsPipelineOptions, Msaa, SamplerOptions, TextureOptions},
         thread_context::{
             MAIN_THREAD_CONTEXT_INDEX, ThreadContextIndex, ThreadContextMask,
-            is_thread_context_active,
+            ThreadContextMaskArray, is_thread_context_active,
         },
         version::DriverVersion,
         vulkan::{
@@ -53,7 +54,12 @@ use crate::{
             device::DeviceContext,
             frame::{Frame, FrameState},
             queue::QueueContext,
+            rendering::VulkanRendering,
             swapchain::SwapchainContext,
+            thread::{
+                ComputeThreadContext, GraphicsThreadContext, TransferThreadContext,
+                VulkanThreadContext,
+            },
             version::VulkanApiVersion,
         },
     },
@@ -149,12 +155,17 @@ impl Renderer for VulkanRenderer {
 
             let device_context = self.device_context.as_mut().unwrap();
 
-            let mut resize_frames = |queue_context: &mut QueueContext| -> Result<()> {
-                let masks = device_context.thread_context_masks.lock()?;
+            fn resize_frames<ThreadContext: VulkanThreadContext>(
+                thread_context_masks: &Mutex<ThreadContextMaskArray>,
+                settings: &mut Settings,
+                temp_settings: Settings,
+                queue_context: &mut QueueContext<ThreadContext>,
+            ) -> Result<()> {
+                let masks = thread_context_masks.lock()?;
 
                 for mask in masks.iter() {
                     if *mask != 0 {
-                        self.settings = temp_settings;
+                        *settings = temp_settings;
                         return Err(Error::invalid_operation(
                             "All worker threads must be uninitialized before changing the settings.",
                         ));
@@ -162,13 +173,28 @@ impl Renderer for VulkanRenderer {
                 }
                 queue_context
                     .frames
-                    .resize_with(self.settings.frames_in_flight, Frame::default);
+                    .resize_with(settings.frames_in_flight, Frame::default);
                 Ok(())
-            };
-            resize_frames(&mut device_context.graphics_queue_context)?;
-            resize_frames(&mut device_context.transfer_queue_context)?;
+            }
+            resize_frames(
+                &device_context.thread_context_masks,
+                &mut self.settings,
+                temp_settings,
+                &mut device_context.graphics_queue_context,
+            )?;
+            resize_frames(
+                &device_context.thread_context_masks,
+                &mut self.settings,
+                temp_settings,
+                &mut device_context.transfer_queue_context,
+            )?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-                resize_frames(compute_queue_context)?;
+                resize_frames(
+                    &device_context.thread_context_masks,
+                    &mut self.settings,
+                    temp_settings,
+                    compute_queue_context,
+                )?;
             }
 
             device_context.current_frame_index = 0;
@@ -680,7 +706,7 @@ impl Renderer for VulkanRenderer {
                 queue_family_index: graphics_family.index,
                 frames: (0..self.settings.frames_in_flight)
                     .map(|_| Frame::default())
-                    .collect::<Vec<Frame>>(),
+                    .collect::<Vec<Frame<GraphicsThreadContext>>>(),
                 frame_sync: None,
             },
             transfer_queue_context: QueueContext {
@@ -688,7 +714,7 @@ impl Renderer for VulkanRenderer {
                 queue_family_index: transfer_family.index,
                 frames: (0..self.settings.frames_in_flight)
                     .map(|_| Frame::default())
-                    .collect::<Vec<Frame>>(),
+                    .collect::<Vec<Frame<TransferThreadContext>>>(),
                 frame_sync: None,
             },
             compute_queue_context: compute_queue.map(|queue| QueueContext {
@@ -696,7 +722,7 @@ impl Renderer for VulkanRenderer {
                 queue_family_index: compute_family.unwrap().index,
                 frames: (0..self.settings.frames_in_flight)
                     .map(|_| Frame::default())
-                    .collect::<Vec<Frame>>(),
+                    .collect::<Vec<Frame<ComputeThreadContext>>>(),
                 frame_sync: None,
             }),
 
@@ -1045,7 +1071,7 @@ impl Renderer for VulkanRenderer {
 
         Self::transition_image_layout(
             &device_context.logical_device,
-            current_frame.command_buffer,
+            current_frame.base.command_buffer,
             image,
             ash::vk::ImageLayout::UNDEFINED,
             ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
@@ -1078,7 +1104,7 @@ impl Renderer for VulkanRenderer {
             });
         unsafe {
             device_context.logical_device.cmd_copy_buffer_to_image(
-                current_frame.command_buffer,
+                current_frame.base.command_buffer,
                 staging_buffer,
                 image,
                 ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
@@ -1091,7 +1117,7 @@ impl Renderer for VulkanRenderer {
 
             Self::transition_image_layout(
                 &device_context.logical_device,
-                current_frame.command_buffer,
+                current_frame.base.command_buffer,
                 image,
                 ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                 ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
@@ -1143,7 +1169,7 @@ impl Renderer for VulkanRenderer {
                 ]);
             unsafe {
                 device_context.logical_device.cmd_blit_image(
-                    current_frame.command_buffer,
+                    current_frame.base.command_buffer,
                     image,
                     ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                     image,
@@ -1155,7 +1181,7 @@ impl Renderer for VulkanRenderer {
 
             Self::transition_image_layout(
                 &device_context.logical_device,
-                current_frame.command_buffer,
+                current_frame.base.command_buffer,
                 image,
                 ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                 ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
@@ -1172,7 +1198,7 @@ impl Renderer for VulkanRenderer {
         }
         Self::transition_image_layout(
             &device_context.logical_device,
-            current_frame.command_buffer,
+            current_frame.base.command_buffer,
             image,
             ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
@@ -1193,7 +1219,7 @@ impl Renderer for VulkanRenderer {
             size: expected_size,
             usage: BufferUsage::Uniform,
         });
-        current_frame.recorded = true;
+        current_frame.base.recorded = true;
 
         Ok(Box::new(VulkanTexture {
             image,
@@ -1430,17 +1456,17 @@ impl Renderer for VulkanRenderer {
             .thread_contexts[thread_context_index];
 
         unsafe {
-            if current_frame.bound_compute_pipeline != Some(pipeline.pipeline) {
+            if current_frame.bound_pipeline != Some(pipeline.pipeline) {
                 device_context.logical_device.cmd_bind_pipeline(
-                    current_frame.command_buffer,
+                    current_frame.base.command_buffer,
                     PipelineBindPoint::COMPUTE,
                     pipeline.pipeline,
                 );
-                current_frame.bound_compute_pipeline = Some(pipeline.pipeline);
+                current_frame.bound_pipeline = Some(pipeline.pipeline);
             }
             if !mapped_range.is_empty() {
                 device_context.logical_device.cmd_bind_descriptor_sets(
-                    current_frame.command_buffer,
+                    current_frame.base.command_buffer,
                     PipelineBindPoint::COMPUTE,
                     pipeline.layout,
                     0,
@@ -1449,14 +1475,14 @@ impl Renderer for VulkanRenderer {
                 );
             }
             device_context.logical_device.cmd_dispatch(
-                current_frame.command_buffer,
+                current_frame.base.command_buffer,
                 group_count.0,
                 group_count.1,
                 group_count.2,
             );
         }
 
-        current_frame.recorded = true;
+        current_frame.base.recorded = true;
         Ok(())
     }
 
@@ -1711,20 +1737,33 @@ impl Renderer for VulkanRenderer {
 
         // Wait for current frame to finish.
         if is_in_main_thread {
-            let wait_frame_sync = |queue_context: &mut QueueContext| -> Result<()> {
+            fn wait_frame_sync<ThreadContext: VulkanThreadContext>(
+                logical_device: &ash::Device,
+                queue_context: &mut QueueContext<ThreadContext>,
+                frame_index: usize,
+            ) -> Result<()> {
                 let frame_sync = queue_context
                     .frame_sync
                     .as_mut()
                     .ok_or(Error::invalid_operation("Device is not set."))?;
-                frame_sync.wait(
-                    &device_context.logical_device,
-                    device_context.current_frame_index,
-                )
-            };
-            wait_frame_sync(&mut device_context.graphics_queue_context)?;
-            wait_frame_sync(&mut device_context.transfer_queue_context)?;
+                frame_sync.wait(logical_device, frame_index)
+            }
+            wait_frame_sync(
+                &device_context.logical_device,
+                &mut device_context.graphics_queue_context,
+                device_context.current_frame_index,
+            )?;
+            wait_frame_sync(
+                &device_context.logical_device,
+                &mut device_context.transfer_queue_context,
+                device_context.current_frame_index,
+            )?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-                wait_frame_sync(compute_queue_context)?;
+                wait_frame_sync(
+                    &device_context.logical_device,
+                    compute_queue_context,
+                    device_context.current_frame_index,
+                )?;
             }
 
             Self::acquire_swapchain_image(p_self)?;
@@ -1737,6 +1776,7 @@ impl Renderer for VulkanRenderer {
             let (state_mutex, cv) = &device_context.graphics_queue_context.frames
                 [device_context.current_frame_index]
                 .thread_contexts[thread_context_index]
+                .base
                 .sync_state;
             let mut state = state_mutex.lock()?;
             if *state == FrameState::Finished {
@@ -1750,65 +1790,108 @@ impl Renderer for VulkanRenderer {
 
             // Wait for the main thread to begin the current frame before we can start recording
             // commands.
-            let wait_main_thread_begin_current_frame =
-                |queue_context: &QueueContext| -> Result<()> {
-                    let main_frame = &queue_context.frames[device_context.current_frame_index]
-                        .thread_contexts[MAIN_THREAD_CONTEXT_INDEX];
-                    let (state_mutex, cv) = &main_frame.sync_state;
-                    let mut state = state_mutex.lock()?;
-                    while *state != FrameState::Started {
-                        state = cv.wait(state)?;
-                    }
-                    Ok(())
-                };
-            wait_main_thread_begin_current_frame(&device_context.graphics_queue_context)?;
-            wait_main_thread_begin_current_frame(&device_context.transfer_queue_context)?;
+            fn wait_main_thread_begin_current_frame<ThreadContext: VulkanThreadContext>(
+                queue_context: &QueueContext<ThreadContext>,
+                frame_index: usize,
+            ) -> Result<()> {
+                let main_frame =
+                    &queue_context.frames[frame_index].thread_contexts[MAIN_THREAD_CONTEXT_INDEX];
+                let (state_mutex, cv) = &main_frame.base().sync_state;
+                let mut state = state_mutex.lock()?;
+                while *state != FrameState::Started {
+                    state = cv.wait(state)?;
+                }
+                Ok(())
+            }
+            wait_main_thread_begin_current_frame(
+                &device_context.graphics_queue_context,
+                device_context.current_frame_index,
+            )?;
+            wait_main_thread_begin_current_frame(
+                &device_context.transfer_queue_context,
+                device_context.current_frame_index,
+            )?;
             if let Some(compute_queue_context) = &device_context.compute_queue_context {
-                wait_main_thread_begin_current_frame(compute_queue_context)?;
+                wait_main_thread_begin_current_frame(
+                    compute_queue_context,
+                    device_context.current_frame_index,
+                )?;
             }
         }
 
-        let begin_queue = |queue_context: &mut QueueContext, is_graphics: bool| -> Result<()> {
-            let current_frame = &mut queue_context.frames[device_context.current_frame_index]
-                .thread_contexts[thread_context_index];
-            let (state_mutex, cv) = &current_frame.sync_state;
-            let mut state = state_mutex.lock()?;
-            if *state != FrameState::Idle {
+        fn begin_queue<ThreadContext: VulkanThreadContext>(
+            logical_device: &ash::Device,
+            vma_allocator: &vk_mem::Allocator,
+            queue_context: &mut QueueContext<ThreadContext>,
+            frame_index: usize,
+            thread_context_index: usize,
+        ) -> Result<()> {
+            let current_frame =
+                &mut queue_context.frames[frame_index].thread_contexts[thread_context_index];
+            if *current_frame.base().sync_state.0.lock()? != FrameState::Idle {
                 return Err(Error::invalid_operation(
                     "Invalid frame state, did you forget to call `end_frame`?",
                 ));
             }
             unsafe {
-                device_context.logical_device.reset_command_pool(
-                    current_frame.command_pool,
+                logical_device.reset_command_pool(
+                    current_frame.base().command_pool,
                     ash::vk::CommandPoolResetFlags::empty(),
                 )?;
-                for transfer_buffer in &mut current_frame.transfer_buffers {
-                    device_context
-                        .vma_allocator
-                        .destroy_buffer(transfer_buffer.buffer, &mut transfer_buffer.vma_allocation)
+                if let Some(current_frame) =
+                    <dyn Any>::downcast_mut::<TransferThreadContext>(current_frame)
+                {
+                    for transfer_buffer in &mut current_frame.transfer_buffers {
+                        vma_allocator.destroy_buffer(
+                            transfer_buffer.buffer,
+                            &mut transfer_buffer.vma_allocation,
+                        )
+                    }
+                    current_frame.transfer_buffers.clear();
                 }
-                current_frame.transfer_buffers.clear();
 
                 let begin_info = CommandBufferBeginInfo::default()
                     .flags(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-                device_context
-                    .logical_device
-                    .begin_command_buffer(current_frame.command_buffer, &begin_info)?;
-                current_frame.bound_graphics_pipeline = None;
-                current_frame.bound_compute_pipeline = None;
-                if is_graphics {
+                logical_device
+                    .begin_command_buffer(current_frame.base().command_buffer, &begin_info)?;
+                if let Some(current_frame) =
+                    <dyn Any>::downcast_mut::<GraphicsThreadContext>(current_frame)
+                {
+                    current_frame.bound_pipeline = None;
                     current_frame.render_target = None;
+                } else if let Some(current_frame) =
+                    <dyn Any>::downcast_mut::<ComputeThreadContext>(current_frame)
+                {
+                    current_frame.bound_pipeline = None;
                 }
             }
-            *state = FrameState::Started;
+            let (state_mutex, cv) = &current_frame.base().sync_state;
+            *state_mutex.lock()? = FrameState::Started;
             cv.notify_all();
             Ok(())
-        };
-        begin_queue(&mut device_context.graphics_queue_context, true)?;
-        begin_queue(&mut device_context.transfer_queue_context, false)?;
+        }
+        begin_queue(
+            &device_context.logical_device,
+            &device_context.vma_allocator,
+            &mut device_context.graphics_queue_context,
+            device_context.current_frame_index,
+            thread_context_index,
+        )?;
+        begin_queue(
+            &device_context.logical_device,
+            &device_context.vma_allocator,
+            &mut device_context.transfer_queue_context,
+            device_context.current_frame_index,
+            thread_context_index,
+        )?;
         if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-            begin_queue(compute_queue_context, false)?;
+            begin_queue(
+                &device_context.logical_device,
+                &device_context.vma_allocator,
+                compute_queue_context,
+                device_context.current_frame_index,
+                thread_context_index,
+            )?;
         }
 
         Ok(())
@@ -1833,55 +1916,102 @@ impl Renderer for VulkanRenderer {
         };
 
         let mut present = false;
-        let mut end_queue = |queue_context: &mut QueueContext, is_graphics: bool| -> Result<()> {
-            let current_frame = &mut queue_context.frames[device_context.current_frame_index]
-                .thread_contexts[thread_context_index];
-            let (state_mutex, cv) = &current_frame.sync_state;
-            let mut state = state_mutex.lock()?;
-            if *state != FrameState::Started {
+        fn end_queue<ThreadContext: VulkanThreadContext>(
+            logical_device: &ash::Device,
+            rendering: &mut dyn VulkanRendering,
+            display_canvas: Option<&VulkanCanvas>,
+            swapchain_images: &[ash::vk::Image],
+            image_index: usize,
+            layer_count: u32,
+            is_in_main_thread: bool,
+            queue_context: &mut QueueContext<ThreadContext>,
+            frame_index: usize,
+            thread_context_index: usize,
+            present: &mut bool,
+        ) -> Result<()> {
+            let current_frame =
+                &mut queue_context.frames[frame_index].thread_contexts[thread_context_index];
+            if *current_frame.base().sync_state.0.lock()? != FrameState::Started {
                 return Err(Error::invalid_operation(
                     "Cannot end a frame that hasn't started yet.",
                 ));
             }
             unsafe {
-                if is_graphics && let Some(image) = current_frame.render_target.take() {
-                    Self::end_rendering(
-                        &device_context.logical_device,
-                        rendering.as_mut(),
-                        current_frame.command_buffer,
-                        image,
-                        self.settings.array_layer_count(),
-                    )?;
-                }
-                if is_graphics && is_in_main_thread {
-                    let display_canvas = device_context
-                        .display_canvas
-                        .as_ref()
-                        .ok_or(Error::invalid_operation("Device is not set."))?;
-                    if display_canvas.layout != ash::vk::ImageLayout::UNDEFINED {
-                        Self::copy_display_canvas(
-                            &device_context.logical_device,
-                            current_frame.command_buffer,
-                            display_canvas,
-                            device_context.swapchain_context.images[image_index],
-                            self.settings.array_layer_count(),
-                        );
-                        current_frame.recorded = true;
-                        present = true;
+                if let Some(current_frame) =
+                    <dyn Any>::downcast_mut::<GraphicsThreadContext>(current_frame)
+                {
+                    if let Some(image) = current_frame.render_target.take() {
+                        VulkanRenderer::end_rendering(
+                            logical_device,
+                            rendering,
+                            current_frame.base.command_buffer,
+                            image,
+                            layer_count,
+                        )?;
+                    }
+                    if is_in_main_thread {
+                        let display_canvas =
+                            display_canvas.ok_or(Error::invalid_operation("Device is not set."))?;
+                        if display_canvas.layout != ash::vk::ImageLayout::UNDEFINED {
+                            VulkanRenderer::copy_display_canvas(
+                                logical_device,
+                                current_frame.base.command_buffer,
+                                display_canvas,
+                                swapchain_images[image_index],
+                                layer_count,
+                            );
+                            current_frame.base.recorded = true;
+                            *present = true;
+                        }
                     }
                 }
-                device_context
-                    .logical_device
-                    .end_command_buffer(current_frame.command_buffer)?;
+                logical_device.end_command_buffer(current_frame.base().command_buffer)?;
             }
-            *state = FrameState::Finished;
+            let (state_mutex, cv) = &current_frame.base().sync_state;
+            *state_mutex.lock()? = FrameState::Finished;
             cv.notify_one();
             Ok(())
-        };
-        end_queue(&mut device_context.graphics_queue_context, true)?;
-        end_queue(&mut device_context.transfer_queue_context, false)?;
+        }
+        end_queue(
+            &device_context.logical_device,
+            rendering.as_mut(),
+            device_context.display_canvas.as_ref(),
+            &device_context.swapchain_context.images,
+            image_index,
+            self.settings.array_layer_count(),
+            is_in_main_thread,
+            &mut device_context.graphics_queue_context,
+            device_context.current_frame_index,
+            thread_context_index,
+            &mut present,
+        )?;
+        end_queue(
+            &device_context.logical_device,
+            rendering.as_mut(),
+            device_context.display_canvas.as_ref(),
+            &device_context.swapchain_context.images,
+            image_index,
+            self.settings.array_layer_count(),
+            is_in_main_thread,
+            &mut device_context.transfer_queue_context,
+            device_context.current_frame_index,
+            thread_context_index,
+            &mut present,
+        )?;
         if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-            end_queue(compute_queue_context, false)?;
+            end_queue(
+                &device_context.logical_device,
+                rendering.as_mut(),
+                device_context.display_canvas.as_ref(),
+                &device_context.swapchain_context.images,
+                image_index,
+                self.settings.array_layer_count(),
+                is_in_main_thread,
+                compute_queue_context,
+                device_context.current_frame_index,
+                thread_context_index,
+                &mut present,
+            )?;
         }
 
         if is_in_main_thread {
@@ -1904,12 +2034,15 @@ impl Renderer for VulkanRenderer {
                     continue;
                 }
 
-                let add_command_buffer = |queue_context: &mut QueueContext,
-                                          command_buffers: &mut Vec<ash::vk::CommandBuffer>|
-                 -> Result<()> {
-                    let current_frame = &mut queue_context.frames
-                        [device_context.current_frame_index]
-                        .thread_contexts[thread_context_index];
+                fn add_command_buffer<ThreadContext: VulkanThreadContext>(
+                    queue_context: &mut QueueContext<ThreadContext>,
+                    frame_index: usize,
+                    thread_context_index: usize,
+                    command_buffers: &mut Vec<ash::vk::CommandBuffer>,
+                ) -> Result<()> {
+                    let current_frame = queue_context.frames[frame_index].thread_contexts
+                        [thread_context_index]
+                        .base_mut();
 
                     // Wait for the worker thread to signal the frame is finished.
                     let (state_mutex, cv) = &current_frame.sync_state;
@@ -1931,31 +2064,46 @@ impl Renderer for VulkanRenderer {
                     }
 
                     Ok(())
-                };
+                }
                 add_command_buffer(
                     &mut device_context.graphics_queue_context,
+                    device_context.current_frame_index,
+                    thread_context_index,
                     &mut graphics_command_buffers,
                 )?;
                 add_command_buffer(
                     &mut device_context.transfer_queue_context,
+                    device_context.current_frame_index,
+                    thread_context_index,
                     &mut transfer_command_buffers,
                 )?;
                 if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-                    add_command_buffer(compute_queue_context, &mut compute_command_buffers)?;
+                    add_command_buffer(
+                        compute_queue_context,
+                        device_context.current_frame_index,
+                        thread_context_index,
+                        &mut compute_command_buffers,
+                    )?;
                 }
             }
 
-            let submit_commands = |queue_context: &mut QueueContext,
-                                   command_buffers: &Vec<ash::vk::CommandBuffer>,
-                                   present: bool|
-             -> Result<()> {
+            fn submit_commands<ThreadContext: VulkanThreadContext>(
+                logical_device: &ash::Device,
+                queue_context: &mut QueueContext<ThreadContext>,
+                frame_index: usize,
+                command_buffers: &[ash::vk::CommandBuffer],
+                present: bool,
+                image_available_semaphores: &[ash::vk::Semaphore],
+                wait_stages: &[ash::vk::PipelineStageFlags],
+                render_finished_semaphores: &[ash::vk::Semaphore],
+            ) -> Result<()> {
                 if !command_buffers.is_empty() {
                     let submit_info = match present {
                         true => SubmitInfo::default()
                             .command_buffers(command_buffers)
-                            .wait_semaphores(&image_available_semaphores)
-                            .wait_dst_stage_mask(&wait_stages)
-                            .signal_semaphores(&render_finished_semaphores),
+                            .wait_semaphores(image_available_semaphores)
+                            .wait_dst_stage_mask(wait_stages)
+                            .signal_semaphores(render_finished_semaphores),
                         false => SubmitInfo::default().command_buffers(command_buffers),
                     };
                     let frame_sync = queue_context
@@ -1963,28 +2111,47 @@ impl Renderer for VulkanRenderer {
                         .as_mut()
                         .ok_or(Error::invalid_operation("Device is not set."))?;
                     frame_sync.submit(
-                        &device_context.logical_device,
-                        device_context.current_frame_index,
+                        logical_device,
+                        frame_index,
                         queue_context.queue,
                         &[submit_info],
                     )?;
                 }
                 Ok(())
-            };
+            }
             // TODO: This works when the device does not support `AsyncTransfer`. Implement
             // synchronization via semaphores when asynchronous transfers are supported.
             submit_commands(
+                &device_context.logical_device,
                 &mut device_context.transfer_queue_context,
+                device_context.current_frame_index,
                 &transfer_command_buffers,
                 false,
+                &image_available_semaphores,
+                &wait_stages,
+                &render_finished_semaphores,
             )?;
             submit_commands(
+                &device_context.logical_device,
                 &mut device_context.graphics_queue_context,
+                device_context.current_frame_index,
                 &graphics_command_buffers,
                 present,
+                &image_available_semaphores,
+                &wait_stages,
+                &render_finished_semaphores,
             )?;
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-                submit_commands(compute_queue_context, &compute_command_buffers, false)?;
+                submit_commands(
+                    &device_context.logical_device,
+                    compute_queue_context,
+                    device_context.current_frame_index,
+                    &compute_command_buffers,
+                    false,
+                    &image_available_semaphores,
+                    &wait_stages,
+                    &render_finished_semaphores,
+                )?;
             }
 
             if present {

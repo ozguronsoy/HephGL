@@ -12,8 +12,8 @@ use crate::{
         resources::{RendererResource, RendererTexture},
         settings::{Msaa, Settings},
         vulkan::{
-            VulkanRenderer, device::DeviceContext, frame::ThreadContext,
-            rendering::VulkanRendering, resources::VulkanTexture,
+            VulkanRenderer, device::DeviceContext, rendering::VulkanRendering,
+            resources::VulkanTexture, thread::GraphicsThreadContext,
         },
     },
 };
@@ -68,7 +68,7 @@ impl VulkanRenderer {
         rendering: &mut dyn VulkanRendering,
         swapchain_format: Format,
         settings: &Settings,
-        thread_context: &mut ThreadContext,
+        thread_context: &mut GraphicsThreadContext,
         canvas: &mut VulkanCanvas,
     ) -> Result<()> {
         if thread_context.render_target == Some(canvas.texture.image) {
@@ -89,13 +89,13 @@ impl VulkanRenderer {
             Self::end_rendering(
                 device,
                 rendering,
-                thread_context.command_buffer,
+                thread_context.base.command_buffer,
                 previous_image,
                 canvas.layer_count,
             )?;
         }
 
-        let command_buffer = thread_context.command_buffer;
+        let command_buffer = thread_context.base.command_buffer;
         let color_access = AccessFlags::COLOR_ATTACHMENT_READ | AccessFlags::COLOR_ATTACHMENT_WRITE;
         let sampling_stages =
             PipelineStageFlags::VERTEX_SHADER | PipelineStageFlags::FRAGMENT_SHADER;
@@ -195,7 +195,7 @@ impl VulkanRenderer {
         }
 
         thread_context.render_target = Some(canvas.texture.image);
-        thread_context.recorded = true;
+        thread_context.base.recorded = true;
         Ok(())
     }
 
