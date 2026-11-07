@@ -225,6 +225,7 @@ where
                 create_trial!(versioned_test_suite, test_render_static_shapes),
                 create_trial!(versioned_test_suite, test_render_dynamic_cubes),
                 create_trial!(versioned_test_suite, test_render_textures),
+                create_trial!(versioned_test_suite, test_render_canvas),
                 create_trial!(versioned_test_suite, test_render_text),
                 create_trial!(versioned_test_suite, test_render_meshes),
                 create_trial!(versioned_test_suite, test_render_animated_meshes),
