@@ -7,7 +7,7 @@ use heph_gl::{
     Shader,
     renderers::{
         BufferUsage, FeatureRequest, Renderer, RendererHandle, RendererWorkerFactory,
-        ResourceBinding, ResourceBindingType, Settings,
+        ResourceBinding, Settings,
     },
 };
 
@@ -143,30 +143,9 @@ where
             ));
 
             let bindings = [
-                ResourceBinding {
-                    binding: 0,
-                    resource: ResourceBindingType::Buffer {
-                        buffer: buffer_a.as_ref(),
-                        offset: 0,
-                        size: buffer_a.size(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 1,
-                    resource: ResourceBindingType::Buffer {
-                        buffer: buffer_b.as_ref(),
-                        offset: 0,
-                        size: buffer_b.size(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 2,
-                    resource: ResourceBindingType::Buffer {
-                        buffer: buffer_c.as_ref(),
-                        offset: 0,
-                        size: buffer_c.size(),
-                    },
-                },
+                ResourceBinding::buffer(0, buffer_a.as_ref(), 0, buffer_a.size()),
+                ResourceBinding::buffer(1, buffer_b.as_ref(), 0, buffer_b.size()),
+                ResourceBinding::buffer(2, buffer_c.as_ref(), 0, buffer_c.size()),
             ];
 
             heph_expect_success!(renderer.record_compute_command(
@@ -286,30 +265,9 @@ where
                     ));
 
                     let bindings = [
-                        ResourceBinding {
-                            binding: 0,
-                            resource: ResourceBindingType::Buffer {
-                                buffer: buffer_a.as_ref(),
-                                offset: 0,
-                                size: buffer_a.size(),
-                            },
-                        },
-                        ResourceBinding {
-                            binding: 1,
-                            resource: ResourceBindingType::Buffer {
-                                buffer: buffer_b.as_ref(),
-                                offset: 0,
-                                size: buffer_b.size(),
-                            },
-                        },
-                        ResourceBinding {
-                            binding: 2,
-                            resource: ResourceBindingType::Buffer {
-                                buffer: buffer_c.as_ref(),
-                                offset: 0,
-                                size: buffer_c.size(),
-                            },
-                        },
+                        ResourceBinding::buffer(0, buffer_a.as_ref(), 0, buffer_a.size()),
+                        ResourceBinding::buffer(1, buffer_b.as_ref(), 0, buffer_b.size()),
+                        ResourceBinding::buffer(2, buffer_c.as_ref(), 0, buffer_c.size()),
                     ];
                     heph_expect_success!(renderer_worker.record_compute_command(
                         heph_expect_success!(pipeline.lock()).as_mut(),
