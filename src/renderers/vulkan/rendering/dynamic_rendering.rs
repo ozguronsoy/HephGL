@@ -1,9 +1,9 @@
 use std::ffi::CString;
 
 use ash::vk::{
-    AttachmentLoadOp, AttachmentStoreOp, ClearDepthStencilValue, CommandBuffer,
-    DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType, DynamicState,
-    GraphicsPipelineCreateInfo, ImageLayout, PipelineCache, PipelineColorBlendStateCreateInfo,
+    AttachmentLoadOp, AttachmentStoreOp, CommandBuffer, DescriptorSetLayoutBinding,
+    DescriptorSetLayoutCreateInfo, DescriptorType, DynamicState, GraphicsPipelineCreateInfo,
+    ImageLayout, PipelineCache, PipelineColorBlendStateCreateInfo,
     PipelineDepthStencilStateCreateInfo, PipelineDynamicStateCreateInfo,
     PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
     PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
@@ -321,14 +321,8 @@ impl VulkanRendering for DynamicRendering {
         let depth_attachment_info = RenderingAttachmentInfo::default()
             .image_view(canvas.depth_image.view)
             .image_layout(ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-            .load_op(AttachmentLoadOp::CLEAR)
-            .store_op(AttachmentStoreOp::DONT_CARE)
-            .clear_value(ash::vk::ClearValue {
-                depth_stencil: ClearDepthStencilValue {
-                    depth: 1.0,
-                    stencil: 0,
-                },
-            });
+            .load_op(AttachmentLoadOp::LOAD)
+            .store_op(AttachmentStoreOp::STORE);
         let rendering_info = RenderingInfo::default()
             .render_area(ash::vk::Rect2D {
                 offset: ash::vk::Offset2D { x: 0, y: 0 },

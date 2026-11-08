@@ -58,7 +58,7 @@ pub(super) trait VulkanRendering {
         device: &ash::Device,
         canvas: &mut VulkanCanvas,
     ) -> Result<()>;
-    /// Starts rendering into the canvas, keeping its color and clearing its depth.
+    /// Starts rendering into the canvas, keeping its color and depth.
     fn begin(
         &mut self,
         device: &ash::Device,
@@ -276,7 +276,8 @@ impl VulkanRenderer {
         Ok(())
     }
 
-    /// Records a command that clears the canvas, or the display canvas if there is no canvas.
+    /// Records a command that clears the color and depth of the canvas, or of the display canvas if
+    /// there is no canvas.
     pub(super) fn record_clear(
         &mut self,
         canvas: Option<&mut VulkanCanvas>,
@@ -319,14 +320,24 @@ impl VulkanRenderer {
             canvas,
         )?;
 
-        let clear_attachment = ash::vk::ClearAttachment::default()
-            .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
-            .color_attachment(0)
-            .clear_value(ash::vk::ClearValue {
-                color: ash::vk::ClearColorValue {
-                    float32: [color.r, color.g, color.b, 1.0],
-                },
-            });
+        let clear_attachments = [
+            ash::vk::ClearAttachment::default()
+                .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+                .color_attachment(0)
+                .clear_value(ash::vk::ClearValue {
+                    color: ash::vk::ClearColorValue {
+                        float32: [color.r, color.g, color.b, 1.0],
+                    },
+                }),
+            ash::vk::ClearAttachment::default()
+                .aspect_mask(ash::vk::ImageAspectFlags::DEPTH)
+                .clear_value(ash::vk::ClearValue {
+                    depth_stencil: ash::vk::ClearDepthStencilValue {
+                        depth: 1.0,
+                        stencil: 0,
+                    },
+                }),
+        ];
         let clear_rect = ash::vk::ClearRect::default()
             .rect(ash::vk::Rect2D {
                 offset: ash::vk::Offset2D { x: 0, y: 0 },
@@ -340,7 +351,7 @@ impl VulkanRenderer {
         unsafe {
             device_context.logical_device.cmd_clear_attachments(
                 current_frame.base.command_buffer,
-                std::slice::from_ref(&clear_attachment),
+                &clear_attachments,
                 std::slice::from_ref(&clear_rect),
             );
         }

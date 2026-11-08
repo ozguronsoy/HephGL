@@ -1,10 +1,9 @@
 use std::ffi::CString;
 
 use ash::vk::{
-    AttachmentDescription, AttachmentLoadOp, AttachmentReference, AttachmentStoreOp,
-    ClearDepthStencilValue, ClearValue, CommandBuffer, DescriptorSetLayoutBinding,
-    DescriptorSetLayoutCreateInfo, DescriptorType, DynamicState, FramebufferCreateInfo,
-    GraphicsPipelineCreateInfo, PipelineBindPoint, PipelineCache,
+    AttachmentDescription, AttachmentLoadOp, AttachmentReference, AttachmentStoreOp, CommandBuffer,
+    DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType, DynamicState,
+    FramebufferCreateInfo, GraphicsPipelineCreateInfo, PipelineBindPoint, PipelineCache,
     PipelineColorBlendStateCreateInfo, PipelineDepthStencilStateCreateInfo,
     PipelineDynamicStateCreateInfo, PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
     PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
@@ -330,15 +329,6 @@ impl VulkanRendering for RenderPassRendering {
         command_buffer: CommandBuffer,
         canvas: &VulkanCanvas,
     ) -> Result<()> {
-        let clear_values = [
-            ClearValue::default(),
-            ClearValue {
-                depth_stencil: ClearDepthStencilValue {
-                    depth: 1.0,
-                    stencil: 0,
-                },
-            },
-        ];
         let begin_info = RenderPassBeginInfo::default()
             .render_pass(canvas.render_pass)
             .framebuffer(canvas.framebuffer)
@@ -348,8 +338,7 @@ impl VulkanRendering for RenderPassRendering {
                     width: canvas.width(),
                     height: canvas.height(),
                 },
-            })
-            .clear_values(&clear_values);
+            });
         unsafe {
             device.cmd_begin_render_pass(command_buffer, &begin_info, SubpassContents::INLINE);
         }
@@ -370,9 +359,9 @@ impl VulkanRendering for RenderPassRendering {
 }
 
 impl RenderPassRendering {
-    /// Creates a render pass that renders into a canvas. The color is loaded so the canvas keeps
-    /// its content between render passes. Render passes created with the same color format and
-    /// sample count are compatible with each other.
+    /// Creates a render pass that renders into a canvas. The color and depth are loaded so the
+    /// canvas keeps its content between render passes. Render passes created with the same color
+    /// format and sample count are compatible with each other.
     fn create_render_pass(
         device: &ash::Device,
         color_format: ash::vk::Format,
@@ -390,8 +379,8 @@ impl RenderPassRendering {
         let depth_attachment = AttachmentDescription::default()
             .format(ash::vk::Format::D32_SFLOAT)
             .samples(sample_count)
-            .load_op(AttachmentLoadOp::CLEAR)
-            .store_op(AttachmentStoreOp::DONT_CARE)
+            .load_op(AttachmentLoadOp::LOAD)
+            .store_op(AttachmentStoreOp::STORE)
             .stencil_load_op(AttachmentLoadOp::DONT_CARE)
             .stencil_store_op(AttachmentStoreOp::DONT_CARE)
             .initial_layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
