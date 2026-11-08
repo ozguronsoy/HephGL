@@ -29,7 +29,7 @@ use crate::{
 };
 
 /// Provides rendering operations.
-pub trait VulkanRendering {
+pub(super) trait VulkanRendering {
     /// Creates the resources required for rendering.
     fn new(
         settings: &Settings,

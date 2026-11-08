@@ -19,7 +19,7 @@ const DESCRIPTOR_TYPES: [DescriptorType; 4] = [
 ];
 
 /// Manages a growable collection of descriptor pools.
-pub struct DescriptorPoolManager {
+pub(super) struct DescriptorPoolManager {
     pools: Vec<DescriptorPool>,
     /// The index of the pool the sets are currently allocated from.
     current_index: usize,
@@ -42,13 +42,13 @@ impl Default for DescriptorPoolManager {
 
 impl DescriptorPoolManager {
     /// Gets the time when the first pool was allocated or reseted, or `None` if no pools available.
-    pub fn generation(&self) -> u64 {
+    pub(super) fn generation(&self) -> u64 {
         self.generation
     }
 
     /// Allocates one descriptor set for each layout. Creates a larger pool if the existing ones
     /// don't have enough space.
-    pub fn allocate(
+    pub(super) fn allocate(
         &mut self,
         device: &ash::Device,
         layouts: &[DescriptorSetLayout],
@@ -91,7 +91,7 @@ impl DescriptorPoolManager {
     }
 
     /// Destroys all pools.
-    pub fn destroy(&mut self, device: &ash::Device) {
+    pub(super) fn destroy(&mut self, device: &ash::Device) {
         for pool in self.pools.drain(..) {
             unsafe { device.destroy_descriptor_pool(pool, None) };
         }

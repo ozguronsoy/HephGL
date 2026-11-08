@@ -22,33 +22,33 @@ use crate::{
 ///
 /// ### Note
 /// Order of the fields matter as it determines the destruction order.
-pub struct DeviceContext {
+pub(super) struct DeviceContext {
     /// The currently active graphics device.
-    pub graphics_device: GraphicsDevice,
+    pub(super) graphics_device: GraphicsDevice,
 
-    pub vma_allocator: vk_mem::Allocator,
+    pub(super) vma_allocator: vk_mem::Allocator,
 
-    pub graphics_queue_context: QueueContext<GraphicsFrame>,
-    pub transfer_queue_context: QueueContext<TransferFrame>,
-    pub compute_queue_context: Option<QueueContext<ComputeFrame>>,
+    pub(super) graphics_queue_context: QueueContext<GraphicsFrame>,
+    pub(super) transfer_queue_context: QueueContext<TransferFrame>,
+    pub(super) compute_queue_context: Option<QueueContext<ComputeFrame>>,
 
-    pub swapchain_context: SwapchainContext,
-    pub rendering: Option<Box<dyn VulkanRendering>>,
-    pub display_canvas: Option<VulkanCanvas>,
+    pub(super) swapchain_context: SwapchainContext,
+    pub(super) rendering: Option<Box<dyn VulkanRendering>>,
+    pub(super) display_canvas: Option<VulkanCanvas>,
 
-    pub physical_device: ash::vk::PhysicalDevice,
-    pub logical_device: ash::Device,
-    pub supports_timeline_semaphore: bool,
-    pub supports_dynamic_rendering: bool,
-    pub supported_msaa_list: Vec<Msaa>,
+    pub(super) physical_device: ash::vk::PhysicalDevice,
+    pub(super) logical_device: ash::Device,
+    pub(super) supports_timeline_semaphore: bool,
+    pub(super) supports_dynamic_rendering: bool,
+    pub(super) supported_msaa_list: Vec<Msaa>,
 
-    pub current_frame_index: usize,
-    pub current_frame_index_sync: Mutex<()>,
+    pub(super) current_frame_index: usize,
+    pub(super) current_frame_index_sync: Mutex<()>,
 
     /// The bitmasks indicating the availability of thread contexts.
     /// `0` means the context at that index is available, `1` means it is
     /// currently in use.
-    pub thread_context_masks: Mutex<ThreadContextMaskArray>,
+    pub(super) thread_context_masks: Mutex<ThreadContextMaskArray>,
 }
 
 impl VulkanRenderer {

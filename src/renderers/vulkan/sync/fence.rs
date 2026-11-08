@@ -3,7 +3,7 @@ use ash::vk::{Fence, SubmitInfo};
 use crate::{Result, renderers::vulkan::sync::VulkanFrameSync};
 
 /// Implements frame synchronization using fences.
-pub struct FenceFrameSync {
+pub(super) struct FenceFrameSync {
     /// A list of Vulkan fence objects and `is_in_flight` flags indicating whether the current
     /// frame is submitted to the GPU for processing.
     ///

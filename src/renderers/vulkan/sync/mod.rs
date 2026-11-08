@@ -1,5 +1,5 @@
-pub mod fence;
-pub mod timeline_semaphore;
+mod fence;
+mod timeline_semaphore;
 
 use ash::vk::{Queue, SemaphoreCreateInfo, SubmitInfo};
 
@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// Provides frame synchronization operations.
-pub trait VulkanFrameSync {
+pub(super) trait VulkanFrameSync {
     /// Creates the resources required for frame synchronization.
     fn new(device: &ash::Device, frames_in_flight: usize) -> Result<Self>
     where

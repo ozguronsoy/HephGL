@@ -7,7 +7,7 @@ use crate::renderers::{
 
 /// Defines possible frame states.
 #[derive(Default, PartialEq)]
-pub enum FrameState {
+pub(super) enum FrameState {
     /// The frame is not started.
     #[default]
     Idle,
@@ -18,38 +18,38 @@ pub enum FrameState {
 }
 
 /// Represents the base struct of the resources and synchronization state for a single frame.
-pub struct FrameBase<ThreadContext: VulkanThreadContext> {
+pub(super) struct FrameBase<ThreadContext: VulkanThreadContext> {
     /// Contains the resources used for recording commands per thread for this
     /// frame.
-    pub thread_contexts: ThreadContextArray<ThreadContext>,
+    pub(super) thread_contexts: ThreadContextArray<ThreadContext>,
 }
 
 /// Represents the resources and synchronization state of the compute queue for a single frame.
 #[derive(Default)]
-pub struct ComputeFrame {
+pub(super) struct ComputeFrame {
     /// The base frame resources.
-    pub base: FrameBase<ComputeThreadContext>,
+    pub(super) base: FrameBase<ComputeThreadContext>,
 }
 
 /// Represents the resources and synchronization state of the graphics queue for a single frame.
 #[derive(Default)]
-pub struct GraphicsFrame {
+pub(super) struct GraphicsFrame {
     /// The base frame resources.
-    pub base: FrameBase<GraphicsThreadContext>,
+    pub(super) base: FrameBase<GraphicsThreadContext>,
 }
 
 /// Represents the resources and synchronization state of the transfer queue for a single frame.
 #[derive(Default)]
-pub struct TransferFrame {
+pub(super) struct TransferFrame {
     /// The base frame resources.
-    pub base: FrameBase<TransferThreadContext>,
+    pub(super) base: FrameBase<TransferThreadContext>,
     /// The binary semaphore signaled by the transfer submission and waited by the graphics
     /// submission, or `None` when the transfer and graphics queues are the same queue.
-    pub semaphore: Option<ash::vk::Semaphore>,
+    pub(super) semaphore: Option<ash::vk::Semaphore>,
 }
 
 /// Provides access to the base resources of a queue's frame.
-pub trait VulkanFrame: Default {
+pub(super) trait VulkanFrame: Default {
     /// The per-thread resources of the queue.
     type ThreadContext: VulkanThreadContext;
 

@@ -3,27 +3,27 @@ use ash::vk::{Queue, QueueFlags};
 use crate::renderers::vulkan::{frame::VulkanFrame, sync::VulkanFrameSync};
 
 /// Represents a Vulkan queue family.
-pub struct QueueFamily {
+pub(super) struct QueueFamily {
     /// The index of the graphics family.
-    pub index: u32,
+    pub(super) index: u32,
     /// The number of queues available for this family.
-    pub queue_count: u32,
-    pub queue_flags: QueueFlags,
+    pub(super) queue_count: u32,
+    pub(super) queue_flags: QueueFlags,
     /// Indicates whether this family supports presenting to a device.
-    pub present_supported: bool,
+    pub(super) present_supported: bool,
 }
 
 /// Represents context and state for a Vulkan queue.
-pub struct QueueContext<Frame: VulkanFrame> {
+pub(super) struct QueueContext<Frame: VulkanFrame> {
     /// The Vulkan queue instance.
-    pub queue: Queue,
+    pub(super) queue: Queue,
     /// The index of the queue family.
-    pub queue_family_index: u32,
+    pub(super) queue_family_index: u32,
     /// Contains the resources per frame.
     ///
     /// ### Note
     /// Length of this must always be equal to `settings.frames_in_flight`.
-    pub frames: Vec<Frame>,
+    pub(super) frames: Vec<Frame>,
     /// Provides frame synchronization.
-    pub frame_sync: Option<Box<dyn VulkanFrameSync>>,
+    pub(super) frame_sync: Option<Box<dyn VulkanFrameSync>>,
 }

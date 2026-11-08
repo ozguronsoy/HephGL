@@ -18,55 +18,55 @@ use crate::{
 
 /// Represents the base struct per-thread resources used for recording commands.
 #[derive(Default)]
-pub struct ThreadContextBase {
+pub(super) struct ThreadContextBase {
     /// The command pool allocated exclusively for this thread.
-    pub command_pool: CommandPool,
+    pub(super) command_pool: CommandPool,
     /// The primary command buffer used to record commands for this thread.
-    pub command_buffer: CommandBuffer,
+    pub(super) command_buffer: CommandBuffer,
     /// Indicates whether any command has been recorded in this thread.
-    pub recorded: bool,
+    pub(super) recorded: bool,
     /// Indicates whether the current thread began the current frame.
-    pub sync_state: (std::sync::Mutex<FrameState>, std::sync::Condvar),
+    pub(super) sync_state: (std::sync::Mutex<FrameState>, std::sync::Condvar),
 }
 
 /// Represents the per-thread resources used for recording commands to the compute queue.
 #[derive(Default)]
-pub struct ComputeThreadContext {
+pub(super) struct ComputeThreadContext {
     /// The base per-thread resources.
-    pub base: ThreadContextBase,
+    pub(super) base: ThreadContextBase,
     /// Manages descriptor pools for allocating this thread's descriptor sets. Pools are created on
     /// demand and grow as needed.
-    pub descriptor_pool_manager: DescriptorPoolManager,
+    pub(super) descriptor_pool_manager: DescriptorPoolManager,
     /// The pipeline currently bound to the command buffer.
-    pub bound_pipeline: Option<ash::vk::Pipeline>,
+    pub(super) bound_pipeline: Option<ash::vk::Pipeline>,
 }
 
 /// Represents the per-thread resources used for recording commands to the graphics queue.
 #[derive(Default)]
-pub struct GraphicsThreadContext {
+pub(super) struct GraphicsThreadContext {
     /// The base per-thread resources.
-    pub base: ThreadContextBase,
+    pub(super) base: ThreadContextBase,
     /// Manages descriptor pools for allocating this thread's descriptor sets. Pools are created on
     /// demand and grow as needed.
-    pub descriptor_pool_manager: DescriptorPoolManager,
+    pub(super) descriptor_pool_manager: DescriptorPoolManager,
     /// The pipeline currently bound to the command buffer.
-    pub bound_pipeline: Option<ash::vk::Pipeline>,
+    pub(super) bound_pipeline: Option<ash::vk::Pipeline>,
     /// The texture image of the canvas that the command buffer is rendering into, or `None` if it
     /// is not rendering.
-    pub render_target: Option<ash::vk::Image>,
+    pub(super) render_target: Option<ash::vk::Image>,
 }
 
 /// Represents the per-thread resources used for recording commands to the transfer queue.
 #[derive(Default)]
-pub struct TransferThreadContext {
+pub(super) struct TransferThreadContext {
     /// The base per-thread resources.
-    pub base: ThreadContextBase,
+    pub(super) base: ThreadContextBase,
     /// The temporary buffers used for transfering data to the GPU.
-    pub transfer_buffers: Vec<VulkanBuffer>,
+    pub(super) transfer_buffers: Vec<VulkanBuffer>,
 }
 
 /// Provides access to the base per-thread resources of a queue's thread context.
-pub trait VulkanThreadContext: Any + Default {
+pub(super) trait VulkanThreadContext: Any + Default {
     /// Gets the base per-thread resources.
     fn base(&self) -> &ThreadContextBase;
     /// Gets the base per-thread resources as mutable.
