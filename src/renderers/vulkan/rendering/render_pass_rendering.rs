@@ -8,9 +8,9 @@ use ash::vk::{
     PipelineDynamicStateCreateInfo, PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
     PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
     PipelineShaderStageCreateInfo, PipelineVertexInputStateCreateInfo,
-    PipelineViewportStateCreateInfo, PolygonMode, PrimitiveTopology, RenderPass,
-    RenderPassBeginInfo, RenderPassCreateInfo, SampleCountFlags, ShaderModuleCreateInfo,
-    ShaderStageFlags, SubpassContents, SubpassDescription, VertexInputAttributeDescription,
+    PipelineViewportStateCreateInfo, PrimitiveTopology, RenderPass, RenderPassBeginInfo,
+    RenderPassCreateInfo, SampleCountFlags, ShaderModuleCreateInfo, ShaderStageFlags,
+    SubpassContents, SubpassDescription, VertexInputAttributeDescription,
     VertexInputBindingDescription, VertexInputRate,
 };
 
@@ -228,7 +228,7 @@ impl VulkanRendering for RenderPassRendering {
         let rasterization = PipelineRasterizationStateCreateInfo::default()
             .depth_clamp_enable(false)
             .rasterizer_discard_enable(false)
-            .polygon_mode(PolygonMode::FILL)
+            .polygon_mode(options.polygon_mode.into())
             .cull_mode(options.culling.into())
             .front_face(options.front_face.into())
             .depth_bias_enable(false)

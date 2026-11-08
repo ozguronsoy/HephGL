@@ -44,7 +44,7 @@ use crate::{
         resources::{
             RendererBuffer, RendererResource, RendererSampler, RendererTexture, TextureFormat,
         },
-        settings::{GraphicsPipelineOptions, Msaa, SamplerOptions, TextureOptions},
+        settings::{GraphicsPipelineOptions, Msaa, PolygonMode, SamplerOptions, TextureOptions},
         thread_context::{
             MAIN_THREAD_CONTEXT_INDEX, ThreadContextIndex, ThreadContextMask,
             ThreadContextMaskArray, is_thread_context_active,
@@ -1571,6 +1571,15 @@ impl Renderer for VulkanRenderer {
             .rendering
             .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
+        if options.polygon_mode != PolygonMode::Fill
+            && !device_context
+                .enabled_features
+                .contains(&GraphicsDeviceFeature::WireframeMode)
+        {
+            return Err(Error::invalid_operation(
+                "Non-fill polygon modes require the `WireframeMode` feature to be enabled.",
+            ));
+        }
         Ok(Box::new(rendering.create_graphics_pipeline(
             &device_context.logical_device,
             shaders,
