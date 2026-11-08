@@ -1,7 +1,7 @@
 use heph_gl::{
     GraphicsDeviceFeature::ComputeShaders,
     Shader,
-    renderers::{BufferUsage, FeatureRequest, Renderer, ResourceBinding, ResourceBindingType},
+    renderers::{BufferUsage, FeatureRequest, Renderer, ResourceBinding},
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
@@ -58,32 +58,11 @@ fn example(
     // Bind the GPU buffers to the shader.
     let bindings = [
         // Input A
-        ResourceBinding {
-            binding: 0,
-            resource: ResourceBindingType::Buffer {
-                buffer: buffer_a.as_ref(),
-                offset: 0,
-                size: buffer_a.size(),
-            },
-        },
+        ResourceBinding::buffer(0, buffer_a.as_ref(), 0, buffer_a.size()),
         // Input B
-        ResourceBinding {
-            binding: 1,
-            resource: ResourceBindingType::Buffer {
-                buffer: buffer_b.as_ref(),
-                offset: 0,
-                size: buffer_b.size(),
-            },
-        },
+        ResourceBinding::buffer(1, buffer_b.as_ref(), 0, buffer_b.size()),
         // Output C
-        ResourceBinding {
-            binding: 2,
-            resource: ResourceBindingType::Buffer {
-                buffer: buffer_c.as_ref(),
-                offset: 0,
-                size: buffer_c.size(),
-            },
-        },
+        ResourceBinding::buffer(2, buffer_c.as_ref(), 0, buffer_c.size()),
     ];
     // Record a command which will be submitted to the GPU at the end of the frame.
     renderer

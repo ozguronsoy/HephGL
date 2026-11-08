@@ -7,8 +7,8 @@ use heph_gl::{
     math::{Mat4, Quat, Vec3},
     renderers::{
         BufferUsage, ColorBlending, FeatureRequest, GraphicsPipelineOptions, Renderer,
-        RendererBuffer, RendererGraphicsPipeline, ResourceBinding, ResourceBindingType,
-        SamplerOptions, TextureFormat, TextureOptions,
+        RendererBuffer, RendererGraphicsPipeline, ResourceBinding, SamplerOptions, TextureFormat,
+        TextureOptions,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -228,74 +228,44 @@ fn example(
                 .unwrap();
         }
 
-        let screen_vertex_bindings = [ResourceBinding {
-            binding: 0,
-            resource: ResourceBindingType::Buffer {
-                buffer: screen_vertex_buffer.as_ref(),
-                offset: 0,
-                size: screen_vertex_buffer.size(),
-            },
-        }];
+        let screen_vertex_bindings = [ResourceBinding::buffer(
+            0,
+            screen_vertex_buffer.as_ref(),
+            0,
+            screen_vertex_buffer.size(),
+        )];
         let screen_resource_bindings = [
-            ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Texture {
-                    texture: texture.as_ref(),
-                },
-            },
-            ResourceBinding {
-                binding: 1,
-                resource: ResourceBindingType::Sampler {
-                    sampler: sampler.as_ref(),
-                },
-            },
+            ResourceBinding::texture(0, texture.as_ref()),
+            ResourceBinding::sampler(1, sampler.as_ref()),
         ];
-        let world_vertex_bindings = [ResourceBinding {
-            binding: 0,
-            resource: ResourceBindingType::Buffer {
-                buffer: world_vertex_buffer.as_ref(),
-                offset: 0,
-                size: world_vertex_buffer.size(),
-            },
-        }];
+        let world_vertex_bindings = [ResourceBinding::buffer(
+            0,
+            world_vertex_buffer.as_ref(),
+            0,
+            world_vertex_buffer.size(),
+        )];
         let world_resource_bindings = [
-            ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Texture {
-                    texture: texture.as_ref(),
-                },
-            },
-            ResourceBinding {
-                binding: 1,
-                resource: ResourceBindingType::Sampler {
-                    sampler: sampler.as_ref(),
-                },
-            },
-            ResourceBinding {
-                binding: 2,
-                resource: ResourceBindingType::Buffer {
-                    buffer: uniform_buffers[frame_index][0].as_ref(),
-                    offset: 0,
-                    size: uniform_buffers[frame_index][0].size(),
-                },
-            },
+            ResourceBinding::texture(0, texture.as_ref()),
+            ResourceBinding::sampler(1, sampler.as_ref()),
+            ResourceBinding::buffer(
+                2,
+                uniform_buffers[frame_index][0].as_ref(),
+                0,
+                uniform_buffers[frame_index][0].size(),
+            ),
         ];
-        let extruded_vertex_bindings = [ResourceBinding {
-            binding: 0,
-            resource: ResourceBindingType::Buffer {
-                buffer: extruded_vertex_buffer.as_ref(),
-                offset: 0,
-                size: extruded_vertex_buffer.size(),
-            },
-        }];
-        let extruded_resource_bindings = [ResourceBinding {
-            binding: 2,
-            resource: ResourceBindingType::Buffer {
-                buffer: uniform_buffers[frame_index][1].as_ref(),
-                offset: 0,
-                size: uniform_buffers[frame_index][1].size(),
-            },
-        }];
+        let extruded_vertex_bindings = [ResourceBinding::buffer(
+            0,
+            extruded_vertex_buffer.as_ref(),
+            0,
+            extruded_vertex_buffer.size(),
+        )];
+        let extruded_resource_bindings = [ResourceBinding::buffer(
+            2,
+            uniform_buffers[frame_index][1].as_ref(),
+            0,
+            uniform_buffers[frame_index][1].size(),
+        )];
         renderer
             .record_graphics_command(
                 screen_pipeline.as_mut(),
