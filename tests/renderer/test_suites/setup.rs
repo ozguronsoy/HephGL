@@ -197,5 +197,16 @@ where
                 let _ = b1.wait();
             });
         }
+
+        {
+            let mut renderer = self.create_renderer_with_any_device(&[]);
+            heph_expect_err!(
+                renderer.set_settings(Settings {
+                    max_fps: Some(0),
+                    ..Default::default()
+                }),
+                Error::invalid_argument("")
+            );
+        }
     }
 }

@@ -469,6 +469,7 @@ where
         };
         heph_expect_success!(renderer.set_settings(Settings {
             msaa,
+            max_fps: Some(60),
             ..Default::default()
         }));
 
