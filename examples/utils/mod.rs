@@ -81,6 +81,7 @@ impl ApplicationHandler for App {
                 .set_settings(Settings {
                     frames_in_flight: 1,
                     vsync: true,
+                    max_fps: None,
                     stereoscopic_3d_rendering: false,
                     default_size: (1920, 1080),
                     msaa: Msaa::X1,

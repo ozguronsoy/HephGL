@@ -94,6 +94,8 @@ pub struct Settings {
     pub frames_in_flight: usize,
     /// Indicates whether the vsync is enabled.
     pub vsync: bool,
+    /// The maximum number of frames rendered per second.
+    pub max_fps: Option<u32>,
     /// Indicates whether stereoscopic 3D rendering is enabled.
     pub stereoscopic_3d_rendering: bool,
     /// The size that will be used as fallback when the renderer fails to fetch the target window's
@@ -220,6 +222,7 @@ impl Default for Settings {
         Self {
             frames_in_flight: 1,
             vsync: false,
+            max_fps: None,
             stereoscopic_3d_rendering: false,
             default_size: (1920, 1080),
             msaa: Msaa::X1,

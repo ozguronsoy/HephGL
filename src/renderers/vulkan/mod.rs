@@ -20,6 +20,7 @@ use std::{
     collections::{HashMap, HashSet},
     ffi::CString,
     sync::Mutex,
+    time::{Duration, Instant},
 };
 
 use ash::vk::{
@@ -144,6 +145,9 @@ impl Renderer for VulkanRenderer {
 
     fn set_settings(&mut self, settings: Settings) -> Result<()> {
         self.main_thread_only()?;
+        if settings.max_fps == Some(0) {
+            return Err(Error::invalid_argument("`max_fps` must be greater than 0."));
+        }
 
         if self.device_context.is_some() {
             let temp_settings = self.settings;
@@ -200,6 +204,7 @@ impl Renderer for VulkanRenderer {
             }
 
             device_context.current_frame_index = 0;
+            device_context.next_frame_deadline = None;
 
             self.create_frame_sync()?;
             self.initialize_thread()?;
@@ -741,6 +746,7 @@ impl Renderer for VulkanRenderer {
 
             current_frame_index: 0,
             current_frame_index_sync: Mutex::new(()),
+            next_frame_deadline: None,
 
             thread_context_masks: Mutex::new(std::array::from_fn(|_| ThreadContextMask::default())),
         });
@@ -1840,8 +1846,26 @@ impl Renderer for VulkanRenderer {
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
 
-        // Wait for current frame to finish.
         if is_in_main_thread {
+            if let Some(max_fps) = self.settings.max_fps {
+                const SPIN_DURATION: Duration = Duration::from_millis(1);
+                let frame_duration = Duration::from_secs(1) / max_fps;
+                let now = Instant::now();
+                device_context.next_frame_deadline = match device_context.next_frame_deadline {
+                    Some(deadline) if deadline > now => {
+                        if let Some(sleep_duration) = (deadline - now).checked_sub(SPIN_DURATION) {
+                            std::thread::sleep(sleep_duration);
+                        }
+                        while Instant::now() < deadline {
+                            std::hint::spin_loop();
+                        }
+                        Some(deadline + frame_duration)
+                    }
+                    _ => Some(now + frame_duration),
+                };
+            }
+
+            // Wait for current frame to finish.
             fn wait_frame_sync<Frame: VulkanFrame>(
                 logical_device: &ash::Device,
                 queue_context: &mut QueueContext<Frame>,
