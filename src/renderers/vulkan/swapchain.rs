@@ -213,19 +213,9 @@ impl VulkanRenderer {
                 .ok_or(Error::invalid_operation("Device is not set."))?;
             let swapchain_context = &mut device_context.swapchain_context;
 
-            let semaphore_index = swapchain_context.image_avaliable_semaphore_index;
-            if semaphore_index != SwapchainContext::INVALID_INDEX {
-                // The image is acquired by an earlier frame that only rendered into canvases. Move
-                // its semaphore to the current frame, so it is not reused for acquiring an image
-                // before the current frame finishes.
-                let frame_index = device_context.current_frame_index;
-                if semaphore_index != frame_index {
-                    let semaphore = swapchain_context.semaphores[semaphore_index].0;
-                    swapchain_context.semaphores[semaphore_index].0 =
-                        swapchain_context.semaphores[frame_index].0;
-                    swapchain_context.semaphores[frame_index].0 = semaphore;
-                    swapchain_context.image_avaliable_semaphore_index = frame_index;
-                }
+            // The image is already acquired, `begin_frame` is called again without `end_frame`.
+            if swapchain_context.image_avaliable_semaphore_index != SwapchainContext::INVALID_INDEX
+            {
                 return Ok(());
             }
 
