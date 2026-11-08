@@ -948,6 +948,25 @@ impl Renderer for VulkanRenderer {
             .base
             .thread_contexts[thread_context_index];
 
+        let vk_format: ash::vk::Format = options.format.into();
+        if options.mip_level_count > 1 {
+            let format_properties = unsafe {
+                instance.get_physical_device_format_properties(
+                    device_context.physical_device,
+                    vk_format,
+                )
+            };
+            if !format_properties.optimal_tiling_features.contains(
+                ash::vk::FormatFeatureFlags::BLIT_SRC
+                    | ash::vk::FormatFeatureFlags::BLIT_DST
+                    | ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_LINEAR,
+            ) {
+                return Err(Error::invalid_argument(
+                    "The texture does not support multiple mip levels.",
+                ));
+            }
+        }
+
         let staging_buffer_info = ash::vk::BufferCreateInfo::default()
             .size(expected_size as u64)
             .usage(ash::vk::BufferUsageFlags::TRANSFER_SRC)
@@ -984,23 +1003,6 @@ impl Renderer for VulkanRenderer {
                     .destroy_buffer(staging_buffer, &mut staging_allocation);
             }
             return Err(error.into());
-        }
-
-        let vk_format: ash::vk::Format = options.format.into();
-        let format_properties = unsafe {
-            instance
-                .get_physical_device_format_properties(device_context.physical_device, vk_format)
-        };
-        let required_features = ash::vk::FormatFeatureFlags::BLIT_SRC
-            | ash::vk::FormatFeatureFlags::BLIT_DST
-            | ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_LINEAR;
-        if !format_properties
-            .optimal_tiling_features
-            .contains(required_features)
-        {
-            return Err(Error::invalid_argument(
-                "The texture does not support multiple mip levels.",
-            ));
         }
 
         let image_info = ash::vk::ImageCreateInfo::default()
