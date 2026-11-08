@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use heph_gl::{
     Camera, Font, FontOptions,
-    GraphicsDeviceFeature::AnisotropicFiltering,
+    GraphicsDeviceFeature::{AnisotropicFiltering, AsyncTransfer},
     Lighting, MaterialProperties, Mesh, MeshVertexAttribute, Projection, Shader, TextType,
     TextVertex, Transform,
     math::{Mat4, Quat, Vec3},
@@ -242,8 +242,10 @@ where
     }
 
     pub(crate) fn test_render_textures(&self) {
-        let mut renderer = self
-            .create_renderer_with_any_device(&[FeatureRequest::new(AnisotropicFiltering, false)]);
+        let mut renderer = self.create_renderer_with_any_device(&[
+            FeatureRequest::new(AnisotropicFiltering, false),
+            FeatureRequest::new(AsyncTransfer, false),
+        ]);
         let max_anisotropy = if let Some(device) = renderer.get_device() {
             match device.supported_features.contains(&AnisotropicFiltering) {
                 true => Some(device.max_sampler_anisotropy),
@@ -641,7 +643,8 @@ where
             }
         };
 
-        let mut renderer = self.create_renderer_with_any_device(&[]);
+        let mut renderer =
+            self.create_renderer_with_any_device(&[FeatureRequest::new(AsyncTransfer, false)]);
         let Some(&msaa) = heph_expect_success!(renderer.supported_msaa_list()).last() else {
             panic!("Failed to get a supported MSAA sample count.");
         };
@@ -905,8 +908,10 @@ where
         const MESH_PATH: &str = "assets/ship/ship_pinnace_1k.gltf";
         const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 
-        let mut renderer = self
-            .create_renderer_with_any_device(&[FeatureRequest::new(AnisotropicFiltering, false)]);
+        let mut renderer = self.create_renderer_with_any_device(&[
+            FeatureRequest::new(AnisotropicFiltering, false),
+            FeatureRequest::new(AsyncTransfer, false),
+        ]);
         let max_anisotropy = if let Some(device) = renderer.get_device() {
             match device.supported_features.contains(&AnisotropicFiltering) {
                 true => Some(device.max_sampler_anisotropy),
@@ -1250,8 +1255,10 @@ where
         const MESH_PATH: &str = "assets/dragon/model.glb";
         const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 
-        let mut renderer = self
-            .create_renderer_with_any_device(&[FeatureRequest::new(AnisotropicFiltering, false)]);
+        let mut renderer = self.create_renderer_with_any_device(&[
+            FeatureRequest::new(AnisotropicFiltering, false),
+            FeatureRequest::new(AsyncTransfer, false),
+        ]);
         let max_anisotropy = if let Some(device) = renderer.get_device() {
             match device.supported_features.contains(&AnisotropicFiltering) {
                 true => Some(device.max_sampler_anisotropy),

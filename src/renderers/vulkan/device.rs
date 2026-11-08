@@ -2,7 +2,7 @@ use std::sync::Mutex;
 
 use crate::{
     Error, Result,
-    graphics_device::GraphicsDevice,
+    graphics_device::{GraphicsDevice, GraphicsDeviceFeature},
     renderers::{
         Renderer,
         settings::Msaa,
@@ -25,6 +25,8 @@ use crate::{
 pub(super) struct DeviceContext {
     /// The currently active graphics device.
     pub(super) graphics_device: GraphicsDevice,
+    /// The features enabled for the graphics device.
+    pub(super) enabled_features: Vec<GraphicsDeviceFeature>,
 
     pub(super) vma_allocator: vk_mem::Allocator,
 
