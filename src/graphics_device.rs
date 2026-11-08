@@ -42,8 +42,6 @@ pub enum GraphicsDeviceFeature {
     ComputeShaders,
     /// The device supports rendering polygons as wireframes.
     WireframeMode,
-    /// The device supports drawing lines wider than a single pixel.
-    WideLines,
     /// The device supports anisotropic texture filtering.
     AnisotropicFiltering,
     /// The device features hardware-accelerated ray tracing.
@@ -52,8 +50,6 @@ pub enum GraphicsDeviceFeature {
     VideoDecoding,
     /// The device supports hardware-accelerated video encoding.
     VideoEncoding,
-    /// The device features dedicated hardware for optical flow calculations.
-    OpticalFlow,
     /// The device supports asynchronous data transfers.
     AsyncTransfer,
 }
