@@ -1,14 +1,14 @@
 use ash::vk::{DescriptorSetLayout, PipelineLayout};
 
-pub struct ShaderModules<'a> {
-    pub device: &'a ash::Device,
-    pub modules: Vec<ash::vk::ShaderModule>,
+pub(super) struct ShaderModules<'a> {
+    pub(super) device: &'a ash::Device,
+    pub(super) modules: Vec<ash::vk::ShaderModule>,
 }
 
-pub struct PipelineResources<'a> {
-    pub device: &'a ash::Device,
-    pub layout: Option<PipelineLayout>,
-    pub descriptor_layouts: Vec<DescriptorSetLayout>,
+pub(super) struct PipelineResources<'a> {
+    pub(super) device: &'a ash::Device,
+    pub(super) layout: Option<PipelineLayout>,
+    pub(super) descriptor_layouts: Vec<DescriptorSetLayout>,
 }
 
 impl Drop for ShaderModules<'_> {

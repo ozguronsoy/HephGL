@@ -6,7 +6,7 @@ use ash::vk::{
 use crate::{Result, renderers::vulkan::sync::VulkanFrameSync};
 
 /// Implements frame synchronization using a timeline semaphore.
-pub struct TimelineSemaphoreFrameSync {
+pub(super) struct TimelineSemaphoreFrameSync {
     /// The timeline semaphore.
     semaphore: Semaphore,
     /// The last signaled value for each frame.

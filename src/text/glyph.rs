@@ -1,13 +1,13 @@
 #[derive(Clone, Copy)]
-pub struct Glyph {
-    pub x: usize,
-    pub y: usize,
-    pub width: usize,
-    pub height: usize,
+pub(super) struct Glyph {
+    pub(super) x: usize,
+    pub(super) y: usize,
+    pub(super) width: usize,
+    pub(super) height: usize,
 }
 
-pub struct RasterizedGlyph {
-    pub character: char,
-    pub data: Vec<u8>,
-    pub glyph: Glyph,
+pub(super) struct RasterizedGlyph {
+    pub(super) character: char,
+    pub(super) data: Vec<u8>,
+    pub(super) glyph: Glyph,
 }

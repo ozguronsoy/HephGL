@@ -2,7 +2,7 @@ use crate::Version;
 
 /// Dummy struct for implementing conversions between HephGL and Vulkan API versions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct VulkanApiVersion(pub u32);
+pub(super) struct VulkanApiVersion(pub(super) u32);
 
 impl From<VulkanApiVersion> for Version {
     fn from(value: VulkanApiVersion) -> Self {

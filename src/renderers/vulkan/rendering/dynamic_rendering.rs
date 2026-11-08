@@ -34,7 +34,7 @@ use crate::{
 };
 
 /// Implements dynamic rendering.
-pub struct DynamicRendering {
+pub(super) struct DynamicRendering {
     color_format: ash::vk::Format,
     depth_format: ash::vk::Format,
     msaa: Msaa,

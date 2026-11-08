@@ -13,30 +13,30 @@ use crate::{
 };
 
 /// Represents the Vulkan swapchain and its associated resources required for presentation.
-pub struct SwapchainContext {
+pub(super) struct SwapchainContext {
     /// The swapchain extension loader.
-    pub loader: ash::khr::swapchain::Device,
+    pub(super) loader: ash::khr::swapchain::Device,
     /// The Vulkan swapchain instance.
-    pub swapchain: ash::vk::SwapchainKHR,
+    pub(super) swapchain: ash::vk::SwapchainKHR,
     /// Indicates whether the swapchain must be recreated before acquiring another image.
-    pub invalidated: bool,
+    pub(super) invalidated: bool,
     /// The pixel format of the surface images.
-    pub format: ash::vk::Format,
+    pub(super) format: ash::vk::Format,
     /// The width and height of the swapchain images.
-    pub extent: ash::vk::Extent2D,
+    pub(super) extent: ash::vk::Extent2D,
     /// The Vulkan images, which the display canvas is copied into.
-    pub images: Vec<ash::vk::Image>,
+    pub(super) images: Vec<ash::vk::Image>,
     /// The image available and render finished semaphores.
-    pub semaphores: Vec<(ash::vk::Semaphore, ash::vk::Semaphore)>,
+    pub(super) semaphores: Vec<(ash::vk::Semaphore, ash::vk::Semaphore)>,
     /// The index of the image currently used for rendering.
-    pub current_image_index: usize,
+    pub(super) current_image_index: usize,
     /// The index of the semaphore used for acquiring an image.
-    pub image_avaliable_semaphore_index: usize,
+    pub(super) image_avaliable_semaphore_index: usize,
 }
 
 impl SwapchainContext {
     /// Indicates an invalid index.
-    pub const INVALID_INDEX: usize = usize::MAX;
+    pub(super) const INVALID_INDEX: usize = usize::MAX;
 }
 
 impl VulkanRenderer {

@@ -36,7 +36,7 @@ use crate::{
 };
 
 /// Implements rendering via render pass.
-pub struct RenderPassRendering {
+pub(super) struct RenderPassRendering {
     render_pass: RenderPass,
     msaa: Msaa,
 }

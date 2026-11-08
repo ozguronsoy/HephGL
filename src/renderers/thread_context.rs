@@ -4,12 +4,12 @@ use crate::{Error, Result};
 
 /// Dummy trait for selecting the optimal ThreadContextMask type.
 #[cfg(not(test))]
-pub trait MaskType {
+pub(super) trait MaskType {
     type Type;
 }
 /// Dummy struct for selecting the optimal ThreadContextMask type.
 #[cfg(not(test))]
-pub struct MaskSelector<const BITS: usize>;
+pub(super) struct MaskSelector<const BITS: usize>;
 #[cfg(not(test))]
 impl MaskType for MaskSelector<128> {
     type Type = u128;
@@ -33,9 +33,9 @@ impl MaskType for MaskSelector<8> {
 
 /// The type used as a bitmask to track thread context allocation states.
 #[cfg(test)]
-pub type ThreadContextMask = u8;
+pub(super) type ThreadContextMask = u8;
 #[cfg(not(test))]
-pub type ThreadContextMask = <MaskSelector<
+pub(super) type ThreadContextMask = <MaskSelector<
     {
         if THREAD_CONTEXT_COUNT > 64 {
             128
@@ -51,11 +51,11 @@ pub type ThreadContextMask = <MaskSelector<
     },
 > as MaskType>::Type;
 /// The type used as a thread-local index to track the location of the current thread's context.
-pub struct ThreadContextIndex(Cell<usize>);
+pub(super) struct ThreadContextIndex(Cell<usize>);
 /// A static array of thread contexts.
-pub type ThreadContextArray<ThreadContext> = [ThreadContext; THREAD_CONTEXT_COUNT];
+pub(super) type ThreadContextArray<ThreadContext> = [ThreadContext; THREAD_CONTEXT_COUNT];
 /// A static array of [`ThreadContextMask`].
-pub type ThreadContextMaskArray = [ThreadContextMask; THREAD_CONTEXT_MASK_COUNT];
+pub(super) type ThreadContextMaskArray = [ThreadContextMask; THREAD_CONTEXT_MASK_COUNT];
 
 /// The size of the `ThreadContextMask` in bits.
 const THREAD_CONTEXT_MASK_BIT_SIZE: usize = std::mem::size_of::<ThreadContextMask>() * 8;
@@ -73,9 +73,9 @@ const THREAD_CONTEXT_COUNT: usize = {
 const THREAD_CONTEXT_MASK_COUNT: usize =
     THREAD_CONTEXT_COUNT.div_ceil(THREAD_CONTEXT_MASK_BIT_SIZE);
 /// The index reserved for the main thread.
-pub const MAIN_THREAD_CONTEXT_INDEX: usize = THREAD_CONTEXT_COUNT - 1;
+pub(super) const MAIN_THREAD_CONTEXT_INDEX: usize = THREAD_CONTEXT_COUNT - 1;
 /// The index of the mask that contains the index reserved for the main thread.
-pub const MAIN_THREAD_CONTEXT_MASK_INDEX: usize =
+pub(super) const MAIN_THREAD_CONTEXT_MASK_INDEX: usize =
     MAIN_THREAD_CONTEXT_INDEX / THREAD_CONTEXT_MASK_BIT_SIZE;
 // static asserts
 #[cfg(not(test))]
@@ -91,12 +91,12 @@ const _: () = assert!(MAIN_THREAD_CONTEXT_INDEX < THREAD_CONTEXT_COUNT);
 
 impl ThreadContextIndex {
     /// Creates a new instance and sets it to `INVALID_THREAD_CONTEXT_INDEX`.
-    pub const fn new() -> Self {
+    pub(super) const fn new() -> Self {
         Self(Cell::new(INVALID_THREAD_CONTEXT_INDEX))
     }
 
     /// Gets the index if vaild, otherwise returns an error.
-    pub fn try_get(&self) -> Result<usize> {
+    pub(super) fn try_get(&self) -> Result<usize> {
         let index = self.0.get();
         if index == INVALID_THREAD_CONTEXT_INDEX {
             Err(Error::invalid_operation(
@@ -110,7 +110,7 @@ impl ThreadContextIndex {
 
 /// Tries to find an available slot. Sets the index and updates the mask if found, otherwise returns
 /// an error.
-pub fn register(
+pub(super) fn register(
     index: &'static LocalKey<ThreadContextIndex>,
     masks: &mut ThreadContextMaskArray,
     is_main_thread: bool,
@@ -162,7 +162,7 @@ pub fn register(
 }
 
 /// Sets the index to `INVALID_THREAD_CONTEXT_INDEX` and updates the mask.
-pub fn unregister(
+pub(super) fn unregister(
     index: &'static LocalKey<ThreadContextIndex>,
     masks: &mut ThreadContextMaskArray,
 ) {
@@ -175,14 +175,14 @@ pub fn unregister(
 }
 
 /// Checks whether the thread context at the provided index is active.
-pub fn is_thread_context_active(index: usize, masks: &ThreadContextMaskArray) -> bool {
+pub(super) fn is_thread_context_active(index: usize, masks: &ThreadContextMaskArray) -> bool {
     let mask = masks[index / THREAD_CONTEXT_MASK_BIT_SIZE];
     let flag = 1 << (index % THREAD_CONTEXT_MASK_BIT_SIZE);
     (mask & flag) == flag
 }
 
 /// Gets the maximum number of threads that can execute concurrently.
-pub const fn thread_context_count() -> usize {
+pub(super) const fn thread_context_count() -> usize {
     THREAD_CONTEXT_COUNT
 }
 
