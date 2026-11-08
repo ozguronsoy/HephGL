@@ -9,9 +9,9 @@ use ash::vk::{
     PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
     PipelineShaderStageCreateInfo, PipelineVertexInputStateCreateInfo,
     PipelineViewportStateCreateInfo, PrimitiveTopology, RenderPass, RenderPassBeginInfo,
-    RenderPassCreateInfo, SampleCountFlags, ShaderModuleCreateInfo, ShaderStageFlags,
-    SubpassContents, SubpassDescription, VertexInputAttributeDescription,
-    VertexInputBindingDescription, VertexInputRate,
+    RenderPassCreateInfo, SampleCountFlags, ShaderModuleCreateInfo, SubpassContents,
+    SubpassDescription, VertexInputAttributeDescription, VertexInputBindingDescription,
+    VertexInputRate,
 };
 
 use crate::{
@@ -20,7 +20,6 @@ use crate::{
         RendererCanvas,
         settings::{GraphicsPipelineOptions, Msaa, Settings},
         vulkan::{
-            VulkanRenderer,
             canvas::VulkanCanvas,
             pipeline::VulkanGraphicsPipeline,
             rendering::{
@@ -31,7 +30,7 @@ use crate::{
             swapchain::SwapchainContext,
         },
     },
-    shader::Shader,
+    shader::{ScalarKind, Shader, ShaderStage},
 };
 
 /// Implements rendering via render pass.
@@ -80,8 +79,7 @@ impl VulkanRendering for RenderPassRendering {
                 )));
             }
 
-            let stage = VulkanRenderer::convert_shader_stage(shader.metadata.stage)?;
-            if stage == ShaderStageFlags::COMPUTE {
+            if shader.metadata.stage == ShaderStage::Compute {
                 return Err(Error::invalid_argument(
                     "Compute shaders cannot be used in a graphics pipeline.",
                 ));
@@ -89,7 +87,7 @@ impl VulkanRendering for RenderPassRendering {
             shader_modules.modules.push(unsafe {
                 device.create_shader_module(&ShaderModuleCreateInfo::default().code(code), None)?
             });
-            shader_stages.push(stage);
+            shader_stages.push(shader.metadata.stage.into());
             entry_names.push(CString::new(shader.metadata.entry_name.as_str())?);
         }
         let stage_infos = shader_stages
@@ -170,7 +168,7 @@ impl VulkanRendering for RenderPassRendering {
 
         let vertex_shader = shaders
             .iter()
-            .find(|shader| shader.metadata.stage == naga::ShaderStage::Vertex)
+            .find(|shader| shader.metadata.stage == ShaderStage::Vertex)
             .ok_or(Error::invalid_argument(
                 "Graphics pipeline requires a vertex shader.",
             ))?;
@@ -183,10 +181,10 @@ impl VulkanRendering for RenderPassRendering {
                 binding.scalar_width,
                 binding.components,
             ) {
-                (naga::ScalarKind::Float, 4, 1) => ash::vk::Format::R32_SFLOAT,
-                (naga::ScalarKind::Float, 4, 2) => ash::vk::Format::R32G32_SFLOAT,
-                (naga::ScalarKind::Float, 4, 3) => ash::vk::Format::R32G32B32_SFLOAT,
-                (naga::ScalarKind::Float, 4, 4) => ash::vk::Format::R32G32B32A32_SFLOAT,
+                (ScalarKind::Float, 4, 1) => ash::vk::Format::R32_SFLOAT,
+                (ScalarKind::Float, 4, 2) => ash::vk::Format::R32G32_SFLOAT,
+                (ScalarKind::Float, 4, 3) => ash::vk::Format::R32G32B32_SFLOAT,
+                (ScalarKind::Float, 4, 4) => ash::vk::Format::R32G32B32A32_SFLOAT,
                 _ => {
                     return Err(Error::invalid_argument("Unsupported vertex format."));
                 }

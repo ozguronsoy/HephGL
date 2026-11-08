@@ -1,6 +1,11 @@
-use naga::ShaderStage;
-
 use crate::shader::{ShaderDescriptorBinding, ShaderVertexBinding};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ShaderStage {
+    Vertex,
+    Fragment,
+    Compute,
+}
 
 pub(crate) struct ShaderMetadata {
     pub(crate) entry_name: String,

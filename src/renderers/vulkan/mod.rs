@@ -1417,7 +1417,7 @@ impl Renderer for VulkanRenderer {
             },
             device_context,
         };
-        let shader_stage = Self::convert_shader_stage(shader.metadata.stage)?;
+        let shader_stage = shader.metadata.stage.into();
 
         let mut binding_sets = vec![
             Vec::with_capacity(shader.metadata.descriptor_bindings.len());
