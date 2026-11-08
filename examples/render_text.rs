@@ -1,12 +1,14 @@
 use std::time::{Duration, Instant};
 
 use heph_gl::{
-    Camera, Font, FontOptions, Projection, Shader, TextType, TextVertex, Transform,
+    Camera, Font, FontOptions,
+    GraphicsDeviceFeature::AsyncTransfer,
+    Projection, Shader, TextType, TextVertex, Transform,
     math::{Mat4, Quat, Vec3},
     renderers::{
-        BufferUsage, ColorBlending, GraphicsPipelineOptions, Renderer, RendererBuffer,
-        RendererGraphicsPipeline, ResourceBinding, ResourceBindingType, SamplerOptions,
-        TextureFormat, TextureOptions,
+        BufferUsage, ColorBlending, FeatureRequest, GraphicsPipelineOptions, Renderer,
+        RendererBuffer, RendererGraphicsPipeline, ResourceBinding, ResourceBindingType,
+        SamplerOptions, TextureFormat, TextureOptions,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -69,7 +71,9 @@ fn example(
     _: RawDisplayHandle,
 ) {
     let device = utils::renderer::get_best_device(renderer);
-    renderer.set_device(Some(&device), &[]).unwrap();
+    renderer
+        .set_device(Some(&device), &[FeatureRequest::new(AsyncTransfer, false)])
+        .unwrap();
     utils::renderer::set_best_msaa(renderer);
 
     let mut settings = *renderer.get_settings();

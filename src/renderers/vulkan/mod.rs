@@ -502,13 +502,13 @@ impl Renderer for VulkanRenderer {
 
         // Create logical device and queues.
 
-        let mut available_features = Vec::default();
+        let mut enabled_features = Vec::default();
         for requested_feature in requested_features {
             if device
                 .supported_features
                 .contains(&requested_feature.feature)
             {
-                available_features.push(requested_feature.feature);
+                enabled_features.push(requested_feature.feature);
             } else if requested_feature.required {
                 return Err(Error::UnsupportedRequiredFeature(requested_feature.feature));
             }
@@ -533,8 +533,7 @@ impl Renderer for VulkanRenderer {
 
         // Use DMA Transfer family if available. Otherwise, use the main graphics
         // family.
-        let transfer_family = if available_features.contains(&GraphicsDeviceFeature::AsyncTransfer)
-        {
+        let transfer_family = if enabled_features.contains(&GraphicsDeviceFeature::AsyncTransfer) {
             queue_families
                 .iter()
                 .find(|f| {
@@ -553,7 +552,7 @@ impl Renderer for VulkanRenderer {
         // Use the pure compute family if available. Otherwise, use the main graphics
         // family.
         let mut compute_family = None;
-        if available_features.contains(&GraphicsDeviceFeature::ComputeShaders) {
+        if enabled_features.contains(&GraphicsDeviceFeature::ComputeShaders) {
             let compute_family = compute_family.insert(
                 queue_families
                     .iter()
@@ -630,16 +629,16 @@ impl Renderer for VulkanRenderer {
             device_extension_names.push(ash::vk::KHR_PORTABILITY_SUBSET_NAME.as_ptr());
         }
         let mut physical_features2 = PhysicalDeviceFeatures2::default();
-        if available_features.contains(&GraphicsDeviceFeature::GeometryShaders) {
+        if enabled_features.contains(&GraphicsDeviceFeature::GeometryShaders) {
             physical_features2.features.geometry_shader = ash::vk::TRUE;
         }
-        if available_features.contains(&GraphicsDeviceFeature::WireframeMode) {
+        if enabled_features.contains(&GraphicsDeviceFeature::WireframeMode) {
             physical_features2.features.fill_mode_non_solid = ash::vk::TRUE;
         }
-        if available_features.contains(&GraphicsDeviceFeature::WideLines) {
+        if enabled_features.contains(&GraphicsDeviceFeature::WideLines) {
             physical_features2.features.wide_lines = ash::vk::TRUE;
         }
-        if available_features.contains(&GraphicsDeviceFeature::AnisotropicFiltering) {
+        if enabled_features.contains(&GraphicsDeviceFeature::AnisotropicFiltering) {
             physical_features2.features.sampler_anisotropy = ash::vk::TRUE;
         }
 
@@ -700,6 +699,7 @@ impl Renderer for VulkanRenderer {
 
         self.device_context = Some(DeviceContext {
             graphics_device: device.clone(),
+            enabled_features,
 
             vma_allocator,
 
@@ -948,6 +948,25 @@ impl Renderer for VulkanRenderer {
             .base
             .thread_contexts[thread_context_index];
 
+        let vk_format: ash::vk::Format = options.format.into();
+        if options.mip_level_count > 1 {
+            let format_properties = unsafe {
+                instance.get_physical_device_format_properties(
+                    device_context.physical_device,
+                    vk_format,
+                )
+            };
+            if !format_properties.optimal_tiling_features.contains(
+                ash::vk::FormatFeatureFlags::BLIT_SRC
+                    | ash::vk::FormatFeatureFlags::BLIT_DST
+                    | ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_LINEAR,
+            ) {
+                return Err(Error::invalid_argument(
+                    "The texture does not support multiple mip levels.",
+                ));
+            }
+        }
+
         let staging_buffer_info = ash::vk::BufferCreateInfo::default()
             .size(expected_size as u64)
             .usage(ash::vk::BufferUsageFlags::TRANSFER_SRC)
@@ -984,23 +1003,6 @@ impl Renderer for VulkanRenderer {
                     .destroy_buffer(staging_buffer, &mut staging_allocation);
             }
             return Err(error.into());
-        }
-
-        let vk_format: ash::vk::Format = options.format.into();
-        let format_properties = unsafe {
-            instance
-                .get_physical_device_format_properties(device_context.physical_device, vk_format)
-        };
-        let required_features = ash::vk::FormatFeatureFlags::BLIT_SRC
-            | ash::vk::FormatFeatureFlags::BLIT_DST
-            | ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_LINEAR;
-        if !format_properties
-            .optimal_tiling_features
-            .contains(required_features)
-        {
-            return Err(Error::invalid_argument(
-                "The texture does not support multiple mip levels.",
-            ));
         }
 
         let image_info = ash::vk::ImageCreateInfo::default()
@@ -1115,12 +1117,81 @@ impl Renderer for VulkanRenderer {
             );
         }
 
+        let mut command_buffer = current_frame.base.command_buffer;
+        if device_context
+            .enabled_features
+            .contains(&GraphicsDeviceFeature::AsyncTransfer)
+        {
+            // Async transfer queues do not support graphics operations such as blits, thus execute
+            // them in graphics queue.
+            let ownership_barrier = ash::vk::ImageMemoryBarrier::default()
+                .old_layout(ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                .new_layout(ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                .src_queue_family_index(device_context.transfer_queue_context.queue_family_index)
+                .dst_queue_family_index(device_context.graphics_queue_context.queue_family_index)
+                .image(image)
+                .subresource_range(
+                    ash::vk::ImageSubresourceRange::default()
+                        .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+                        .base_mip_level(0)
+                        .level_count(options.mip_level_count)
+                        .base_array_layer(0)
+                        .layer_count(1),
+                );
+            unsafe {
+                device_context.logical_device.cmd_pipeline_barrier(
+                    command_buffer,
+                    ash::vk::PipelineStageFlags::TRANSFER,
+                    ash::vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                    ash::vk::DependencyFlags::empty(),
+                    &[],
+                    &[],
+                    std::slice::from_ref(
+                        &ownership_barrier.src_access_mask(ash::vk::AccessFlags::TRANSFER_WRITE),
+                    ),
+                );
+            }
+
+            let current_frame = &mut device_context.graphics_queue_context.frames
+                [device_context.current_frame_index]
+                .base
+                .thread_contexts[thread_context_index];
+            if let Some(render_target) = current_frame.render_target.take() {
+                let rendering = device_context
+                    .rendering
+                    .as_mut()
+                    .ok_or(Error::invalid_operation("Device is not set."))?;
+                Self::end_rendering(
+                    &device_context.logical_device,
+                    rendering.as_mut(),
+                    current_frame.base.command_buffer,
+                    render_target,
+                    self.settings.array_layer_count(),
+                )?;
+            }
+            command_buffer = current_frame.base.command_buffer;
+            unsafe {
+                device_context.logical_device.cmd_pipeline_barrier(
+                    command_buffer,
+                    ash::vk::PipelineStageFlags::TOP_OF_PIPE,
+                    ash::vk::PipelineStageFlags::TRANSFER,
+                    ash::vk::DependencyFlags::empty(),
+                    &[],
+                    &[],
+                    std::slice::from_ref(&ownership_barrier.dst_access_mask(
+                        ash::vk::AccessFlags::TRANSFER_READ | ash::vk::AccessFlags::TRANSFER_WRITE,
+                    )),
+                );
+            }
+            current_frame.base.recorded = true;
+        }
+
         for mip_level in 1..options.mip_level_count {
             let previous_mip_level = mip_level - 1;
 
             Self::transition_image_layout(
                 &device_context.logical_device,
-                current_frame.base.command_buffer,
+                command_buffer,
                 image,
                 ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                 ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
@@ -1172,7 +1243,7 @@ impl Renderer for VulkanRenderer {
                 ]);
             unsafe {
                 device_context.logical_device.cmd_blit_image(
-                    current_frame.base.command_buffer,
+                    command_buffer,
                     image,
                     ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                     image,
@@ -1184,7 +1255,7 @@ impl Renderer for VulkanRenderer {
 
             Self::transition_image_layout(
                 &device_context.logical_device,
-                current_frame.base.command_buffer,
+                command_buffer,
                 image,
                 ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                 ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
@@ -1201,7 +1272,7 @@ impl Renderer for VulkanRenderer {
         }
         Self::transition_image_layout(
             &device_context.logical_device,
-            current_frame.base.command_buffer,
+            command_buffer,
             image,
             ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,

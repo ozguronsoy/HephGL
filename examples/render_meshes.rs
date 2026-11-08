@@ -6,7 +6,7 @@ use std::{
 
 use heph_gl::{
     Camera,
-    GraphicsDeviceFeature::AnisotropicFiltering,
+    GraphicsDeviceFeature::{AnisotropicFiltering, AsyncTransfer},
     Lighting, Mesh, MeshVertexAttribute, Projection, Shader, Transform,
     math::{Mat4, Quat, Vec3},
     renderers::{
@@ -31,7 +31,10 @@ fn example(
     renderer
         .set_device(
             Some(&device),
-            &[FeatureRequest::new(AnisotropicFiltering, false)],
+            &[
+                FeatureRequest::new(AnisotropicFiltering, false),
+                FeatureRequest::new(AsyncTransfer, false),
+            ],
         )
         .unwrap();
     utils::renderer::set_best_msaa(renderer);

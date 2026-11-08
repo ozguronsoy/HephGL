@@ -1,5 +1,5 @@
 use heph_gl::{
-    GraphicsDeviceFeature::AnisotropicFiltering,
+    GraphicsDeviceFeature::{AnisotropicFiltering, AsyncTransfer},
     Lighting, MaterialProperties, Shader,
     math::Vec3,
     renderers::{
@@ -26,7 +26,10 @@ fn example(
     renderer
         .set_device(
             Some(&device),
-            &[FeatureRequest::new(AnisotropicFiltering, false)],
+            &[
+                FeatureRequest::new(AnisotropicFiltering, false),
+                FeatureRequest::new(AsyncTransfer, false),
+            ],
         )
         .unwrap();
     utils::renderer::set_best_msaa(renderer);
