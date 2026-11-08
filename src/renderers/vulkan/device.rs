@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::{sync::Mutex, time::Instant};
 
 use crate::{
     Error, Result,
@@ -46,6 +46,7 @@ pub(super) struct DeviceContext {
 
     pub(super) current_frame_index: usize,
     pub(super) current_frame_index_sync: Mutex<()>,
+    pub(super) next_frame_deadline: Option<Instant>,
 
     /// The bitmasks indicating the availability of thread contexts.
     /// `0` means the context at that index is available, `1` means it is
