@@ -2,7 +2,10 @@ use std::collections::HashSet;
 
 use heph_gl::{
     Error, GraphicsDevice,
-    GraphicsDeviceFeature::{RayTracing, VideoDecoding, VideoEncoding},
+    GraphicsDeviceFeature::{
+        AnisotropicFiltering, AsyncTransfer, ComputeShaders, GeometryShaders, RayTracing,
+        VideoDecoding, VideoEncoding, WireframeMode,
+    },
     GraphicsDeviceType, Version,
     renderers::{
         FeatureRequest, InitializeOptions, Renderer, RendererHandle, RendererWorkerFactory,
@@ -130,10 +133,15 @@ where
     }
 
     pub(crate) fn test_set_device(&self) {
-        let features = [
+        let mut features = [
+            FeatureRequest::new(GeometryShaders, false),
+            FeatureRequest::new(ComputeShaders, false),
+            FeatureRequest::new(WireframeMode, false),
+            FeatureRequest::new(AnisotropicFiltering, false),
             FeatureRequest::new(RayTracing, false),
             FeatureRequest::new(VideoDecoding, false),
             FeatureRequest::new(VideoEncoding, false),
+            FeatureRequest::new(AsyncTransfer, false),
         ];
         let mut renderer = self.create_renderer_with_any_device(&features);
         assert!(renderer.get_device().is_some());
@@ -156,6 +164,21 @@ where
             ),
             Error::fail("")
         );
+
+        let devices = heph_expect_success!(renderer.enumerate_devices());
+        if let Some(device) = devices.iter().find(|d| {
+            features
+                .iter()
+                .any(|f| !d.supported_features.contains(&f.feature))
+        }) {
+            for feature in &mut features {
+                feature.required = true;
+            }
+            heph_expect_err!(
+                renderer.set_device(Some(device), &features),
+                Error::UnsupportedRequiredFeature(RayTracing)
+            );
+        }
     }
 
     pub(crate) fn test_set_settings(&self) {
