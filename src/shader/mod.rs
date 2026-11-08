@@ -99,6 +99,11 @@ impl Shader {
                     }
                 };
 
+                let scalar_kind = match scalar_kind {
+                    naga::ScalarKind::Float => ScalarKind::Float,
+                    _ => return Err(Error::fail("Unsupported scalar kind.")),
+                };
+
                 self.metadata.vertex_bindings.push(ShaderVertexBinding {
                     location: *location,
                     scalar_kind,

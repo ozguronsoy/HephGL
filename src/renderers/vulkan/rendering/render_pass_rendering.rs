@@ -30,7 +30,7 @@ use crate::{
             swapchain::SwapchainContext,
         },
     },
-    shader::{Shader, ShaderStage},
+    shader::{ScalarKind, Shader, ShaderStage},
 };
 
 /// Implements rendering via render pass.
@@ -181,10 +181,10 @@ impl VulkanRendering for RenderPassRendering {
                 binding.scalar_width,
                 binding.components,
             ) {
-                (naga::ScalarKind::Float, 4, 1) => ash::vk::Format::R32_SFLOAT,
-                (naga::ScalarKind::Float, 4, 2) => ash::vk::Format::R32G32_SFLOAT,
-                (naga::ScalarKind::Float, 4, 3) => ash::vk::Format::R32G32B32_SFLOAT,
-                (naga::ScalarKind::Float, 4, 4) => ash::vk::Format::R32G32B32A32_SFLOAT,
+                (ScalarKind::Float, 4, 1) => ash::vk::Format::R32_SFLOAT,
+                (ScalarKind::Float, 4, 2) => ash::vk::Format::R32G32_SFLOAT,
+                (ScalarKind::Float, 4, 3) => ash::vk::Format::R32G32B32_SFLOAT,
+                (ScalarKind::Float, 4, 4) => ash::vk::Format::R32G32B32A32_SFLOAT,
                 _ => {
                     return Err(Error::invalid_argument("Unsupported vertex format."));
                 }
