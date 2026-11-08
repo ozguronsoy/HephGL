@@ -1,8 +1,10 @@
 use heph_gl::{
-    Error, Shader,
+    Error,
+    GraphicsDeviceFeature::WireframeMode,
+    Shader,
     renderers::{
-        GraphicsPipelineOptions, Renderer, RendererComputePipeline, RendererGraphicsPipeline,
-        RendererHandle, RendererPipeline, RendererWorkerFactory,
+        FeatureRequest, GraphicsPipelineOptions, PolygonMode, Renderer, RendererComputePipeline,
+        RendererGraphicsPipeline, RendererHandle, RendererPipeline, RendererWorkerFactory,
     },
 };
 
@@ -40,22 +42,76 @@ where
     }
 
     pub(crate) fn test_graphics_pipeline(&self) {
-        let renderer = self.create_renderer_with_any_device(&[]);
-        let frag_shader = heph_expect_success!(Shader::from_file(format!(
-            "{}/shapes/basic_triangle_frag.spv",
-            SHADERS_DIR
-        )));
-        let vert_shader = heph_expect_success!(Shader::from_file(format!(
-            "{}/shapes/basic_triangle_vert.spv",
-            SHADERS_DIR
-        )));
-        let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
-            &[&frag_shader, &vert_shader],
-            &GraphicsPipelineOptions::default()
-        ));
-        assert!(pipeline.as_ref().is_allocated());
-        heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
-        assert!(!pipeline.as_ref().is_allocated());
+        {
+            let renderer = self.create_renderer_with_any_device(&[]);
+            let frag_shader =
+                heph_expect_success!(Shader::from_file(format!("{}/mesh_frag.spv", SHADERS_DIR)));
+            let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/camera_vert.spv",
+                SHADERS_DIR
+            )));
+            let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+                &[&frag_shader, &vert_shader],
+                &GraphicsPipelineOptions::default()
+            ));
+            assert!(pipeline.as_ref().is_allocated());
+            heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
+            assert!(!pipeline.as_ref().is_allocated());
+        }
+
+        {
+            let renderer =
+                self.create_renderer_with_any_device(&[FeatureRequest::new(WireframeMode, false)]);
+            if renderer
+                .get_device()
+                .unwrap()
+                .supported_features
+                .contains(&WireframeMode)
+            {
+                let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/mesh_frag.spv",
+                    SHADERS_DIR
+                )));
+                let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/camera_vert.spv",
+                    SHADERS_DIR
+                )));
+                for polygon_mode in [PolygonMode::Fill, PolygonMode::Line, PolygonMode::Point] {
+                    let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+                        &[&frag_shader, &vert_shader],
+                        &GraphicsPipelineOptions {
+                            polygon_mode,
+                            ..Default::default()
+                        }
+                    ));
+                    heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
+                }
+            }
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[]);
+            let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/shapes/basic_triangle_frag.spv",
+                SHADERS_DIR
+            )));
+            let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/shapes/basic_triangle_vert.spv",
+                SHADERS_DIR
+            )));
+            for polygon_mode in [PolygonMode::Line, PolygonMode::Point] {
+                heph_expect_err!(
+                    renderer.create_graphics_pipeline(
+                        &[&frag_shader, &vert_shader],
+                        &GraphicsPipelineOptions {
+                            polygon_mode,
+                            ..Default::default()
+                        }
+                    ),
+                    Error::invalid_operation("")
+                );
+            }
+        }
     }
 
     pub(crate) fn test_reject_foreign_pipelines(&self) {

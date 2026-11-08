@@ -19,6 +19,7 @@ void main()
 {
     vec4 world_position = matrices.model * vec4(in_position, 1.0);
     gl_Position = matrices.view_projection * world_position;
+    gl_PointSize = 1.0;
     frag_position = world_position.xyz;
     frag_normal = mat3(matrices.normal) * in_normal;
     frag_uv = in_uv;

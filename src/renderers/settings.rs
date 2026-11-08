@@ -148,10 +148,10 @@ pub struct GraphicsPipelineOptions {
     pub blending: ColorBlending,
     /// The primitive topology used to assemble vertices.
     pub topology: PrimitiveTopology,
-    /// The polygon rasterization mode.
-    pub polygon_mode: PolygonMode,
     /// The face culling mode.
     pub culling: CullingMode,
+    /// The polygon rasterization mode.
+    pub polygon_mode: PolygonMode,
     /// The vertex winding order considered front-facing.
     pub front_face: FrontFace,
     /// Indicates whether depth testing is enabled.
