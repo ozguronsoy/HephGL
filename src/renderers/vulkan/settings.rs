@@ -2,7 +2,7 @@ use ash::vk::{ColorComponentFlags, PipelineColorBlendAttachmentState, SampleCoun
 
 use crate::renderers::{
     ColorBlending, CullingMode, Msaa, SamplerAddressMode, SamplerFilter,
-    settings::{FrontFace, PrimitiveTopology},
+    settings::{FrontFace, PolygonMode, PrimitiveTopology},
 };
 
 impl From<Msaa> for SampleCountFlags {
@@ -67,6 +67,16 @@ impl From<CullingMode> for ash::vk::CullModeFlags {
             CullingMode::Disabled => Self::NONE,
             CullingMode::Front => Self::FRONT,
             CullingMode::Back => Self::BACK,
+        }
+    }
+}
+
+impl From<PolygonMode> for ash::vk::PolygonMode {
+    fn from(value: PolygonMode) -> Self {
+        match value {
+            PolygonMode::Fill => Self::FILL,
+            PolygonMode::Line => Self::LINE,
+            PolygonMode::Point => Self::POINT,
         }
     }
 }
@@ -160,6 +170,22 @@ mod tests {
         assert_eq!(
             ash::vk::CullModeFlags::from(CullingMode::Back),
             ash::vk::CullModeFlags::BACK
+        );
+    }
+
+    #[test]
+    fn test_polygon_mode() {
+        assert_eq!(
+            ash::vk::PolygonMode::from(PolygonMode::Fill),
+            ash::vk::PolygonMode::FILL
+        );
+        assert_eq!(
+            ash::vk::PolygonMode::from(PolygonMode::Line),
+            ash::vk::PolygonMode::LINE
+        );
+        assert_eq!(
+            ash::vk::PolygonMode::from(PolygonMode::Point),
+            ash::vk::PolygonMode::POINT
         );
     }
 

@@ -8,8 +8,8 @@ use ash::vk::{
     PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
     PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
     PipelineRenderingCreateInfo, PipelineShaderStageCreateInfo, PipelineVertexInputStateCreateInfo,
-    PipelineViewportStateCreateInfo, PolygonMode, PrimitiveTopology, RenderingAttachmentInfo,
-    RenderingInfo, ShaderModuleCreateInfo, ShaderStageFlags, VertexInputAttributeDescription,
+    PipelineViewportStateCreateInfo, PrimitiveTopology, RenderingAttachmentInfo, RenderingInfo,
+    ShaderModuleCreateInfo, ShaderStageFlags, VertexInputAttributeDescription,
     VertexInputBindingDescription, VertexInputRate,
 };
 
@@ -225,7 +225,7 @@ impl VulkanRendering for DynamicRendering {
         let rasterization = PipelineRasterizationStateCreateInfo::default()
             .depth_clamp_enable(false)
             .rasterizer_discard_enable(false)
-            .polygon_mode(PolygonMode::FILL)
+            .polygon_mode(options.polygon_mode.into())
             .cull_mode(options.culling.into())
             .front_face(options.front_face.into())
             .depth_bias_enable(false)

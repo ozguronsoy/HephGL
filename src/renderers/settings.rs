@@ -59,6 +59,18 @@ pub enum CullingMode {
     Back,
 }
 
+/// Defines how polygons are rasterized.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub enum PolygonMode {
+    /// Polygons are filled.
+    #[default]
+    Fill,
+    /// Only the polygon edges are drawn as lines.
+    Line,
+    /// Only the polygon vertices are drawn as points.
+    Point,
+}
+
 /// Defines which vertex winding order is considered front-facing.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum FrontFace {
@@ -136,6 +148,8 @@ pub struct GraphicsPipelineOptions {
     pub blending: ColorBlending,
     /// The primitive topology used to assemble vertices.
     pub topology: PrimitiveTopology,
+    /// The polygon rasterization mode.
+    pub polygon_mode: PolygonMode,
     /// The face culling mode.
     pub culling: CullingMode,
     /// The vertex winding order considered front-facing.
@@ -202,6 +216,7 @@ impl Default for GraphicsPipelineOptions {
         Self {
             blending: ColorBlending::default(),
             topology: PrimitiveTopology::default(),
+            polygon_mode: PolygonMode::default(),
             culling: CullingMode::default(),
             front_face: FrontFace::default(),
             depth_test: true,
