@@ -20,7 +20,7 @@ use crate::{
             pipeline::{VulkanComputePipeline, VulkanGraphicsPipeline},
         },
     },
-    shader::ShaderBindingType,
+    shader::{ShaderBindingType, ShaderStage},
 };
 
 #[derive(Clone)]
@@ -277,17 +277,6 @@ impl VulkanRenderer {
         Ok(range)
     }
 
-    pub(super) fn convert_shader_stage(
-        stage: naga::ShaderStage,
-    ) -> Result<ash::vk::ShaderStageFlags> {
-        match stage {
-            naga::ShaderStage::Compute => Ok(ash::vk::ShaderStageFlags::COMPUTE),
-            naga::ShaderStage::Vertex => Ok(ash::vk::ShaderStageFlags::VERTEX),
-            naga::ShaderStage::Fragment => Ok(ash::vk::ShaderStageFlags::FRAGMENT),
-            _ => Err(Error::invalid_argument("Invalid shader stage.")),
-        }
-    }
-
     fn validate_cache_consistency(layout_count: usize, cache: &DescriptorSetCache) -> bool {
         let descriptor_sets = cache.descriptor_sets.chunks_exact(layout_count);
         descriptor_sets.remainder().is_empty() && descriptor_sets.len() == cache.chunk_indices.len()
@@ -462,6 +451,16 @@ impl From<ShaderBindingType> for DescriptorType {
             ShaderBindingType::StorageBuffer => DescriptorType::STORAGE_BUFFER,
             ShaderBindingType::Texture => DescriptorType::SAMPLED_IMAGE,
             ShaderBindingType::Sampler => DescriptorType::SAMPLER,
+        }
+    }
+}
+
+impl From<ShaderStage> for ash::vk::ShaderStageFlags {
+    fn from(value: ShaderStage) -> Self {
+        match value {
+            ShaderStage::Vertex => ash::vk::ShaderStageFlags::VERTEX,
+            ShaderStage::Fragment => ash::vk::ShaderStageFlags::FRAGMENT,
+            ShaderStage::Compute => ash::vk::ShaderStageFlags::COMPUTE,
         }
     }
 }

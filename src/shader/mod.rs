@@ -4,8 +4,6 @@ mod metadata;
 
 use std::path::Path;
 
-use naga::ShaderStage;
-
 pub(crate) use crate::shader::{binding::*, metadata::*};
 use crate::{Error, Result};
 
@@ -68,12 +66,17 @@ impl Shader {
 
         let entry_point = &module.entry_points[0];
         self.metadata.entry_name = entry_point.name.clone();
-        self.metadata.stage = entry_point.stage;
+        self.metadata.stage = match entry_point.stage {
+            naga::ShaderStage::Vertex => ShaderStage::Vertex,
+            naga::ShaderStage::Fragment => ShaderStage::Fragment,
+            naga::ShaderStage::Compute => ShaderStage::Compute,
+            _ => return Err(Error::fail("Unsupported shader stage.")),
+        };
         self.metadata.size = entry_point.workgroup_size;
         self.metadata.vertex_bindings.clear();
         self.metadata.descriptor_bindings.clear();
 
-        if entry_point.stage == ShaderStage::Vertex {
+        if self.metadata.stage == ShaderStage::Vertex {
             for argument in &entry_point.function.arguments {
                 let Some(naga::Binding::Location { location, .. }) = &argument.binding else {
                     continue;
