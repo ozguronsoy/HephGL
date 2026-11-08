@@ -9,8 +9,8 @@ use heph_gl::{
     renderers::{
         BufferUsage, ColorBlending, CullingMode, FeatureRequest, FrontFace,
         GraphicsPipelineOptions, PrimitiveTopology, Renderer, RendererHandle,
-        RendererWorkerFactory, ResourceBinding, ResourceBindingType, SamplerAddressMode,
-        SamplerOptions, Settings, TextureFormat, TextureOptions,
+        RendererWorkerFactory, ResourceBinding, SamplerAddressMode, SamplerOptions, Settings,
+        TextureFormat, TextureOptions,
     },
 };
 use renkrs::RGB;
@@ -198,22 +198,18 @@ where
                 bytemuck::cast_slice(&cube_b)
             ));
 
-            let cube_a_vertex_bindings = [ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Buffer {
-                    buffer: cube_a_buffer.as_ref(),
-                    offset: 0,
-                    size: cube_a_buffer.size(),
-                },
-            }];
-            let cube_b_vertex_bindings = [ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Buffer {
-                    buffer: cube_b_buffer.as_ref(),
-                    offset: 0,
-                    size: cube_b_buffer.size(),
-                },
-            }];
+            let cube_a_vertex_bindings = [ResourceBinding::buffer(
+                0,
+                cube_a_buffer.as_ref(),
+                0,
+                cube_a_buffer.size(),
+            )];
+            let cube_b_vertex_bindings = [ResourceBinding::buffer(
+                0,
+                cube_b_buffer.as_ref(),
+                0,
+                cube_b_buffer.size(),
+            )];
             heph_expect_success!(renderer.record_graphics_command(
                 pipeline.as_mut(),
                 Some(index_buffer.as_ref()),
@@ -398,47 +394,18 @@ where
 
         heph_expect_success!(renderer.begin_frame());
         heph_expect_success!(renderer.clear(RGB::default()));
-        let vertex_bindings = [ResourceBinding {
-            binding: 0,
-            resource: ResourceBindingType::Buffer {
-                buffer: vertex_buffer.as_ref(),
-                offset: 0,
-                size: vertex_buffer.size(),
-            },
-        }];
+        let vertex_bindings = [ResourceBinding::buffer(
+            0,
+            vertex_buffer.as_ref(),
+            0,
+            vertex_buffer.size(),
+        )];
         let resource_bindings = [
-            ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Texture {
-                    texture: texture.as_ref(),
-                },
-            },
-            ResourceBinding {
-                binding: 1,
-                resource: ResourceBindingType::Sampler {
-                    sampler: sampler.as_ref(),
-                },
-            },
-            ResourceBinding {
-                binding: 2,
-                resource: ResourceBindingType::Texture {
-                    texture: arm_texture.as_ref(),
-                },
-            },
-            ResourceBinding {
-                binding: 3,
-                resource: ResourceBindingType::Texture {
-                    texture: normal_texture.as_ref(),
-                },
-            },
-            ResourceBinding {
-                binding: 4,
-                resource: ResourceBindingType::Buffer {
-                    buffer: uniform_buffer.as_ref(),
-                    offset: 0,
-                    size: uniform_buffer.size(),
-                },
-            },
+            ResourceBinding::texture(0, texture.as_ref()),
+            ResourceBinding::sampler(1, sampler.as_ref()),
+            ResourceBinding::texture(2, arm_texture.as_ref()),
+            ResourceBinding::texture(3, normal_texture.as_ref()),
+            ResourceBinding::buffer(4, uniform_buffer.as_ref(), 0, uniform_buffer.size()),
         ];
         heph_expect_success!(renderer.record_graphics_command(
             pipeline.as_mut(),
@@ -553,27 +520,15 @@ where
                 1,
             ));
 
-            let vertex_bindings = [ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Buffer {
-                    buffer: vertex_buffer.as_ref(),
-                    offset: 0,
-                    size: vertex_buffer.size(),
-                },
-            }];
+            let vertex_bindings = [ResourceBinding::buffer(
+                0,
+                vertex_buffer.as_ref(),
+                0,
+                vertex_buffer.size(),
+            )];
             let resource_bindings = [
-                ResourceBinding {
-                    binding: 0,
-                    resource: ResourceBindingType::Texture {
-                        texture: canvas.texture(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 1,
-                    resource: ResourceBindingType::Sampler {
-                        sampler: sampler.as_ref(),
-                    },
-                },
+                ResourceBinding::texture(0, canvas.texture()),
+                ResourceBinding::sampler(1, sampler.as_ref()),
             ];
             heph_expect_success!(renderer.record_graphics_command(
                 canvas_pipeline.as_mut(),
@@ -788,74 +743,44 @@ where
                 ));
             }
 
-            let screen_vertex_bindings = [ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Buffer {
-                    buffer: screen_vertex_buffer.as_ref(),
-                    offset: 0,
-                    size: screen_vertex_buffer.size(),
-                },
-            }];
+            let screen_vertex_bindings = [ResourceBinding::buffer(
+                0,
+                screen_vertex_buffer.as_ref(),
+                0,
+                screen_vertex_buffer.size(),
+            )];
             let screen_resource_bindings = [
-                ResourceBinding {
-                    binding: 0,
-                    resource: ResourceBindingType::Texture {
-                        texture: texture.as_ref(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 1,
-                    resource: ResourceBindingType::Sampler {
-                        sampler: sampler.as_ref(),
-                    },
-                },
+                ResourceBinding::texture(0, texture.as_ref()),
+                ResourceBinding::sampler(1, sampler.as_ref()),
             ];
-            let world_vertex_bindings = [ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Buffer {
-                    buffer: world_vertex_buffer.as_ref(),
-                    offset: 0,
-                    size: world_vertex_buffer.size(),
-                },
-            }];
+            let world_vertex_bindings = [ResourceBinding::buffer(
+                0,
+                world_vertex_buffer.as_ref(),
+                0,
+                world_vertex_buffer.size(),
+            )];
             let world_resource_bindings = [
-                ResourceBinding {
-                    binding: 0,
-                    resource: ResourceBindingType::Texture {
-                        texture: texture.as_ref(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 1,
-                    resource: ResourceBindingType::Sampler {
-                        sampler: sampler.as_ref(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 2,
-                    resource: ResourceBindingType::Buffer {
-                        buffer: uniform_buffers[frame_index][0].as_ref(),
-                        offset: 0,
-                        size: uniform_buffers[frame_index][0].size(),
-                    },
-                },
+                ResourceBinding::texture(0, texture.as_ref()),
+                ResourceBinding::sampler(1, sampler.as_ref()),
+                ResourceBinding::buffer(
+                    2,
+                    uniform_buffers[frame_index][0].as_ref(),
+                    0,
+                    uniform_buffers[frame_index][0].size(),
+                ),
             ];
-            let extruded_vertex_bindings = [ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Buffer {
-                    buffer: extruded_vertex_buffer.as_ref(),
-                    offset: 0,
-                    size: extruded_vertex_buffer.size(),
-                },
-            }];
-            let extruded_resource_bindings = [ResourceBinding {
-                binding: 2,
-                resource: ResourceBindingType::Buffer {
-                    buffer: uniform_buffers[frame_index][1].as_ref(),
-                    offset: 0,
-                    size: uniform_buffers[frame_index][1].size(),
-                },
-            }];
+            let extruded_vertex_bindings = [ResourceBinding::buffer(
+                0,
+                extruded_vertex_buffer.as_ref(),
+                0,
+                extruded_vertex_buffer.size(),
+            )];
+            let extruded_resource_bindings = [ResourceBinding::buffer(
+                2,
+                uniform_buffers[frame_index][1].as_ref(),
+                0,
+                uniform_buffers[frame_index][1].size(),
+            )];
 
             heph_expect_success!(renderer.record_graphics_command(
                 screen_pipeline.as_mut(),
@@ -1169,53 +1094,19 @@ where
                 [texture, arm_texture, normal_texture],
             ) in part_buffers.iter().zip(&part_textures)
             {
-                let vertex_bindings = [ResourceBinding {
-                    binding: 0,
-                    resource: ResourceBindingType::Buffer {
-                        buffer: vertex_buffer.as_ref(),
-                        offset: 0,
-                        size: vertex_buffer.size(),
-                    },
-                }];
+                let vertex_bindings = [ResourceBinding::buffer(
+                    0,
+                    vertex_buffer.as_ref(),
+                    0,
+                    vertex_buffer.size(),
+                )];
                 let resource_bindings = [
-                    ResourceBinding {
-                        binding: 0,
-                        resource: ResourceBindingType::Texture { texture: *texture },
-                    },
-                    ResourceBinding {
-                        binding: 1,
-                        resource: ResourceBindingType::Sampler {
-                            sampler: sampler.as_ref(),
-                        },
-                    },
-                    ResourceBinding {
-                        binding: 2,
-                        resource: ResourceBindingType::Texture {
-                            texture: *arm_texture,
-                        },
-                    },
-                    ResourceBinding {
-                        binding: 3,
-                        resource: ResourceBindingType::Texture {
-                            texture: *normal_texture,
-                        },
-                    },
-                    ResourceBinding {
-                        binding: 4,
-                        resource: ResourceBindingType::Buffer {
-                            buffer: material_buffer.as_ref(),
-                            offset: 0,
-                            size: material_buffer.size(),
-                        },
-                    },
-                    ResourceBinding {
-                        binding: 5,
-                        resource: ResourceBindingType::Buffer {
-                            buffer: uniform_buffer.as_ref(),
-                            offset: 0,
-                            size: uniform_buffer.size(),
-                        },
-                    },
+                    ResourceBinding::texture(0, *texture),
+                    ResourceBinding::sampler(1, sampler.as_ref()),
+                    ResourceBinding::texture(2, *arm_texture),
+                    ResourceBinding::texture(3, *normal_texture),
+                    ResourceBinding::buffer(4, material_buffer.as_ref(), 0, material_buffer.size()),
+                    ResourceBinding::buffer(5, uniform_buffer.as_ref(), 0, uniform_buffer.size()),
                 ];
                 heph_expect_success!(renderer.record_graphics_command(
                     pipeline.as_mut(),
@@ -1524,63 +1415,20 @@ where
                 bytemuck::cast_slice(&joints)
             ));
 
-            let vertex_bindings = [ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Buffer {
-                    buffer: vertex_buffer.as_ref(),
-                    offset: 0,
-                    size: vertex_buffer.size(),
-                },
-            }];
+            let vertex_bindings = [ResourceBinding::buffer(
+                0,
+                vertex_buffer.as_ref(),
+                0,
+                vertex_buffer.size(),
+            )];
             let resource_bindings = [
-                ResourceBinding {
-                    binding: 0,
-                    resource: ResourceBindingType::Texture {
-                        texture: texture.as_ref(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 1,
-                    resource: ResourceBindingType::Sampler {
-                        sampler: sampler.as_ref(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 2,
-                    resource: ResourceBindingType::Texture {
-                        texture: arm_texture.as_ref(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 3,
-                    resource: ResourceBindingType::Texture {
-                        texture: normal_texture.as_ref(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 4,
-                    resource: ResourceBindingType::Buffer {
-                        buffer: material_buffer.as_ref(),
-                        offset: 0,
-                        size: material_buffer.size(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 5,
-                    resource: ResourceBindingType::Buffer {
-                        buffer: uniform_buffer.as_ref(),
-                        offset: 0,
-                        size: uniform_buffer.size(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 6,
-                    resource: ResourceBindingType::Buffer {
-                        buffer: joint_buffer.as_ref(),
-                        offset: 0,
-                        size: joint_buffer.size(),
-                    },
-                },
+                ResourceBinding::texture(0, texture.as_ref()),
+                ResourceBinding::sampler(1, sampler.as_ref()),
+                ResourceBinding::texture(2, arm_texture.as_ref()),
+                ResourceBinding::texture(3, normal_texture.as_ref()),
+                ResourceBinding::buffer(4, material_buffer.as_ref(), 0, material_buffer.size()),
+                ResourceBinding::buffer(5, uniform_buffer.as_ref(), 0, uniform_buffer.size()),
+                ResourceBinding::buffer(6, joint_buffer.as_ref(), 0, joint_buffer.size()),
             ];
             heph_expect_success!(renderer.record_graphics_command(
                 pipeline.as_mut(),

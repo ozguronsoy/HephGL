@@ -4,7 +4,7 @@ use heph_gl::{
     Shader,
     renderers::{
         BufferUsage, GraphicsPipelineOptions, Renderer, RendererGraphicsPipeline, ResourceBinding,
-        ResourceBindingType, SamplerOptions,
+        SamplerOptions,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -114,27 +114,15 @@ fn example(
             .unwrap();
 
         // Render the canvas into the display.
-        let vertex_bindings = [ResourceBinding {
-            binding: 0,
-            resource: ResourceBindingType::Buffer {
-                buffer: vertex_buffer.as_ref(),
-                offset: 0,
-                size: vertex_buffer.size(),
-            },
-        }];
+        let vertex_bindings = [ResourceBinding::buffer(
+            0,
+            vertex_buffer.as_ref(),
+            0,
+            vertex_buffer.size(),
+        )];
         let resource_bindings = [
-            ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Texture {
-                    texture: canvas.texture(),
-                },
-            },
-            ResourceBinding {
-                binding: 1,
-                resource: ResourceBindingType::Sampler {
-                    sampler: sampler.as_ref(),
-                },
-            },
+            ResourceBinding::texture(0, canvas.texture()),
+            ResourceBinding::sampler(1, sampler.as_ref()),
         ];
         renderer
             .record_graphics_command(

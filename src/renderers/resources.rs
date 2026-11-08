@@ -84,6 +84,41 @@ pub trait RendererTexture: RendererResource {
 /// Represents a texture sampler.
 pub trait RendererSampler: RendererResource {}
 
+impl<'a> ResourceBinding<'a> {
+    /// Creates a binding for the given range of a buffer.
+    pub fn buffer(
+        binding: u32,
+        buffer: &'a dyn RendererBuffer,
+        offset: usize,
+        size: usize,
+    ) -> Self {
+        Self {
+            binding,
+            resource: ResourceBindingType::Buffer {
+                buffer,
+                offset,
+                size,
+            },
+        }
+    }
+
+    /// Creates a binding for a texture.
+    pub fn texture(binding: u32, texture: &'a dyn RendererTexture) -> Self {
+        Self {
+            binding,
+            resource: ResourceBindingType::Texture { texture },
+        }
+    }
+
+    /// Creates a binding for a texture sampler.
+    pub fn sampler(binding: u32, sampler: &'a dyn RendererSampler) -> Self {
+        Self {
+            binding,
+            resource: ResourceBindingType::Sampler { sampler },
+        }
+    }
+}
+
 impl TextureFormat {
     /// Calculates the size of each pixel in bytes.
     pub(super) fn bytes_per_pixel(&self) -> usize {

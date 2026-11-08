@@ -11,7 +11,7 @@ use heph_gl::{
     math::{Mat4, Quat, Vec3},
     renderers::{
         BufferUsage, FeatureRequest, FrontFace, GraphicsPipelineOptions, Renderer, ResourceBinding,
-        ResourceBindingType, SamplerAddressMode, SamplerOptions, TextureFormat, TextureOptions,
+        SamplerAddressMode, SamplerOptions, TextureFormat, TextureOptions,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -273,55 +273,19 @@ fn example(
             [texture, arm_texture, normal_texture],
         ) in part_buffers.iter().zip(&part_texture_handles)
         {
-            let vertex_bindings = [ResourceBinding {
-                binding: 0,
-                resource: ResourceBindingType::Buffer {
-                    buffer: vertex_buffer.as_ref(),
-                    offset: 0,
-                    size: vertex_buffer.size(),
-                },
-            }];
+            let vertex_bindings = [ResourceBinding::buffer(
+                0,
+                vertex_buffer.as_ref(),
+                0,
+                vertex_buffer.size(),
+            )];
             let resource_bindings = [
-                ResourceBinding {
-                    binding: 0,
-                    resource: ResourceBindingType::Texture {
-                        texture: texture.as_ref(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 1,
-                    resource: ResourceBindingType::Sampler {
-                        sampler: sampler.as_ref(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 2,
-                    resource: ResourceBindingType::Texture {
-                        texture: arm_texture.as_ref(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 3,
-                    resource: ResourceBindingType::Texture {
-                        texture: normal_texture.as_ref(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 4,
-                    resource: ResourceBindingType::Buffer {
-                        buffer: material_buffer.as_ref(),
-                        offset: 0,
-                        size: material_buffer.size(),
-                    },
-                },
-                ResourceBinding {
-                    binding: 5,
-                    resource: ResourceBindingType::Buffer {
-                        buffer: uniform_buffer.as_ref(),
-                        offset: 0,
-                        size: uniform_buffer.size(),
-                    },
-                },
+                ResourceBinding::texture(0, texture.as_ref()),
+                ResourceBinding::sampler(1, sampler.as_ref()),
+                ResourceBinding::texture(2, arm_texture.as_ref()),
+                ResourceBinding::texture(3, normal_texture.as_ref()),
+                ResourceBinding::buffer(4, material_buffer.as_ref(), 0, material_buffer.size()),
+                ResourceBinding::buffer(5, uniform_buffer.as_ref(), 0, uniform_buffer.size()),
             ];
             renderer
                 .record_graphics_command(

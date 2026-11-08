@@ -4,7 +4,7 @@ use heph_gl::{
     Shader,
     renderers::{
         BufferUsage, ColorBlending, CullingMode, FrontFace, GraphicsPipelineOptions, Renderer,
-        ResourceBinding, ResourceBindingType,
+        ResourceBinding,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -117,22 +117,18 @@ fn example(
             )
             .unwrap();
 
-        let cube_a_vertex_bindings = [ResourceBinding {
-            binding: 0,
-            resource: ResourceBindingType::Buffer {
-                buffer: cube_a_vertex_buffer.as_ref(),
-                offset: 0,
-                size: cube_a_vertex_buffer.size(),
-            },
-        }];
-        let cube_b_vertex_bindings = [ResourceBinding {
-            binding: 0,
-            resource: ResourceBindingType::Buffer {
-                buffer: cube_b_vertex_buffer.as_ref(),
-                offset: 0,
-                size: cube_b_vertex_buffer.size(),
-            },
-        }];
+        let cube_a_vertex_bindings = [ResourceBinding::buffer(
+            0,
+            cube_a_vertex_buffer.as_ref(),
+            0,
+            cube_a_vertex_buffer.size(),
+        )];
+        let cube_b_vertex_bindings = [ResourceBinding::buffer(
+            0,
+            cube_b_vertex_buffer.as_ref(),
+            0,
+            cube_b_vertex_buffer.size(),
+        )];
         renderer
             .record_graphics_command(
                 pipeline.as_mut(),

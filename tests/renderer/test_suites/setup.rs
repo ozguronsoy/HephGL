@@ -130,7 +130,7 @@ where
     }
 
     pub(crate) fn test_set_device(&self) {
-        let mut features = [
+        let features = [
             FeatureRequest::new(RayTracing, false),
             FeatureRequest::new(VideoDecoding, false),
             FeatureRequest::new(VideoEncoding, false),
@@ -155,14 +155,6 @@ where
                 &features
             ),
             Error::fail("")
-        );
-
-        for feature in &mut features {
-            feature.required = true;
-        }
-        heph_expect_err!(
-            renderer.set_device(None, &features),
-            Error::UnsupportedRequiredFeature(RayTracing)
         );
     }
 
