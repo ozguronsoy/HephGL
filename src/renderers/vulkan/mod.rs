@@ -1641,7 +1641,8 @@ impl Renderer for VulkanRenderer {
             extent,
             layer_count,
             sample_count,
-            ash::vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            ash::vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                | ash::vk::ImageUsageFlags::TRANSFER_DST,
             ash::vk::ImageAspectFlags::DEPTH,
         ) {
             Ok(depth_image) => depth_image,
