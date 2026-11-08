@@ -1,37 +1,13 @@
+mod binding;
+mod error;
+mod metadata;
+
 use std::path::Path;
 
 use naga::ShaderStage;
 
+pub(crate) use crate::shader::{binding::*, metadata::*};
 use crate::{Error, Result};
-
-#[derive(Clone, Copy)]
-pub(crate) enum ShaderBindingType {
-    UniformBuffer,
-    StorageBuffer,
-    Texture,
-    Sampler,
-}
-
-pub(crate) struct ShaderVertexBinding {
-    pub location: u32,
-    pub scalar_kind: naga::ScalarKind,
-    pub scalar_width: u8,
-    pub components: u32,
-}
-
-pub(crate) struct ShaderDescriptorBinding {
-    pub group: u32,
-    pub binding: u32,
-    pub binding_type: ShaderBindingType,
-}
-
-pub(crate) struct ShaderMetadata {
-    pub entry_name: String,
-    pub stage: ShaderStage,
-    pub size: [u32; 3],
-    pub vertex_bindings: Vec<ShaderVertexBinding>,
-    pub descriptor_bindings: Vec<ShaderDescriptorBinding>,
-}
 
 /// Represents a loaded shader resource containing compiled bytecode.
 pub struct Shader {
@@ -184,16 +160,6 @@ impl Shader {
     }
 }
 
-mod error {
-    use crate::Error;
-
-    impl From<naga::front::spv::Error> for Error {
-        fn from(value: naga::front::spv::Error) -> Self {
-            Self::fail(value.to_string())
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,7 +187,7 @@ mod tests {
 
     #[test]
     fn test_from_bytes() {
-        const SHADER_DATA: &[u8] = include_bytes!("../shaders/addition.spv");
+        const SHADER_DATA: &[u8] = include_bytes!("../../shaders/addition.spv");
         let shader = Shader::from_bytes(SHADER_DATA).unwrap();
         assert!(shader.file_path.is_empty());
         assert!(!shader.data.is_empty());
