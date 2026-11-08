@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use heph_gl::{
     Error, GraphicsDevice,
-    GraphicsDeviceFeature::{OpticalFlow, RayTracing, VideoDecoding, VideoEncoding},
+    GraphicsDeviceFeature::{RayTracing, VideoDecoding, VideoEncoding},
     GraphicsDeviceType, Version,
     renderers::{
         FeatureRequest, InitializeOptions, Renderer, RendererHandle, RendererWorkerFactory,
@@ -132,7 +132,6 @@ where
     pub(crate) fn test_set_device(&self) {
         let mut features = [
             FeatureRequest::new(RayTracing, false),
-            FeatureRequest::new(OpticalFlow, false),
             FeatureRequest::new(VideoDecoding, false),
             FeatureRequest::new(VideoEncoding, false),
         ];

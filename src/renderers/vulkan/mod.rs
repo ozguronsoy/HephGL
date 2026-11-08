@@ -414,9 +414,6 @@ impl Renderer for VulkanRenderer {
             if physical_features.fill_mode_non_solid == ash::vk::TRUE {
                 let _ = supported_features.insert(GraphicsDeviceFeature::WireframeMode);
             }
-            if physical_features.wide_lines == ash::vk::TRUE {
-                let _ = supported_features.insert(GraphicsDeviceFeature::WideLines);
-            }
             if physical_features.sampler_anisotropy == ash::vk::TRUE {
                 let _ = supported_features.insert(GraphicsDeviceFeature::AnisotropicFiltering);
             }
@@ -436,9 +433,6 @@ impl Renderer for VulkanRenderer {
                 }
                 if queue_flags.contains(QueueFlags::VIDEO_ENCODE_KHR) {
                     let _ = supported_features.insert(GraphicsDeviceFeature::VideoEncoding);
-                }
-                if queue_flags.contains(QueueFlags::OPTICAL_FLOW_NV) {
-                    let _ = supported_features.insert(GraphicsDeviceFeature::OpticalFlow);
                 }
                 // Vulkan guarantees that the main graphics family will also support
                 // TRANSFER. Thus, we only consider families that support TRANSFER
@@ -634,9 +628,6 @@ impl Renderer for VulkanRenderer {
         }
         if enabled_features.contains(&GraphicsDeviceFeature::WireframeMode) {
             physical_features2.features.fill_mode_non_solid = ash::vk::TRUE;
-        }
-        if enabled_features.contains(&GraphicsDeviceFeature::WideLines) {
-            physical_features2.features.wide_lines = ash::vk::TRUE;
         }
         if enabled_features.contains(&GraphicsDeviceFeature::AnisotropicFiltering) {
             physical_features2.features.sampler_anisotropy = ash::vk::TRUE;
