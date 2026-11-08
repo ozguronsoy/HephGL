@@ -511,7 +511,9 @@ where
         let mut canvas_pipeline =
             create_pipeline(&mut renderer, "canvas_vert.spv", "canvas_frag.spv");
 
+        heph_expect_success!(renderer.begin_frame());
         let mut canvas = heph_expect_success!(renderer.create_canvas(640, 360));
+        heph_expect_success!(renderer.end_frame());
         let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
 
         let mut vertices = Vec::with_capacity(4 * 6);

@@ -2,8 +2,6 @@ mod dynamic_rendering;
 mod lifetime_guards;
 mod render_pass_rendering;
 
-use std::any::Any;
-
 use ash::vk::{CommandBuffer, PipelineBindPoint};
 use renkrs::RGB;
 
@@ -96,17 +94,6 @@ impl VulkanRenderer {
                 &device_context.swapchain_context,
             )?));
         }
-
-        // The display commands render into a canvas, which is copied into the swapchain images.
-        let extent = device_context.swapchain_context.extent;
-        let display_canvas: Box<dyn Any> = self.create_canvas(extent.width, extent.height)?;
-        let display_canvas = display_canvas
-            .downcast::<VulkanCanvas>()
-            .map_err(|_| Error::fail("Failed to create the display canvas."))?;
-        self.device_context
-            .as_mut()
-            .ok_or(Error::invalid_operation("Device is not set."))?
-            .display_canvas = Some(*display_canvas);
 
         Ok(())
     }

@@ -1543,7 +1543,7 @@ impl Renderer for VulkanRenderer {
         )
     }
 
-    fn create_canvas(&self, width: u32, height: u32) -> Result<Box<dyn RendererCanvas>> {
+    fn create_canvas(&mut self, width: u32, height: u32) -> Result<Box<dyn RendererCanvas>> {
         if width == 0 || height == 0 {
             return Err(Error::invalid_argument(
                 "Canvas dimensions must be greater than zero.",
@@ -1562,6 +1562,22 @@ impl Renderer for VulkanRenderer {
             .rendering
             .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
+        let thread_context_index = Self::thread_context_index()?;
+        {
+            let state = device_context.graphics_queue_context.frames
+                [device_context.current_frame_index]
+                .base
+                .thread_contexts[thread_context_index]
+                .base
+                .sync_state
+                .0
+                .lock()?;
+            if *state != FrameState::Started {
+                return Err(Error::invalid_operation(
+                    "Cannot create a canvas outside of a frame.",
+                ));
+            }
+        }
 
         let limits = unsafe {
             instance
@@ -1594,7 +1610,8 @@ impl Renderer for VulkanRenderer {
             ash::vk::SampleCountFlags::TYPE_1,
             ash::vk::ImageUsageFlags::COLOR_ATTACHMENT
                 | ash::vk::ImageUsageFlags::SAMPLED
-                | ash::vk::ImageUsageFlags::TRANSFER_SRC,
+                | ash::vk::ImageUsageFlags::TRANSFER_SRC
+                | ash::vk::ImageUsageFlags::TRANSFER_DST,
             ash::vk::ImageAspectFlags::COLOR,
         )?;
         let msaa_color_image = match sample_count {
@@ -1606,7 +1623,8 @@ impl Renderer for VulkanRenderer {
                     extent,
                     layer_count,
                     sample_count,
-                    ash::vk::ImageUsageFlags::COLOR_ATTACHMENT,
+                    ash::vk::ImageUsageFlags::COLOR_ATTACHMENT
+                        | ash::vk::ImageUsageFlags::TRANSFER_DST,
                     ash::vk::ImageAspectFlags::COLOR,
                 ) {
                     Ok(msaa_color_image) => msaa_color_image,
@@ -1654,11 +1672,32 @@ impl Renderer for VulkanRenderer {
             framebuffer: ash::vk::Framebuffer::null(),
             msaa: self.settings.msaa,
             layer_count,
-            layout: ash::vk::ImageLayout::UNDEFINED,
         };
         if let Err(error) =
             rendering.create_canvas_framebuffer(&device_context.logical_device, &mut canvas)
         {
+            self.destroy_canvas(&mut canvas)?;
+            return Err(error);
+        }
+
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(Error::invalid_operation("Device is not set."))?;
+        let rendering = device_context
+            .rendering
+            .as_mut()
+            .ok_or(Error::invalid_operation("Device is not set."))?;
+        let current_frame = &mut device_context.graphics_queue_context.frames
+            [device_context.current_frame_index]
+            .base
+            .thread_contexts[thread_context_index];
+        if let Err(error) = Self::clear_new_canvas(
+            &device_context.logical_device,
+            rendering.as_mut(),
+            current_frame,
+            &canvas,
+        ) {
             self.destroy_canvas(&mut canvas)?;
             return Err(error);
         }
@@ -1705,7 +1744,6 @@ impl Renderer for VulkanRenderer {
         canvas.texture.image = ash::vk::Image::null();
         canvas.texture.image_view = ash::vk::ImageView::null();
         canvas.texture.texture_options = TextureOptions::default();
-        canvas.layout = ash::vk::ImageLayout::UNDEFINED;
         Ok(())
     }
 
@@ -1899,6 +1937,18 @@ impl Renderer for VulkanRenderer {
             )?;
         }
 
+        if is_in_main_thread && device_context.display_canvas.is_none() {
+            let extent = device_context.swapchain_context.extent;
+            let display_canvas: Box<dyn Any> = self.create_canvas(extent.width, extent.height)?;
+            let display_canvas = display_canvas
+                .downcast::<VulkanCanvas>()
+                .map_err(|_| Error::fail("Failed to create the display canvas."))?;
+            self.device_context
+                .as_mut()
+                .ok_or(Error::invalid_operation("Device is not set."))?
+                .display_canvas = Some(*display_canvas);
+        }
+
         Ok(())
     }
 
@@ -1957,17 +2007,15 @@ impl Renderer for VulkanRenderer {
                     if is_in_main_thread {
                         let display_canvas =
                             display_canvas.ok_or(Error::invalid_operation("Device is not set."))?;
-                        if display_canvas.layout != ash::vk::ImageLayout::UNDEFINED {
-                            VulkanRenderer::copy_display_canvas(
-                                logical_device,
-                                current_frame.base.command_buffer,
-                                display_canvas,
-                                swapchain_images[image_index],
-                                layer_count,
-                            );
-                            current_frame.base.recorded = true;
-                            *present = true;
-                        }
+                        VulkanRenderer::copy_display_canvas(
+                            logical_device,
+                            current_frame.base.command_buffer,
+                            display_canvas,
+                            swapchain_images[image_index],
+                            layer_count,
+                        );
+                        current_frame.base.recorded = true;
+                        *present = true;
                     }
                 }
                 logical_device.end_command_buffer(current_frame.base().command_buffer)?;

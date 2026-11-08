@@ -1,7 +1,7 @@
 use ash::vk::{
-    AccessFlags, Extent2D, Extent3D, Format, ImageAspectFlags, ImageCreateInfo, ImageLayout,
-    ImageSubresourceRange, ImageTiling, ImageType, ImageUsageFlags, ImageViewCreateInfo,
-    ImageViewType, PipelineStageFlags, SampleCountFlags, SharingMode,
+    AccessFlags, ClearColorValue, Extent2D, Extent3D, Format, ImageAspectFlags, ImageCreateInfo,
+    ImageLayout, ImageSubresourceRange, ImageTiling, ImageType, ImageUsageFlags,
+    ImageViewCreateInfo, ImageViewType, PipelineStageFlags, SampleCountFlags, SharingMode,
 };
 use vk_mem::Alloc;
 
@@ -42,8 +42,6 @@ pub(super) struct VulkanCanvas {
     pub(super) msaa: Msaa,
     /// The number of array layers of the canvas images.
     pub(super) layer_count: u32,
-    /// The layout of the image that keeps the color between renders.
-    pub(super) layout: ImageLayout,
 }
 
 impl RendererCanvas for VulkanCanvas {
@@ -99,13 +97,13 @@ impl VulkanRenderer {
         let color_access = AccessFlags::COLOR_ATTACHMENT_READ | AccessFlags::COLOR_ATTACHMENT_WRITE;
         let sampling_stages =
             PipelineStageFlags::VERTEX_SHADER | PipelineStageFlags::FRAGMENT_SHADER;
-        canvas.layout = match canvas.msaa_color_image {
+        match canvas.msaa_color_image {
             Some(msaa_color_image) => {
                 Self::transition_image_layout(
                     device,
                     command_buffer,
                     msaa_color_image.image,
-                    canvas.layout,
+                    ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                     ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                     AccessFlags::COLOR_ATTACHMENT_WRITE,
                     color_access,
@@ -131,14 +129,13 @@ impl VulkanRenderer {
                     1,
                     canvas.layer_count,
                 );
-                ImageLayout::COLOR_ATTACHMENT_OPTIMAL
             }
             None => {
                 Self::transition_image_layout(
                     device,
                     command_buffer,
                     canvas.texture.image,
-                    canvas.layout,
+                    ImageLayout::SHADER_READ_ONLY_OPTIMAL,
                     ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                     AccessFlags::empty(),
                     color_access,
@@ -149,9 +146,8 @@ impl VulkanRenderer {
                     1,
                     canvas.layer_count,
                 );
-                ImageLayout::SHADER_READ_ONLY_OPTIMAL
             }
-        };
+        }
 
         let depth_stages =
             PipelineStageFlags::EARLY_FRAGMENT_TESTS | PipelineStageFlags::LATE_FRAGMENT_TESTS;
@@ -195,6 +191,94 @@ impl VulkanRenderer {
         }
 
         thread_context.render_target = Some(canvas.texture.image);
+        thread_context.base.recorded = true;
+        Ok(())
+    }
+
+    /// Clears the color images of a newly created canvas to black, ending the rendering into the
+    /// previous canvas if there is one.
+    pub(super) fn clear_new_canvas(
+        device: &ash::Device,
+        rendering: &mut dyn VulkanRendering,
+        thread_context: &mut GraphicsThreadContext,
+        canvas: &VulkanCanvas,
+    ) -> Result<()> {
+        if let Some(previous_image) = thread_context.render_target.take() {
+            Self::end_rendering(
+                device,
+                rendering,
+                thread_context.base.command_buffer,
+                previous_image,
+                canvas.layer_count,
+            )?;
+        }
+
+        let command_buffer = thread_context.base.command_buffer;
+        let clear_image = |image, layout, access, stages| {
+            Self::transition_image_layout(
+                device,
+                command_buffer,
+                image,
+                ImageLayout::UNDEFINED,
+                ImageLayout::TRANSFER_DST_OPTIMAL,
+                AccessFlags::empty(),
+                AccessFlags::TRANSFER_WRITE,
+                PipelineStageFlags::TOP_OF_PIPE,
+                PipelineStageFlags::TRANSFER,
+                ImageAspectFlags::COLOR,
+                0,
+                1,
+                canvas.layer_count,
+            );
+            let range = ImageSubresourceRange::default()
+                .aspect_mask(ImageAspectFlags::COLOR)
+                .base_mip_level(0)
+                .level_count(1)
+                .base_array_layer(0)
+                .layer_count(canvas.layer_count);
+            unsafe {
+                device.cmd_clear_color_image(
+                    command_buffer,
+                    image,
+                    ImageLayout::TRANSFER_DST_OPTIMAL,
+                    &ClearColorValue {
+                        float32: [0.0, 0.0, 0.0, 1.0],
+                    },
+                    std::slice::from_ref(&range),
+                );
+            }
+            Self::transition_image_layout(
+                device,
+                command_buffer,
+                image,
+                ImageLayout::TRANSFER_DST_OPTIMAL,
+                layout,
+                AccessFlags::TRANSFER_WRITE,
+                access,
+                PipelineStageFlags::TRANSFER,
+                stages,
+                ImageAspectFlags::COLOR,
+                0,
+                1,
+                canvas.layer_count,
+            );
+        };
+
+        clear_image(
+            canvas.texture.image,
+            ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            AccessFlags::SHADER_READ,
+            PipelineStageFlags::VERTEX_SHADER | PipelineStageFlags::FRAGMENT_SHADER,
+        );
+        if let Some(msaa_color_image) = canvas.msaa_color_image {
+            clear_image(
+                msaa_color_image.image,
+                ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                AccessFlags::COLOR_ATTACHMENT_READ | AccessFlags::COLOR_ATTACHMENT_WRITE,
+                PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+            );
+        }
+
         thread_context.base.recorded = true;
         Ok(())
     }

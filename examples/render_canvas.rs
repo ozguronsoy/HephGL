@@ -66,7 +66,10 @@ fn example(
     );
     let mut canvas_pipeline = create_pipeline(renderer, "canvas_vert.spv", "canvas_frag.spv");
 
+    // Canvases are created within a frame, since they are cleared to black on creation.
+    renderer.begin_frame().unwrap();
     let mut canvas = renderer.create_canvas(640, 360).unwrap();
+    renderer.end_frame().unwrap();
     let mut sampler = renderer.create_sampler(&SamplerOptions::default()).unwrap();
 
     // Show the canvas four times, mirrored differently in each quad.
