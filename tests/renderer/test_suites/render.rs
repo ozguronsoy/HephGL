@@ -2,7 +2,9 @@ use std::time::{Duration, Instant};
 
 use heph_gl::{
     Camera, Font, FontOptions,
-    GraphicsDeviceFeature::{AnisotropicFiltering, AsyncTransfer, GeometryShaders},
+    GraphicsDeviceFeature::{
+        AnisotropicFiltering, AsyncTransfer, GeometryShaders, TessellationShaders,
+    },
     Lighting, MaterialProperties, Mesh, MeshVertexAttribute, Projection, Shader, TextType,
     TextVertex, Transform,
     math::{Mat4, Quat, Vec3},
@@ -18,7 +20,6 @@ use renkrs::RGB;
 use crate::{heph_expect_success, renderer::RendererTests, utils::SHADERS_DIR};
 
 type SphereVertex = [f32; 8];
-type HeightMap = image::ImageBuffer<image::Luma<u16>, Vec<u16>>;
 
 const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 const BROKEN_BRICK_WALL_IMAGE_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_diff_1k.jpg";
@@ -27,8 +28,8 @@ const BROKEN_BRICK_WALL_DISPLACEMENT_PATH: &str =
 const BROKEN_BRICK_WALL_ARM_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_arm_1k.exr";
 const BROKEN_BRICK_WALL_NORMAL_PATH: &str =
     "assets/broken_brick_wall/broken_brick_wall_nor_gl_1k.exr";
-const BROKEN_BRICK_WALL_LATITUDE_SEGMENTS: usize = 512;
-const BROKEN_BRICK_WALL_LONGITUDE_SEGMENTS: usize = 1024;
+const BROKEN_BRICK_WALL_LATITUDE_SEGMENTS: usize = 32;
+const BROKEN_BRICK_WALL_LONGITUDE_SEGMENTS: usize = 64;
 const BROKEN_BRICK_WALL_TEXTURE_REPEATS_U: f32 = 2.0;
 
 impl<TestRenderer: Renderer> RendererTests<TestRenderer>
@@ -239,9 +240,18 @@ where
 
     pub(crate) fn test_render_textures(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[
+            FeatureRequest::new(TessellationShaders, false),
             FeatureRequest::new(AnisotropicFiltering, false),
             FeatureRequest::new(AsyncTransfer, false),
         ]);
+        if !renderer
+            .get_device()
+            .unwrap()
+            .supported_features
+            .contains(&TessellationShaders)
+        {
+            return;
+        }
         let max_anisotropy = if let Some(device) = renderer.get_device() {
             match device.supported_features.contains(&AnisotropicFiltering) {
                 true => Some(device.max_sampler_anisotropy),
@@ -255,15 +265,28 @@ where
             "{}/{}",
             SHADERS_DIR, "broken_brick_wall_vert.spv"
         )));
+        let tesc_shader = heph_expect_success!(Shader::from_file(format!(
+            "{}/{}",
+            SHADERS_DIR, "broken_brick_wall_tesc.spv"
+        )));
+        let tese_shader = heph_expect_success!(Shader::from_file(format!(
+            "{}/{}",
+            SHADERS_DIR, "broken_brick_wall_tese.spv"
+        )));
         let frag_shader = heph_expect_success!(Shader::from_file(format!(
             "{}/{}",
             SHADERS_DIR, "broken_brick_wall_frag.spv"
         )));
         let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
-            &[&vert_shader, &frag_shader],
-            &GraphicsPipelineOptions::default(),
+            &[&vert_shader, &tesc_shader, &tese_shader, &frag_shader],
+            &GraphicsPipelineOptions {
+                topology: PrimitiveTopology::PatchList { control_points: 3 },
+                ..Default::default()
+            },
         ));
         drop(vert_shader);
+        drop(tesc_shader);
+        drop(tese_shader);
         drop(frag_shader);
 
         let image = heph_expect_success!(image::open(BROKEN_BRICK_WALL_IMAGE_PATH)).to_rgba8();
@@ -314,6 +337,12 @@ where
                 0.0,
             ],
             [0.0, 0.0, -1.0, 0.0],
+            [
+                material.displacement_scale,
+                material.displacement_bias,
+                0.0,
+                0.0,
+            ],
         ];
         let mut uniform_buffer = heph_expect_success!(
             renderer.create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
@@ -324,8 +353,7 @@ where
             bytemuck::cast_slice(&uniforms)
         ));
 
-        let mut sphere = self.sphere_vertices(1.0, 0.0);
-        self.displace_vertices(&mut sphere, &displacement, &material);
+        let sphere = self.sphere_vertices(1.0, 0.0);
         let vertex_count: usize =
             BROKEN_BRICK_WALL_LATITUDE_SEGMENTS * BROKEN_BRICK_WALL_LONGITUDE_SEGMENTS * 6 * 3;
         let mut vertices = Vec::with_capacity(vertex_count);
@@ -390,6 +418,15 @@ where
             },
             normal.as_raw(),
         ));
+        let mut displacement_texture = heph_expect_success!(renderer.create_texture(
+            &TextureOptions {
+                width: displacement.width(),
+                height: displacement.height(),
+                format: TextureFormat::R16Unorm,
+                mip_level_count: 1,
+            },
+            bytemuck::cast_slice(displacement.as_raw()),
+        ));
         heph_expect_success!(renderer.end_frame());
 
         heph_expect_success!(renderer.begin_frame());
@@ -406,6 +443,7 @@ where
             ResourceBinding::texture(2, arm_texture.as_ref()),
             ResourceBinding::texture(3, normal_texture.as_ref()),
             ResourceBinding::buffer(4, uniform_buffer.as_ref(), 0, uniform_buffer.size()),
+            ResourceBinding::texture(5, displacement_texture.as_ref()),
         ];
         heph_expect_success!(renderer.record_graphics_command(
             pipeline.as_mut(),
@@ -422,6 +460,7 @@ where
         heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
         heph_expect_success!(renderer.destroy_texture(arm_texture.as_mut()));
         heph_expect_success!(renderer.destroy_texture(normal_texture.as_mut()));
+        heph_expect_success!(renderer.destroy_texture(displacement_texture.as_mut()));
         heph_expect_success!(renderer.destroy_buffer(uniform_buffer.as_mut()));
         heph_expect_success!(renderer.destroy_buffer(vertex_buffer.as_mut()));
         heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
@@ -1847,38 +1886,6 @@ where
                 image::Rgba([r, g, b, 255])
             },
         )
-    }
-
-    fn displace_vertices(
-        &self,
-        vertices: &mut [SphereVertex],
-        displacement: &HeightMap,
-        material: &MaterialProperties,
-    ) {
-        for vertex in vertices {
-            let u = vertex[6];
-            let v = vertex[7];
-            let u = if v == 0.0 || v == 1.0 { 0.0 } else { u };
-            let x = u.rem_euclid(1.0) * displacement.width() as f32 - 0.5;
-            let y = (v * displacement.height() as f32 - 0.5)
-                .clamp(0.0, (displacement.height() - 1) as f32);
-            let x0 = (x.floor() as i32).rem_euclid(displacement.width() as i32) as u32;
-            let x1 = (x0 + 1) % displacement.width();
-            let y0 = y.floor() as u32;
-            let y1 = (y0 + 1).min(displacement.height() - 1);
-            let tx = x - x.floor();
-            let ty = y - y.floor();
-            let top = displacement.get_pixel(x0, y0)[0] as f32 * (1.0 - tx)
-                + displacement.get_pixel(x1, y0)[0] as f32 * tx;
-            let bottom = displacement.get_pixel(x0, y1)[0] as f32 * (1.0 - tx)
-                + displacement.get_pixel(x1, y1)[0] as f32 * tx;
-
-            let height = (top * (1.0 - ty) + bottom * ty) / u16::MAX as f32;
-            let offset = height * material.displacement_scale + material.displacement_bias;
-            for axis in 0..3 {
-                vertex[axis] += vertex[axis + 3] * offset;
-            }
-        }
     }
 
     fn sphere_position(&self, radius: f32, x_offset: f32, u: f32, v: f32) -> [f32; 3] {

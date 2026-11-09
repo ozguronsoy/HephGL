@@ -3,7 +3,6 @@
 use heph_gl::{
     GraphicsDevice,
     GraphicsDeviceType::{DiscreteGpu, IntegratedGpu},
-    MaterialProperties,
     renderers::{Msaa, Renderer},
 };
 
@@ -20,10 +19,9 @@ pub type ExampleRenderer = heph_gl::renderers::vulkan::VulkanRenderer;
 
 // [position.x, position.y, position.z, normal.x, normal.y, normal.z, tex_coord.u, tex_coord.v]
 pub type SphereVertex = [f32; 8];
-pub type HeightMap = image::ImageBuffer<image::Luma<u16>, Vec<u16>>;
 
-const SPHERE_LATITUDE_SEGMENTS: usize = 512;
-const SPHERE_LONGITUDE_SEGMENTS: usize = 1024;
+const SPHERE_LATITUDE_SEGMENTS: usize = 32;
+const SPHERE_LONGITUDE_SEGMENTS: usize = 64;
 // The equatorial circumference is twice the pole-to-pole distance, so repeat the square maps twice.
 const SPHERE_TEXTURE_REPEATS_U: f32 = 2.0;
 
@@ -94,37 +92,6 @@ pub fn sphere_vertices(radius: f32, x_offset: f32) -> Vec<SphereVertex> {
     }
 
     vertices
-}
-
-pub fn displace_vertices(
-    vertices: &mut [SphereVertex],
-    displacement: &HeightMap,
-    material: &MaterialProperties,
-) {
-    for vertex in vertices {
-        let u = vertex[6];
-        let v = vertex[7];
-        let u = if v == 0.0 || v == 1.0 { 0.0 } else { u };
-        let x = u.rem_euclid(1.0) * displacement.width() as f32 - 0.5;
-        let y =
-            (v * displacement.height() as f32 - 0.5).clamp(0.0, (displacement.height() - 1) as f32);
-        let x0 = (x.floor() as i32).rem_euclid(displacement.width() as i32) as u32;
-        let x1 = (x0 + 1) % displacement.width();
-        let y0 = y.floor() as u32;
-        let y1 = (y0 + 1).min(displacement.height() - 1);
-        let tx = x - x.floor();
-        let ty = y - y.floor();
-        let top = displacement.get_pixel(x0, y0)[0] as f32 * (1.0 - tx)
-            + displacement.get_pixel(x1, y0)[0] as f32 * tx;
-        let bottom = displacement.get_pixel(x0, y1)[0] as f32 * (1.0 - tx)
-            + displacement.get_pixel(x1, y1)[0] as f32 * tx;
-
-        let height = (top * (1.0 - ty) + bottom * ty) / u16::MAX as f32;
-        let offset = height * material.displacement_scale + material.displacement_bias;
-        for axis in 0..3 {
-            vertex[axis] += vertex[axis + 3] * offset;
-        }
-    }
 }
 
 pub fn get_best_device(renderer: &ExampleRenderer) -> GraphicsDevice {

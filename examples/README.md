@@ -167,6 +167,7 @@ flowchart TD
 
 Applies textures and material properties to geometry. Uploads image data to the GPU, configures
 sampling, and binds textures alongside geometry and material uniforms when recording draws.
+Tessellation shaders subdivide the coarse spheres on the GPU and displace them using a height map.
 
 ```mermaid
 flowchart TD
