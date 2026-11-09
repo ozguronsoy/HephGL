@@ -459,6 +459,10 @@ impl From<ShaderStage> for ash::vk::ShaderStageFlags {
     fn from(value: ShaderStage) -> Self {
         match value {
             ShaderStage::Vertex => ash::vk::ShaderStageFlags::VERTEX,
+            ShaderStage::TessellationControl => ash::vk::ShaderStageFlags::TESSELLATION_CONTROL,
+            ShaderStage::TessellationEvaluation => {
+                ash::vk::ShaderStageFlags::TESSELLATION_EVALUATION
+            }
             ShaderStage::Geometry => ash::vk::ShaderStageFlags::GEOMETRY,
             ShaderStage::Fragment => ash::vk::ShaderStageFlags::FRAGMENT,
             ShaderStage::Compute => ash::vk::ShaderStageFlags::COMPUTE,

@@ -7,6 +7,7 @@ use renkrs::RGB;
 
 use crate::{
     Error, Result,
+    graphics_device::GraphicsDeviceFeature,
     renderers::{
         BufferUsage, Renderer, RendererCanvas, ResourceBinding,
         pipeline::RendererGraphicsPipeline,
@@ -44,6 +45,8 @@ pub(super) trait VulkanRendering {
         device: &ash::Device,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
+        enabled_features: &[GraphicsDeviceFeature],
+        max_tessellation_patch_size: u32,
     ) -> Result<VulkanGraphicsPipeline>;
     /// Destroys the graphics pipeline.
     fn destroy_graphics_pipeline(

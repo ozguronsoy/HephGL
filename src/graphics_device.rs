@@ -38,6 +38,8 @@ pub enum GraphicsDeviceVendor {
 pub enum GraphicsDeviceFeature {
     /// The device has dedicated geometry shader(s).
     GeometryShaders,
+    /// The device has tessellation shader(s).
+    TessellationShaders,
     /// The device has shader(s) dedicated to general computing.
     ComputeShaders,
     /// The device supports rendering polygons as wireframes.

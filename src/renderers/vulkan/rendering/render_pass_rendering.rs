@@ -7,18 +7,19 @@ use ash::vk::{
     PipelineColorBlendStateCreateInfo, PipelineDepthStencilStateCreateInfo,
     PipelineDynamicStateCreateInfo, PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
     PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
-    PipelineShaderStageCreateInfo, PipelineVertexInputStateCreateInfo,
-    PipelineViewportStateCreateInfo, PrimitiveTopology, RenderPass, RenderPassBeginInfo,
-    RenderPassCreateInfo, SampleCountFlags, ShaderModuleCreateInfo, ShaderStageFlags,
-    SubpassContents, SubpassDescription, VertexInputAttributeDescription,
-    VertexInputBindingDescription, VertexInputRate,
+    PipelineShaderStageCreateInfo, PipelineTessellationStateCreateInfo,
+    PipelineVertexInputStateCreateInfo, PipelineViewportStateCreateInfo, PrimitiveTopology,
+    RenderPass, RenderPassBeginInfo, RenderPassCreateInfo, SampleCountFlags,
+    ShaderModuleCreateInfo, ShaderStageFlags, SubpassContents, SubpassDescription,
+    VertexInputAttributeDescription, VertexInputBindingDescription, VertexInputRate,
 };
 
 use crate::{
     Error, Result,
+    graphics_device::GraphicsDeviceFeature,
     renderers::{
         RendererCanvas,
-        settings::{GraphicsPipelineOptions, Msaa, Settings},
+        settings::{GraphicsPipelineOptions, Msaa, PolygonMode, Settings},
         vulkan::{
             canvas::VulkanCanvas,
             pipeline::VulkanGraphicsPipeline,
@@ -62,7 +63,24 @@ impl VulkanRendering for RenderPassRendering {
         device: &ash::Device,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
+        enabled_features: &[GraphicsDeviceFeature],
+        max_tessellation_patch_size: u32,
     ) -> Result<VulkanGraphicsPipeline> {
+        if options.polygon_mode != PolygonMode::Fill
+            && !enabled_features.contains(&GraphicsDeviceFeature::WireframeMode)
+        {
+            return Err(Error::invalid_operation(
+                "Non-fill polygon modes require the `WireframeMode` feature to be enabled.",
+            ));
+        }
+        if let crate::renderers::PrimitiveTopology::PatchList { control_points } = options.topology
+            && (control_points == 0 || control_points > max_tessellation_patch_size)
+        {
+            return Err(Error::invalid_argument(
+                "The number of patch control points is not supported by the device.",
+            ));
+        }
+
         // Create shader stage infos.
         let mut shader_modules = ShaderModules {
             device,
@@ -84,6 +102,22 @@ impl VulkanRendering for RenderPassRendering {
                     "Compute shaders cannot be used in a graphics pipeline.",
                 ));
             }
+            if shader.metadata.stage == ShaderStage::Geometry
+                && !enabled_features.contains(&GraphicsDeviceFeature::GeometryShaders)
+            {
+                return Err(Error::invalid_operation(
+                    "Geometry shaders require the `GeometryShaders` feature to be enabled.",
+                ));
+            }
+            if matches!(
+                shader.metadata.stage,
+                ShaderStage::TessellationControl | ShaderStage::TessellationEvaluation
+            ) && !enabled_features.contains(&GraphicsDeviceFeature::TessellationShaders)
+            {
+                return Err(Error::invalid_operation(
+                    "Tessellation shaders require the `TessellationShaders` feature to be enabled.",
+                ));
+            }
             let shader_stage = ShaderStageFlags::from(shader.metadata.stage);
             if shader_stages.contains(&shader_stage) {
                 return Err(Error::invalid_argument(
@@ -91,22 +125,22 @@ impl VulkanRendering for RenderPassRendering {
                 ));
             }
             if shader.metadata.stage == ShaderStage::Geometry {
-                let topology = PrimitiveTopology::from(options.topology);
-                let topology_matches = match shader.metadata.input_primitive {
-                    Some(ShaderPrimitive::Point) => topology == PrimitiveTopology::POINT_LIST,
-                    Some(ShaderPrimitive::Line) => matches!(
-                        topology,
-                        PrimitiveTopology::LINE_LIST | PrimitiveTopology::LINE_STRIP
-                    ),
-                    Some(ShaderPrimitive::Triangle) => matches!(
-                        topology,
-                        PrimitiveTopology::TRIANGLE_LIST | PrimitiveTopology::TRIANGLE_STRIP
-                    ),
-                    None => false,
-                };
-                if !topology_matches {
+                let primitive = shaders
+                    .iter()
+                    .find_map(|shader| shader.metadata.output_primitive)
+                    .or(match PrimitiveTopology::from(options.topology) {
+                        PrimitiveTopology::POINT_LIST => Some(ShaderPrimitive::Point),
+                        PrimitiveTopology::LINE_LIST | PrimitiveTopology::LINE_STRIP => {
+                            Some(ShaderPrimitive::Line)
+                        }
+                        PrimitiveTopology::TRIANGLE_LIST | PrimitiveTopology::TRIANGLE_STRIP => {
+                            Some(ShaderPrimitive::Triangle)
+                        }
+                        _ => None,
+                    });
+                if shader.metadata.input_primitive != primitive {
                     return Err(Error::invalid_argument(
-                        "Primitive topology does not match the geometry shader input primitive.",
+                        "Geometry shader input primitive does not match the incoming primitives.",
                     ));
                 }
             }
@@ -115,6 +149,20 @@ impl VulkanRendering for RenderPassRendering {
             });
             shader_stages.push(shader_stage);
             entry_names.push(CString::new(shader.metadata.entry_name.as_str())?);
+        }
+        let has_control_shader = shader_stages.contains(&ShaderStageFlags::TESSELLATION_CONTROL);
+        if has_control_shader != shader_stages.contains(&ShaderStageFlags::TESSELLATION_EVALUATION)
+        {
+            return Err(Error::invalid_argument(
+                "Tessellation control and evaluation shaders must be used together.",
+            ));
+        }
+        if has_control_shader
+            != (PrimitiveTopology::from(options.topology) == PrimitiveTopology::PATCH_LIST)
+        {
+            return Err(Error::invalid_argument(
+                "Tessellation shaders must be used with the `PatchList` topology.",
+            ));
         }
         let stage_infos = shader_stages
             .iter()
@@ -272,7 +320,13 @@ impl VulkanRendering for RenderPassRendering {
         let dynamic_states = [DynamicState::VIEWPORT, DynamicState::SCISSOR];
         let dynamic_state =
             PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
-        let pipeline_info = GraphicsPipelineCreateInfo::default()
+        let tessellation_state = match options.topology {
+            crate::renderers::PrimitiveTopology::PatchList { control_points } => Some(
+                PipelineTessellationStateCreateInfo::default().patch_control_points(control_points),
+            ),
+            _ => None,
+        };
+        let mut pipeline_info = GraphicsPipelineCreateInfo::default()
             .stages(&stage_infos)
             .vertex_input_state(&vertex_input)
             .input_assembly_state(&input_assembly)
@@ -285,6 +339,9 @@ impl VulkanRendering for RenderPassRendering {
             .layout(pipeline_layout)
             .render_pass(self.render_pass)
             .subpass(0);
+        if let Some(tessellation_state) = &tessellation_state {
+            pipeline_info = pipeline_info.tessellation_state(tessellation_state);
+        }
         let pipeline = unsafe {
             device.create_graphics_pipelines(PipelineCache::null(), &[pipeline_info], None)?[0]
         };
