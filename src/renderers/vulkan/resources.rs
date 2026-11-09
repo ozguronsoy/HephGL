@@ -474,6 +474,7 @@ impl From<TextureFormat> for ash::vk::Format {
     fn from(value: TextureFormat) -> Self {
         match value {
             TextureFormat::R8Unorm => Self::R8_UNORM,
+            TextureFormat::R16Unorm => Self::R16_UNORM,
             TextureFormat::Rgba8Unorm => Self::R8G8B8A8_UNORM,
             TextureFormat::Rgba8Srgb => Self::R8G8B8A8_SRGB,
             TextureFormat::Bgra8Srgb => Self::B8G8R8A8_SRGB,
@@ -487,6 +488,7 @@ impl TryFrom<ash::vk::Format> for TextureFormat {
     fn try_from(value: ash::vk::Format) -> Result<Self> {
         match value {
             ash::vk::Format::R8_UNORM => Ok(Self::R8Unorm),
+            ash::vk::Format::R16_UNORM => Ok(Self::R16Unorm),
             ash::vk::Format::R8G8B8A8_UNORM => Ok(Self::Rgba8Unorm),
             ash::vk::Format::R8G8B8A8_SRGB => Ok(Self::Rgba8Srgb),
             ash::vk::Format::B8G8R8A8_SRGB => Ok(Self::Bgra8Srgb),

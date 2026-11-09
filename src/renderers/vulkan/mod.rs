@@ -702,6 +702,10 @@ impl Renderer for VulkanRenderer {
         if enabled_features.contains(&GraphicsDeviceFeature::GeometryShaders) {
             sampling_stages |= ash::vk::PipelineStageFlags::GEOMETRY_SHADER;
         }
+        if enabled_features.contains(&GraphicsDeviceFeature::TessellationShaders) {
+            sampling_stages |= ash::vk::PipelineStageFlags::TESSELLATION_CONTROL_SHADER
+                | ash::vk::PipelineStageFlags::TESSELLATION_EVALUATION_SHADER;
+        }
 
         self.device_context = Some(DeviceContext {
             graphics_device: device.clone(),
