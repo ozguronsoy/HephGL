@@ -1,3 +1,19 @@
+/// Current version of the HephGL.
+pub(crate) const HEPHGL_VERSION: Version = Version::new(
+    match u32::from_str_radix(env!("CARGO_PKG_VERSION_MAJOR"), 10) {
+        Ok(v) => v,
+        Err(_) => unreachable!(),
+    },
+    match u32::from_str_radix(env!("CARGO_PKG_VERSION_MINOR"), 10) {
+        Ok(v) => v,
+        Err(_) => unreachable!(),
+    },
+    match u32::from_str_radix(env!("CARGO_PKG_VERSION_PATCH"), 10) {
+        Ok(v) => v,
+        Err(_) => unreachable!(),
+    },
+);
+
 /// Represents a version number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Version {
