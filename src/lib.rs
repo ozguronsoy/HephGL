@@ -18,7 +18,5 @@ pub use crate::{
     shader::*, skeleton::*, text::*, transform::*, version::*,
 };
 
-/// Name of the HephGL engine.
-pub const HEPHGL_ENGINE_NAME: &std::ffi::CStr = c"HephGL";
 /// Current version of the HephGL engine.
 pub const HEPHGL_ENGINE_VERSION: Version = Version::new(0, 1, 0);
