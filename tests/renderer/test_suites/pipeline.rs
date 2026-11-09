@@ -1,6 +1,6 @@
 use heph_gl::{
     Error,
-    GraphicsDeviceFeature::{GeometryShaders, WireframeMode},
+    GraphicsDeviceFeature::{GeometryShaders, TessellationShaders, WireframeMode},
     Shader,
     renderers::{
         FeatureRequest, GraphicsPipelineOptions, PolygonMode, PrimitiveTopology, Renderer,
@@ -229,6 +229,189 @@ where
                     renderer.create_graphics_pipeline(
                         &[&frag_shader, &geom_shader, &geom_shader, &vert_shader],
                         &GraphicsPipelineOptions::default()
+                    ),
+                    Error::invalid_argument("")
+                );
+            }
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[]);
+            let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/broken_brick_wall_frag.spv",
+                SHADERS_DIR
+            )));
+            let tese_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/broken_brick_wall_tese.spv",
+                SHADERS_DIR
+            )));
+            let tesc_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/broken_brick_wall_tesc.spv",
+                SHADERS_DIR
+            )));
+            let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/broken_brick_wall_vert.spv",
+                SHADERS_DIR
+            )));
+            heph_expect_err!(
+                renderer.create_graphics_pipeline(
+                    &[&frag_shader, &tese_shader, &tesc_shader, &vert_shader],
+                    &GraphicsPipelineOptions {
+                        topology: PrimitiveTopology::PatchList { control_points: 3 },
+                        ..Default::default()
+                    }
+                ),
+                Error::invalid_operation("")
+            );
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[FeatureRequest::new(
+                TessellationShaders,
+                false,
+            )]);
+            if renderer
+                .get_device()
+                .unwrap()
+                .supported_features
+                .contains(&TessellationShaders)
+            {
+                let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/broken_brick_wall_frag.spv",
+                    SHADERS_DIR
+                )));
+                let tese_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/broken_brick_wall_tese.spv",
+                    SHADERS_DIR
+                )));
+                let tesc_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/broken_brick_wall_tesc.spv",
+                    SHADERS_DIR
+                )));
+                let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/broken_brick_wall_vert.spv",
+                    SHADERS_DIR
+                )));
+                let patch_list = GraphicsPipelineOptions {
+                    topology: PrimitiveTopology::PatchList { control_points: 3 },
+                    ..Default::default()
+                };
+                let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+                    &[&frag_shader, &tese_shader, &tesc_shader, &vert_shader],
+                    &patch_list
+                ));
+                heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
+                heph_expect_err!(
+                    renderer.create_graphics_pipeline(&[&frag_shader, &vert_shader], &patch_list),
+                    Error::invalid_argument("")
+                );
+                heph_expect_err!(
+                    renderer.create_graphics_pipeline(
+                        &[&frag_shader, &tesc_shader, &vert_shader],
+                        &patch_list
+                    ),
+                    Error::invalid_argument("")
+                );
+                heph_expect_err!(
+                    renderer.create_graphics_pipeline(
+                        &[&frag_shader, &tese_shader, &vert_shader],
+                        &patch_list
+                    ),
+                    Error::invalid_argument("")
+                );
+                heph_expect_err!(
+                    renderer.create_graphics_pipeline(
+                        &[
+                            &frag_shader,
+                            &tese_shader,
+                            &tesc_shader,
+                            &tesc_shader,
+                            &vert_shader
+                        ],
+                        &patch_list
+                    ),
+                    Error::invalid_argument("")
+                );
+                heph_expect_err!(
+                    renderer.create_graphics_pipeline(
+                        &[&frag_shader, &tese_shader, &tesc_shader, &vert_shader],
+                        &GraphicsPipelineOptions::default()
+                    ),
+                    Error::invalid_argument("")
+                );
+                for control_points in [0, u32::MAX] {
+                    heph_expect_err!(
+                        renderer.create_graphics_pipeline(
+                            &[&frag_shader, &tese_shader, &tesc_shader, &vert_shader],
+                            &GraphicsPipelineOptions {
+                                topology: PrimitiveTopology::PatchList { control_points },
+                                ..Default::default()
+                            }
+                        ),
+                        Error::invalid_argument("")
+                    );
+                }
+            }
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[
+                FeatureRequest::new(TessellationShaders, false),
+                FeatureRequest::new(GeometryShaders, false),
+            ]);
+            let supported_features = &renderer.get_device().unwrap().supported_features;
+            if supported_features.contains(&TessellationShaders)
+                && supported_features.contains(&GeometryShaders)
+            {
+                let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/broken_brick_wall_frag.spv",
+                    SHADERS_DIR
+                )));
+                let triangles_geom_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/pass_through_triangles_geom.spv",
+                    SHADERS_DIR
+                )));
+                let points_geom_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/pass_through_points_geom.spv",
+                    SHADERS_DIR
+                )));
+                let tese_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/broken_brick_wall_tese.spv",
+                    SHADERS_DIR
+                )));
+                let tesc_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/broken_brick_wall_tesc.spv",
+                    SHADERS_DIR
+                )));
+                let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/broken_brick_wall_vert.spv",
+                    SHADERS_DIR
+                )));
+                let patch_list = GraphicsPipelineOptions {
+                    topology: PrimitiveTopology::PatchList { control_points: 3 },
+                    ..Default::default()
+                };
+                let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+                    &[
+                        &frag_shader,
+                        &triangles_geom_shader,
+                        &tese_shader,
+                        &tesc_shader,
+                        &vert_shader
+                    ],
+                    &patch_list
+                ));
+                heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
+                heph_expect_err!(
+                    renderer.create_graphics_pipeline(
+                        &[
+                            &frag_shader,
+                            &points_geom_shader,
+                            &tese_shader,
+                            &tesc_shader,
+                            &vert_shader
+                        ],
+                        &patch_list
                     ),
                     Error::invalid_argument("")
                 );
