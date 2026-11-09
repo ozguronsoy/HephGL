@@ -69,6 +69,7 @@ impl VulkanRenderer {
         settings: &Settings,
         thread_context: &mut GraphicsThreadContext,
         canvas: &mut VulkanCanvas,
+        sampling_stages: PipelineStageFlags,
     ) -> Result<()> {
         if thread_context.render_target == Some(canvas.texture.image) {
             return Ok(());
@@ -91,13 +92,12 @@ impl VulkanRenderer {
                 thread_context.base.command_buffer,
                 previous_image,
                 canvas.layer_count,
+                sampling_stages,
             )?;
         }
 
         let command_buffer = thread_context.base.command_buffer;
         let color_access = AccessFlags::COLOR_ATTACHMENT_READ | AccessFlags::COLOR_ATTACHMENT_WRITE;
-        let sampling_stages =
-            PipelineStageFlags::VERTEX_SHADER | PipelineStageFlags::FRAGMENT_SHADER;
         match canvas.msaa_color_image {
             Some(msaa_color_image) => {
                 Self::transition_image_layout(
@@ -203,6 +203,7 @@ impl VulkanRenderer {
         rendering: &mut dyn VulkanRendering,
         thread_context: &mut GraphicsThreadContext,
         canvas: &VulkanCanvas,
+        sampling_stages: PipelineStageFlags,
     ) -> Result<()> {
         if let Some(previous_image) = thread_context.render_target.take() {
             Self::end_rendering(
@@ -211,6 +212,7 @@ impl VulkanRenderer {
                 thread_context.base.command_buffer,
                 previous_image,
                 canvas.layer_count,
+                sampling_stages,
             )?;
         }
 
@@ -283,7 +285,7 @@ impl VulkanRenderer {
             ImageAspectFlags::COLOR,
             ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             AccessFlags::SHADER_READ,
-            PipelineStageFlags::VERTEX_SHADER | PipelineStageFlags::FRAGMENT_SHADER,
+            sampling_stages,
         );
         if let Some(msaa_color_image) = canvas.msaa_color_image {
             clear_image(

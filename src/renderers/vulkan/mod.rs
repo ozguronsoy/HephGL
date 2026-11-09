@@ -689,6 +689,12 @@ impl Renderer for VulkanRenderer {
         allocator_create_info.vulkan_api_version = VulkanApiVersion::from(self.api_version).0;
         let vma_allocator = unsafe { vk_mem::Allocator::new(allocator_create_info)? };
 
+        let mut sampling_stages = ash::vk::PipelineStageFlags::VERTEX_SHADER
+            | ash::vk::PipelineStageFlags::FRAGMENT_SHADER;
+        if enabled_features.contains(&GraphicsDeviceFeature::GeometryShaders) {
+            sampling_stages |= ash::vk::PipelineStageFlags::GEOMETRY_SHADER;
+        }
+
         self.device_context = Some(DeviceContext {
             graphics_device: device.clone(),
             enabled_features,
@@ -739,6 +745,7 @@ impl Renderer for VulkanRenderer {
             supports_timeline_semaphore,
             supports_dynamic_rendering,
             supported_msaa_list,
+            sampling_stages,
 
             current_frame_index: 0,
             current_frame_index_sync: Mutex::new(()),
@@ -1160,6 +1167,7 @@ impl Renderer for VulkanRenderer {
                     current_frame.base.command_buffer,
                     render_target,
                     self.settings.array_layer_count(),
+                    device_context.sampling_stages,
                 )?;
             }
             command_buffer = current_frame.base.command_buffer;
@@ -1782,6 +1790,7 @@ impl Renderer for VulkanRenderer {
             rendering.as_mut(),
             current_frame,
             &canvas,
+            device_context.sampling_stages,
         ) {
             self.destroy_canvas(&mut canvas)?;
             return Err(error);
@@ -2081,6 +2090,7 @@ impl Renderer for VulkanRenderer {
             swapchain_images: &[ash::vk::Image],
             image_index: usize,
             layer_count: u32,
+            sampling_stages: ash::vk::PipelineStageFlags,
             is_in_main_thread: bool,
             queue_context: &mut QueueContext<Frame>,
             frame_index: usize,
@@ -2105,6 +2115,7 @@ impl Renderer for VulkanRenderer {
                             current_frame.base.command_buffer,
                             image,
                             layer_count,
+                            sampling_stages,
                         )?;
                     }
                     if is_in_main_thread {
@@ -2116,6 +2127,7 @@ impl Renderer for VulkanRenderer {
                             display_canvas,
                             swapchain_images[image_index],
                             layer_count,
+                            sampling_stages,
                         );
                         current_frame.base.recorded = true;
                         *present = true;
@@ -2135,6 +2147,7 @@ impl Renderer for VulkanRenderer {
             &device_context.swapchain_context.images,
             image_index,
             self.settings.array_layer_count(),
+            device_context.sampling_stages,
             is_in_main_thread,
             &mut device_context.graphics_queue_context,
             device_context.current_frame_index,
@@ -2148,6 +2161,7 @@ impl Renderer for VulkanRenderer {
             &device_context.swapchain_context.images,
             image_index,
             self.settings.array_layer_count(),
+            device_context.sampling_stages,
             is_in_main_thread,
             &mut device_context.transfer_queue_context,
             device_context.current_frame_index,
@@ -2162,6 +2176,7 @@ impl Renderer for VulkanRenderer {
                 &device_context.swapchain_context.images,
                 image_index,
                 self.settings.array_layer_count(),
+                device_context.sampling_stages,
                 is_in_main_thread,
                 compute_queue_context,
                 device_context.current_frame_index,
