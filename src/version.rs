@@ -48,11 +48,7 @@ mod tests {
 
     #[test]
     fn test_version() {
-        let expected = Version {
-            major: 1,
-            minor: 2,
-            patch: 3,
-        };
+        let expected = Version::new(1, 2, 3);
         assert_eq!(Version::new(1, 2, 3), expected);
         assert_eq!(
             expected.to_string(),
