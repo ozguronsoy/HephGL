@@ -35,7 +35,7 @@ use renkrs::RGB;
 use vk_mem::Alloc;
 
 use crate::{
-    Error, HEPHGL_ENGINE_NAME, HEPHGL_ENGINE_VERSION, Result, Version,
+    Error, HEPHGL_VERSION, Result, Version,
     graphics_device::{GraphicsDevice, GraphicsDeviceFeature, GraphicsDeviceType},
     renderers::{
         BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererCanvas,
@@ -241,18 +241,14 @@ impl Renderer for VulkanRenderer {
             )));
         }
 
+        let engine_name = c"HephGL";
         let c_app_name = CString::new(options.app_name)?;
         self.api_version = requested_api_version;
         let app_info = ApplicationInfo {
             s_type: StructureType::APPLICATION_INFO,
-            p_engine_name: HEPHGL_ENGINE_NAME.as_ptr(),
+            p_engine_name: engine_name.as_ptr(),
+            engine_version: VulkanApiVersion::from(HEPHGL_VERSION).0,
             p_application_name: c_app_name.as_ptr(),
-            application_version: ash::vk::make_api_version(
-                0,
-                HEPHGL_ENGINE_VERSION.major,
-                HEPHGL_ENGINE_VERSION.minor,
-                HEPHGL_ENGINE_VERSION.patch,
-            ),
             api_version: VulkanApiVersion::from(self.api_version).0,
             ..Default::default()
         };
