@@ -57,6 +57,7 @@ impl From<PrimitiveTopology> for ash::vk::PrimitiveTopology {
             PrimitiveTopology::LineStrip => Self::LINE_STRIP,
             PrimitiveTopology::TriangleList => Self::TRIANGLE_LIST,
             PrimitiveTopology::TriangleStrip => Self::TRIANGLE_STRIP,
+            PrimitiveTopology::PatchList { .. } => Self::PATCH_LIST,
         }
     }
 }

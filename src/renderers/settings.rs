@@ -45,6 +45,12 @@ pub enum PrimitiveTopology {
     TriangleList,
     /// Consecutive vertices form a connected sequence of triangles.
     TriangleStrip,
+    /// Every `control_points` vertices represent a patch, which is subdivided by the tessellation
+    /// shaders.
+    PatchList {
+        /// The number of control points in each patch.
+        control_points: u32,
+    },
 }
 
 /// Defines which triangle faces are discarded during rasterization.

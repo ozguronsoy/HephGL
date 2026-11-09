@@ -1,10 +1,10 @@
 use heph_gl::{
-    GraphicsDeviceFeature::{AnisotropicFiltering, AsyncTransfer},
+    GraphicsDeviceFeature::{AnisotropicFiltering, AsyncTransfer, TessellationShaders},
     Lighting, MaterialProperties, Shader,
     math::Vec3,
     renderers::{
-        BufferUsage, FeatureRequest, GraphicsPipelineOptions, Renderer, ResourceBinding,
-        SamplerAddressMode, SamplerOptions, TextureFormat, TextureOptions,
+        BufferUsage, FeatureRequest, GraphicsPipelineOptions, PrimitiveTopology, Renderer,
+        ResourceBinding, SamplerAddressMode, SamplerOptions, TextureFormat, TextureOptions,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -27,6 +27,7 @@ fn example(
         .set_device(
             Some(&device),
             &[
+                FeatureRequest::new(TessellationShaders, true),
                 FeatureRequest::new(AnisotropicFiltering, false),
                 FeatureRequest::new(AsyncTransfer, false),
             ],
@@ -40,6 +41,18 @@ fn example(
         "broken_brick_wall_vert.spv"
     ))
     .unwrap();
+    let tesc_shader = Shader::from_file(format!(
+        "{}/{}",
+        utils::SHADERS_DIR,
+        "broken_brick_wall_tesc.spv"
+    ))
+    .unwrap();
+    let tese_shader = Shader::from_file(format!(
+        "{}/{}",
+        utils::SHADERS_DIR,
+        "broken_brick_wall_tese.spv"
+    ))
+    .unwrap();
     let frag_shader = Shader::from_file(format!(
         "{}/{}",
         utils::SHADERS_DIR,
@@ -48,11 +61,17 @@ fn example(
     .unwrap();
     let mut pipeline = renderer
         .create_graphics_pipeline(
-            &[&vert_shader, &frag_shader],
-            &GraphicsPipelineOptions::default(),
+            &[&vert_shader, &tesc_shader, &tese_shader, &frag_shader],
+            &GraphicsPipelineOptions {
+                // Each triangle of the sphere is a patch.
+                topology: PrimitiveTopology::PatchList { control_points: 3 },
+                ..Default::default()
+            },
         )
         .unwrap();
     drop(vert_shader);
+    drop(tesc_shader);
+    drop(tese_shader);
     drop(frag_shader);
 
     let image = image::open(IMAGE_PATH).unwrap().to_rgba8();
@@ -102,6 +121,12 @@ fn example(
             0.0,
         ],
         [0.0, 0.0, -1.0, 0.0],
+        [
+            material.displacement_scale,
+            material.displacement_bias,
+            0.0,
+            0.0,
+        ],
     ];
     let mut uniform_buffer = renderer
         .create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
@@ -110,9 +135,7 @@ fn example(
         .write_buffer(uniform_buffer.as_mut(), 0, bytemuck::cast_slice(&uniforms))
         .unwrap();
 
-    // Displace a unit sphere before scaling it, so all three sizes have the same relative relief.
-    let mut sphere = utils::renderer::sphere_vertices(1.0, 0.0);
-    utils::renderer::displace_vertices(&mut sphere, &displacement, &material);
+    let sphere = utils::renderer::sphere_vertices(1.0, 0.0);
     let vertex_count: usize = utils::renderer::sphere_vertex_count();
     let mut vertices = Vec::with_capacity(vertex_count);
     for (radius, x_offset) in [(0.1, -1.2), (0.25, -0.4), (0.5, 0.8)] {
@@ -189,6 +212,18 @@ fn example(
             normal.as_raw(),
         )
         .unwrap();
+    // The height map is only sampled at its full resolution, so it does not need mipmaps.
+    let mut displacement_texture = renderer
+        .create_texture(
+            &TextureOptions {
+                width: displacement.width(),
+                height: displacement.height(),
+                format: TextureFormat::R16Unorm,
+                mip_level_count: 1,
+            },
+            bytemuck::cast_slice(displacement.as_raw()),
+        )
+        .unwrap();
     renderer.end_frame().unwrap();
 
     // Render the displaced spheres with the color, ARM, and normal maps applied.
@@ -206,6 +241,7 @@ fn example(
         ResourceBinding::texture(2, arm_texture.as_ref()),
         ResourceBinding::texture(3, normal_texture.as_ref()),
         ResourceBinding::buffer(4, uniform_buffer.as_ref(), 0, uniform_buffer.size()),
+        ResourceBinding::texture(5, displacement_texture.as_ref()),
     ];
     renderer
         .record_graphics_command(
@@ -225,6 +261,9 @@ fn example(
     renderer.destroy_texture(texture.as_mut()).unwrap();
     renderer.destroy_texture(arm_texture.as_mut()).unwrap();
     renderer.destroy_texture(normal_texture.as_mut()).unwrap();
+    renderer
+        .destroy_texture(displacement_texture.as_mut())
+        .unwrap();
     renderer.destroy_buffer(uniform_buffer.as_mut()).unwrap();
     renderer.destroy_buffer(vertex_buffer.as_mut()).unwrap();
     renderer

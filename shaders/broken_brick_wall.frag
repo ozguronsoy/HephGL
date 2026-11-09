@@ -12,6 +12,7 @@ layout(set = 0, binding = 4, std140) uniform MaterialData
     vec4 light_color;
     vec4 ambient_color;
     vec4 view_direction;
+    vec4 displacement;
 } material;
 
 layout(location = 0) in vec3 frag_position;

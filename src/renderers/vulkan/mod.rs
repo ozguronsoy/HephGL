@@ -44,7 +44,7 @@ use crate::{
         resources::{
             RendererBuffer, RendererResource, RendererSampler, RendererTexture, TextureFormat,
         },
-        settings::{GraphicsPipelineOptions, Msaa, PolygonMode, SamplerOptions, TextureOptions},
+        settings::{GraphicsPipelineOptions, Msaa, SamplerOptions, TextureOptions},
         thread_context::{
             MAIN_THREAD_CONTEXT_INDEX, ThreadContextIndex, ThreadContextMask,
             ThreadContextMaskArray, is_thread_context_active,
@@ -66,7 +66,7 @@ use crate::{
             version::VulkanApiVersion,
         },
     },
-    shader::{Shader, ShaderStage},
+    shader::Shader,
 };
 
 const MIN_API_VERSION: Version = Version::new(1, 0, 0);
@@ -412,6 +412,9 @@ impl Renderer for VulkanRenderer {
             if physical_features.geometry_shader == ash::vk::TRUE {
                 let _ = supported_features.insert(GraphicsDeviceFeature::GeometryShaders);
             }
+            if physical_features.tessellation_shader == ash::vk::TRUE {
+                let _ = supported_features.insert(GraphicsDeviceFeature::TessellationShaders);
+            }
             if physical_features.fill_mode_non_solid == ash::vk::TRUE {
                 let _ = supported_features.insert(GraphicsDeviceFeature::WireframeMode);
             }
@@ -575,12 +578,14 @@ impl Renderer for VulkanRenderer {
         let physical_devices = unsafe { instance.enumerate_physical_devices()? };
         let mut physical_device = None;
         let mut physical_device_api_version = MIN_API_VERSION;
+        let mut max_tessellation_patch_size = 0;
         let mut supported_msaa_list = Vec::default();
         for pd in physical_devices {
             let properties = unsafe { instance.get_physical_device_properties(pd) };
             if properties.device_id == device.device_id {
                 physical_device = Some(pd);
                 physical_device_api_version = VulkanApiVersion(properties.api_version).into();
+                max_tessellation_patch_size = properties.limits.max_tessellation_patch_size;
 
                 let sample_counts = properties.limits.framebuffer_color_sample_counts
                     & properties.limits.framebuffer_depth_sample_counts;
@@ -626,6 +631,9 @@ impl Renderer for VulkanRenderer {
         let mut physical_features2 = PhysicalDeviceFeatures2::default();
         if enabled_features.contains(&GraphicsDeviceFeature::GeometryShaders) {
             physical_features2.features.geometry_shader = ash::vk::TRUE;
+        }
+        if enabled_features.contains(&GraphicsDeviceFeature::TessellationShaders) {
+            physical_features2.features.tessellation_shader = ash::vk::TRUE;
         }
         if enabled_features.contains(&GraphicsDeviceFeature::WireframeMode) {
             physical_features2.features.fill_mode_non_solid = ash::vk::TRUE;
@@ -694,6 +702,10 @@ impl Renderer for VulkanRenderer {
         if enabled_features.contains(&GraphicsDeviceFeature::GeometryShaders) {
             sampling_stages |= ash::vk::PipelineStageFlags::GEOMETRY_SHADER;
         }
+        if enabled_features.contains(&GraphicsDeviceFeature::TessellationShaders) {
+            sampling_stages |= ash::vk::PipelineStageFlags::TESSELLATION_CONTROL_SHADER
+                | ash::vk::PipelineStageFlags::TESSELLATION_EVALUATION_SHADER;
+        }
 
         self.device_context = Some(DeviceContext {
             graphics_device: device.clone(),
@@ -746,6 +758,7 @@ impl Renderer for VulkanRenderer {
             supports_dynamic_rendering,
             supported_msaa_list,
             sampling_stages,
+            max_tessellation_patch_size,
 
             current_frame_index: 0,
             current_frame_index_sync: Mutex::new(()),
@@ -1575,30 +1588,12 @@ impl Renderer for VulkanRenderer {
             .rendering
             .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
-        if options.polygon_mode != PolygonMode::Fill
-            && !device_context
-                .enabled_features
-                .contains(&GraphicsDeviceFeature::WireframeMode)
-        {
-            return Err(Error::invalid_operation(
-                "Non-fill polygon modes require the `WireframeMode` feature to be enabled.",
-            ));
-        }
-        if shaders
-            .iter()
-            .any(|shader| shader.metadata.stage == ShaderStage::Geometry)
-            && !device_context
-                .enabled_features
-                .contains(&GraphicsDeviceFeature::GeometryShaders)
-        {
-            return Err(Error::invalid_operation(
-                "Geometry shaders require the `GeometryShaders` feature to be enabled.",
-            ));
-        }
         Ok(Box::new(rendering.create_graphics_pipeline(
             &device_context.logical_device,
             shaders,
             options,
+            &device_context.enabled_features,
+            device_context.max_tessellation_patch_size,
         )?))
     }
 

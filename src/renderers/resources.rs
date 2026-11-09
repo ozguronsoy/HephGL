@@ -21,6 +21,8 @@ pub enum BufferUsage {
 pub enum TextureFormat {
     /// 8-bit single channel linear color value.
     R8Unorm,
+    /// 16-bit single channel linear color value.
+    R16Unorm,
     /// 8-bit RGBA using linear color values.
     Rgba8Unorm,
     /// 8-bit RGBA using the sRGB color space.
@@ -124,6 +126,7 @@ impl TextureFormat {
     pub(super) fn bytes_per_pixel(&self) -> usize {
         match self {
             Self::R8Unorm => 1,
+            Self::R16Unorm => 2,
             Self::Rgba8Unorm | Self::Rgba8Srgb | Self::Bgra8Srgb => 4,
         }
     }
@@ -150,6 +153,7 @@ mod tests {
     #[test]
     fn test_texture_format_bytes_per_pixel() {
         assert_eq!(TextureFormat::R8Unorm.bytes_per_pixel(), 1);
+        assert_eq!(TextureFormat::R16Unorm.bytes_per_pixel(), 2);
         assert_eq!(TextureFormat::Rgba8Unorm.bytes_per_pixel(), 4);
         assert_eq!(TextureFormat::Rgba8Srgb.bytes_per_pixel(), 4);
         assert_eq!(TextureFormat::Bgra8Srgb.bytes_per_pixel(), 4);

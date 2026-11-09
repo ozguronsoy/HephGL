@@ -253,7 +253,7 @@ where
 
         let vert_shader = heph_expect_success!(Shader::from_file(format!(
             "{}/{}",
-            SHADERS_DIR, "broken_brick_wall_vert.spv"
+            SHADERS_DIR, "broken_brick_wall_displaced_vert.spv"
         )));
         let frag_shader = heph_expect_success!(Shader::from_file(format!(
             "{}/{}",
@@ -314,6 +314,12 @@ where
                 0.0,
             ],
             [0.0, 0.0, -1.0, 0.0],
+            [
+                material.displacement_scale,
+                material.displacement_bias,
+                0.0,
+                0.0,
+            ],
         ];
         let mut uniform_buffer = heph_expect_success!(
             renderer.create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)

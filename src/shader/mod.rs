@@ -46,6 +46,7 @@ impl Shader {
                 stage: ShaderStage::Vertex,
                 size: [0, 0, 0],
                 input_primitive: None,
+                output_primitive: None,
                 descriptor_bindings: Vec::default(),
                 vertex_bindings: Vec::default(),
             },
@@ -79,6 +80,8 @@ impl Shader {
         self.metadata.entry_name = entry_point.name.clone();
         self.metadata.stage = match entry_point.exec_model {
             ExecutionModel::Vertex => ShaderStage::Vertex,
+            ExecutionModel::TessellationControl => ShaderStage::TessellationControl,
+            ExecutionModel::TessellationEvaluation => ShaderStage::TessellationEvaluation,
             ExecutionModel::Geometry => ShaderStage::Geometry,
             ExecutionModel::Fragment => ShaderStage::Fragment,
             ExecutionModel::GLCompute => ShaderStage::Compute,
@@ -86,9 +89,11 @@ impl Shader {
         };
         self.metadata.size = [0, 0, 0];
         self.metadata.input_primitive = None;
+        self.metadata.output_primitive = None;
         self.metadata.vertex_bindings.clear();
         self.metadata.descriptor_bindings.clear();
 
+        let mut point_mode = false;
         for exec_mode in &entry_point.exec_modes {
             match exec_mode.exec_mode {
                 ExecutionMode::LocalSize => {
@@ -105,14 +110,24 @@ impl Shader {
                 ExecutionMode::InputLines => {
                     self.metadata.input_primitive = Some(ShaderPrimitive::Line);
                 }
-                ExecutionMode::Triangles => {
+                ExecutionMode::Triangles if self.metadata.stage == ShaderStage::Geometry => {
                     self.metadata.input_primitive = Some(ShaderPrimitive::Triangle);
                 }
+                ExecutionMode::Triangles | ExecutionMode::Quads => {
+                    self.metadata.output_primitive = Some(ShaderPrimitive::Triangle);
+                }
+                ExecutionMode::Isolines => {
+                    self.metadata.output_primitive = Some(ShaderPrimitive::Line);
+                }
+                ExecutionMode::PointMode => point_mode = true,
                 ExecutionMode::InputLinesAdjacency | ExecutionMode::InputTrianglesAdjacency => {
                     return Err(Error::fail("Adjacency primitives are not supported."));
                 }
                 _ => {}
             }
+        }
+        if point_mode {
+            self.metadata.output_primitive = Some(ShaderPrimitive::Point);
         }
         if self.metadata.stage == ShaderStage::Geometry && self.metadata.input_primitive.is_none() {
             return Err(Error::fail(

@@ -146,7 +146,8 @@ impl Mesh {
             }
             PrimitiveTopology::PointList
             | PrimitiveTopology::LineList
-            | PrimitiveTopology::LineStrip => {}
+            | PrimitiveTopology::LineStrip
+            | PrimitiveTopology::PatchList { .. } => {}
         }
     }
 }
