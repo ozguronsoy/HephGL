@@ -1,10 +1,11 @@
 use heph_gl::{
     Error,
-    GraphicsDeviceFeature::WireframeMode,
+    GraphicsDeviceFeature::{GeometryShaders, WireframeMode},
     Shader,
     renderers::{
-        FeatureRequest, GraphicsPipelineOptions, PolygonMode, Renderer, RendererComputePipeline,
-        RendererGraphicsPipeline, RendererHandle, RendererPipeline, RendererWorkerFactory,
+        FeatureRequest, GraphicsPipelineOptions, PolygonMode, PrimitiveTopology, Renderer,
+        RendererComputePipeline, RendererGraphicsPipeline, RendererHandle, RendererPipeline,
+        RendererWorkerFactory,
     },
 };
 
@@ -60,6 +61,46 @@ where
         }
 
         {
+            let renderer = self.create_renderer_with_any_device(&[]);
+            let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/shapes/basic_triangle_frag.spv",
+                SHADERS_DIR
+            )));
+            let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/shapes/basic_triangle_vert.spv",
+                SHADERS_DIR
+            )));
+            heph_expect_err!(
+                renderer.create_graphics_pipeline(
+                    &[&frag_shader, &vert_shader, &vert_shader],
+                    &GraphicsPipelineOptions::default()
+                ),
+                Error::invalid_argument("")
+            );
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[]);
+            let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/shapes/basic_triangle_frag.spv",
+                SHADERS_DIR
+            )));
+            let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/shapes/basic_triangle_vert.spv",
+                SHADERS_DIR
+            )));
+            let comp_shader =
+                heph_expect_success!(Shader::from_file(format!("{}/addition.spv", SHADERS_DIR)));
+            heph_expect_err!(
+                renderer.create_graphics_pipeline(
+                    &[&frag_shader, &vert_shader, &comp_shader],
+                    &GraphicsPipelineOptions::default()
+                ),
+                Error::invalid_argument("")
+            );
+        }
+
+        {
             let renderer =
                 self.create_renderer_with_any_device(&[FeatureRequest::new(WireframeMode, false)]);
             if renderer
@@ -109,6 +150,87 @@ where
                         }
                     ),
                     Error::invalid_operation("")
+                );
+            }
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[]);
+            let frag_shader =
+                heph_expect_success!(Shader::from_file(format!("{}/mesh_frag.spv", SHADERS_DIR)));
+            let geom_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/explode_geom.spv",
+                SHADERS_DIR
+            )));
+            let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/camera_vert.spv",
+                SHADERS_DIR
+            )));
+            heph_expect_err!(
+                renderer.create_graphics_pipeline(
+                    &[&frag_shader, &geom_shader, &vert_shader],
+                    &GraphicsPipelineOptions::default()
+                ),
+                Error::invalid_operation("")
+            );
+        }
+
+        {
+            let renderer = self
+                .create_renderer_with_any_device(&[FeatureRequest::new(GeometryShaders, false)]);
+            if renderer
+                .get_device()
+                .unwrap()
+                .supported_features
+                .contains(&GeometryShaders)
+            {
+                let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/mesh_frag.spv",
+                    SHADERS_DIR
+                )));
+                let geom_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/explode_geom.spv",
+                    SHADERS_DIR
+                )));
+                let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/camera_vert.spv",
+                    SHADERS_DIR
+                )));
+                for topology in [
+                    PrimitiveTopology::TriangleList,
+                    PrimitiveTopology::TriangleStrip,
+                ] {
+                    let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+                        &[&frag_shader, &geom_shader, &vert_shader],
+                        &GraphicsPipelineOptions {
+                            topology,
+                            ..Default::default()
+                        }
+                    ));
+                    heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
+                }
+                for topology in [
+                    PrimitiveTopology::PointList,
+                    PrimitiveTopology::LineList,
+                    PrimitiveTopology::LineStrip,
+                ] {
+                    heph_expect_err!(
+                        renderer.create_graphics_pipeline(
+                            &[&frag_shader, &geom_shader, &vert_shader],
+                            &GraphicsPipelineOptions {
+                                topology,
+                                ..Default::default()
+                            }
+                        ),
+                        Error::invalid_argument("")
+                    );
+                }
+                heph_expect_err!(
+                    renderer.create_graphics_pipeline(
+                        &[&frag_shader, &geom_shader, &geom_shader, &vert_shader],
+                        &GraphicsPipelineOptions::default()
+                    ),
+                    Error::invalid_argument("")
                 );
             }
         }

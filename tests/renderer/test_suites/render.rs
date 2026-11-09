@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use heph_gl::{
     Camera, Font, FontOptions,
-    GraphicsDeviceFeature::{AnisotropicFiltering, AsyncTransfer},
+    GraphicsDeviceFeature::{AnisotropicFiltering, AsyncTransfer, GeometryShaders},
     Lighting, MaterialProperties, Mesh, MeshVertexAttribute, Projection, Shader, TextType,
     TextVertex, Transform,
     math::{Mat4, Quat, Vec3},
@@ -1456,6 +1456,365 @@ where
         heph_expect_success!(renderer.destroy_buffer(uniform_buffer.as_mut()));
         for joint_buffer in &mut joint_buffers {
             heph_expect_success!(renderer.destroy_buffer(joint_buffer.as_mut()));
+        }
+        heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
+    }
+
+    pub(crate) fn test_render_exploding_mesh(&self) {
+        use std::{collections::HashMap, path::Path};
+
+        const MESH_PATH: &str = "assets/ship/ship_pinnace_1k.gltf";
+        const ANIMATION_DURATION: Duration = Duration::from_secs(5);
+        const IMPACT_TIME: Duration = Duration::from_secs(1);
+        const IMPACT_POINT: Vec3 = Vec3::new(4.0, 3.7, 0.0);
+        const IMPACT_RADIUS: f32 = 2.5;
+
+        let mut renderer = self.create_renderer_with_any_device(&[
+            FeatureRequest::new(GeometryShaders, false),
+            FeatureRequest::new(AnisotropicFiltering, false),
+            FeatureRequest::new(AsyncTransfer, false),
+        ]);
+        if !renderer
+            .get_device()
+            .unwrap()
+            .supported_features
+            .contains(&GeometryShaders)
+        {
+            return;
+        }
+        let max_anisotropy = if let Some(device) = renderer.get_device() {
+            match device.supported_features.contains(&AnisotropicFiltering) {
+                true => Some(device.max_sampler_anisotropy),
+                false => None,
+            }
+        } else {
+            None
+        };
+        let Some(&msaa) = heph_expect_success!(renderer.supported_msaa_list()).last() else {
+            panic!("Failed to get a supported MSAA sample count.");
+        };
+        let settings = Settings {
+            frames_in_flight: 3,
+            vsync: true,
+            msaa,
+            ..Default::default()
+        };
+        heph_expect_success!(renderer.set_settings(settings));
+
+        let vert_shader = heph_expect_success!(Shader::from_file(format!(
+            "{}/{}",
+            SHADERS_DIR, "camera_vert.spv"
+        )));
+        let geom_shader = heph_expect_success!(Shader::from_file(format!(
+            "{}/{}",
+            SHADERS_DIR, "explode_geom.spv"
+        )));
+        let frag_shader = heph_expect_success!(Shader::from_file(format!(
+            "{}/{}",
+            SHADERS_DIR, "mesh_frag.spv"
+        )));
+        let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+            &[&vert_shader, &geom_shader, &frag_shader],
+            &GraphicsPipelineOptions {
+                front_face: FrontFace::Clockwise,
+                ..Default::default()
+            },
+        ));
+        drop(vert_shader);
+        drop(geom_shader);
+        drop(frag_shader);
+
+        let mesh = heph_expect_success!(Mesh::from_file(MESH_PATH));
+        let mut min = Vec3::splat(f32::INFINITY);
+        let mut max = Vec3::splat(f32::NEG_INFINITY);
+        for part in mesh.parts() {
+            let positions = heph_expect_success!(part.vertices(&[MeshVertexAttribute::Position]));
+            for position in positions.as_chunks::<3>().0 {
+                let position = Vec3::from_slice(position);
+                min = min.min(position);
+                max = max.max(position);
+            }
+        }
+        let center = (min + max) * 0.5;
+        let transform = Transform::new(
+            Vec3::ZERO,
+            Quat::IDENTITY,
+            Vec3::splat(3.0 / (max - min).max_element()),
+        );
+
+        let lighting = Lighting {
+            direction: Vec3::new(0.5, -0.8, 1.0),
+            intensity: 3.0,
+            ambient: RGB::new(0.15, 0.15, 0.15),
+            ..Default::default()
+        };
+        let mut camera = Camera::new(Projection::Perspective {
+            vertical_fov: std::f32::consts::FRAC_PI_3,
+            aspect_ratio: 16.0 / 9.0,
+            near: 0.1,
+            far: 100.0,
+        });
+        camera.position = Vec3::new(2.4, 0.0, -1.2);
+        heph_expect_success!(camera.look_at(&Vec3::new(0.0, -0.4, 0.0), &Vec3::Y));
+
+        let mesh_directory = heph_expect_success!(
+            Path::new(MESH_PATH)
+                .parent()
+                .ok_or("Missing mesh directory.")
+        );
+        let mut textures = HashMap::new();
+        let mut part_buffers = Vec::with_capacity(mesh.part_count());
+        heph_expect_success!(renderer.begin_frame());
+        heph_expect_success!(renderer.clear(RGB::default()));
+        for part in mesh.parts() {
+            let vertex_attributes = [
+                MeshVertexAttribute::Position,
+                MeshVertexAttribute::Normal,
+                MeshVertexAttribute::TextureCoordinates(heph_expect_success!(
+                    part.base_texture_uv_set()
+                        .ok_or("Missing base-color texture UV set.")
+                )),
+            ];
+            let mut vertices = heph_expect_success!(part.vertices(&vertex_attributes));
+            let component_count = part.vertex_component_count(&vertex_attributes);
+            for vertex in vertices.chunks_exact_mut(component_count) {
+                vertex[0] -= center.x;
+                vertex[1] -= center.y;
+                vertex[2] -= center.z;
+            }
+            let vertex_count = vertices.len() / component_count;
+            let mut vertex_buffer = heph_expect_success!(renderer.create_buffer(
+                vertex_count * part.vertex_size_bytes(&vertex_attributes),
+                BufferUsage::Vertex,
+            ));
+            heph_expect_success!(renderer.write_buffer(
+                vertex_buffer.as_mut(),
+                0,
+                bytemuck::cast_slice(&vertices)
+            ));
+
+            let indices = part.indices();
+            let mut index_buffer = heph_expect_success!(
+                renderer.create_buffer(std::mem::size_of_val(indices), BufferUsage::Index,)
+            );
+            heph_expect_success!(renderer.write_buffer(
+                index_buffer.as_mut(),
+                0,
+                bytemuck::cast_slice(indices)
+            ));
+
+            let part_textures = [
+                (
+                    heph_expect_success!(
+                        part.base_texture_image_uri()
+                            .ok_or("Missing base-color texture URI.")
+                    ),
+                    TextureFormat::Rgba8Srgb,
+                ),
+                (
+                    heph_expect_success!(
+                        part.arm_texture_image_uri()
+                            .ok_or("Missing metallic-roughness texture URI.")
+                    ),
+                    TextureFormat::Rgba8Unorm,
+                ),
+                (
+                    heph_expect_success!(
+                        part.normal_texture_image_uri()
+                            .ok_or("Missing normal texture URI.")
+                    ),
+                    TextureFormat::Rgba8Unorm,
+                ),
+            ]
+            .map(|(uri, format)| {
+                let _ = textures.entry(uri.to_owned()).or_insert_with(|| {
+                    let image =
+                        heph_expect_success!(image::open(mesh_directory.join(uri))).to_rgba8();
+                    heph_expect_success!(renderer.create_texture(
+                        &TextureOptions {
+                            width: image.width(),
+                            height: image.height(),
+                            format,
+                            mip_level_count: TextureOptions::max_mip_level_count(
+                                image.width(),
+                                image.height()
+                            ),
+                        },
+                        image.as_raw(),
+                    ))
+                });
+                uri.to_owned()
+            });
+            let material = part.material();
+            let uniforms = [
+                [
+                    material.base_color.r,
+                    material.base_color.g,
+                    material.base_color.b,
+                    material.base_color.a,
+                ],
+                [
+                    material.roughness,
+                    material.metallicness,
+                    material.normal_scale,
+                    0.0,
+                ],
+                [
+                    lighting.direction.x,
+                    lighting.direction.y,
+                    lighting.direction.z,
+                    0.0,
+                ],
+                [
+                    lighting.color.r,
+                    lighting.color.g,
+                    lighting.color.b,
+                    lighting.intensity,
+                ],
+                [
+                    lighting.ambient.r,
+                    lighting.ambient.g,
+                    lighting.ambient.b,
+                    0.0,
+                ],
+                [camera.position.x, camera.position.y, camera.position.z, 1.0],
+            ];
+            let mut material_buffer = heph_expect_success!(
+                renderer.create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
+            );
+            heph_expect_success!(renderer.write_buffer(
+                material_buffer.as_mut(),
+                0,
+                bytemuck::cast_slice(&uniforms)
+            ));
+
+            part_buffers.push((
+                vertex_buffer,
+                index_buffer,
+                indices.len() as u32,
+                part_textures,
+                material_buffer,
+            ));
+        }
+
+        let part_textures: Vec<_> = part_buffers
+            .iter()
+            .map(|(_, _, _, uris, _)| uris.each_ref().map(|uri| textures[uri].as_ref()))
+            .collect();
+
+        heph_expect_success!(renderer.end_frame());
+
+        let model = heph_expect_success!(transform.matrix());
+        let matrices = [
+            model.to_cols_array(),
+            heph_expect_success!(camera.view_projection_matrix()).to_cols_array(),
+            Mat4::from_mat3(heph_expect_success!(transform.normal_matrix())).to_cols_array(),
+        ];
+        let mut uniform_buffer = heph_expect_success!(
+            renderer.create_buffer(std::mem::size_of_val(&matrices), BufferUsage::Uniform)
+        );
+        heph_expect_success!(renderer.write_buffer(
+            uniform_buffer.as_mut(),
+            0,
+            bytemuck::cast_slice(&matrices)
+        ));
+
+        let impact_point = model.transform_point3(IMPACT_POINT - center);
+        let impact_radius = IMPACT_RADIUS * transform.scale.x;
+        let mut explosion_buffers = Vec::with_capacity(settings.frames_in_flight);
+        for _ in 0..settings.frames_in_flight {
+            explosion_buffers.push(heph_expect_success!(
+                renderer.create_buffer(std::mem::size_of::<[f32; 8]>(), BufferUsage::Uniform)
+            ));
+        }
+        let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions {
+            address_mode_u: SamplerAddressMode::Repeat,
+            address_mode_v: SamplerAddressMode::Repeat,
+            max_anisotropy,
+            ..Default::default()
+        }));
+
+        let mut frame_index = 0;
+        let start = Instant::now();
+        loop {
+            heph_expect_success!(renderer.begin_frame());
+            heph_expect_success!(renderer.clear(RGB::default()));
+
+            let elapsed = start.elapsed();
+            let time = elapsed.as_secs_f32() - IMPACT_TIME.as_secs_f32();
+            let explosion = [
+                impact_point.x,
+                impact_point.y,
+                impact_point.z,
+                impact_radius,
+                time,
+                0.0,
+                0.0,
+                0.0,
+            ];
+            let explosion_buffer = &mut explosion_buffers[frame_index];
+            heph_expect_success!(renderer.write_buffer(
+                explosion_buffer.as_mut(),
+                0,
+                bytemuck::cast_slice(&explosion)
+            ));
+
+            for (
+                (vertex_buffer, index_buffer, index_count, _, material_buffer),
+                [texture, arm_texture, normal_texture],
+            ) in part_buffers.iter().zip(&part_textures)
+            {
+                let vertex_bindings = [ResourceBinding::buffer(
+                    0,
+                    vertex_buffer.as_ref(),
+                    0,
+                    vertex_buffer.size(),
+                )];
+                let resource_bindings = [
+                    ResourceBinding::texture(0, *texture),
+                    ResourceBinding::sampler(1, sampler.as_ref()),
+                    ResourceBinding::texture(2, *arm_texture),
+                    ResourceBinding::texture(3, *normal_texture),
+                    ResourceBinding::buffer(4, material_buffer.as_ref(), 0, material_buffer.size()),
+                    ResourceBinding::buffer(5, uniform_buffer.as_ref(), 0, uniform_buffer.size()),
+                    ResourceBinding::buffer(
+                        6,
+                        explosion_buffer.as_ref(),
+                        0,
+                        explosion_buffer.size(),
+                    ),
+                ];
+                heph_expect_success!(renderer.record_graphics_command(
+                    pipeline.as_mut(),
+                    Some(index_buffer.as_ref()),
+                    &vertex_bindings,
+                    &[&resource_bindings],
+                    *index_count,
+                    1
+                ));
+            }
+            heph_expect_success!(renderer.end_frame());
+
+            frame_index = (frame_index + 1) % explosion_buffers.len();
+            if elapsed >= ANIMATION_DURATION {
+                break;
+            }
+        }
+
+        heph_expect_success!(renderer.wait_idle());
+        heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
+        for texture in textures.values_mut() {
+            heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
+        }
+
+        for (vertex_buffer, index_buffer, _, _, material_buffer) in &mut part_buffers {
+            heph_expect_success!(renderer.destroy_buffer(material_buffer.as_mut()));
+            heph_expect_success!(renderer.destroy_buffer(vertex_buffer.as_mut()));
+            heph_expect_success!(renderer.destroy_buffer(index_buffer.as_mut()));
+        }
+        heph_expect_success!(renderer.destroy_buffer(uniform_buffer.as_mut()));
+        for explosion_buffer in &mut explosion_buffers {
+            heph_expect_success!(renderer.destroy_buffer(explosion_buffer.as_mut()));
         }
         heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
     }

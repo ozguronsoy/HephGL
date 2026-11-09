@@ -45,6 +45,7 @@ impl Shader {
                 entry_name: String::default(),
                 stage: ShaderStage::Vertex,
                 size: [0, 0, 0],
+                input_primitive: None,
                 descriptor_bindings: Vec::default(),
                 vertex_bindings: Vec::default(),
             },
@@ -78,25 +79,45 @@ impl Shader {
         self.metadata.entry_name = entry_point.name.clone();
         self.metadata.stage = match entry_point.exec_model {
             ExecutionModel::Vertex => ShaderStage::Vertex,
+            ExecutionModel::Geometry => ShaderStage::Geometry,
             ExecutionModel::Fragment => ShaderStage::Fragment,
             ExecutionModel::GLCompute => ShaderStage::Compute,
             _ => return Err(Error::fail("Unsupported shader stage.")),
         };
         self.metadata.size = [0, 0, 0];
+        self.metadata.input_primitive = None;
         self.metadata.vertex_bindings.clear();
         self.metadata.descriptor_bindings.clear();
 
         for exec_mode in &entry_point.exec_modes {
-            if exec_mode.exec_mode != ExecutionMode::LocalSize {
-                continue;
+            match exec_mode.exec_mode {
+                ExecutionMode::LocalSize => {
+                    for (size, operand) in self.metadata.size.iter_mut().zip(&exec_mode.operands) {
+                        let ConstantValue::U32(value) = &operand.value else {
+                            return Err(Error::fail("Invalid workgroup size."));
+                        };
+                        *size = *value;
+                    }
+                }
+                ExecutionMode::InputPoints => {
+                    self.metadata.input_primitive = Some(ShaderPrimitive::Point);
+                }
+                ExecutionMode::InputLines => {
+                    self.metadata.input_primitive = Some(ShaderPrimitive::Line);
+                }
+                ExecutionMode::Triangles => {
+                    self.metadata.input_primitive = Some(ShaderPrimitive::Triangle);
+                }
+                ExecutionMode::InputLinesAdjacency | ExecutionMode::InputTrianglesAdjacency => {
+                    return Err(Error::fail("Adjacency primitives are not supported."));
+                }
+                _ => {}
             }
-
-            for (size, operand) in self.metadata.size.iter_mut().zip(&exec_mode.operands) {
-                let ConstantValue::U32(value) = &operand.value else {
-                    return Err(Error::fail("Invalid workgroup size."));
-                };
-                *size = *value;
-            }
+        }
+        if self.metadata.stage == ShaderStage::Geometry && self.metadata.input_primitive.is_none() {
+            return Err(Error::fail(
+                "Geometry shader must declare an input primitive.",
+            ));
         }
 
         for var in &entry_point.vars {

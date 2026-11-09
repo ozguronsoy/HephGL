@@ -43,6 +43,7 @@ pub(super) struct DeviceContext {
     pub(super) supports_timeline_semaphore: bool,
     pub(super) supports_dynamic_rendering: bool,
     pub(super) supported_msaa_list: Vec<Msaa>,
+    pub(super) sampling_stages: ash::vk::PipelineStageFlags,
 
     pub(super) current_frame_index: usize,
     pub(super) current_frame_index_sync: Mutex<()>,

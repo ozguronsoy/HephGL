@@ -122,6 +122,7 @@ impl VulkanRenderer {
         command_buffer: CommandBuffer,
         image: ash::vk::Image,
         layer_count: u32,
+        sampling_stages: ash::vk::PipelineStageFlags,
     ) -> Result<()> {
         rendering.end(device, command_buffer)?;
         Self::transition_image_layout(
@@ -133,8 +134,7 @@ impl VulkanRenderer {
             ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
             ash::vk::AccessFlags::SHADER_READ,
             ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-            ash::vk::PipelineStageFlags::VERTEX_SHADER
-                | ash::vk::PipelineStageFlags::FRAGMENT_SHADER,
+            sampling_stages,
             ash::vk::ImageAspectFlags::COLOR,
             0,
             1,
@@ -185,6 +185,7 @@ impl VulkanRenderer {
             &self.settings,
             current_frame,
             canvas,
+            device_context.sampling_stages,
         )?;
         unsafe {
             if current_frame.bound_pipeline != Some(pipeline.pipeline) {
@@ -318,6 +319,7 @@ impl VulkanRenderer {
             &self.settings,
             current_frame,
             canvas,
+            device_context.sampling_stages,
         )?;
 
         let clear_attachments = [

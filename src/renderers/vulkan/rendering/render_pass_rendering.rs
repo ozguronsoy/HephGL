@@ -9,9 +9,9 @@ use ash::vk::{
     PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
     PipelineShaderStageCreateInfo, PipelineVertexInputStateCreateInfo,
     PipelineViewportStateCreateInfo, PrimitiveTopology, RenderPass, RenderPassBeginInfo,
-    RenderPassCreateInfo, SampleCountFlags, ShaderModuleCreateInfo, SubpassContents,
-    SubpassDescription, VertexInputAttributeDescription, VertexInputBindingDescription,
-    VertexInputRate,
+    RenderPassCreateInfo, SampleCountFlags, ShaderModuleCreateInfo, ShaderStageFlags,
+    SubpassContents, SubpassDescription, VertexInputAttributeDescription,
+    VertexInputBindingDescription, VertexInputRate,
 };
 
 use crate::{
@@ -30,7 +30,7 @@ use crate::{
             swapchain::SwapchainContext,
         },
     },
-    shader::{ScalarKind, Shader, ShaderStage},
+    shader::{ScalarKind, Shader, ShaderPrimitive, ShaderStage},
 };
 
 /// Implements rendering via render pass.
@@ -84,10 +84,36 @@ impl VulkanRendering for RenderPassRendering {
                     "Compute shaders cannot be used in a graphics pipeline.",
                 ));
             }
+            let shader_stage = ShaderStageFlags::from(shader.metadata.stage);
+            if shader_stages.contains(&shader_stage) {
+                return Err(Error::invalid_argument(
+                    "Graphics pipeline cannot contain multiple shaders of the same stage.",
+                ));
+            }
+            if shader.metadata.stage == ShaderStage::Geometry {
+                let topology = PrimitiveTopology::from(options.topology);
+                let topology_matches = match shader.metadata.input_primitive {
+                    Some(ShaderPrimitive::Point) => topology == PrimitiveTopology::POINT_LIST,
+                    Some(ShaderPrimitive::Line) => matches!(
+                        topology,
+                        PrimitiveTopology::LINE_LIST | PrimitiveTopology::LINE_STRIP
+                    ),
+                    Some(ShaderPrimitive::Triangle) => matches!(
+                        topology,
+                        PrimitiveTopology::TRIANGLE_LIST | PrimitiveTopology::TRIANGLE_STRIP
+                    ),
+                    None => false,
+                };
+                if !topology_matches {
+                    return Err(Error::invalid_argument(
+                        "Primitive topology does not match the geometry shader input primitive.",
+                    ));
+                }
+            }
             shader_modules.modules.push(unsafe {
                 device.create_shader_module(&ShaderModuleCreateInfo::default().code(code), None)?
             });
-            shader_stages.push(shader.metadata.stage.into());
+            shader_stages.push(shader_stage);
             entry_names.push(CString::new(shader.metadata.entry_name.as_str())?);
         }
         let stage_infos = shader_stages

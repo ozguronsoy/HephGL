@@ -230,6 +230,7 @@ where
                 create_trial!(versioned_test_suite, test_render_text),
                 create_trial!(versioned_test_suite, test_render_meshes),
                 create_trial!(versioned_test_suite, test_render_animated_meshes),
+                create_trial!(versioned_test_suite, test_render_exploding_mesh),
             ];
             tests.append(&mut test_suite);
         }

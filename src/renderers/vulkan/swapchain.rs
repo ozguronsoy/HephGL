@@ -294,6 +294,7 @@ impl VulkanRenderer {
         display_canvas: &VulkanCanvas,
         swapchain_image: ash::vk::Image,
         layer_count: u32,
+        sampling_stages: PipelineStageFlags,
     ) {
         Self::transition_image_layout(
             device,
@@ -303,7 +304,7 @@ impl VulkanRenderer {
             ImageLayout::TRANSFER_SRC_OPTIMAL,
             AccessFlags::empty(),
             AccessFlags::TRANSFER_READ,
-            PipelineStageFlags::VERTEX_SHADER | PipelineStageFlags::FRAGMENT_SHADER,
+            sampling_stages,
             PipelineStageFlags::TRANSFER,
             ImageAspectFlags::COLOR,
             0,
@@ -375,7 +376,7 @@ impl VulkanRenderer {
             AccessFlags::empty(),
             AccessFlags::SHADER_READ,
             PipelineStageFlags::TRANSFER,
-            PipelineStageFlags::VERTEX_SHADER | PipelineStageFlags::FRAGMENT_SHADER,
+            sampling_stages,
             ImageAspectFlags::COLOR,
             0,
             1,
