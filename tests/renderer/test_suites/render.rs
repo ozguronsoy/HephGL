@@ -1470,10 +1470,18 @@ where
         const IMPACT_RADIUS: f32 = 2.5;
 
         let mut renderer = self.create_renderer_with_any_device(&[
-            FeatureRequest::new(GeometryShaders, true),
+            FeatureRequest::new(GeometryShaders, false),
             FeatureRequest::new(AnisotropicFiltering, false),
             FeatureRequest::new(AsyncTransfer, false),
         ]);
+        if !renderer
+            .get_device()
+            .unwrap()
+            .supported_features
+            .contains(&GeometryShaders)
+        {
+            return;
+        }
         let max_anisotropy = if let Some(device) = renderer.get_device() {
             match device.supported_features.contains(&AnisotropicFiltering) {
                 true => Some(device.max_sampler_anisotropy),
