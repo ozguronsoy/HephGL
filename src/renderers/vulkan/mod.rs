@@ -66,7 +66,7 @@ use crate::{
             version::VulkanApiVersion,
         },
     },
-    shader::Shader,
+    shader::{Shader, ShaderStage},
 };
 
 const MIN_API_VERSION: Version = Version::new(1, 0, 0);
@@ -1574,6 +1574,17 @@ impl Renderer for VulkanRenderer {
         {
             return Err(Error::invalid_operation(
                 "Non-fill polygon modes require the `WireframeMode` feature to be enabled.",
+            ));
+        }
+        if shaders
+            .iter()
+            .any(|shader| shader.metadata.stage == ShaderStage::Geometry)
+            && !device_context
+                .enabled_features
+                .contains(&GraphicsDeviceFeature::GeometryShaders)
+        {
+            return Err(Error::invalid_operation(
+                "Geometry shaders require the `GeometryShaders` feature to be enabled.",
             ));
         }
         Ok(Box::new(rendering.create_graphics_pipeline(
