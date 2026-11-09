@@ -4,6 +4,14 @@ mod metadata;
 
 use std::path::Path;
 
+use spirq::{
+    ReflectConfig,
+    constant::ConstantValue,
+    spirv::{ExecutionMode, ExecutionModel},
+    ty::{DescriptorType, ScalarType, Type},
+    var::Variable,
+};
+
 pub(crate) use crate::shader::{binding::*, metadata::*};
 use crate::{Error, Result};
 
@@ -56,93 +64,89 @@ impl Shader {
     }
 
     fn extract_metadata(&mut self) -> Result<()> {
-        let module =
-            naga::front::spv::parse_u8_slice(&self.data, &naga::front::spv::Options::default())?;
-        if module.entry_points.len() != 1 || module.entry_points[0].name != "main" {
+        let entry_points = ReflectConfig::new()
+            .spv(self.data.as_slice())
+            .ref_all_rscs(true)
+            .reflect()?;
+        if entry_points.len() != 1 || entry_points[0].name != "main" {
             return Err(Error::fail(
                 "Shader must contain exactly one entry point named main.",
             ));
         }
 
-        let entry_point = &module.entry_points[0];
+        let entry_point = &entry_points[0];
         self.metadata.entry_name = entry_point.name.clone();
-        self.metadata.stage = match entry_point.stage {
-            naga::ShaderStage::Vertex => ShaderStage::Vertex,
-            naga::ShaderStage::Fragment => ShaderStage::Fragment,
-            naga::ShaderStage::Compute => ShaderStage::Compute,
+        self.metadata.stage = match entry_point.exec_model {
+            ExecutionModel::Vertex => ShaderStage::Vertex,
+            ExecutionModel::Fragment => ShaderStage::Fragment,
+            ExecutionModel::GLCompute => ShaderStage::Compute,
             _ => return Err(Error::fail("Unsupported shader stage.")),
         };
-        self.metadata.size = entry_point.workgroup_size;
+        self.metadata.size = [0, 0, 0];
         self.metadata.vertex_bindings.clear();
         self.metadata.descriptor_bindings.clear();
 
-        if self.metadata.stage == ShaderStage::Vertex {
-            for argument in &entry_point.function.arguments {
-                let Some(naga::Binding::Location { location, .. }) = &argument.binding else {
-                    continue;
-                };
-
-                let (scalar_kind, scalar_width, components) = match &module.types[argument.ty].inner
-                {
-                    naga::TypeInner::Scalar(scalar) => (scalar.kind, scalar.width, 1),
-                    naga::TypeInner::Vector { size, scalar } => {
-                        let components = match size {
-                            naga::VectorSize::Bi => 2,
-                            naga::VectorSize::Tri => 3,
-                            naga::VectorSize::Quad => 4,
-                        };
-
-                        (scalar.kind, scalar.width, components)
-                    }
-                    _ => {
-                        return Err(Error::fail("Unsupported vertex input type."));
-                    }
-                };
-
-                let scalar_kind = match scalar_kind {
-                    naga::ScalarKind::Float => ScalarKind::Float,
-                    _ => return Err(Error::fail("Unsupported scalar kind.")),
-                };
-
-                self.metadata.vertex_bindings.push(ShaderVertexBinding {
-                    location: *location,
-                    scalar_kind,
-                    scalar_width,
-                    components,
-                });
+        for exec_mode in &entry_point.exec_modes {
+            if exec_mode.exec_mode != ExecutionMode::LocalSize {
+                continue;
             }
 
-            self.metadata
-                .vertex_bindings
-                .sort_by_key(|binding| binding.location);
+            for (size, operand) in self.metadata.size.iter_mut().zip(&exec_mode.operands) {
+                let ConstantValue::U32(value) = &operand.value else {
+                    return Err(Error::fail("Invalid workgroup size."));
+                };
+                *size = *value;
+            }
         }
 
-        for (_, global) in module.global_variables.iter() {
-            let Some(binding) = &global.binding else {
-                continue;
-            };
+        for var in &entry_point.vars {
+            match var {
+                Variable::Input {
+                    location,
+                    ty: input_type,
+                    ..
+                } if self.metadata.stage == ShaderStage::Vertex => {
+                    let (scalar_type, components) = match input_type {
+                        Type::Scalar(scalar_type) => (scalar_type, 1),
+                        Type::Vector(vector_type) => (&vector_type.scalar_ty, vector_type.nscalar),
+                        _ => return Err(Error::fail("Unsupported vertex input type.")),
+                    };
 
-            let binding_type = match global.space {
-                naga::AddressSpace::Uniform => ShaderBindingType::UniformBuffer,
-                naga::AddressSpace::Storage { access: _ } => ShaderBindingType::StorageBuffer,
-                naga::AddressSpace::Handle => match &module.types[global.ty].inner {
-                    naga::TypeInner::Image {
-                        class: naga::ImageClass::Sampled { .. } | naga::ImageClass::Depth { .. },
-                        ..
-                    } => ShaderBindingType::Texture,
-                    naga::TypeInner::Sampler { .. } => ShaderBindingType::Sampler,
-                    _ => continue,
-                },
-                _ => continue,
-            };
+                    let (scalar_kind, scalar_width) = match scalar_type {
+                        ScalarType::Float { bits } => (ScalarKind::Float, (bits / 8) as u8),
+                        _ => return Err(Error::fail("Unsupported scalar kind.")),
+                    };
 
-            self.metadata
-                .descriptor_bindings
-                .push(ShaderDescriptorBinding {
-                    group: binding.group,
-                    binding: binding.binding,
-                    binding_type,
-                });
+                    self.metadata.vertex_bindings.push(ShaderVertexBinding {
+                        location: location.loc(),
+                        scalar_kind,
+                        scalar_width,
+                        components,
+                    });
+                }
+                Variable::Descriptor {
+                    desc_bind,
+                    desc_ty: descriptor_type,
+                    ..
+                } => {
+                    let binding_type = match descriptor_type {
+                        DescriptorType::UniformBuffer() => ShaderBindingType::UniformBuffer,
+                        DescriptorType::StorageBuffer(_) => ShaderBindingType::StorageBuffer,
+                        DescriptorType::SampledImage() => ShaderBindingType::Texture,
+                        DescriptorType::Sampler() => ShaderBindingType::Sampler,
+                        _ => continue,
+                    };
+
+                    self.metadata
+                        .descriptor_bindings
+                        .push(ShaderDescriptorBinding {
+                            group: desc_bind.set(),
+                            binding: desc_bind.bind(),
+                            binding_type,
+                        });
+                }
+                _ => {}
+            }
         }
 
         self.metadata.vertex_bindings.sort_by_key(|b| b.location);

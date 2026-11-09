@@ -18,7 +18,7 @@ ash = "0.38.0"
 ash-window = "0.13.0"
 vk-mem = "0.5.0"
 const-str = "1.1.0"
-naga = { version = "30", features = ["spv-in", "wgsl-out", "hlsl-out", "msl-out"] }
+spirq = "1.3.0"
 fontdue = "0.9.4"
 fontdb = "0.24"
 ttf-parser = "0.25.1"
