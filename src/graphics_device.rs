@@ -112,18 +112,18 @@ impl GraphicsDevice {
     }
 
     /// Gets the total amount of dedicated VRAM the device has in kilobytes.
-    pub fn vram_kb(&self) -> u64 {
-        self.vram / 1024
+    pub fn vram_kb(&self) -> f64 {
+        self.vram as f64 / 1024.0
     }
 
     /// Gets the total amount of dedicated VRAM the device has in megabytes.
-    pub fn vram_mb(&self) -> u64 {
-        self.vram_kb() / 1024
+    pub fn vram_mb(&self) -> f64 {
+        self.vram_kb() / 1024.0
     }
 
     /// Gets the total amount of dedicated VRAM the device has in gigabytes.
-    pub fn vram_gb(&self) -> u64 {
-        self.vram_mb() / 1024
+    pub fn vram_gb(&self) -> f64 {
+        self.vram_mb() / 1024.0
     }
 
     /// Gets the maximum sampler anisotropy level supported by the device.
@@ -324,21 +324,27 @@ mod tests {
             supported_features: BTreeSet::default(),
         };
         assert_eq!(device.vram(), 0);
-        assert_eq!(device.vram_kb(), 0);
-        assert_eq!(device.vram_mb(), 0);
-        assert_eq!(device.vram_gb(), 0);
+        assert_eq!(device.vram_kb(), 0.0);
+        assert_eq!(device.vram_mb(), 0.0);
+        assert_eq!(device.vram_gb(), 0.0);
 
         device.vram = 24 * 1024 * 1024 * 1024;
         assert_eq!(device.vram(), 24 * 1024 * 1024 * 1024);
-        assert_eq!(device.vram_kb(), 24 * 1024 * 1024);
-        assert_eq!(device.vram_mb(), 24 * 1024);
-        assert_eq!(device.vram_gb(), 24);
+        assert_eq!(device.vram_kb(), 24.0 * 1024.0 * 1024.0);
+        assert_eq!(device.vram_mb(), 24.0 * 1024.0);
+        assert_eq!(device.vram_gb(), 24.0);
 
-        device.vram = 1024 * 1024 * 1024 - 1;
-        assert_eq!(device.vram(), 1024 * 1024 * 1024 - 1);
-        assert_eq!(device.vram_kb(), 1024 * 1024 - 1);
-        assert_eq!(device.vram_mb(), 1023);
-        assert_eq!(device.vram_gb(), 0);
+        device.vram = 1536 * 1024 * 1024;
+        assert_eq!(device.vram(), 1536 * 1024 * 1024);
+        assert_eq!(device.vram_kb(), 1536.0 * 1024.0);
+        assert_eq!(device.vram_mb(), 1536.0);
+        assert_eq!(device.vram_gb(), 1.5);
+
+        device.vram = 512;
+        assert_eq!(device.vram(), 512);
+        assert_eq!(device.vram_kb(), 0.5);
+        assert_eq!(device.vram_mb(), 0.5 / 1024.0);
+        assert_eq!(device.vram_gb(), 0.5 / 1024.0 / 1024.0);
     }
 
     #[test]
