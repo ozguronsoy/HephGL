@@ -92,6 +92,11 @@ impl VulkanRendering for DynamicRendering {
                 ));
             }
         }
+        if options.depth_clamp && !enabled_features.contains(&GraphicsDeviceFeature::DepthClamp) {
+            return Err(Error::invalid_operation(
+                "Depth clamping requires the `DepthClamp` feature to be enabled.",
+            ));
+        }
 
         // Create shader stage infos.
         let mut shader_modules = ShaderModules {
@@ -308,7 +313,7 @@ impl VulkanRendering for DynamicRendering {
             .viewport_count(1)
             .scissor_count(1);
         let rasterization = PipelineRasterizationStateCreateInfo::default()
-            .depth_clamp_enable(false)
+            .depth_clamp_enable(options.depth_clamp)
             .rasterizer_discard_enable(false)
             .polygon_mode(options.polygon_mode.into())
             .cull_mode(options.culling.into())

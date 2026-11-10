@@ -3,8 +3,9 @@ use std::collections::HashSet;
 use heph_gl::{
     Error, GraphicsDevice,
     GraphicsDeviceFeature::{
-        AnisotropicFiltering, AsyncTransfer, ComputeShaders, GeometryShaders, RayTracing,
-        SampleRateShading, TessellationShaders, VideoDecoding, VideoEncoding, WireframeMode,
+        AnisotropicFiltering, AsyncTransfer, ComputeShaders, DepthClamp, GeometryShaders,
+        RayTracing, SampleRateShading, TessellationShaders, VideoDecoding, VideoEncoding,
+        WireframeMode,
     },
     GraphicsDeviceType, Version,
     renderers::{
@@ -140,6 +141,7 @@ where
             FeatureRequest::new(WireframeMode, false),
             FeatureRequest::new(AnisotropicFiltering, false),
             FeatureRequest::new(SampleRateShading, false),
+            FeatureRequest::new(DepthClamp, false),
             FeatureRequest::new(RayTracing, false),
             FeatureRequest::new(VideoDecoding, false),
             FeatureRequest::new(VideoEncoding, false),

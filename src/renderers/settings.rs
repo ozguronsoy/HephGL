@@ -164,6 +164,9 @@ pub struct GraphicsPipelineOptions {
     pub depth_test: bool,
     /// Indicates whether fragments write their depth value to the depth buffer.
     pub depth_write: bool,
+    /// Indicates whether fragment depth values are clamped to the depth range instead of clipping
+    /// primitives against the near and far planes.
+    pub depth_clamp: bool,
     /// The minimum fraction of samples in each pixel that are shaded individually. The value must
     /// be between `0.0` and `1.0`.
     pub min_sample_shading: Option<f32>,
@@ -230,6 +233,7 @@ impl Default for GraphicsPipelineOptions {
             front_face: FrontFace::default(),
             depth_test: true,
             depth_write: true,
+            depth_clamp: false,
             min_sample_shading: None,
         }
     }

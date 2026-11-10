@@ -1,7 +1,7 @@
 use heph_gl::{
     Error,
     GraphicsDeviceFeature::{
-        GeometryShaders, SampleRateShading, TessellationShaders, WireframeMode,
+        DepthClamp, GeometryShaders, SampleRateShading, TessellationShaders, WireframeMode,
     },
     Shader,
     renderers::{
@@ -482,6 +482,56 @@ where
                     );
                 }
             }
+        }
+
+        {
+            let renderer =
+                self.create_renderer_with_any_device(&[FeatureRequest::new(DepthClamp, false)]);
+            if renderer
+                .get_device()
+                .unwrap()
+                .supported_features
+                .contains(&DepthClamp)
+            {
+                let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/shapes/basic_triangle_frag.spv",
+                    SHADERS_DIR
+                )));
+                let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/shapes/basic_triangle_vert.spv",
+                    SHADERS_DIR
+                )));
+                let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+                    &[&frag_shader, &vert_shader],
+                    &GraphicsPipelineOptions {
+                        depth_clamp: true,
+                        ..Default::default()
+                    }
+                ));
+                heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
+            }
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[]);
+            let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/shapes/basic_triangle_frag.spv",
+                SHADERS_DIR
+            )));
+            let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/shapes/basic_triangle_vert.spv",
+                SHADERS_DIR
+            )));
+            heph_expect_err!(
+                renderer.create_graphics_pipeline(
+                    &[&frag_shader, &vert_shader],
+                    &GraphicsPipelineOptions {
+                        depth_clamp: true,
+                        ..Default::default()
+                    }
+                ),
+                Error::invalid_operation("")
+            );
         }
     }
 

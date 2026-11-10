@@ -48,6 +48,9 @@ pub enum GraphicsDeviceFeature {
     AnisotropicFiltering,
     /// The device supports shading individual samples of multisampled pixels.
     SampleRateShading,
+    /// The device supports clamping fragment depth values instead of clipping primitives against
+    /// the near and far planes.
+    DepthClamp,
     /// The device features hardware-accelerated ray tracing.
     RayTracing,
     /// The device supports hardware-accelerated video decoding.
