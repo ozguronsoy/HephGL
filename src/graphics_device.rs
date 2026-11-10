@@ -36,11 +36,11 @@ pub enum GraphicsDeviceVendor {
 /// Defines the features a graphics device may support.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum GraphicsDeviceFeature {
-    /// The device has dedicated geometry shader(s).
+    /// The device supports dedicated geometry shaders.
     GeometryShaders,
-    /// The device has tessellation shader(s).
+    /// The device supports tessellation shaders.
     TessellationShaders,
-    /// The device has shader(s) dedicated to general computing.
+    /// The device supports shaders dedicated to general computing.
     ComputeShaders,
     /// The device supports rendering polygons as wireframes.
     WireframeMode,
