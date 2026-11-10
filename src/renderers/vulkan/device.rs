@@ -1,4 +1,4 @@
-use std::{sync::Mutex, time::Instant};
+use std::{collections::HashSet, sync::Mutex, time::Instant};
 
 use crate::{
     Error, Result,
@@ -26,7 +26,7 @@ pub(super) struct DeviceContext {
     /// The currently active graphics device.
     pub(super) graphics_device: GraphicsDevice,
     /// The features enabled for the graphics device.
-    pub(super) enabled_features: Vec<GraphicsDeviceFeature>,
+    pub(super) enabled_features: HashSet<GraphicsDeviceFeature>,
 
     pub(super) vma_allocator: vk_mem::Allocator,
 

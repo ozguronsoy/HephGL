@@ -17,7 +17,7 @@ mod version;
 use std::{
     any::Any,
     cell::Cell,
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap, HashSet},
     ffi::CString,
     sync::Mutex,
     time::{Duration, Instant},
@@ -506,13 +506,13 @@ impl Renderer for VulkanRenderer {
 
         // Create logical device and queues.
 
-        let mut enabled_features = Vec::default();
+        let mut enabled_features = HashSet::with_capacity(requested_features.len());
         for requested_feature in requested_features {
             if device
                 .supported_features
                 .contains(&requested_feature.feature)
             {
-                enabled_features.push(requested_feature.feature);
+                let _ = enabled_features.insert(requested_feature.feature);
             } else if requested_feature.required {
                 return Err(Error::UnsupportedRequiredFeature(requested_feature.feature));
             }

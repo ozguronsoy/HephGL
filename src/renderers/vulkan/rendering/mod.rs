@@ -2,6 +2,8 @@ mod dynamic_rendering;
 mod lifetime_guards;
 mod render_pass_rendering;
 
+use std::collections::HashSet;
+
 use ash::vk::{CommandBuffer, PipelineBindPoint};
 use renkrs::RGB;
 
@@ -45,7 +47,7 @@ pub(super) trait VulkanRendering {
         device: &ash::Device,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
-        enabled_features: &[GraphicsDeviceFeature],
+        enabled_features: &HashSet<GraphicsDeviceFeature>,
         max_tessellation_patch_size: u32,
     ) -> Result<VulkanGraphicsPipeline>;
     /// Destroys the graphics pipeline.
