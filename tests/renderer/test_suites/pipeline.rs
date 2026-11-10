@@ -1,6 +1,8 @@
 use heph_gl::{
     Error,
-    GraphicsDeviceFeature::{GeometryShaders, TessellationShaders, WireframeMode},
+    GraphicsDeviceFeature::{
+        GeometryShaders, SampleRateShading, TessellationShaders, WireframeMode,
+    },
     Shader,
     renderers::{
         FeatureRequest, GraphicsPipelineOptions, PolygonMode, PrimitiveTopology, Renderer,
@@ -415,6 +417,70 @@ where
                     ),
                     Error::invalid_argument("")
                 );
+            }
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[]);
+            let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/shapes/basic_triangle_frag.spv",
+                SHADERS_DIR
+            )));
+            let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/shapes/basic_triangle_vert.spv",
+                SHADERS_DIR
+            )));
+            heph_expect_err!(
+                renderer.create_graphics_pipeline(
+                    &[&frag_shader, &vert_shader],
+                    &GraphicsPipelineOptions {
+                        min_sample_shading: Some(1.0),
+                        ..Default::default()
+                    }
+                ),
+                Error::invalid_operation("")
+            );
+        }
+
+        {
+            let renderer = self
+                .create_renderer_with_any_device(&[FeatureRequest::new(SampleRateShading, false)]);
+            if renderer
+                .get_device()
+                .unwrap()
+                .supported_features
+                .contains(&SampleRateShading)
+            {
+                let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/shapes/basic_triangle_frag.spv",
+                    SHADERS_DIR
+                )));
+                let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/shapes/basic_triangle_vert.spv",
+                    SHADERS_DIR
+                )));
+                for min_sample_shading in [0.0, 0.5, 1.0] {
+                    let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+                        &[&frag_shader, &vert_shader],
+                        &GraphicsPipelineOptions {
+                            min_sample_shading: Some(min_sample_shading),
+                            ..Default::default()
+                        }
+                    ));
+                    heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
+                }
+                for min_sample_shading in [-0.1, 1.1, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+                    heph_expect_err!(
+                        renderer.create_graphics_pipeline(
+                            &[&frag_shader, &vert_shader],
+                            &GraphicsPipelineOptions {
+                                min_sample_shading: Some(min_sample_shading),
+                                ..Default::default()
+                            }
+                        ),
+                        Error::invalid_argument("")
+                    );
+                }
             }
         }
     }

@@ -2,7 +2,9 @@ use std::time::{Duration, Instant};
 
 use heph_gl::{
     Camera, Font, FontOptions,
-    GraphicsDeviceFeature::{AnisotropicFiltering, AsyncTransfer, GeometryShaders},
+    GraphicsDeviceFeature::{
+        AnisotropicFiltering, AsyncTransfer, GeometryShaders, SampleRateShading,
+    },
     Lighting, MaterialProperties, Mesh, MeshVertexAttribute, Projection, Shader, TextType,
     TextVertex, Transform,
     math::{Mat4, Quat, Vec3},
@@ -122,7 +124,16 @@ where
             0, 3, 2, 6, 6, 7, 3,
         ];
 
-        let mut renderer = self.create_renderer_with_any_device(&[]);
+        let mut renderer =
+            self.create_renderer_with_any_device(&[FeatureRequest::new(SampleRateShading, false)]);
+        let Some(&msaa) = heph_expect_success!(renderer.supported_msaa_list()).last() else {
+            panic!("Failed to get a supported MSAA sample count.");
+        };
+        heph_expect_success!(renderer.set_settings(Settings {
+            msaa,
+            ..Default::default()
+        }));
+
         let vert_shader = heph_expect_success!(Shader::from_file(format!(
             "{}/shapes/{}",
             SHADERS_DIR, "cube_vert.spv"
@@ -137,6 +148,11 @@ where
                 blending: ColorBlending::Alpha,
                 culling: CullingMode::Back,
                 front_face: FrontFace::Clockwise,
+                min_sample_shading: renderer.get_device().and_then(|d| {
+                    d.supported_features
+                        .contains(&SampleRateShading)
+                        .then_some(1.0)
+                }),
                 ..Default::default()
             }
         ));
