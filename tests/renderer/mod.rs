@@ -47,7 +47,7 @@ where
             let devices = heph_expect_success!(renderer.enumerate_devices());
             devices
                 .iter()
-                .find(|d| d.device_type == device_type)
+                .find(|d| d.device_type() == device_type)
                 .is_some()
         };
         let skip_discrete_gpu_device_tests = !device_type_exists(DiscreteGpu);

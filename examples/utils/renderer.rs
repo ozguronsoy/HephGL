@@ -96,9 +96,9 @@ pub fn sphere_vertices(radius: f32, x_offset: f32) -> Vec<SphereVertex> {
 
 pub fn get_best_device(renderer: &ExampleRenderer) -> GraphicsDevice {
     let devices = renderer.enumerate_devices().unwrap();
-    let mut device = devices.iter().find(|d| d.device_type == DiscreteGpu);
+    let mut device = devices.iter().find(|d| d.device_type() == DiscreteGpu);
     if device.is_none() {
-        device = devices.iter().find(|d| d.device_type == IntegratedGpu);
+        device = devices.iter().find(|d| d.device_type() == IntegratedGpu);
     }
     if device.is_none() {
         device = devices.first();

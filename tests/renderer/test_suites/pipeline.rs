@@ -108,7 +108,7 @@ where
             if renderer
                 .get_device()
                 .unwrap()
-                .supported_features
+                .supported_features()
                 .contains(&WireframeMode)
             {
                 let frag_shader = heph_expect_success!(Shader::from_file(format!(
@@ -183,7 +183,7 @@ where
             if renderer
                 .get_device()
                 .unwrap()
-                .supported_features
+                .supported_features()
                 .contains(&GeometryShaders)
             {
                 let frag_shader = heph_expect_success!(Shader::from_file(format!(
@@ -275,7 +275,7 @@ where
             if renderer
                 .get_device()
                 .unwrap()
-                .supported_features
+                .supported_features()
                 .contains(&TessellationShaders)
             {
                 let frag_shader = heph_expect_success!(Shader::from_file(format!(
@@ -361,7 +361,7 @@ where
                 FeatureRequest::new(TessellationShaders, false),
                 FeatureRequest::new(GeometryShaders, false),
             ]);
-            let supported_features = &renderer.get_device().unwrap().supported_features;
+            let supported_features = &renderer.get_device().unwrap().supported_features();
             if supported_features.contains(&TessellationShaders)
                 && supported_features.contains(&GeometryShaders)
             {
@@ -448,7 +448,7 @@ where
             if renderer
                 .get_device()
                 .unwrap()
-                .supported_features
+                .supported_features()
                 .contains(&SampleRateShading)
             {
                 let frag_shader = heph_expect_success!(Shader::from_file(format!(
@@ -490,7 +490,7 @@ where
             if renderer
                 .get_device()
                 .unwrap()
-                .supported_features
+                .supported_features()
                 .contains(&DepthClamp)
             {
                 let frag_shader = heph_expect_success!(Shader::from_file(format!(

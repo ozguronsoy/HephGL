@@ -167,8 +167,8 @@ fn example(
     let mut sampler = renderer
         .create_sampler(&SamplerOptions {
             address_mode_u: SamplerAddressMode::Repeat,
-            max_anisotropy: match device.supported_features.contains(&AnisotropicFiltering) {
-                true => Some(device.max_sampler_anisotropy),
+            max_anisotropy: match device.supported_features().contains(&AnisotropicFiltering) {
+                true => Some(device.max_sampler_anisotropy()),
                 false => None,
             },
             ..Default::default()

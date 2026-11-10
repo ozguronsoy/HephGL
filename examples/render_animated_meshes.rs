@@ -243,8 +243,8 @@ fn example(
             mipmap_filter: mipmap_filter.unwrap_or_default(),
             address_mode_u,
             address_mode_v,
-            max_anisotropy: match device.supported_features.contains(&AnisotropicFiltering) {
-                true => Some(device.max_sampler_anisotropy),
+            max_anisotropy: match device.supported_features().contains(&AnisotropicFiltering) {
+                true => Some(device.max_sampler_anisotropy()),
                 false => None,
             },
             ..Default::default()

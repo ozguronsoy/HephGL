@@ -149,7 +149,7 @@ where
                 culling: CullingMode::Back,
                 front_face: FrontFace::Clockwise,
                 min_sample_shading: renderer.get_device().and_then(|d| {
-                    d.supported_features
+                    d.supported_features()
                         .contains(&SampleRateShading)
                         .then_some(1.0)
                 }),
@@ -259,8 +259,8 @@ where
             FeatureRequest::new(AsyncTransfer, false),
         ]);
         let max_anisotropy = if let Some(device) = renderer.get_device() {
-            match device.supported_features.contains(&AnisotropicFiltering) {
-                true => Some(device.max_sampler_anisotropy),
+            match device.supported_features().contains(&AnisotropicFiltering) {
+                true => Some(device.max_sampler_anisotropy()),
                 false => None,
             }
         } else {
@@ -861,8 +861,8 @@ where
             FeatureRequest::new(AsyncTransfer, false),
         ]);
         let max_anisotropy = if let Some(device) = renderer.get_device() {
-            match device.supported_features.contains(&AnisotropicFiltering) {
-                true => Some(device.max_sampler_anisotropy),
+            match device.supported_features().contains(&AnisotropicFiltering) {
+                true => Some(device.max_sampler_anisotropy()),
                 false => None,
             }
         } else {
@@ -1174,8 +1174,8 @@ where
             FeatureRequest::new(AsyncTransfer, false),
         ]);
         let max_anisotropy = if let Some(device) = renderer.get_device() {
-            match device.supported_features.contains(&AnisotropicFiltering) {
-                true => Some(device.max_sampler_anisotropy),
+            match device.supported_features().contains(&AnisotropicFiltering) {
+                true => Some(device.max_sampler_anisotropy()),
                 false => None,
             }
         } else {
@@ -1499,14 +1499,14 @@ where
         if !renderer
             .get_device()
             .unwrap()
-            .supported_features
+            .supported_features()
             .contains(&GeometryShaders)
         {
             return;
         }
         let max_anisotropy = if let Some(device) = renderer.get_device() {
-            match device.supported_features.contains(&AnisotropicFiltering) {
-                true => Some(device.max_sampler_anisotropy),
+            match device.supported_features().contains(&AnisotropicFiltering) {
+                true => Some(device.max_sampler_anisotropy()),
                 false => None,
             }
         } else {

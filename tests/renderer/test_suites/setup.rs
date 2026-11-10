@@ -1,13 +1,11 @@
-use std::collections::BTreeSet;
-
 use heph_gl::{
-    Error, GraphicsDevice,
+    Error,
     GraphicsDeviceFeature::{
         AnisotropicFiltering, AsyncTransfer, ComputeShaders, DepthClamp, GeometryShaders,
         RayTracing, SampleRateShading, TessellationShaders, VideoDecoding, VideoEncoding,
         WireframeMode,
     },
-    GraphicsDeviceType, Version,
+    Version,
     renderers::{
         FeatureRequest, InitializeOptions, Renderer, RendererHandle, RendererWorkerFactory,
         Settings,
@@ -150,30 +148,11 @@ where
         let mut renderer = self.create_renderer_with_any_device(&features);
         assert!(renderer.get_device().is_some());
 
-        // Test invalid device.
-        heph_expect_err!(
-            renderer.set_device(
-                Some(&GraphicsDevice {
-                    name: "".to_string(),
-                    device_type: GraphicsDeviceType::Other,
-                    vendor_id: u32::MAX,
-                    device_id: u32::MAX,
-                    api_version: heph_gl::Version::new(0, 0, 0),
-                    driver_version: heph_gl::Version::new(0, 0, 0),
-                    vram: 0,
-                    max_sampler_anisotropy: 1.0,
-                    supported_features: BTreeSet::default(),
-                }),
-                &features
-            ),
-            Error::fail("")
-        );
-
         let devices = heph_expect_success!(renderer.enumerate_devices());
         if let Some(device) = devices.iter().find(|d| {
             features
                 .iter()
-                .any(|f| !d.supported_features.contains(&f.feature))
+                .any(|f| !d.supported_features().contains(&f.feature))
         }) {
             for feature in &mut features {
                 feature.required = true;
