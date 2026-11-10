@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 use heph_gl::{
     Error, GraphicsDevice,
@@ -162,7 +162,7 @@ where
                     driver_version: heph_gl::Version::new(0, 0, 0),
                     vram: 0,
                     max_sampler_anisotropy: 1.0,
-                    supported_features: HashSet::default(),
+                    supported_features: BTreeSet::default(),
                 }),
                 &features
             ),

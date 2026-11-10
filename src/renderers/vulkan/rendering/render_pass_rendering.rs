@@ -1,4 +1,4 @@
-use std::ffi::CString;
+use std::{collections::HashSet, ffi::CString};
 
 use ash::vk::{
     AttachmentDescription, AttachmentLoadOp, AttachmentReference, AttachmentStoreOp, CommandBuffer,
@@ -63,7 +63,7 @@ impl VulkanRendering for RenderPassRendering {
         device: &ash::Device,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
-        enabled_features: &[GraphicsDeviceFeature],
+        enabled_features: &HashSet<GraphicsDeviceFeature>,
         max_tessellation_patch_size: u32,
     ) -> Result<VulkanGraphicsPipeline> {
         if options.polygon_mode != PolygonMode::Fill

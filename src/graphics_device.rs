@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 use crate::Version;
 
@@ -34,13 +34,13 @@ pub enum GraphicsDeviceVendor {
 }
 
 /// Defines the features a graphics device may support.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum GraphicsDeviceFeature {
-    /// The device has dedicated geometry shader(s).
+    /// The device supports dedicated geometry shaders.
     GeometryShaders,
-    /// The device has tessellation shader(s).
+    /// The device supports tessellation shaders.
     TessellationShaders,
-    /// The device has shader(s) dedicated to general computing.
+    /// The device supports shaders dedicated to general computing.
     ComputeShaders,
     /// The device supports rendering polygons as wireframes.
     WireframeMode,
@@ -81,7 +81,7 @@ pub struct GraphicsDevice {
     /// The maximum supported sampler anisotropy level.
     pub max_sampler_anisotropy: f32,
     /// The set of features supported by this device.
-    pub supported_features: HashSet<GraphicsDeviceFeature>,
+    pub supported_features: BTreeSet<GraphicsDeviceFeature>,
 }
 
 impl GraphicsDevice {
@@ -160,7 +160,7 @@ mod tests {
             driver_version: Version::new(0, 0, 0),
             vram: 0,
             max_sampler_anisotropy: 1.0,
-            supported_features: HashSet::default(),
+            supported_features: BTreeSet::default(),
         };
         assert_eq!(dev.vendor(), GraphicsDeviceVendor::Other);
 
@@ -200,7 +200,7 @@ mod tests {
             driver_version: Version::new(1, 0, 0),
             vram: 1024 * 1024 * 1024,
             max_sampler_anisotropy: 16.0,
-            supported_features: HashSet::default(),
+            supported_features: BTreeSet::default(),
         };
 
         assert!(!device.to_string().contains("Supported Features:"));
