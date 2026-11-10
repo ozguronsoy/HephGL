@@ -4,7 +4,7 @@ use heph_gl::{
     Error, GraphicsDevice,
     GraphicsDeviceFeature::{
         AnisotropicFiltering, AsyncTransfer, ComputeShaders, GeometryShaders, RayTracing,
-        VideoDecoding, VideoEncoding, WireframeMode,
+        SampleRateShading, TessellationShaders, VideoDecoding, VideoEncoding, WireframeMode,
     },
     GraphicsDeviceType, Version,
     renderers::{
@@ -135,9 +135,11 @@ where
     pub(crate) fn test_set_device(&self) {
         let mut features = [
             FeatureRequest::new(GeometryShaders, false),
+            FeatureRequest::new(TessellationShaders, false),
             FeatureRequest::new(ComputeShaders, false),
             FeatureRequest::new(WireframeMode, false),
             FeatureRequest::new(AnisotropicFiltering, false),
+            FeatureRequest::new(SampleRateShading, false),
             FeatureRequest::new(RayTracing, false),
             FeatureRequest::new(VideoDecoding, false),
             FeatureRequest::new(VideoEncoding, false),

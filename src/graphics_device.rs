@@ -46,6 +46,8 @@ pub enum GraphicsDeviceFeature {
     WireframeMode,
     /// The device supports anisotropic texture filtering.
     AnisotropicFiltering,
+    /// The device supports shading individual samples of multisampled pixels.
+    SampleRateShading,
     /// The device features hardware-accelerated ray tracing.
     RayTracing,
     /// The device supports hardware-accelerated video decoding.

@@ -1,10 +1,10 @@
 use std::time::{Duration, Instant};
 
 use heph_gl::{
-    Shader,
+    GraphicsDeviceFeature, Shader,
     renderers::{
-        BufferUsage, ColorBlending, CullingMode, FrontFace, GraphicsPipelineOptions, Renderer,
-        ResourceBinding,
+        BufferUsage, ColorBlending, CullingMode, FeatureRequest, FrontFace,
+        GraphicsPipelineOptions, Renderer, ResourceBinding,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -54,7 +54,15 @@ fn example(
     _: RawDisplayHandle,
 ) {
     let device = utils::renderer::get_best_device(renderer);
-    renderer.set_device(Some(&device), &[]).unwrap();
+    renderer
+        .set_device(
+            Some(&device),
+            &[FeatureRequest::new(
+                GraphicsDeviceFeature::SampleRateShading,
+                false,
+            )],
+        )
+        .unwrap();
     utils::renderer::set_best_msaa(renderer);
 
     let vert_shader =
@@ -68,6 +76,10 @@ fn example(
                 blending: ColorBlending::Alpha,
                 culling: CullingMode::Back,
                 front_face: FrontFace::Clockwise,
+                min_sample_shading: device
+                    .supported_features
+                    .contains(&GraphicsDeviceFeature::SampleRateShading)
+                    .then_some(1.0),
                 ..Default::default()
             },
         )

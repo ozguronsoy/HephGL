@@ -66,3 +66,4 @@ non_upper_case_globals = "deny"
 
 [lints.clippy]
 too_many_arguments = "allow"
+manual_range_contains = "allow"

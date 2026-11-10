@@ -149,7 +149,8 @@ flowchart LR
 ### [render_moving_cubes](render_moving_cubes.rs)
 
 Renders animated geometry using vertex and index buffers. Updates vertex data each frame, binds the
-buffers for indexed drawing, and configures pipeline options such as culling and blending.
+buffers for indexed drawing, and configures pipeline options such as culling, blending, and sample-
+rate shading when available.
 
 ```mermaid
 flowchart TD
