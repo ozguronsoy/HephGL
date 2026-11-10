@@ -17,7 +17,7 @@ mod version;
 use std::{
     any::Any,
     cell::Cell,
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     ffi::CString,
     sync::Mutex,
     time::{Duration, Instant},
@@ -406,7 +406,7 @@ impl Renderer for VulkanRenderer {
                 }
             }
 
-            let mut supported_features = HashSet::<GraphicsDeviceFeature>::default();
+            let mut supported_features = BTreeSet::<GraphicsDeviceFeature>::default();
             let extension_properties =
                 unsafe { instance.enumerate_device_extension_properties(physical_device)? };
             if physical_features.geometry_shader == ash::vk::TRUE {
