@@ -421,6 +421,9 @@ impl Renderer for VulkanRenderer {
             if physical_features.sampler_anisotropy == ash::vk::TRUE {
                 let _ = supported_features.insert(GraphicsDeviceFeature::AnisotropicFiltering);
             }
+            if physical_features.sample_rate_shading == ash::vk::TRUE {
+                let _ = supported_features.insert(GraphicsDeviceFeature::SampleRateShading);
+            }
             for ext in extension_properties {
                 let name = unsafe { std::ffi::CStr::from_ptr(ext.extension_name.as_ptr()) };
                 if name == ash::vk::KHR_RAY_TRACING_PIPELINE_NAME {
@@ -640,6 +643,9 @@ impl Renderer for VulkanRenderer {
         }
         if enabled_features.contains(&GraphicsDeviceFeature::AnisotropicFiltering) {
             physical_features2.features.sampler_anisotropy = ash::vk::TRUE;
+        }
+        if enabled_features.contains(&GraphicsDeviceFeature::SampleRateShading) {
+            physical_features2.features.sample_rate_shading = ash::vk::TRUE;
         }
 
         let mut supports_timeline_semaphore = false;

@@ -80,6 +80,18 @@ impl VulkanRendering for RenderPassRendering {
                 "The number of patch control points is not supported by the device.",
             ));
         }
+        if let Some(min_sample_shading) = options.min_sample_shading {
+            if !enabled_features.contains(&GraphicsDeviceFeature::SampleRateShading) {
+                return Err(Error::invalid_operation(
+                    "Sample rate shading requires the `SampleRateShading` feature to be enabled.",
+                ));
+            }
+            if !(min_sample_shading >= 0.0 && min_sample_shading <= 1.0) {
+                return Err(Error::invalid_argument(
+                    "Minimum sample shading must be between 0.0 and 1.0.",
+                ));
+            }
+        }
 
         // Create shader stage infos.
         let mut shader_modules = ShaderModules {
@@ -307,7 +319,8 @@ impl VulkanRendering for RenderPassRendering {
             .line_width(1.0);
         let multisampling = PipelineMultisampleStateCreateInfo::default()
             .rasterization_samples(self.msaa.into())
-            .sample_shading_enable(false);
+            .sample_shading_enable(options.min_sample_shading.is_some())
+            .min_sample_shading(options.min_sample_shading.unwrap_or(0.0));
         let depth_stencil = PipelineDepthStencilStateCreateInfo::default()
             .depth_test_enable(options.depth_test)
             .depth_write_enable(options.depth_write)
