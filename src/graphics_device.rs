@@ -179,6 +179,53 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_name() {
+        let device = GraphicsDevice {
+            name: "Test Device".to_string(),
+            device_type: GraphicsDeviceType::Other,
+            vendor_id: 0,
+            device_id: 0,
+            api_version: Version::new(0, 0, 0),
+            driver_version: Version::new(0, 0, 0),
+            vram: 0,
+            max_sampler_anisotropy: 1.0,
+            supported_features: BTreeSet::default(),
+        };
+        assert_eq!(device.name(), "Test Device");
+    }
+
+    #[test]
+    fn test_device_type() {
+        let mut device = GraphicsDevice {
+            name: "".to_string(),
+            device_type: GraphicsDeviceType::DiscreteGpu,
+            vendor_id: 0,
+            device_id: 0,
+            api_version: Version::new(0, 0, 0),
+            driver_version: Version::new(0, 0, 0),
+            vram: 0,
+            max_sampler_anisotropy: 1.0,
+            supported_features: BTreeSet::default(),
+        };
+        assert_eq!(device.device_type(), GraphicsDeviceType::DiscreteGpu);
+
+        device.device_type = GraphicsDeviceType::IntegratedGpu;
+        assert_eq!(device.device_type(), GraphicsDeviceType::IntegratedGpu);
+
+        device.device_type = GraphicsDeviceType::VirtualGpu;
+        assert_eq!(device.device_type(), GraphicsDeviceType::VirtualGpu);
+
+        device.device_type = GraphicsDeviceType::Cpu;
+        assert_eq!(device.device_type(), GraphicsDeviceType::Cpu);
+
+        device.device_type = GraphicsDeviceType::Other;
+        assert_eq!(device.device_type(), GraphicsDeviceType::Other);
+
+        device.device_type = GraphicsDeviceType::Invalid;
+        assert_eq!(device.device_type(), GraphicsDeviceType::Invalid);
+    }
+
+    #[test]
     fn test_vendor() {
         let mut device = GraphicsDevice {
             name: "".to_string(),
@@ -213,6 +260,131 @@ mod tests {
 
         device.vendor_id = 0x1414;
         assert_eq!(device.vendor(), GraphicsDeviceVendor::Microsoft);
+    }
+
+    #[test]
+    fn test_device_id() {
+        let device = GraphicsDevice {
+            name: "".to_string(),
+            device_type: GraphicsDeviceType::Other,
+            vendor_id: 0,
+            device_id: 0x2486,
+            api_version: Version::new(0, 0, 0),
+            driver_version: Version::new(0, 0, 0),
+            vram: 0,
+            max_sampler_anisotropy: 1.0,
+            supported_features: BTreeSet::default(),
+        };
+        assert_eq!(device.device_id(), 0x2486);
+    }
+
+    #[test]
+    fn test_api_version() {
+        let device = GraphicsDevice {
+            name: "".to_string(),
+            device_type: GraphicsDeviceType::Other,
+            vendor_id: 0,
+            device_id: 0,
+            api_version: Version::new(1, 3, 280),
+            driver_version: Version::new(0, 0, 0),
+            vram: 0,
+            max_sampler_anisotropy: 1.0,
+            supported_features: BTreeSet::default(),
+        };
+        assert_eq!(device.api_version(), Version::new(1, 3, 280));
+    }
+
+    #[test]
+    fn test_driver_version() {
+        let device = GraphicsDevice {
+            name: "".to_string(),
+            device_type: GraphicsDeviceType::Other,
+            vendor_id: 0,
+            device_id: 0,
+            api_version: Version::new(0, 0, 0),
+            driver_version: Version::new(560, 94, 0),
+            vram: 0,
+            max_sampler_anisotropy: 1.0,
+            supported_features: BTreeSet::default(),
+        };
+        assert_eq!(device.driver_version(), Version::new(560, 94, 0));
+    }
+
+    #[test]
+    fn test_vram() {
+        let mut device = GraphicsDevice {
+            name: "".to_string(),
+            device_type: GraphicsDeviceType::Other,
+            vendor_id: 0,
+            device_id: 0,
+            api_version: Version::new(0, 0, 0),
+            driver_version: Version::new(0, 0, 0),
+            vram: 0,
+            max_sampler_anisotropy: 1.0,
+            supported_features: BTreeSet::default(),
+        };
+        assert_eq!(device.vram(), 0);
+        assert_eq!(device.vram_kb(), 0);
+        assert_eq!(device.vram_mb(), 0);
+        assert_eq!(device.vram_gb(), 0);
+
+        device.vram = 24 * 1024 * 1024 * 1024;
+        assert_eq!(device.vram(), 24 * 1024 * 1024 * 1024);
+        assert_eq!(device.vram_kb(), 24 * 1024 * 1024);
+        assert_eq!(device.vram_mb(), 24 * 1024);
+        assert_eq!(device.vram_gb(), 24);
+
+        device.vram = 1024 * 1024 * 1024 - 1;
+        assert_eq!(device.vram(), 1024 * 1024 * 1024 - 1);
+        assert_eq!(device.vram_kb(), 1024 * 1024 - 1);
+        assert_eq!(device.vram_mb(), 1023);
+        assert_eq!(device.vram_gb(), 0);
+    }
+
+    #[test]
+    fn test_max_sampler_anisotropy() {
+        let device = GraphicsDevice {
+            name: "".to_string(),
+            device_type: GraphicsDeviceType::Other,
+            vendor_id: 0,
+            device_id: 0,
+            api_version: Version::new(0, 0, 0),
+            driver_version: Version::new(0, 0, 0),
+            vram: 0,
+            max_sampler_anisotropy: 16.0,
+            supported_features: BTreeSet::default(),
+        };
+        assert_eq!(device.max_sampler_anisotropy(), 16.0);
+    }
+
+    #[test]
+    fn test_supported_features() {
+        let mut device = GraphicsDevice {
+            name: "".to_string(),
+            device_type: GraphicsDeviceType::Other,
+            vendor_id: 0,
+            device_id: 0,
+            api_version: Version::new(0, 0, 0),
+            driver_version: Version::new(0, 0, 0),
+            vram: 0,
+            max_sampler_anisotropy: 1.0,
+            supported_features: BTreeSet::default(),
+        };
+        assert!(device.supported_features().is_empty());
+
+        let _ = device
+            .supported_features
+            .insert(GraphicsDeviceFeature::RayTracing);
+        let _ = device
+            .supported_features
+            .insert(GraphicsDeviceFeature::ComputeShaders);
+        assert_eq!(
+            device.supported_features(),
+            &BTreeSet::from([
+                GraphicsDeviceFeature::ComputeShaders,
+                GraphicsDeviceFeature::RayTracing
+            ])
+        );
     }
 
     #[test]
