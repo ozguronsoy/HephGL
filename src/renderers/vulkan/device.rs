@@ -8,7 +8,7 @@ use crate::{
         settings::Msaa,
         thread_context::ThreadContextMaskArray,
         vulkan::{
-            VulkanRenderer,
+            MIN_API_VERSION, VulkanRenderer,
             canvas::VulkanCanvas,
             frame::{ComputeFrame, GraphicsFrame, TransferFrame},
             queue::{QueueContext, QueueFamily},
@@ -21,30 +21,23 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct VulkanGraphicsDeviceId {
-    pub(super) uuid: Option<([u8; 16], [u8; 16])>,
-    pub(super) pci_id: Option<u32>,
+    pub(super) device_uuid: [u8; 16],
+    pub(super) driver_uuid: [u8; 16],
 }
 impl std::fmt::Display for VulkanGraphicsDeviceId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some((device_uuid, driver_uuid)) = &self.uuid {
-            let write_uuid = |f: &mut std::fmt::Formatter<'_>, uuid: &[u8; 16]| {
-                for (i, byte) in uuid.iter().enumerate() {
-                    if i == 4 || i == 6 || i == 8 || i == 10 {
-                        write!(f, "-")?;
-                    }
-                    write!(f, "{:02x}", byte)?;
+        let write_uuid = |f: &mut std::fmt::Formatter<'_>, uuid: &[u8; 16]| {
+            for (i, byte) in uuid.iter().enumerate() {
+                if i == 4 || i == 6 || i == 8 || i == 10 {
+                    write!(f, "-")?;
                 }
-                Ok(())
-            };
-            write_uuid(f, device_uuid)?;
-            write!(f, " ")?;
-            write_uuid(f, driver_uuid)?;
-        } else if let Some(pci_id) = self.pci_id {
-            writeln!(f, "{:#06X}", pci_id)?;
-        } else {
-            writeln!(f, "{:#06X}", 0)?;
-        }
-        Ok(())
+                write!(f, "{:02x}", byte)?;
+            }
+            Ok(())
+        };
+        write_uuid(f, &self.device_uuid)?;
+        write!(f, " ")?;
+        write_uuid(f, &self.driver_uuid)
     }
 }
 impl GraphicsDeviceId for VulkanGraphicsDeviceId {}
@@ -98,30 +91,14 @@ impl VulkanRenderer {
             .as_ref()
             .ok_or(Error::invalid_operation("Renderer is not initialized"))?;
 
-        let properties = unsafe { instance.get_physical_device_properties(physical_device) };
-        let device_api_version: Version = VulkanApiVersion(properties.api_version).into();
-
         let mut id_properties = ash::vk::PhysicalDeviceIDProperties::default();
         let mut properties2 =
             ash::vk::PhysicalDeviceProperties2::default().push_next(&mut id_properties);
-        if self.api_version >= Version::new(1, 1, 0) && device_api_version >= Version::new(1, 1, 0)
-        {
-            unsafe { instance.get_physical_device_properties2(physical_device, &mut properties2) };
-        } else if let Some(properties2_loader) = self.physical_device_properties2_loader.as_ref() {
-            unsafe {
-                properties2_loader
-                    .get_physical_device_properties2(physical_device, &mut properties2)
-            };
-        } else {
-            return Ok(VulkanGraphicsDeviceId {
-                uuid: None,
-                pci_id: Some(properties.device_id),
-            });
-        }
+        unsafe { instance.get_physical_device_properties2(physical_device, &mut properties2) };
 
         Ok(VulkanGraphicsDeviceId {
-            uuid: Some((id_properties.device_uuid, id_properties.driver_uuid)),
-            pci_id: None,
+            device_uuid: id_properties.device_uuid,
+            driver_uuid: id_properties.driver_uuid,
         })
     }
 
@@ -148,9 +125,11 @@ impl VulkanRenderer {
         let mut queue_families = Vec::default();
         for physical_device in physical_devices {
             let properties = unsafe { instance.get_physical_device_properties(physical_device) };
-            if device.vendor_id != properties.vendor_id
-                || device.device_id.as_ref()
-                    != &self.get_device_id(physical_device)? as &dyn GraphicsDeviceId
+            if Version::from(VulkanApiVersion(properties.api_version)) < MIN_API_VERSION {
+                continue;
+            }
+            if device.device_id.as_ref()
+                != &self.get_device_id(physical_device)? as &dyn GraphicsDeviceId
             {
                 continue;
             }

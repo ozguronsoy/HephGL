@@ -13,10 +13,6 @@ fn main() -> ExitCode {
     let flags = RendererTestFlags::default();
     RendererTests::<VulkanRenderer>::run(&[
         RendererVersionedTestSuite {
-            api_version: Some(Version::new(1, 0, 0)),
-            flags,
-        },
-        RendererVersionedTestSuite {
             api_version: Some(Version::new(1, 1, 0)),
             flags,
         },
