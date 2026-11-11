@@ -64,58 +64,76 @@ pub enum GraphicsDeviceFeature {
 /// Represents a graphics device.
 #[derive(Debug, PartialEq, Clone)]
 pub struct GraphicsDevice {
-    /// The name of the graphics device.
-    pub name: String,
-    /// The type of the graphics device.
-    pub device_type: GraphicsDeviceType,
-    /// The unique identifier for the hardware vendor.
-    pub vendor_id: u32,
-    /// The unique identifier for the specific device model.
-    pub device_id: u32,
-    /// The version of the supported graphics API.
-    pub api_version: Version,
-    /// The version of the installed graphics driver.
-    pub driver_version: Version,
-    /// The total amount of dedicated VRAM in bytes.
-    pub vram: u64,
-    /// The maximum supported sampler anisotropy level.
-    pub max_sampler_anisotropy: f32,
-    /// The set of features supported by this device.
-    pub supported_features: BTreeSet<GraphicsDeviceFeature>,
+    pub(crate) name: String,
+    pub(crate) device_type: GraphicsDeviceType,
+    pub(crate) vendor_id: u32,
+    pub(crate) device_id: u32,
+    pub(crate) api_version: Version,
+    pub(crate) driver_version: Version,
+    pub(crate) vram: u64,
+    pub(crate) max_sampler_anisotropy: f32,
+    pub(crate) supported_features: BTreeSet<GraphicsDeviceFeature>,
 }
 
 impl GraphicsDevice {
+    /// Gets the name of the device.
+    pub fn name(&self) -> &'_ str {
+        &self.name
+    }
+
+    /// Gets the type of the device.
+    pub fn device_type(&self) -> GraphicsDeviceType {
+        self.device_type
+    }
+
     /// Gets the vendor of the device.
     pub fn vendor(&self) -> GraphicsDeviceVendor {
-        GraphicsDevice::vendor_from_id(self.vendor_id)
+        GraphicsDeviceVendor::from_id(self.vendor_id)
     }
 
-    /// Sets the `vendor_id` of the device.
-    pub fn set_vendor(&mut self, vendor: GraphicsDeviceVendor) {
-        self.vendor_id = match vendor {
-            GraphicsDeviceVendor::Nvidia => 0x10DE,
-            GraphicsDeviceVendor::Amd => 0x1002,
-            GraphicsDeviceVendor::Intel => 0x8086,
-            GraphicsDeviceVendor::Qualcomm => 0x5143,
-            GraphicsDeviceVendor::Arm => 0x13B5,
-            GraphicsDeviceVendor::Apple => 0x106B,
-            GraphicsDeviceVendor::Microsoft => 0x1414,
-            GraphicsDeviceVendor::Other => 0,
-        }
+    /// Gets the unique identifier of the device.
+    pub fn device_id(&self) -> u32 {
+        self.device_id
     }
 
-    /// Gets the vendor from vendor id.
-    pub fn vendor_from_id(vendor_id: u32) -> GraphicsDeviceVendor {
-        match vendor_id {
-            0x10DE => GraphicsDeviceVendor::Nvidia,
-            0x1002 => GraphicsDeviceVendor::Amd,
-            0x8086 => GraphicsDeviceVendor::Intel,
-            0x5143 => GraphicsDeviceVendor::Qualcomm,
-            0x13B5 => GraphicsDeviceVendor::Arm,
-            0x106B => GraphicsDeviceVendor::Apple,
-            0x1414 => GraphicsDeviceVendor::Microsoft,
-            _ => GraphicsDeviceVendor::Other,
-        }
+    /// Gets the maximum supported backend API version by the device.
+    pub fn api_version(&self) -> Version {
+        self.api_version
+    }
+
+    /// Gets the version of the installed graphics driver.
+    pub fn driver_version(&self) -> Version {
+        self.driver_version
+    }
+
+    /// Gets the total amount of dedicated VRAM the device has in bytes.
+    pub fn vram(&self) -> u64 {
+        self.vram
+    }
+
+    /// Gets the total amount of dedicated VRAM the device has in kilobytes.
+    pub fn vram_kb(&self) -> f64 {
+        self.vram as f64 / 1024.0
+    }
+
+    /// Gets the total amount of dedicated VRAM the device has in megabytes.
+    pub fn vram_mb(&self) -> f64 {
+        self.vram_kb() / 1024.0
+    }
+
+    /// Gets the total amount of dedicated VRAM the device has in gigabytes.
+    pub fn vram_gb(&self) -> f64 {
+        self.vram_mb() / 1024.0
+    }
+
+    /// Gets the maximum sampler anisotropy level supported by the device.
+    pub fn max_sampler_anisotropy(&self) -> f32 {
+        self.max_sampler_anisotropy
+    }
+
+    /// Gets the set of features supported by the device.
+    pub fn supported_features(&self) -> &BTreeSet<GraphicsDeviceFeature> {
+        &self.supported_features
     }
 }
 
@@ -129,11 +147,7 @@ impl std::fmt::Display for GraphicsDevice {
         writeln!(f, "    Device ID:          {:#06X}", self.device_id)?;
         writeln!(f, "    API Version:        {}", self.api_version)?;
         writeln!(f, "    Driver Version:     {}", self.driver_version)?;
-        writeln!(
-            f,
-            "    VRAM:               {} GB",
-            ((self.vram as f64) / (1024.0 * 1024.0 * 1024.0)).round() as u64
-        )?;
+        writeln!(f, "    VRAM:               {} GB", self.vram_gb())?;
         writeln!(f, "    Max Anisotropy:     {}", self.max_sampler_anisotropy)?;
         if !self.supported_features.is_empty() {
             writeln!(f, "    Supported Features:")?;
@@ -145,13 +159,75 @@ impl std::fmt::Display for GraphicsDevice {
     }
 }
 
+impl GraphicsDeviceVendor {
+    pub fn from_id(id: u32) -> Self {
+        match id {
+            0x10DE => GraphicsDeviceVendor::Nvidia,
+            0x1002 => GraphicsDeviceVendor::Amd,
+            0x8086 => GraphicsDeviceVendor::Intel,
+            0x5143 => GraphicsDeviceVendor::Qualcomm,
+            0x13B5 => GraphicsDeviceVendor::Arm,
+            0x106B => GraphicsDeviceVendor::Apple,
+            0x1414 => GraphicsDeviceVendor::Microsoft,
+            _ => GraphicsDeviceVendor::Other,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
+    fn test_name() {
+        let device = GraphicsDevice {
+            name: "Test Device".to_string(),
+            device_type: GraphicsDeviceType::Other,
+            vendor_id: 0,
+            device_id: 0,
+            api_version: Version::new(0, 0, 0),
+            driver_version: Version::new(0, 0, 0),
+            vram: 0,
+            max_sampler_anisotropy: 1.0,
+            supported_features: BTreeSet::default(),
+        };
+        assert_eq!(device.name(), "Test Device");
+    }
+
+    #[test]
+    fn test_device_type() {
+        let mut device = GraphicsDevice {
+            name: "".to_string(),
+            device_type: GraphicsDeviceType::DiscreteGpu,
+            vendor_id: 0,
+            device_id: 0,
+            api_version: Version::new(0, 0, 0),
+            driver_version: Version::new(0, 0, 0),
+            vram: 0,
+            max_sampler_anisotropy: 1.0,
+            supported_features: BTreeSet::default(),
+        };
+        assert_eq!(device.device_type(), GraphicsDeviceType::DiscreteGpu);
+
+        device.device_type = GraphicsDeviceType::IntegratedGpu;
+        assert_eq!(device.device_type(), GraphicsDeviceType::IntegratedGpu);
+
+        device.device_type = GraphicsDeviceType::VirtualGpu;
+        assert_eq!(device.device_type(), GraphicsDeviceType::VirtualGpu);
+
+        device.device_type = GraphicsDeviceType::Cpu;
+        assert_eq!(device.device_type(), GraphicsDeviceType::Cpu);
+
+        device.device_type = GraphicsDeviceType::Other;
+        assert_eq!(device.device_type(), GraphicsDeviceType::Other);
+
+        device.device_type = GraphicsDeviceType::Invalid;
+        assert_eq!(device.device_type(), GraphicsDeviceType::Invalid);
+    }
+
+    #[test]
     fn test_vendor() {
-        let mut dev = GraphicsDevice {
+        let mut device = GraphicsDevice {
             name: "".to_string(),
             device_type: GraphicsDeviceType::Other,
             vendor_id: 0,
@@ -162,31 +238,159 @@ mod tests {
             max_sampler_anisotropy: 1.0,
             supported_features: BTreeSet::default(),
         };
-        assert_eq!(dev.vendor(), GraphicsDeviceVendor::Other);
+        assert_eq!(device.vendor(), GraphicsDeviceVendor::Other);
 
-        dev.set_vendor(GraphicsDeviceVendor::Nvidia);
-        assert_eq!(dev.vendor(), GraphicsDeviceVendor::Nvidia);
+        device.vendor_id = 0x10DE;
+        assert_eq!(device.vendor(), GraphicsDeviceVendor::Nvidia);
 
-        dev.set_vendor(GraphicsDeviceVendor::Amd);
-        assert_eq!(dev.vendor(), GraphicsDeviceVendor::Amd);
+        device.vendor_id = 0x1002;
+        assert_eq!(device.vendor(), GraphicsDeviceVendor::Amd);
 
-        dev.set_vendor(GraphicsDeviceVendor::Intel);
-        assert_eq!(dev.vendor(), GraphicsDeviceVendor::Intel);
+        device.vendor_id = 0x8086;
+        assert_eq!(device.vendor(), GraphicsDeviceVendor::Intel);
 
-        dev.set_vendor(GraphicsDeviceVendor::Qualcomm);
-        assert_eq!(dev.vendor(), GraphicsDeviceVendor::Qualcomm);
+        device.vendor_id = 0x5143;
+        assert_eq!(device.vendor(), GraphicsDeviceVendor::Qualcomm);
 
-        dev.set_vendor(GraphicsDeviceVendor::Arm);
-        assert_eq!(dev.vendor(), GraphicsDeviceVendor::Arm);
+        device.vendor_id = 0x13B5;
+        assert_eq!(device.vendor(), GraphicsDeviceVendor::Arm);
 
-        dev.set_vendor(GraphicsDeviceVendor::Apple);
-        assert_eq!(dev.vendor(), GraphicsDeviceVendor::Apple);
+        device.vendor_id = 0x106B;
+        assert_eq!(device.vendor(), GraphicsDeviceVendor::Apple);
 
-        dev.set_vendor(GraphicsDeviceVendor::Microsoft);
-        assert_eq!(dev.vendor(), GraphicsDeviceVendor::Microsoft);
+        device.vendor_id = 0x1414;
+        assert_eq!(device.vendor(), GraphicsDeviceVendor::Microsoft);
+    }
 
-        dev.set_vendor(GraphicsDeviceVendor::Other);
-        assert_eq!(dev.vendor(), GraphicsDeviceVendor::Other);
+    #[test]
+    fn test_device_id() {
+        let device = GraphicsDevice {
+            name: "".to_string(),
+            device_type: GraphicsDeviceType::Other,
+            vendor_id: 0,
+            device_id: 0x2486,
+            api_version: Version::new(0, 0, 0),
+            driver_version: Version::new(0, 0, 0),
+            vram: 0,
+            max_sampler_anisotropy: 1.0,
+            supported_features: BTreeSet::default(),
+        };
+        assert_eq!(device.device_id(), 0x2486);
+    }
+
+    #[test]
+    fn test_api_version() {
+        let device = GraphicsDevice {
+            name: "".to_string(),
+            device_type: GraphicsDeviceType::Other,
+            vendor_id: 0,
+            device_id: 0,
+            api_version: Version::new(1, 3, 280),
+            driver_version: Version::new(0, 0, 0),
+            vram: 0,
+            max_sampler_anisotropy: 1.0,
+            supported_features: BTreeSet::default(),
+        };
+        assert_eq!(device.api_version(), Version::new(1, 3, 280));
+    }
+
+    #[test]
+    fn test_driver_version() {
+        let device = GraphicsDevice {
+            name: "".to_string(),
+            device_type: GraphicsDeviceType::Other,
+            vendor_id: 0,
+            device_id: 0,
+            api_version: Version::new(0, 0, 0),
+            driver_version: Version::new(560, 94, 0),
+            vram: 0,
+            max_sampler_anisotropy: 1.0,
+            supported_features: BTreeSet::default(),
+        };
+        assert_eq!(device.driver_version(), Version::new(560, 94, 0));
+    }
+
+    #[test]
+    fn test_vram() {
+        let mut device = GraphicsDevice {
+            name: "".to_string(),
+            device_type: GraphicsDeviceType::Other,
+            vendor_id: 0,
+            device_id: 0,
+            api_version: Version::new(0, 0, 0),
+            driver_version: Version::new(0, 0, 0),
+            vram: 0,
+            max_sampler_anisotropy: 1.0,
+            supported_features: BTreeSet::default(),
+        };
+        assert_eq!(device.vram(), 0);
+        assert_eq!(device.vram_kb(), 0.0);
+        assert_eq!(device.vram_mb(), 0.0);
+        assert_eq!(device.vram_gb(), 0.0);
+
+        device.vram = 24 * 1024 * 1024 * 1024;
+        assert_eq!(device.vram(), 24 * 1024 * 1024 * 1024);
+        assert_eq!(device.vram_kb(), 24.0 * 1024.0 * 1024.0);
+        assert_eq!(device.vram_mb(), 24.0 * 1024.0);
+        assert_eq!(device.vram_gb(), 24.0);
+
+        device.vram = 1536 * 1024 * 1024;
+        assert_eq!(device.vram(), 1536 * 1024 * 1024);
+        assert_eq!(device.vram_kb(), 1536.0 * 1024.0);
+        assert_eq!(device.vram_mb(), 1536.0);
+        assert_eq!(device.vram_gb(), 1.5);
+
+        device.vram = 512;
+        assert_eq!(device.vram(), 512);
+        assert_eq!(device.vram_kb(), 0.5);
+        assert_eq!(device.vram_mb(), 0.5 / 1024.0);
+        assert_eq!(device.vram_gb(), 0.5 / 1024.0 / 1024.0);
+    }
+
+    #[test]
+    fn test_max_sampler_anisotropy() {
+        let device = GraphicsDevice {
+            name: "".to_string(),
+            device_type: GraphicsDeviceType::Other,
+            vendor_id: 0,
+            device_id: 0,
+            api_version: Version::new(0, 0, 0),
+            driver_version: Version::new(0, 0, 0),
+            vram: 0,
+            max_sampler_anisotropy: 16.0,
+            supported_features: BTreeSet::default(),
+        };
+        assert_eq!(device.max_sampler_anisotropy(), 16.0);
+    }
+
+    #[test]
+    fn test_supported_features() {
+        let mut device = GraphicsDevice {
+            name: "".to_string(),
+            device_type: GraphicsDeviceType::Other,
+            vendor_id: 0,
+            device_id: 0,
+            api_version: Version::new(0, 0, 0),
+            driver_version: Version::new(0, 0, 0),
+            vram: 0,
+            max_sampler_anisotropy: 1.0,
+            supported_features: BTreeSet::default(),
+        };
+        assert!(device.supported_features().is_empty());
+
+        let _ = device
+            .supported_features
+            .insert(GraphicsDeviceFeature::RayTracing);
+        let _ = device
+            .supported_features
+            .insert(GraphicsDeviceFeature::ComputeShaders);
+        assert_eq!(
+            device.supported_features(),
+            &BTreeSet::from([
+                GraphicsDeviceFeature::ComputeShaders,
+                GraphicsDeviceFeature::RayTracing
+            ])
+        );
     }
 
     #[test]

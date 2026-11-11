@@ -77,7 +77,7 @@ fn example(
                 culling: CullingMode::Back,
                 front_face: FrontFace::Clockwise,
                 min_sample_shading: device
-                    .supported_features
+                    .supported_features()
                     .contains(&GraphicsDeviceFeature::SampleRateShading)
                     .then_some(1.0),
                 ..Default::default()

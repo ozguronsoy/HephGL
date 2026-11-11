@@ -66,7 +66,9 @@ where
     ) -> Option<TestRenderer> {
         let mut renderer = self.create_renderer();
         let devices = heph_expect_success!(renderer.enumerate_devices());
-        let target_device = devices.iter().find(|d| d.device_type == target_device_type);
+        let target_device = devices
+            .iter()
+            .find(|d| d.device_type() == target_device_type);
         if target_device.is_none() {
             if target_device_type_required {
                 panic!("Invalid Test Env: No {:?} found.", target_device_type);

@@ -35,7 +35,7 @@ use renkrs::RGB;
 use vk_mem::Alloc;
 
 use crate::{
-    Error, HEPHGL_VERSION, Result, Version,
+    Error, GraphicsDeviceVendor, HEPHGL_VERSION, Result, Version,
     graphics_device::{GraphicsDevice, GraphicsDeviceFeature, GraphicsDeviceType},
     renderers::{
         BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererCanvas,
@@ -393,7 +393,7 @@ impl Renderer for VulkanRenderer {
             let device_api_version = VulkanApiVersion(properties.api_version).into();
             let device_driver_version = DriverVersion::new(
                 properties.driver_version,
-                GraphicsDevice::vendor_from_id(properties.vendor_id),
+                GraphicsDeviceVendor::from_id(properties.vendor_id),
             )
             .into();
 
