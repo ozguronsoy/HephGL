@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::{any::Any, collections::BTreeSet, fmt::Display};
 
 use crate::Version;
 
@@ -62,17 +62,44 @@ pub enum GraphicsDeviceFeature {
 }
 
 /// Represents a graphics device.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub struct GraphicsDevice {
     pub(crate) name: String,
     pub(crate) device_type: GraphicsDeviceType,
     pub(crate) vendor_id: u32,
-    pub(crate) device_id: u32,
+    pub(crate) device_id: Box<dyn GraphicsDeviceId>,
     pub(crate) api_version: Version,
     pub(crate) driver_version: Version,
     pub(crate) vram: u64,
     pub(crate) max_sampler_anisotropy: f32,
     pub(crate) supported_features: BTreeSet<GraphicsDeviceFeature>,
+}
+
+pub trait GraphicsDeviceIdHelper {
+    fn dyn_clone(&self) -> Box<dyn GraphicsDeviceId>;
+    fn dyn_eq(&self, other: &dyn Any) -> bool;
+}
+/// Represents the unique identifier of a graphics device.
+pub trait GraphicsDeviceId: Any + core::fmt::Debug + Display + GraphicsDeviceIdHelper {}
+
+impl<T: GraphicsDeviceId + Clone + PartialEq + 'static> GraphicsDeviceIdHelper for T {
+    fn dyn_clone(&self) -> Box<dyn GraphicsDeviceId> {
+        Box::new(self.clone())
+    }
+
+    fn dyn_eq(&self, other: &dyn Any) -> bool {
+        other.downcast_ref::<T>().is_some_and(|other| self == other)
+    }
+}
+impl Clone for Box<dyn GraphicsDeviceId> {
+    fn clone(&self) -> Self {
+        self.dyn_clone()
+    }
+}
+impl PartialEq for dyn GraphicsDeviceId {
+    fn eq(&self, other: &Self) -> bool {
+        self.dyn_eq(other)
+    }
 }
 
 impl GraphicsDevice {
@@ -92,8 +119,8 @@ impl GraphicsDevice {
     }
 
     /// Gets the unique identifier of the device.
-    pub fn device_id(&self) -> u32 {
-        self.device_id
+    pub fn device_id(&self) -> &'_ dyn GraphicsDeviceId {
+        self.device_id.as_ref()
     }
 
     /// Gets the maximum supported backend API version by the device.
@@ -137,14 +164,28 @@ impl GraphicsDevice {
     }
 }
 
-impl std::fmt::Display for GraphicsDevice {
+impl PartialEq for GraphicsDevice {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.device_type == other.device_type
+            && self.vendor_id == other.vendor_id
+            && *self.device_id == *other.device_id
+            && self.api_version == other.api_version
+            && self.driver_version == other.driver_version
+            && self.vram == other.vram
+            && self.max_sampler_anisotropy == other.max_sampler_anisotropy
+            && self.supported_features == other.supported_features
+    }
+}
+
+impl Display for GraphicsDevice {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         writeln!(f, "Graphics Device:")?;
         writeln!(f, "    Name:               {}", self.name)?;
         writeln!(f, "    Type:               {:?}", self.device_type)?;
         writeln!(f, "    Vendor:             {:?}", self.vendor())?;
         writeln!(f, "    Vendor ID:          {:#06X}", self.vendor_id)?;
-        writeln!(f, "    Device ID:          {:#06X}", self.device_id)?;
+        writeln!(f, "    Device ID:          {}", self.device_id())?;
         writeln!(f, "    API Version:        {}", self.api_version)?;
         writeln!(f, "    Driver Version:     {}", self.driver_version)?;
         writeln!(f, "    VRAM:               {} GB", self.vram_gb())?;
@@ -155,7 +196,7 @@ impl std::fmt::Display for GraphicsDevice {
                 writeln!(f, "     - {:?}", feature)?;
             }
         }
-        std::fmt::Result::Ok(())
+        Ok(())
     }
 }
 
@@ -178,13 +219,23 @@ impl GraphicsDeviceVendor {
 mod tests {
     use super::*;
 
+    #[derive(Debug, Clone, PartialEq)]
+    struct TestGraphicsDeviceId(u32);
+    impl Display for TestGraphicsDeviceId {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            writeln!(f, "{:#06X}", self.0)?;
+            Ok(())
+        }
+    }
+    impl GraphicsDeviceId for TestGraphicsDeviceId {}
+
     #[test]
     fn test_name() {
         let device = GraphicsDevice {
             name: "Test Device".to_string(),
             device_type: GraphicsDeviceType::Other,
             vendor_id: 0,
-            device_id: 0,
+            device_id: Box::new(TestGraphicsDeviceId(0)),
             api_version: Version::new(0, 0, 0),
             driver_version: Version::new(0, 0, 0),
             vram: 0,
@@ -200,7 +251,7 @@ mod tests {
             name: "".to_string(),
             device_type: GraphicsDeviceType::DiscreteGpu,
             vendor_id: 0,
-            device_id: 0,
+            device_id: Box::new(TestGraphicsDeviceId(0)),
             api_version: Version::new(0, 0, 0),
             driver_version: Version::new(0, 0, 0),
             vram: 0,
@@ -231,7 +282,7 @@ mod tests {
             name: "".to_string(),
             device_type: GraphicsDeviceType::Other,
             vendor_id: 0,
-            device_id: 0,
+            device_id: Box::new(TestGraphicsDeviceId(0)),
             api_version: Version::new(0, 0, 0),
             driver_version: Version::new(0, 0, 0),
             vram: 0,
@@ -268,14 +319,21 @@ mod tests {
             name: "".to_string(),
             device_type: GraphicsDeviceType::Other,
             vendor_id: 0,
-            device_id: 0x2486,
+            device_id: Box::new(TestGraphicsDeviceId(0x2486)),
             api_version: Version::new(0, 0, 0),
             driver_version: Version::new(0, 0, 0),
             vram: 0,
             max_sampler_anisotropy: 1.0,
             supported_features: BTreeSet::default(),
         };
-        assert_eq!(device.device_id(), 0x2486);
+        assert_eq!(
+            device.device_id(),
+            &TestGraphicsDeviceId(0x2486) as &dyn GraphicsDeviceId
+        );
+        assert_ne!(
+            device.device_id(),
+            &TestGraphicsDeviceId(0) as &dyn GraphicsDeviceId
+        );
     }
 
     #[test]
@@ -284,7 +342,7 @@ mod tests {
             name: "".to_string(),
             device_type: GraphicsDeviceType::Other,
             vendor_id: 0,
-            device_id: 0,
+            device_id: Box::new(TestGraphicsDeviceId(0)),
             api_version: Version::new(1, 3, 280),
             driver_version: Version::new(0, 0, 0),
             vram: 0,
@@ -300,7 +358,7 @@ mod tests {
             name: "".to_string(),
             device_type: GraphicsDeviceType::Other,
             vendor_id: 0,
-            device_id: 0,
+            device_id: Box::new(TestGraphicsDeviceId(0)),
             api_version: Version::new(0, 0, 0),
             driver_version: Version::new(560, 94, 0),
             vram: 0,
@@ -316,7 +374,7 @@ mod tests {
             name: "".to_string(),
             device_type: GraphicsDeviceType::Other,
             vendor_id: 0,
-            device_id: 0,
+            device_id: Box::new(TestGraphicsDeviceId(0)),
             api_version: Version::new(0, 0, 0),
             driver_version: Version::new(0, 0, 0),
             vram: 0,
@@ -353,7 +411,7 @@ mod tests {
             name: "".to_string(),
             device_type: GraphicsDeviceType::Other,
             vendor_id: 0,
-            device_id: 0,
+            device_id: Box::new(TestGraphicsDeviceId(0)),
             api_version: Version::new(0, 0, 0),
             driver_version: Version::new(0, 0, 0),
             vram: 0,
@@ -369,7 +427,7 @@ mod tests {
             name: "".to_string(),
             device_type: GraphicsDeviceType::Other,
             vendor_id: 0,
-            device_id: 0,
+            device_id: Box::new(TestGraphicsDeviceId(0)),
             api_version: Version::new(0, 0, 0),
             driver_version: Version::new(0, 0, 0),
             vram: 0,
@@ -399,7 +457,7 @@ mod tests {
             name: "".to_string(),
             device_type: GraphicsDeviceType::Other,
             vendor_id: 0,
-            device_id: 0,
+            device_id: Box::new(TestGraphicsDeviceId(0)),
             api_version: Version::new(1, 0, 0),
             driver_version: Version::new(1, 0, 0),
             vram: 1024 * 1024 * 1024,

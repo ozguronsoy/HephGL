@@ -1,7 +1,7 @@
 use std::{collections::HashSet, sync::Mutex, time::Instant};
 
 use crate::{
-    Error, Result,
+    Error, GraphicsDeviceId, Result,
     graphics_device::{GraphicsDevice, GraphicsDeviceFeature},
     renderers::{
         Renderer,
@@ -17,6 +17,30 @@ use crate::{
         },
     },
 };
+
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct VulkanGraphicsDeviceId {
+    pub(super) device_uuid: [u8; 16],
+    pub(super) driver_uuid: [u8; 16],
+}
+impl std::fmt::Display for VulkanGraphicsDeviceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let write_uuid = |f: &mut std::fmt::Formatter<'_>, uuid: &[u8; 16]| {
+            for (i, byte) in uuid.iter().enumerate() {
+                if i == 4 || i == 6 || i == 8 || i == 10 {
+                    write!(f, "-")?;
+                }
+                write!(f, "{:02x}", byte)?;
+            }
+            Ok(())
+        };
+        write_uuid(f, &self.device_uuid)?;
+        write!(f, " ")?;
+        write_uuid(f, &self.driver_uuid)?;
+        Ok(())
+    }
+}
+impl GraphicsDeviceId for VulkanGraphicsDeviceId {}
 
 /// Encapsulates the Vulkan device state.
 ///
@@ -79,16 +103,20 @@ impl VulkanRenderer {
 
         let mut queue_families = Vec::default();
         for physical_device in physical_devices {
-            let properties;
-            let queue_family_properties_vec;
-            unsafe {
-                properties = instance.get_physical_device_properties(physical_device);
-                if device.device_id != properties.device_id {
-                    continue;
-                }
-                queue_family_properties_vec =
-                    instance.get_physical_device_queue_family_properties(physical_device);
-            };
+            let mut id_properties = ash::vk::PhysicalDeviceIDProperties::default();
+            let mut properties2 =
+                ash::vk::PhysicalDeviceProperties2::default().push_next(&mut id_properties);
+            unsafe { instance.get_physical_device_properties2(physical_device, &mut properties2) };
+            if device.device_id.as_ref()
+                != &(VulkanGraphicsDeviceId {
+                    device_uuid: id_properties.device_uuid,
+                    driver_uuid: id_properties.driver_uuid,
+                }) as &dyn GraphicsDeviceId
+            {
+                continue;
+            }
+            let queue_family_properties_vec =
+                unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
 
             for (index, queue_family_properties) in queue_family_properties_vec.iter().enumerate() {
                 queue_families.push(QueueFamily {
