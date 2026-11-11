@@ -35,7 +35,7 @@ use renkrs::RGB;
 use vk_mem::Alloc;
 
 use crate::{
-    Error, GraphicsDeviceVendor, HEPHGL_VERSION, Result, Version,
+    Error, GraphicsDeviceId, GraphicsDeviceVendor, HEPHGL_VERSION, Result, Version,
     graphics_device::{GraphicsDevice, GraphicsDeviceFeature, GraphicsDeviceType},
     renderers::{
         BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererCanvas,
@@ -52,7 +52,7 @@ use crate::{
         version::DriverVersion,
         vulkan::{
             canvas::{AttachmentImage, VulkanCanvas},
-            device::DeviceContext,
+            device::{DeviceContext, VulkanGraphicsDeviceId},
             frame::{ComputeFrame, FrameState, GraphicsFrame, TransferFrame, VulkanFrame},
             pipeline::{VulkanComputePipeline, VulkanGraphicsPipeline},
             queue::QueueContext,
@@ -88,6 +88,8 @@ pub struct VulkanRenderer {
     window_surface: Option<SurfaceKHR>,
     window_surface_loader: Option<ash::khr::surface::Instance>,
 
+    physical_device_properties2_loader: Option<ash::khr::get_physical_device_properties2::Instance>,
+
     device_context: Option<DeviceContext>,
 
     main_thread_id: std::thread::ThreadId,
@@ -105,6 +107,8 @@ impl Renderer for VulkanRenderer {
 
             window_surface: None,
             window_surface_loader: None,
+
+            physical_device_properties2_loader: None,
 
             device_context: None,
 
@@ -274,6 +278,24 @@ impl Renderer for VulkanRenderer {
             }
         }
 
+        // Device and driver UUIDs require these instance extensions before Vulkan 1.1.
+        let supports_instance_extension = |extension_name: &std::ffi::CStr| {
+            extension_properties.iter().any(|ext| {
+                let name = unsafe { std::ffi::CStr::from_ptr(ext.extension_name.as_ptr()) };
+                name == extension_name
+            })
+        };
+        let supports_device_id_properties = self.api_version < Version::new(1, 1, 0)
+            && supports_instance_extension(ash::vk::KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_NAME)
+            && supports_instance_extension(ash::vk::KHR_EXTERNAL_MEMORY_CAPABILITIES_NAME);
+        if supports_device_id_properties {
+            if !supports_portability_enumeration {
+                required_extension_names
+                    .push(ash::vk::KHR_GET_PHYSICAL_DEVICE_PROPERTIES2_NAME.as_ptr());
+            }
+            required_extension_names.push(ash::vk::KHR_EXTERNAL_MEMORY_CAPABILITIES_NAME.as_ptr());
+        }
+
         let mut enabled_layer_names = Vec::new();
         if cfg!(debug_assertions) {
             let available_layers: Vec<_> = unsafe {
@@ -321,6 +343,9 @@ impl Renderer for VulkanRenderer {
         });
         self.window_surface_loader = Some(ash::khr::surface::Instance::new(&entry, &instance));
 
+        self.physical_device_properties2_loader = supports_device_id_properties
+            .then(|| ash::khr::get_physical_device_properties2::Instance::new(&entry, &instance));
+
         self.entry = Some(entry);
         self.instance = Some(instance);
 
@@ -347,6 +372,7 @@ impl Renderer for VulkanRenderer {
 
         self.window_surface_loader = None;
         self.window_surface = None;
+        self.physical_device_properties2_loader = None;
         self.instance = None;
         self.entry = None;
 
@@ -388,7 +414,7 @@ impl Renderer for VulkanRenderer {
             };
 
             let device_vendor_id = properties.vendor_id;
-            let device_id = properties.device_id;
+            let device_id = Box::new(self.get_device_id(physical_device)?);
 
             let device_api_version = VulkanApiVersion(properties.api_version).into();
             let device_driver_version = DriverVersion::new(
@@ -484,6 +510,10 @@ impl Renderer for VulkanRenderer {
         requested_features: &[FeatureRequest],
     ) -> Result<()> {
         self.main_thread_only()?;
+        if let Some(device) = device {
+            // Check whether the `device` is a Vulkan device.
+            let _ = resource_ref::<VulkanGraphicsDeviceId>(device.device_id.as_ref())?;
+        }
         if self.device_context.is_some() {
             self.uninitialize_device()?;
         }
@@ -588,7 +618,9 @@ impl Renderer for VulkanRenderer {
         let mut supported_msaa_list = Vec::default();
         for pd in physical_devices {
             let properties = unsafe { instance.get_physical_device_properties(pd) };
-            if properties.device_id == device.device_id {
+            if device.vendor_id == properties.vendor_id
+                && device.device_id.as_ref() == &self.get_device_id(pd)? as &dyn GraphicsDeviceId
+            {
                 physical_device = Some(pd);
                 physical_device_api_version = VulkanApiVersion(properties.api_version).into();
                 max_tessellation_patch_size = properties.limits.max_tessellation_patch_size;
@@ -619,7 +651,7 @@ impl Renderer for VulkanRenderer {
         }
         let physical_device = physical_device.ok_or_else(|| {
             Error::InvalidArgument(format!(
-                "Graphics device with the id {:#06X} not found.",
+                "Graphics device with the id {} not found.",
                 device.device_id
             ))
         })?;
