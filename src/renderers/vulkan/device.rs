@@ -81,6 +81,21 @@ pub(super) struct DeviceContext {
 }
 
 impl VulkanRenderer {
+    /// Gets the unique identifier of the physical device.
+    pub(super) fn get_device_id(
+        instance: &ash::Instance,
+        physical_device: ash::vk::PhysicalDevice,
+    ) -> VulkanGraphicsDeviceId {
+        let mut id_properties = ash::vk::PhysicalDeviceIDProperties::default();
+        let mut properties2 =
+            ash::vk::PhysicalDeviceProperties2::default().push_next(&mut id_properties);
+        unsafe { instance.get_physical_device_properties2(physical_device, &mut properties2) };
+        VulkanGraphicsDeviceId {
+            device_uuid: id_properties.device_uuid,
+            driver_uuid: id_properties.driver_uuid,
+        }
+    }
+
     /// Populates the internal queue family info for each available device.
     pub(super) fn get_device_queue_families(
         &self,
@@ -103,15 +118,8 @@ impl VulkanRenderer {
 
         let mut queue_families = Vec::default();
         for physical_device in physical_devices {
-            let mut id_properties = ash::vk::PhysicalDeviceIDProperties::default();
-            let mut properties2 =
-                ash::vk::PhysicalDeviceProperties2::default().push_next(&mut id_properties);
-            unsafe { instance.get_physical_device_properties2(physical_device, &mut properties2) };
             if device.device_id.as_ref()
-                != &(VulkanGraphicsDeviceId {
-                    device_uuid: id_properties.device_uuid,
-                    driver_uuid: id_properties.driver_uuid,
-                }) as &dyn GraphicsDeviceId
+                != &Self::get_device_id(instance, physical_device) as &dyn GraphicsDeviceId
             {
                 continue;
             }

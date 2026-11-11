@@ -363,18 +363,14 @@ impl Renderer for VulkanRenderer {
         let physical_devices = unsafe { instance.enumerate_physical_devices()? };
 
         for physical_device in physical_devices {
-            let mut id_properties = ash::vk::PhysicalDeviceIDProperties::default();
-            let mut properties2 =
-                ash::vk::PhysicalDeviceProperties2::default().push_next(&mut id_properties);
-            let (memory_properties, physical_features, queue_family_properties_vec) = unsafe {
-                instance.get_physical_device_properties2(physical_device, &mut properties2);
+            let (properties, memory_properties, physical_features, queue_family_properties_vec) = unsafe {
                 (
+                    instance.get_physical_device_properties(physical_device),
                     instance.get_physical_device_memory_properties(physical_device),
                     instance.get_physical_device_features(physical_device),
                     instance.get_physical_device_queue_family_properties(physical_device),
                 )
             };
-            let properties = properties2.properties;
 
             let device_name = unsafe {
                 std::ffi::CStr::from_ptr(properties.device_name.as_ptr())
@@ -392,10 +388,7 @@ impl Renderer for VulkanRenderer {
             };
 
             let device_vendor_id = properties.vendor_id;
-            let device_id = Box::new(VulkanGraphicsDeviceId {
-                device_uuid: id_properties.device_uuid,
-                driver_uuid: id_properties.driver_uuid,
-            });
+            let device_id = Box::new(Self::get_device_id(instance, physical_device));
 
             let device_api_version = VulkanApiVersion(properties.api_version).into();
             let device_driver_version = DriverVersion::new(
@@ -598,16 +591,9 @@ impl Renderer for VulkanRenderer {
         let mut max_tessellation_patch_size = 0;
         let mut supported_msaa_list = Vec::default();
         for pd in physical_devices {
-            let mut id_properties = ash::vk::PhysicalDeviceIDProperties::default();
-            let mut properties2 =
-                ash::vk::PhysicalDeviceProperties2::default().push_next(&mut id_properties);
-            unsafe { instance.get_physical_device_properties2(pd, &mut properties2) };
-            let properties = properties2.properties;
+            let properties = unsafe { instance.get_physical_device_properties(pd) };
             if device.device_id.as_ref()
-                == &(VulkanGraphicsDeviceId {
-                    device_uuid: id_properties.device_uuid,
-                    driver_uuid: id_properties.driver_uuid,
-                }) as &dyn GraphicsDeviceId
+                == &Self::get_device_id(instance, pd) as &dyn GraphicsDeviceId
             {
                 physical_device = Some(pd);
                 physical_device_api_version = VulkanApiVersion(properties.api_version).into();
