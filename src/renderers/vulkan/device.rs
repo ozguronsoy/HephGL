@@ -128,9 +128,8 @@ impl VulkanRenderer {
             if Version::from(VulkanApiVersion(properties.api_version)) < MIN_API_VERSION {
                 continue;
             }
-            if device.vendor_id != properties.vendor_id
-                || device.device_id.as_ref()
-                    != &self.get_device_id(physical_device)? as &dyn GraphicsDeviceId
+            if device.device_id.as_ref()
+                != &self.get_device_id(physical_device)? as &dyn GraphicsDeviceId
             {
                 continue;
             }

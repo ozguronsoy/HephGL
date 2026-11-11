@@ -593,9 +593,7 @@ impl Renderer for VulkanRenderer {
             if Version::from(VulkanApiVersion(properties.api_version)) < MIN_API_VERSION {
                 continue;
             }
-            if device.vendor_id == properties.vendor_id
-                && device.device_id.as_ref() == &self.get_device_id(pd)? as &dyn GraphicsDeviceId
-            {
+            if device.device_id.as_ref() == &self.get_device_id(pd)? as &dyn GraphicsDeviceId {
                 physical_device = Some(pd);
                 physical_device_api_version = VulkanApiVersion(properties.api_version).into();
                 max_tessellation_patch_size = properties.limits.max_tessellation_patch_size;
