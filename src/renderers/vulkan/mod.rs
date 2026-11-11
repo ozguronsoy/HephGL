@@ -491,6 +491,10 @@ impl Renderer for VulkanRenderer {
         requested_features: &[FeatureRequest],
     ) -> Result<()> {
         self.main_thread_only()?;
+        if let Some(device) = device {
+            // Check whether the `device` is a Vulkan device.
+            let _ = resource_ref::<VulkanGraphicsDeviceId>(device.device_id.as_ref())?;
+        }
         if self.device_context.is_some() {
             self.uninitialize_device()?;
         }
