@@ -62,7 +62,6 @@ runs:
       with:
         github_token: ${{ github.token }}
         cache: true
-        install_swiftshader: true
         install_lavapipe: true
 
     - name: Install Linux Dependencies
