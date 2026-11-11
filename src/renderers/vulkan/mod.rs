@@ -69,7 +69,7 @@ use crate::{
     shader::Shader,
 };
 
-const MIN_API_VERSION: Version = Version::new(1, 0, 0);
+const MIN_API_VERSION: Version = Version::new(1, 1, 0);
 
 thread_local! {
     /// Index of the current thread context.
@@ -128,7 +128,7 @@ impl Renderer for VulkanRenderer {
 
         let enumerate_instance_version = |entry: &ash::Entry| -> Result<Version> {
             Ok(match unsafe { entry.try_enumerate_instance_version()? } {
-                Some(v) => VulkanApiVersion(v).into(),
+                Some(v) => Version::from(VulkanApiVersion(v)).max(MIN_API_VERSION),
                 None => MIN_API_VERSION,
             })
         };
@@ -707,7 +707,8 @@ impl Renderer for VulkanRenderer {
             vulkan_12_features = vulkan_12_features.timeline_semaphore(supports_timeline_semaphore);
             device_create_info = device_create_info.push_next(&mut vulkan_12_features);
         }
-        if self.api_version >= Version::new(1, 3, 0) {
+        const V13: Version = Version::new(1, 3, 0);
+        if self.api_version >= V13 && physical_device_api_version >= V13 {
             let mut features =
                 ash::vk::PhysicalDeviceFeatures2::default().push_next(&mut vulkan_13_features);
             unsafe {
