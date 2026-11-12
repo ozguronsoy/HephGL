@@ -1,9 +1,9 @@
 use heph_gl::{
     Error,
     GraphicsDeviceFeature::{
-        AnisotropicFiltering, AsyncTransfer, ComputeShaders, DepthClamp, GeometryShaders,
-        RayTracing, SampleRateShading, TessellationShaders, VideoDecoding, VideoEncoding,
-        WireframeMode,
+        AnisotropicFiltering, AsyncTransfer, BcTextures, ComputeShaders, DepthClamp,
+        GeometryShaders, RayTracing, SampleRateShading, TessellationShaders, VideoDecoding,
+        VideoEncoding, WireframeMode,
     },
     Version,
     renderers::{
@@ -138,6 +138,7 @@ where
             FeatureRequest::new(ComputeShaders, false),
             FeatureRequest::new(WireframeMode, false),
             FeatureRequest::new(AnisotropicFiltering, false),
+            FeatureRequest::new(BcTextures, false),
             FeatureRequest::new(SampleRateShading, false),
             FeatureRequest::new(DepthClamp, false),
             FeatureRequest::new(RayTracing, false),

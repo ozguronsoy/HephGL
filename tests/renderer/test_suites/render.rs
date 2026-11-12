@@ -9,7 +9,7 @@ use ddsfile::{Dds, DxgiFormat};
 use heph_gl::{
     Camera, Font, FontOptions,
     GraphicsDeviceFeature::{
-        AnisotropicFiltering, AsyncTransfer, GeometryShaders, SampleRateShading,
+        AnisotropicFiltering, AsyncTransfer, BcTextures, GeometryShaders, SampleRateShading,
     },
     Lighting, MaterialProperties, Mesh, MeshVertexAttribute, Projection, Shader, TextType,
     TextVertex, Transform,
@@ -1904,6 +1904,7 @@ where
         };
 
         let mut renderer = self.create_renderer_with_any_device(&[
+            FeatureRequest::new(BcTextures, true),
             FeatureRequest::new(AnisotropicFiltering, false),
             FeatureRequest::new(AsyncTransfer, false),
         ]);
