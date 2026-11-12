@@ -478,6 +478,17 @@ impl From<TextureFormat> for ash::vk::Format {
             TextureFormat::Rgba8Unorm => Self::R8G8B8A8_UNORM,
             TextureFormat::Rgba8Srgb => Self::R8G8B8A8_SRGB,
             TextureFormat::Bgra8Srgb => Self::B8G8R8A8_SRGB,
+            TextureFormat::Bc1Unorm => Self::BC1_RGBA_UNORM_BLOCK,
+            TextureFormat::Bc1Srgb => Self::BC1_RGBA_SRGB_BLOCK,
+            TextureFormat::Bc2Unorm => Self::BC2_UNORM_BLOCK,
+            TextureFormat::Bc2Srgb => Self::BC2_SRGB_BLOCK,
+            TextureFormat::Bc3Unorm => Self::BC3_UNORM_BLOCK,
+            TextureFormat::Bc3Srgb => Self::BC3_SRGB_BLOCK,
+            TextureFormat::Bc4Unorm => Self::BC4_UNORM_BLOCK,
+            TextureFormat::Bc5Unorm => Self::BC5_UNORM_BLOCK,
+            TextureFormat::Bc6hUfloat => Self::BC6H_UFLOAT_BLOCK,
+            TextureFormat::Bc7Unorm => Self::BC7_UNORM_BLOCK,
+            TextureFormat::Bc7Srgb => Self::BC7_SRGB_BLOCK,
         }
     }
 }
@@ -492,6 +503,17 @@ impl TryFrom<ash::vk::Format> for TextureFormat {
             ash::vk::Format::R8G8B8A8_UNORM => Ok(Self::Rgba8Unorm),
             ash::vk::Format::R8G8B8A8_SRGB => Ok(Self::Rgba8Srgb),
             ash::vk::Format::B8G8R8A8_SRGB => Ok(Self::Bgra8Srgb),
+            ash::vk::Format::BC1_RGBA_UNORM_BLOCK => Ok(Self::Bc1Unorm),
+            ash::vk::Format::BC1_RGBA_SRGB_BLOCK => Ok(Self::Bc1Srgb),
+            ash::vk::Format::BC2_UNORM_BLOCK => Ok(Self::Bc2Unorm),
+            ash::vk::Format::BC2_SRGB_BLOCK => Ok(Self::Bc2Srgb),
+            ash::vk::Format::BC3_UNORM_BLOCK => Ok(Self::Bc3Unorm),
+            ash::vk::Format::BC3_SRGB_BLOCK => Ok(Self::Bc3Srgb),
+            ash::vk::Format::BC4_UNORM_BLOCK => Ok(Self::Bc4Unorm),
+            ash::vk::Format::BC5_UNORM_BLOCK => Ok(Self::Bc5Unorm),
+            ash::vk::Format::BC6H_UFLOAT_BLOCK => Ok(Self::Bc6hUfloat),
+            ash::vk::Format::BC7_UNORM_BLOCK => Ok(Self::Bc7Unorm),
+            ash::vk::Format::BC7_SRGB_BLOCK => Ok(Self::Bc7Srgb),
             _ => Err(Error::InvalidArgument(format!(
                 "Vulkan format `{value:?}` has no matching texture format."
             ))),

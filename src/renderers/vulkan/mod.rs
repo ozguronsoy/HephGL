@@ -936,17 +936,6 @@ impl Renderer for VulkanRenderer {
             ));
         }
 
-        let expected_size = (options.width as usize)
-            .checked_mul(options.height as usize)
-            .and_then(|size| size.checked_mul(options.format.bytes_per_pixel()))
-            .ok_or(Error::invalid_argument("Texture dimensions are too large."))?;
-        if data.len() != expected_size {
-            return Err(Error::invalid_argument(format!(
-                "Texture data size does not match texture dimensions. Expected {expected_size} bytes, got {}.",
-                data.len()
-            )));
-        }
-
         if options.mip_level_count == 0 {
             return Err(Error::invalid_argument("Mip level count cannot be zero."));
         }
@@ -958,6 +947,36 @@ impl Renderer for VulkanRenderer {
                 options.mip_level_count, max_mip_level_count
             )));
         }
+
+        let block_extent = options.format.block_extent();
+        let mut mip_level_sizes = Vec::with_capacity(options.mip_level_count as usize);
+        let mut all_mip_levels_size = 0usize;
+        for mip_level in 0..options.mip_level_count {
+            let width = (options.width >> mip_level).max(1).div_ceil(block_extent);
+            let height = (options.height >> mip_level).max(1).div_ceil(block_extent);
+            let size = (width as usize)
+                .checked_mul(height as usize)
+                .and_then(|size| size.checked_mul(options.format.bytes_per_block()))
+                .ok_or(Error::invalid_argument("Texture dimensions are too large."))?;
+            all_mip_levels_size = all_mip_levels_size
+                .checked_add(size)
+                .ok_or(Error::invalid_argument("Texture dimensions are too large."))?;
+            mip_level_sizes.push(size);
+        }
+        let generate_mip_levels = if data.len() == all_mip_levels_size {
+            false
+        } else if block_extent > 1 {
+            return Err(Error::invalid_operation(
+                "Cannot generate mip levels of block-compressed textures.",
+            ));
+        } else if data.len() == mip_level_sizes[0] {
+            mip_level_sizes.truncate(1);
+            true
+        } else {
+            return Err(Error::invalid_argument(
+                "Texture data size does not match texture dimensions.",
+            ));
+        };
 
         let instance = self
             .instance
@@ -974,26 +993,59 @@ impl Renderer for VulkanRenderer {
             .thread_contexts[thread_context_index];
 
         let vk_format: ash::vk::Format = options.format.into();
-        if options.mip_level_count > 1 {
-            let format_properties = unsafe {
-                instance.get_physical_device_format_properties(
-                    device_context.physical_device,
-                    vk_format,
-                )
-            };
-            if !format_properties.optimal_tiling_features.contains(
+        let format_properties = unsafe {
+            instance
+                .get_physical_device_format_properties(device_context.physical_device, vk_format)
+        };
+        if !format_properties
+            .optimal_tiling_features
+            .contains(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE)
+        {
+            return Err(Error::InvalidOperation(format!(
+                "The device does not support `{:?}` textures.",
+                options.format
+            )));
+        }
+        if generate_mip_levels
+            && !format_properties.optimal_tiling_features.contains(
                 ash::vk::FormatFeatureFlags::BLIT_SRC
                     | ash::vk::FormatFeatureFlags::BLIT_DST
                     | ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_LINEAR,
-            ) {
-                return Err(Error::invalid_argument(
-                    "The texture does not support multiple mip levels.",
-                ));
-            }
+            )
+        {
+            return Err(Error::invalid_argument(
+                "The texture does not support multiple mip levels.",
+            ));
+        }
+
+        let mut copy_regions = Vec::with_capacity(mip_level_sizes.len());
+        let mut staging_size = 0;
+        for (mip_level, size) in mip_level_sizes.iter().enumerate() {
+            copy_regions.push(
+                ash::vk::BufferImageCopy::default()
+                    .buffer_offset(staging_size as u64)
+                    .buffer_row_length(0)
+                    .buffer_image_height(0)
+                    .image_subresource(
+                        ash::vk::ImageSubresourceLayers::default()
+                            .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+                            .mip_level(mip_level as u32)
+                            .base_array_layer(0)
+                            .layer_count(1),
+                    )
+                    .image_offset(ash::vk::Offset3D::default())
+                    .image_extent(ash::vk::Extent3D {
+                        width: (options.width >> mip_level).max(1),
+                        height: (options.height >> mip_level).max(1),
+                        depth: 1,
+                    }),
+            );
+            // Transfer-only queues require the buffer offsets to be multiples of four.
+            staging_size += size.next_multiple_of(4);
         }
 
         let staging_buffer_info = ash::vk::BufferCreateInfo::default()
-            .size(expected_size as u64)
+            .size(staging_size as u64)
             .usage(ash::vk::BufferUsageFlags::TRANSFER_SRC)
             .sharing_mode(ash::vk::SharingMode::EXCLUSIVE);
         let staging_allocation_info = vk_mem::AllocationCreateInfo {
@@ -1011,16 +1063,21 @@ impl Renderer for VulkanRenderer {
             let allocation_info = device_context
                 .vma_allocator
                 .get_allocation_info(&staging_allocation);
-            std::ptr::copy_nonoverlapping(
-                data.as_ptr(),
-                allocation_info.mapped_data as *mut u8,
-                data.len(),
-            );
+            let mut data_offset = 0;
+            for (copy_region, &size) in copy_regions.iter().zip(&mip_level_sizes) {
+                std::ptr::copy_nonoverlapping(
+                    data.as_ptr().add(data_offset),
+                    (allocation_info.mapped_data as *mut u8)
+                        .add(copy_region.buffer_offset as usize),
+                    size,
+                );
+                data_offset += size;
+            }
         }
         if let Err(error) = device_context.vma_allocator.flush_allocation(
             &staging_allocation,
             0,
-            expected_size as u64,
+            staging_size as u64,
         ) {
             unsafe {
                 device_context
@@ -1115,30 +1172,13 @@ impl Renderer for VulkanRenderer {
             1,
         );
 
-        let copy_region = ash::vk::BufferImageCopy::default()
-            .buffer_offset(0)
-            .buffer_row_length(0)
-            .buffer_image_height(0)
-            .image_subresource(
-                ash::vk::ImageSubresourceLayers::default()
-                    .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
-                    .mip_level(0)
-                    .base_array_layer(0)
-                    .layer_count(1),
-            )
-            .image_offset(ash::vk::Offset3D::default())
-            .image_extent(ash::vk::Extent3D {
-                width: options.width,
-                height: options.height,
-                depth: 1,
-            });
         unsafe {
             device_context.logical_device.cmd_copy_buffer_to_image(
                 current_frame.base.command_buffer,
                 staging_buffer,
                 image,
                 ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                std::slice::from_ref(&copy_region),
+                &copy_regions,
             );
         }
 
@@ -1212,90 +1252,96 @@ impl Renderer for VulkanRenderer {
             current_frame.base.recorded = true;
         }
 
-        for mip_level in 1..options.mip_level_count {
-            let previous_mip_level = mip_level - 1;
+        if generate_mip_levels {
+            for mip_level in 1..options.mip_level_count {
+                let previous_mip_level = mip_level - 1;
 
-            Self::transition_image_layout(
-                &device_context.logical_device,
-                command_buffer,
-                image,
-                ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                ash::vk::AccessFlags::TRANSFER_WRITE,
-                ash::vk::AccessFlags::TRANSFER_READ,
-                ash::vk::PipelineStageFlags::TRANSFER,
-                ash::vk::PipelineStageFlags::TRANSFER,
-                ash::vk::ImageAspectFlags::COLOR,
-                previous_mip_level,
-                1,
-                1,
-            );
+                Self::transition_image_layout(
+                    &device_context.logical_device,
+                    command_buffer,
+                    image,
+                    ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    ash::vk::AccessFlags::TRANSFER_WRITE,
+                    ash::vk::AccessFlags::TRANSFER_READ,
+                    ash::vk::PipelineStageFlags::TRANSFER,
+                    ash::vk::PipelineStageFlags::TRANSFER,
+                    ash::vk::ImageAspectFlags::COLOR,
+                    previous_mip_level,
+                    1,
+                    1,
+                );
 
-            let source_width = (options.width >> previous_mip_level).max(1) as i32;
-            let source_height = (options.height >> previous_mip_level).max(1) as i32;
-            let destination_width = (options.width >> mip_level).max(1) as i32;
-            let destination_height = (options.height >> mip_level).max(1) as i32;
+                let source_width = (options.width >> previous_mip_level).max(1) as i32;
+                let source_height = (options.height >> previous_mip_level).max(1) as i32;
+                let destination_width = (options.width >> mip_level).max(1) as i32;
+                let destination_height = (options.height >> mip_level).max(1) as i32;
 
-            let blit = ash::vk::ImageBlit::default()
-                .src_subresource(
-                    ash::vk::ImageSubresourceLayers::default()
-                        .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
-                        .mip_level(previous_mip_level)
-                        .base_array_layer(0)
-                        .layer_count(1),
-                )
-                .src_offsets([
-                    ash::vk::Offset3D { x: 0, y: 0, z: 0 },
-                    ash::vk::Offset3D {
-                        x: source_width,
-                        y: source_height,
-                        z: 1,
-                    },
-                ])
-                .dst_subresource(
-                    ash::vk::ImageSubresourceLayers::default()
-                        .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
-                        .mip_level(mip_level)
-                        .base_array_layer(0)
-                        .layer_count(1),
-                )
-                .dst_offsets([
-                    ash::vk::Offset3D { x: 0, y: 0, z: 0 },
-                    ash::vk::Offset3D {
-                        x: destination_width,
-                        y: destination_height,
-                        z: 1,
-                    },
-                ]);
-            unsafe {
-                device_context.logical_device.cmd_blit_image(
+                let blit = ash::vk::ImageBlit::default()
+                    .src_subresource(
+                        ash::vk::ImageSubresourceLayers::default()
+                            .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+                            .mip_level(previous_mip_level)
+                            .base_array_layer(0)
+                            .layer_count(1),
+                    )
+                    .src_offsets([
+                        ash::vk::Offset3D { x: 0, y: 0, z: 0 },
+                        ash::vk::Offset3D {
+                            x: source_width,
+                            y: source_height,
+                            z: 1,
+                        },
+                    ])
+                    .dst_subresource(
+                        ash::vk::ImageSubresourceLayers::default()
+                            .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+                            .mip_level(mip_level)
+                            .base_array_layer(0)
+                            .layer_count(1),
+                    )
+                    .dst_offsets([
+                        ash::vk::Offset3D { x: 0, y: 0, z: 0 },
+                        ash::vk::Offset3D {
+                            x: destination_width,
+                            y: destination_height,
+                            z: 1,
+                        },
+                    ]);
+                unsafe {
+                    device_context.logical_device.cmd_blit_image(
+                        command_buffer,
+                        image,
+                        ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                        image,
+                        ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                        std::slice::from_ref(&blit),
+                        ash::vk::Filter::LINEAR,
+                    );
+                }
+
+                Self::transition_image_layout(
+                    &device_context.logical_device,
                     command_buffer,
                     image,
                     ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                    image,
-                    ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    std::slice::from_ref(&blit),
-                    ash::vk::Filter::LINEAR,
+                    ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                    ash::vk::AccessFlags::TRANSFER_READ,
+                    ash::vk::AccessFlags::SHADER_READ,
+                    ash::vk::PipelineStageFlags::TRANSFER,
+                    ash::vk::PipelineStageFlags::FRAGMENT_SHADER
+                        | ash::vk::PipelineStageFlags::COMPUTE_SHADER,
+                    ash::vk::ImageAspectFlags::COLOR,
+                    previous_mip_level,
+                    1,
+                    1,
                 );
             }
-
-            Self::transition_image_layout(
-                &device_context.logical_device,
-                command_buffer,
-                image,
-                ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                ash::vk::AccessFlags::TRANSFER_READ,
-                ash::vk::AccessFlags::SHADER_READ,
-                ash::vk::PipelineStageFlags::TRANSFER,
-                ash::vk::PipelineStageFlags::FRAGMENT_SHADER
-                    | ash::vk::PipelineStageFlags::COMPUTE_SHADER,
-                ash::vk::ImageAspectFlags::COLOR,
-                previous_mip_level,
-                1,
-                1,
-            );
         }
+        let base_mip_level = match generate_mip_levels {
+            true => options.mip_level_count - 1,
+            false => 0,
+        };
         Self::transition_image_layout(
             &device_context.logical_device,
             command_buffer,
@@ -1308,15 +1354,15 @@ impl Renderer for VulkanRenderer {
             ash::vk::PipelineStageFlags::FRAGMENT_SHADER
                 | ash::vk::PipelineStageFlags::COMPUTE_SHADER,
             ash::vk::ImageAspectFlags::COLOR,
-            options.mip_level_count - 1,
-            1,
+            base_mip_level,
+            options.mip_level_count - base_mip_level,
             1,
         );
 
         current_frame.transfer_buffers.push(VulkanBuffer {
             buffer: staging_buffer,
             vma_allocation: staging_allocation,
-            size: expected_size,
+            size: staging_size,
             usage: BufferUsage::Uniform,
         });
         current_frame.base.recorded = true;

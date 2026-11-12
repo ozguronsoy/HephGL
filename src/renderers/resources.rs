@@ -30,6 +30,28 @@ pub enum TextureFormat {
     Rgba8Srgb,
     /// 8-bit BGRA using the sRGB color space.
     Bgra8Srgb,
+    /// BC1 block-compressed RGB with 1-bit alpha using linear color values.
+    Bc1Unorm,
+    /// BC1 block-compressed RGB with 1-bit alpha using the sRGB color space.
+    Bc1Srgb,
+    /// BC2 block-compressed RGBA using linear color values.
+    Bc2Unorm,
+    /// BC2 block-compressed RGBA using the sRGB color space.
+    Bc2Srgb,
+    /// BC3 block-compressed RGBA using linear color values.
+    Bc3Unorm,
+    /// BC3 block-compressed RGBA using the sRGB color space.
+    Bc3Srgb,
+    /// BC4 block-compressed single channel linear color value.
+    Bc4Unorm,
+    /// BC5 block-compressed two channel linear color values.
+    Bc5Unorm,
+    /// BC6H block-compressed RGB using unsigned floating-point color values.
+    Bc6hUfloat,
+    /// BC7 block-compressed RGBA using linear color values.
+    Bc7Unorm,
+    /// BC7 block-compressed RGBA using the sRGB color space.
+    Bc7Srgb,
 }
 
 /// Defines the types of resources being bound to a shader slot.
@@ -122,12 +144,43 @@ impl<'a> ResourceBinding<'a> {
 }
 
 impl TextureFormat {
-    /// Calculates the size of each pixel in bytes.
-    pub(super) fn bytes_per_pixel(&self) -> usize {
+    /// Calculates the size of each block in bytes.
+    pub(super) fn bytes_per_block(&self) -> usize {
         match self {
             Self::R8Unorm => 1,
             Self::R16Unorm => 2,
             Self::Rgba8Unorm | Self::Rgba8Srgb | Self::Bgra8Srgb => 4,
+            Self::Bc1Unorm | Self::Bc1Srgb | Self::Bc4Unorm => 8,
+            Self::Bc2Unorm
+            | Self::Bc2Srgb
+            | Self::Bc3Unorm
+            | Self::Bc3Srgb
+            | Self::Bc5Unorm
+            | Self::Bc6hUfloat
+            | Self::Bc7Unorm
+            | Self::Bc7Srgb => 16,
+        }
+    }
+
+    /// Gets the width and height of a block in pixels.
+    pub(super) fn block_extent(&self) -> u32 {
+        match self {
+            Self::R8Unorm
+            | Self::R16Unorm
+            | Self::Rgba8Unorm
+            | Self::Rgba8Srgb
+            | Self::Bgra8Srgb => 1,
+            Self::Bc1Unorm
+            | Self::Bc1Srgb
+            | Self::Bc2Unorm
+            | Self::Bc2Srgb
+            | Self::Bc3Unorm
+            | Self::Bc3Srgb
+            | Self::Bc4Unorm
+            | Self::Bc5Unorm
+            | Self::Bc6hUfloat
+            | Self::Bc7Unorm
+            | Self::Bc7Srgb => 4,
         }
     }
 }
@@ -151,11 +204,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_texture_format_bytes_per_pixel() {
-        assert_eq!(TextureFormat::R8Unorm.bytes_per_pixel(), 1);
-        assert_eq!(TextureFormat::R16Unorm.bytes_per_pixel(), 2);
-        assert_eq!(TextureFormat::Rgba8Unorm.bytes_per_pixel(), 4);
-        assert_eq!(TextureFormat::Rgba8Srgb.bytes_per_pixel(), 4);
-        assert_eq!(TextureFormat::Bgra8Srgb.bytes_per_pixel(), 4);
+    fn test_texture_format_bytes_per_block() {
+        assert_eq!(TextureFormat::R8Unorm.bytes_per_block(), 1);
+        assert_eq!(TextureFormat::R16Unorm.bytes_per_block(), 2);
+        assert_eq!(TextureFormat::Rgba8Unorm.bytes_per_block(), 4);
+        assert_eq!(TextureFormat::Rgba8Srgb.bytes_per_block(), 4);
+        assert_eq!(TextureFormat::Bgra8Srgb.bytes_per_block(), 4);
+        assert_eq!(TextureFormat::Bc1Unorm.bytes_per_block(), 8);
+        assert_eq!(TextureFormat::Bc1Srgb.bytes_per_block(), 8);
+        assert_eq!(TextureFormat::Bc2Unorm.bytes_per_block(), 16);
+        assert_eq!(TextureFormat::Bc2Srgb.bytes_per_block(), 16);
+        assert_eq!(TextureFormat::Bc3Unorm.bytes_per_block(), 16);
+        assert_eq!(TextureFormat::Bc3Srgb.bytes_per_block(), 16);
+        assert_eq!(TextureFormat::Bc4Unorm.bytes_per_block(), 8);
+        assert_eq!(TextureFormat::Bc5Unorm.bytes_per_block(), 16);
+        assert_eq!(TextureFormat::Bc6hUfloat.bytes_per_block(), 16);
+        assert_eq!(TextureFormat::Bc7Unorm.bytes_per_block(), 16);
+        assert_eq!(TextureFormat::Bc7Srgb.bytes_per_block(), 16);
     }
 }
