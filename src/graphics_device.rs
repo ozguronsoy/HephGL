@@ -1,6 +1,6 @@
 use std::{any::Any, collections::BTreeSet, fmt::Display};
 
-use crate::Version;
+use crate::{Version, renderers::Msaa};
 
 /// Defines the supported GPU types.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -74,6 +74,7 @@ pub struct GraphicsDevice {
     pub(crate) driver_version: Version,
     pub(crate) vram: u64,
     pub(crate) max_sampler_anisotropy: f32,
+    pub(crate) supported_msaa_levels: BTreeSet<Msaa>,
     pub(crate) supported_features: BTreeSet<GraphicsDeviceFeature>,
 }
 
@@ -160,6 +161,11 @@ impl GraphicsDevice {
         self.max_sampler_anisotropy
     }
 
+    /// Gets the set of MSAA levels supported by the device.
+    pub fn supported_msaa_levels(&self) -> &BTreeSet<Msaa> {
+        &self.supported_msaa_levels
+    }
+
     /// Gets the set of features supported by the device.
     pub fn supported_features(&self) -> &BTreeSet<GraphicsDeviceFeature> {
         &self.supported_features
@@ -192,6 +198,12 @@ impl Display for GraphicsDevice {
         writeln!(f, "    Driver Version:     {}", self.driver_version)?;
         writeln!(f, "    VRAM:               {} GB", self.vram_gb().round())?;
         writeln!(f, "    Max Anisotropy:     {}", self.max_sampler_anisotropy)?;
+        if !self.supported_msaa_levels.is_empty() {
+            writeln!(f, "    Supported MSAA Levels:")?;
+            for msaa in &self.supported_msaa_levels {
+                writeln!(f, "     - {:?}", msaa)?;
+            }
+        }
         if !self.supported_features.is_empty() {
             writeln!(f, "    Supported Features:")?;
             for feature in &self.supported_features {
@@ -242,7 +254,8 @@ mod tests {
             driver_version: Version::new(0, 0, 0),
             vram: 0,
             max_sampler_anisotropy: 1.0,
-            supported_features: BTreeSet::default(),
+            supported_msaa_levels: BTreeSet::new(),
+            supported_features: BTreeSet::new(),
         };
         assert_eq!(device.name(), "Test Device");
     }
@@ -258,7 +271,8 @@ mod tests {
             driver_version: Version::new(0, 0, 0),
             vram: 0,
             max_sampler_anisotropy: 1.0,
-            supported_features: BTreeSet::default(),
+            supported_msaa_levels: BTreeSet::new(),
+            supported_features: BTreeSet::new(),
         };
         assert_eq!(device.device_type(), GraphicsDeviceType::DiscreteGpu);
 
@@ -289,7 +303,8 @@ mod tests {
             driver_version: Version::new(0, 0, 0),
             vram: 0,
             max_sampler_anisotropy: 1.0,
-            supported_features: BTreeSet::default(),
+            supported_msaa_levels: BTreeSet::new(),
+            supported_features: BTreeSet::new(),
         };
         assert_eq!(device.vendor(), GraphicsDeviceVendor::Other);
 
@@ -326,7 +341,8 @@ mod tests {
             driver_version: Version::new(0, 0, 0),
             vram: 0,
             max_sampler_anisotropy: 1.0,
-            supported_features: BTreeSet::default(),
+            supported_msaa_levels: BTreeSet::new(),
+            supported_features: BTreeSet::new(),
         };
         assert_eq!(
             device.device_id(),
@@ -349,7 +365,8 @@ mod tests {
             driver_version: Version::new(0, 0, 0),
             vram: 0,
             max_sampler_anisotropy: 1.0,
-            supported_features: BTreeSet::default(),
+            supported_msaa_levels: BTreeSet::new(),
+            supported_features: BTreeSet::new(),
         };
         assert_eq!(device.api_version(), Version::new(1, 3, 280));
     }
@@ -365,7 +382,8 @@ mod tests {
             driver_version: Version::new(560, 94, 0),
             vram: 0,
             max_sampler_anisotropy: 1.0,
-            supported_features: BTreeSet::default(),
+            supported_msaa_levels: BTreeSet::new(),
+            supported_features: BTreeSet::new(),
         };
         assert_eq!(device.driver_version(), Version::new(560, 94, 0));
     }
@@ -381,7 +399,8 @@ mod tests {
             driver_version: Version::new(0, 0, 0),
             vram: 0,
             max_sampler_anisotropy: 1.0,
-            supported_features: BTreeSet::default(),
+            supported_msaa_levels: BTreeSet::new(),
+            supported_features: BTreeSet::new(),
         };
         assert_eq!(device.vram(), 0);
         assert_eq!(device.vram_kb(), 0.0);
@@ -418,9 +437,35 @@ mod tests {
             driver_version: Version::new(0, 0, 0),
             vram: 0,
             max_sampler_anisotropy: 16.0,
-            supported_features: BTreeSet::default(),
+            supported_msaa_levels: BTreeSet::new(),
+            supported_features: BTreeSet::new(),
         };
         assert_eq!(device.max_sampler_anisotropy(), 16.0);
+    }
+
+    #[test]
+    fn test_supported_msaa_levels() {
+        let mut device = GraphicsDevice {
+            name: "".to_string(),
+            device_type: GraphicsDeviceType::Other,
+            vendor_id: 0,
+            device_id: Box::new(TestGraphicsDeviceId(0)),
+            api_version: Version::new(0, 0, 0),
+            driver_version: Version::new(0, 0, 0),
+            vram: 0,
+            max_sampler_anisotropy: 1.0,
+            supported_msaa_levels: BTreeSet::new(),
+            supported_features: BTreeSet::new(),
+        };
+        assert!(device.supported_msaa_levels().is_empty());
+
+        let _ = device.supported_msaa_levels.insert(Msaa::X8);
+        let _ = device.supported_msaa_levels.insert(Msaa::X1);
+        assert_eq!(
+            device.supported_msaa_levels(),
+            &BTreeSet::from([Msaa::X1, Msaa::X8])
+        );
+        assert_eq!(device.supported_msaa_levels().last(), Some(&Msaa::X8));
     }
 
     #[test]
@@ -434,7 +479,8 @@ mod tests {
             driver_version: Version::new(0, 0, 0),
             vram: 0,
             max_sampler_anisotropy: 1.0,
-            supported_features: BTreeSet::default(),
+            supported_msaa_levels: BTreeSet::new(),
+            supported_features: BTreeSet::new(),
         };
         assert!(device.supported_features().is_empty());
 
@@ -464,7 +510,8 @@ mod tests {
             driver_version: Version::new(1, 0, 0),
             vram: 1024 * 1024 * 1024,
             max_sampler_anisotropy: 16.0,
-            supported_features: BTreeSet::default(),
+            supported_msaa_levels: BTreeSet::new(),
+            supported_features: BTreeSet::new(),
         };
 
         assert!(!device.to_string().contains("Supported Features:"));

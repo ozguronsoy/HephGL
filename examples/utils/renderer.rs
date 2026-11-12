@@ -3,7 +3,7 @@
 use heph_gl::{
     GraphicsDevice,
     GraphicsDeviceType::{DiscreteGpu, IntegratedGpu},
-    renderers::{Msaa, Renderer},
+    renderers::Renderer,
 };
 
 #[cfg(feature = "vulkan")]
@@ -107,24 +107,11 @@ pub fn get_best_device(renderer: &ExampleRenderer) -> GraphicsDevice {
 }
 
 pub fn set_best_msaa(renderer: &mut ExampleRenderer) {
-    let supported_msaa_list = renderer.supported_msaa_list().unwrap();
-    let msaa = if supported_msaa_list.contains(&Msaa::X64) {
-        Msaa::X64
-    } else if supported_msaa_list.contains(&Msaa::X32) {
-        Msaa::X32
-    } else if supported_msaa_list.contains(&Msaa::X16) {
-        Msaa::X16
-    } else if supported_msaa_list.contains(&Msaa::X8) {
-        Msaa::X8
-    } else if supported_msaa_list.contains(&Msaa::X4) {
-        Msaa::X4
-    } else if supported_msaa_list.contains(&Msaa::X2) {
-        Msaa::X2
-    } else {
-        Msaa::X1
-    };
     let mut settings = *renderer.get_settings();
-    settings.msaa = msaa;
+    settings.msaa = *renderer
+        .get_device()
+        .and_then(|d| d.supported_msaa_levels().last())
+        .unwrap();
     renderer.set_settings(settings).unwrap();
 }
 

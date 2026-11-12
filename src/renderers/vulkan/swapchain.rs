@@ -181,7 +181,8 @@ impl VulkanRenderer {
         }
 
         if !device_context
-            .supported_msaa_list
+            .graphics_device
+            .supported_msaa_levels
             .contains(&self.settings.msaa)
         {
             return Err(Error::invalid_argument(

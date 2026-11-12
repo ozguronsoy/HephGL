@@ -404,6 +404,22 @@ impl Renderer for VulkanRenderer {
                 }
             }
 
+            let sample_counts = properties.limits.framebuffer_color_sample_counts
+                & properties.limits.framebuffer_depth_sample_counts;
+            const MSAA_ALL: [Msaa; 7] = [
+                Msaa::X1,
+                Msaa::X2,
+                Msaa::X4,
+                Msaa::X8,
+                Msaa::X16,
+                Msaa::X32,
+                Msaa::X64,
+            ];
+            let supported_msaa_levels = MSAA_ALL
+                .into_iter()
+                .filter(|msaa| sample_counts.contains((*msaa).into()))
+                .collect::<BTreeSet<Msaa>>();
+
             let mut supported_features = BTreeSet::<GraphicsDeviceFeature>::default();
             let extension_properties =
                 unsafe { instance.enumerate_device_extension_properties(physical_device)? };
@@ -466,6 +482,7 @@ impl Renderer for VulkanRenderer {
                 driver_version: device_driver_version,
                 vram: device_vram,
                 max_sampler_anisotropy: properties.limits.max_sampler_anisotropy,
+                supported_msaa_levels,
                 supported_features,
             });
         }
@@ -590,7 +607,6 @@ impl Renderer for VulkanRenderer {
         let mut physical_device = None;
         let mut physical_device_api_version = MIN_API_VERSION;
         let mut max_tessellation_patch_size = 0;
-        let mut supported_msaa_list = Vec::default();
         for pd in physical_devices {
             let properties = unsafe { instance.get_physical_device_properties(pd) };
             if Version::from(VulkanApiVersion(properties.api_version)) < MIN_API_VERSION {
@@ -600,22 +616,6 @@ impl Renderer for VulkanRenderer {
                 physical_device = Some(pd);
                 physical_device_api_version = VulkanApiVersion(properties.api_version).into();
                 max_tessellation_patch_size = properties.limits.max_tessellation_patch_size;
-
-                let sample_counts = properties.limits.framebuffer_color_sample_counts
-                    & properties.limits.framebuffer_depth_sample_counts;
-                const MSAA_ALL: [Msaa; 7] = [
-                    Msaa::X1,
-                    Msaa::X2,
-                    Msaa::X4,
-                    Msaa::X8,
-                    Msaa::X16,
-                    Msaa::X32,
-                    Msaa::X64,
-                ];
-                supported_msaa_list = MSAA_ALL
-                    .into_iter()
-                    .filter(|msaa| sample_counts.contains((*msaa).into()))
-                    .collect::<Vec<_>>();
                 break;
             }
         }
@@ -774,7 +774,6 @@ impl Renderer for VulkanRenderer {
             logical_device,
             supports_timeline_semaphore,
             supports_dynamic_rendering,
-            supported_msaa_list,
             sampling_stages,
             max_tessellation_patch_size,
 
@@ -791,14 +790,6 @@ impl Renderer for VulkanRenderer {
         self.create_rendering()?;
 
         Ok(())
-    }
-
-    fn supported_msaa_list(&self) -> Result<&Vec<Msaa>> {
-        let device_context = self
-            .device_context
-            .as_ref()
-            .ok_or(Error::invalid_operation("Device is not set."))?;
-        Ok(&device_context.supported_msaa_list)
     }
 
     fn create_buffer(&self, size: usize, usage: BufferUsage) -> Result<Box<dyn RendererBuffer>> {

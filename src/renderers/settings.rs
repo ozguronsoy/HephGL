@@ -1,7 +1,7 @@
 use crate::{graphics_device::GraphicsDeviceFeature, renderers::resources::TextureFormat};
 
 /// Defines the multisample anti-aliasing sample count used when rendering.
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Msaa {
     /// Disables MSAA and uses a single sample per pixel.
     #[default]
