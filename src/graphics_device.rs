@@ -190,7 +190,7 @@ impl Display for GraphicsDevice {
         writeln!(f, "    Device ID:          {}", self.device_id())?;
         writeln!(f, "    API Version:        {}", self.api_version)?;
         writeln!(f, "    Driver Version:     {}", self.driver_version)?;
-        writeln!(f, "    VRAM:               {} GB", self.vram_gb())?;
+        writeln!(f, "    VRAM:               {} GB", self.vram_gb().round())?;
         writeln!(f, "    Max Anisotropy:     {}", self.max_sampler_anisotropy)?;
         if !self.supported_features.is_empty() {
             writeln!(f, "    Supported Features:")?;
