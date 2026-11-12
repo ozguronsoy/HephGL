@@ -36,31 +36,31 @@ pub enum GraphicsDeviceVendor {
 /// Defines the features a graphics device may support.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum GraphicsDeviceFeature {
-    /// The device supports dedicated geometry shaders.
-    GeometryShaders,
-    /// The device supports tessellation shaders.
-    TessellationShaders,
-    /// The device supports shaders dedicated to general computing.
-    ComputeShaders,
-    /// The device supports rendering polygons as wireframes.
-    WireframeMode,
     /// The device supports anisotropic texture filtering.
     AnisotropicFiltering,
+    /// The device supports asynchronous data transfers.
+    AsyncTransfer,
     /// The device supports sampling BC block-compressed textures.
     BcTextures,
-    /// The device supports shading individual samples of multisampled pixels.
-    SampleRateShading,
+    /// The device supports shaders dedicated to general computing.
+    ComputeShaders,
     /// The device supports clamping fragment depth values instead of clipping primitives against
     /// the near and far planes.
     DepthClamp,
+    /// The device supports dedicated geometry shaders.
+    GeometryShaders,
     /// The device features hardware-accelerated ray tracing.
     RayTracing,
+    /// The device supports shading individual samples of multisampled pixels.
+    SampleRateShading,
+    /// The device supports tessellation shaders.
+    TessellationShaders,
     /// The device supports hardware-accelerated video decoding.
     VideoDecoding,
     /// The device supports hardware-accelerated video encoding.
     VideoEncoding,
-    /// The device supports asynchronous data transfers.
-    AsyncTransfer,
+    /// The device supports rendering polygons as wireframes.
+    WireframeMode,
 }
 
 /// Represents a graphics device.
