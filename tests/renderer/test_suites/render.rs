@@ -1,5 +1,11 @@
-use std::time::{Duration, Instant};
+use std::{
+    collections::HashMap,
+    fs::File,
+    path::Path,
+    time::{Duration, Instant},
+};
 
+use ddsfile::{Dds, DxgiFormat};
 use heph_gl::{
     Camera, Font, FontOptions,
     GraphicsDeviceFeature::{
@@ -851,8 +857,6 @@ where
     }
 
     pub(crate) fn test_render_meshes(&self) {
-        use std::{collections::HashMap, path::Path};
-
         const MESH_PATH: &str = "assets/ship/ship_pinnace_1k.gltf";
         const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 
@@ -1483,8 +1487,6 @@ where
     }
 
     pub(crate) fn test_render_exploding_mesh(&self) {
-        use std::{collections::HashMap, path::Path};
-
         const MESH_PATH: &str = "assets/ship/ship_pinnace_1k.gltf";
         const ANIMATION_DURATION: Duration = Duration::from_secs(5);
         const IMPACT_TIME: Duration = Duration::from_secs(1);
@@ -1839,6 +1841,409 @@ where
             heph_expect_success!(renderer.destroy_buffer(explosion_buffer.as_mut()));
         }
         heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
+    }
+
+    pub(crate) fn test_render_compressed_assets(&self) {
+        const SCENE_DIRECTORY: &str = "assets/medieval_courtyard_scene";
+        const SKY_PATH: &str = "assets/medieval_courtyard_scene/river_rocks_1k.dds";
+        const MESH_NAMES: [&str; 9] = [
+            "cobblestone_floor_04_1k",
+            "cobblestone_large_01_1k",
+            "potted_plant_01_1k",
+            "potted_plant_02_1k",
+            "rock_moss_set_02_1k",
+            "wooden_barrels_01_1k",
+            "wooden_crate_01_1k",
+            "wooden_crate_02_1k",
+            "wooden_lantern_01_1k",
+        ];
+        const MESH_SPACING: f32 = 1.4;
+
+        let create_pipeline = |renderer: &mut TestRenderer,
+                               vertex_shader: &str,
+                               fragment_shader: &str,
+                               options: &GraphicsPipelineOptions| {
+            let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/{}",
+                SHADERS_DIR, vertex_shader
+            )));
+            let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/{}",
+                SHADERS_DIR, fragment_shader
+            )));
+            heph_expect_success!(
+                renderer.create_graphics_pipeline(&[&vert_shader, &frag_shader], options)
+            )
+        };
+        let create_texture = |renderer: &mut TestRenderer, path: &Path, srgb: bool| {
+            let dds = heph_expect_success!(Dds::read(heph_expect_success!(File::open(path))));
+            let format = match heph_expect_success!(
+                dds.get_dxgi_format().ok_or("Missing DDS pixel format.")
+            ) {
+                DxgiFormat::BC1_UNorm_sRGB => TextureFormat::Bc1Srgb,
+                DxgiFormat::BC2_UNorm_sRGB => TextureFormat::Bc2Srgb,
+                DxgiFormat::BC3_UNorm_sRGB => TextureFormat::Bc3Srgb,
+                DxgiFormat::BC4_UNorm => TextureFormat::Bc4Unorm,
+                DxgiFormat::BC5_UNorm => TextureFormat::Bc5Unorm,
+                DxgiFormat::BC6H_UF16 => TextureFormat::Bc6hUfloat,
+                DxgiFormat::BC7_UNorm => match srgb {
+                    true => TextureFormat::Bc7Srgb,
+                    false => TextureFormat::Bc7Unorm,
+                },
+                format => panic!("Unsupported DDS pixel format: {format:?}"),
+            };
+            heph_expect_success!(renderer.create_texture(
+                &TextureOptions {
+                    width: dds.get_width(),
+                    height: dds.get_height(),
+                    format,
+                    mip_level_count: dds.get_num_mipmap_levels(),
+                },
+                heph_expect_success!(dds.get_data(0)),
+            ))
+        };
+
+        let mut renderer = self.create_renderer_with_any_device(&[
+            FeatureRequest::new(AnisotropicFiltering, false),
+            FeatureRequest::new(AsyncTransfer, false),
+        ]);
+        let max_anisotropy = if let Some(device) = renderer.get_device() {
+            match device.supported_features().contains(&AnisotropicFiltering) {
+                true => Some(device.max_sampler_anisotropy()),
+                false => None,
+            }
+        } else {
+            None
+        };
+        let Some(&msaa) = heph_expect_success!(renderer.supported_msaa_list()).last() else {
+            panic!("Failed to get a supported MSAA sample count.");
+        };
+        let settings = Settings {
+            frames_in_flight: 3,
+            vsync: true,
+            msaa,
+            ..Default::default()
+        };
+        heph_expect_success!(renderer.set_settings(settings));
+
+        let mut sky_pipeline = create_pipeline(
+            &mut renderer,
+            "canvas_vert.spv",
+            "canvas_frag.spv",
+            &GraphicsPipelineOptions {
+                depth_test: false,
+                depth_write: false,
+                ..Default::default()
+            },
+        );
+        let mut mesh_pipeline = create_pipeline(
+            &mut renderer,
+            "camera_vert.spv",
+            "compressed_mesh_frag.spv",
+            &GraphicsPipelineOptions {
+                front_face: FrontFace::Clockwise,
+                ..Default::default()
+            },
+        );
+
+        let lighting = Lighting {
+            direction: Vec3::new(0.5, -0.8, 1.0),
+            intensity: 3.0,
+            ambient: RGB::new(0.15, 0.15, 0.15),
+            ..Default::default()
+        };
+        let mut camera = Camera::new(Projection::Perspective {
+            vertical_fov: std::f32::consts::FRAC_PI_3,
+            aspect_ratio: 16.0 / 9.0,
+            near: 0.1,
+            far: 100.0,
+        });
+        camera.position = Vec3::new(0.0, 2.2, -4.0);
+        heph_expect_success!(camera.look_at(&Vec3::ZERO, &Vec3::Y));
+        let mut transform = Transform::default();
+
+        let sky_vertices: [[f32; 4]; 6] = [
+            [-1.0, -1.0, 0.0, 0.0],
+            [1.0, -1.0, 1.0, 0.0],
+            [1.0, 1.0, 1.0, 1.0],
+            [-1.0, -1.0, 0.0, 0.0],
+            [1.0, 1.0, 1.0, 1.0],
+            [-1.0, 1.0, 0.0, 1.0],
+        ];
+        let mut sky_vertex_buffer = heph_expect_success!(
+            renderer.create_buffer(std::mem::size_of_val(&sky_vertices), BufferUsage::Vertex)
+        );
+        heph_expect_success!(renderer.write_buffer(
+            sky_vertex_buffer.as_mut(),
+            0,
+            bytemuck::cast_slice(&sky_vertices)
+        ));
+
+        let mut textures = HashMap::new();
+        let mut part_buffers = Vec::new();
+        heph_expect_success!(renderer.begin_frame());
+        heph_expect_success!(renderer.clear(RGB::default()));
+        let mut sky_texture = create_texture(&mut renderer, Path::new(SKY_PATH), false);
+        for (mesh_index, mesh_name) in MESH_NAMES.iter().enumerate() {
+            let mesh_directory = Path::new(SCENE_DIRECTORY).join(mesh_name);
+            let mesh = heph_expect_success!(Mesh::from_file(
+                mesh_directory.join(format!("{mesh_name}.gltf"))
+            ));
+            let mut min = Vec3::splat(f32::INFINITY);
+            let mut max = Vec3::splat(f32::NEG_INFINITY);
+            for part in mesh.parts() {
+                let positions =
+                    heph_expect_success!(part.vertices(&[MeshVertexAttribute::Position]));
+                for position in positions.as_chunks::<3>().0 {
+                    let position = Vec3::from_slice(position);
+                    min = min.min(position);
+                    max = max.max(position);
+                }
+            }
+            let center = (min + max) * 0.5;
+            let scale = 1.0 / (max - min).max_element();
+            let offset = Vec3::new(
+                (mesh_index % 3) as f32 - 1.0,
+                0.0,
+                (mesh_index / 3) as f32 - 1.0,
+            ) * MESH_SPACING;
+
+            for part in mesh.parts() {
+                let vertex_attributes = [
+                    MeshVertexAttribute::Position,
+                    MeshVertexAttribute::Normal,
+                    MeshVertexAttribute::TextureCoordinates(heph_expect_success!(
+                        part.base_texture_uv_set()
+                            .ok_or("Missing base-color texture UV set.")
+                    )),
+                ];
+                let mut vertices = heph_expect_success!(part.vertices(&vertex_attributes));
+                let component_count = part.vertex_component_count(&vertex_attributes);
+                for vertex in vertices.chunks_exact_mut(component_count) {
+                    let position = (Vec3::from_slice(&vertex[..3]) - center) * scale + offset;
+                    vertex[..3].copy_from_slice(&position.to_array());
+                }
+                let vertex_count = vertices.len() / component_count;
+                let mut vertex_buffer = heph_expect_success!(renderer.create_buffer(
+                    vertex_count * part.vertex_size_bytes(&vertex_attributes),
+                    BufferUsage::Vertex,
+                ));
+                heph_expect_success!(renderer.write_buffer(
+                    vertex_buffer.as_mut(),
+                    0,
+                    bytemuck::cast_slice(&vertices)
+                ));
+
+                let indices = part.indices();
+                let mut index_buffer = heph_expect_success!(
+                    renderer.create_buffer(std::mem::size_of_val(indices), BufferUsage::Index)
+                );
+                heph_expect_success!(renderer.write_buffer(
+                    index_buffer.as_mut(),
+                    0,
+                    bytemuck::cast_slice(indices)
+                ));
+
+                let part_textures = [
+                    (
+                        heph_expect_success!(
+                            part.base_texture_image_uri()
+                                .ok_or("Missing base-color texture URI.")
+                        ),
+                        true,
+                    ),
+                    (
+                        heph_expect_success!(
+                            part.arm_texture_image_uri()
+                                .ok_or("Missing metallic-roughness texture URI.")
+                        ),
+                        false,
+                    ),
+                    (
+                        heph_expect_success!(
+                            part.normal_texture_image_uri()
+                                .ok_or("Missing normal texture URI.")
+                        ),
+                        false,
+                    ),
+                ]
+                .map(|(uri, srgb)| {
+                    let path = mesh_directory.join(uri).with_extension("dds");
+                    let _ = textures
+                        .entry(path.clone())
+                        .or_insert_with(|| create_texture(&mut renderer, &path, srgb));
+                    path
+                });
+                let roughness_only =
+                    textures[&part_textures[1]].format() == TextureFormat::Bc4Unorm;
+                let material = part.material();
+                let uniforms = [
+                    [
+                        material.base_color.r,
+                        material.base_color.g,
+                        material.base_color.b,
+                        material.base_color.a,
+                    ],
+                    [
+                        material.roughness,
+                        material.metallicness,
+                        material.normal_scale,
+                        f32::from(roughness_only),
+                    ],
+                    [
+                        lighting.direction.x,
+                        lighting.direction.y,
+                        lighting.direction.z,
+                        0.0,
+                    ],
+                    [
+                        lighting.color.r,
+                        lighting.color.g,
+                        lighting.color.b,
+                        lighting.intensity,
+                    ],
+                    [
+                        lighting.ambient.r,
+                        lighting.ambient.g,
+                        lighting.ambient.b,
+                        0.0,
+                    ],
+                    [camera.position.x, camera.position.y, camera.position.z, 1.0],
+                ];
+                let mut material_buffer = heph_expect_success!(
+                    renderer.create_buffer(std::mem::size_of_val(&uniforms), BufferUsage::Uniform)
+                );
+                heph_expect_success!(renderer.write_buffer(
+                    material_buffer.as_mut(),
+                    0,
+                    bytemuck::cast_slice(&uniforms)
+                ));
+
+                part_buffers.push((
+                    vertex_buffer,
+                    index_buffer,
+                    indices.len() as u32,
+                    part_textures,
+                    material_buffer,
+                ));
+            }
+        }
+
+        let part_textures: Vec<_> = part_buffers
+            .iter()
+            .map(|(_, _, _, paths, _)| paths.each_ref().map(|path| textures[path].as_ref()))
+            .collect();
+
+        heph_expect_success!(renderer.end_frame());
+
+        let mut uniform_buffers = Vec::with_capacity(settings.frames_in_flight);
+        for _ in 0..settings.frames_in_flight {
+            uniform_buffers.push(heph_expect_success!(
+                renderer.create_buffer(std::mem::size_of::<[[f32; 16]; 3]>(), BufferUsage::Uniform)
+            ));
+        }
+        let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions {
+            address_mode_u: SamplerAddressMode::Repeat,
+            address_mode_v: SamplerAddressMode::Repeat,
+            max_anisotropy,
+            ..Default::default()
+        }));
+
+        let mut frame_index = 0;
+        let start = Instant::now();
+        loop {
+            heph_expect_success!(renderer.begin_frame());
+            heph_expect_success!(renderer.clear(RGB::default()));
+
+            let sky_vertex_bindings = [ResourceBinding::buffer(
+                0,
+                sky_vertex_buffer.as_ref(),
+                0,
+                sky_vertex_buffer.size(),
+            )];
+            let sky_resource_bindings = [
+                ResourceBinding::texture(0, sky_texture.as_ref()),
+                ResourceBinding::sampler(1, sampler.as_ref()),
+            ];
+            heph_expect_success!(renderer.record_graphics_command(
+                sky_pipeline.as_mut(),
+                None,
+                &sky_vertex_bindings,
+                &[&sky_resource_bindings],
+                sky_vertices.len() as u32,
+                1,
+            ));
+
+            let progress =
+                (start.elapsed().as_secs_f32() / ANIMATION_DURATION.as_secs_f32()).min(1.0);
+            transform.rotation = Quat::from_rotation_y(progress * std::f32::consts::TAU);
+            let matrices = [
+                heph_expect_success!(transform.matrix()).to_cols_array(),
+                heph_expect_success!(camera.view_projection_matrix()).to_cols_array(),
+                Mat4::from_mat3(heph_expect_success!(transform.normal_matrix())).to_cols_array(),
+            ];
+
+            let uniform_buffer = &mut uniform_buffers[frame_index];
+            heph_expect_success!(renderer.write_buffer(
+                uniform_buffer.as_mut(),
+                0,
+                bytemuck::cast_slice(&matrices)
+            ));
+
+            for (
+                (vertex_buffer, index_buffer, index_count, _, material_buffer),
+                [texture, arm_texture, normal_texture],
+            ) in part_buffers.iter().zip(&part_textures)
+            {
+                let vertex_bindings = [ResourceBinding::buffer(
+                    0,
+                    vertex_buffer.as_ref(),
+                    0,
+                    vertex_buffer.size(),
+                )];
+                let resource_bindings = [
+                    ResourceBinding::texture(0, *texture),
+                    ResourceBinding::sampler(1, sampler.as_ref()),
+                    ResourceBinding::texture(2, *arm_texture),
+                    ResourceBinding::texture(3, *normal_texture),
+                    ResourceBinding::buffer(4, material_buffer.as_ref(), 0, material_buffer.size()),
+                    ResourceBinding::buffer(5, uniform_buffer.as_ref(), 0, uniform_buffer.size()),
+                ];
+                heph_expect_success!(renderer.record_graphics_command(
+                    mesh_pipeline.as_mut(),
+                    Some(index_buffer.as_ref()),
+                    &vertex_bindings,
+                    &[&resource_bindings],
+                    *index_count,
+                    1
+                ));
+            }
+            heph_expect_success!(renderer.end_frame());
+
+            frame_index = (frame_index + 1) % uniform_buffers.len();
+            if progress == 1.0 {
+                break;
+            }
+        }
+
+        heph_expect_success!(renderer.wait_idle());
+        heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
+        heph_expect_success!(renderer.destroy_texture(sky_texture.as_mut()));
+        for texture in textures.values_mut() {
+            heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
+        }
+
+        for (vertex_buffer, index_buffer, _, _, material_buffer) in &mut part_buffers {
+            heph_expect_success!(renderer.destroy_buffer(material_buffer.as_mut()));
+            heph_expect_success!(renderer.destroy_buffer(vertex_buffer.as_mut()));
+            heph_expect_success!(renderer.destroy_buffer(index_buffer.as_mut()));
+        }
+        for uniform_buffer in &mut uniform_buffers {
+            heph_expect_success!(renderer.destroy_buffer(uniform_buffer.as_mut()));
+        }
+        heph_expect_success!(renderer.destroy_buffer(sky_vertex_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(mesh_pipeline.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(sky_pipeline.as_mut()));
     }
 
     fn load_exr(&self, path: &str, channel_names: [&str; 3]) -> image::RgbaImage {

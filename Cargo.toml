@@ -33,6 +33,7 @@ rand = "0.10.2"
 paste = "1.0.15"
 image = "0.25.10"
 exr = "1.74.2"
+ddsfile = "0.6.0"
 
 [profile.dev.package."*"]
 opt-level = 3
