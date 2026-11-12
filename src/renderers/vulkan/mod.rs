@@ -419,6 +419,9 @@ impl Renderer for VulkanRenderer {
             if physical_features.sampler_anisotropy == ash::vk::TRUE {
                 let _ = supported_features.insert(GraphicsDeviceFeature::AnisotropicFiltering);
             }
+            if physical_features.texture_compression_bc == ash::vk::TRUE {
+                let _ = supported_features.insert(GraphicsDeviceFeature::BcTextures);
+            }
             if physical_features.sample_rate_shading == ash::vk::TRUE {
                 let _ = supported_features.insert(GraphicsDeviceFeature::SampleRateShading);
             }
@@ -645,6 +648,9 @@ impl Renderer for VulkanRenderer {
         }
         if enabled_features.contains(&GraphicsDeviceFeature::AnisotropicFiltering) {
             physical_features2.features.sampler_anisotropy = ash::vk::TRUE;
+        }
+        if enabled_features.contains(&GraphicsDeviceFeature::BcTextures) {
+            physical_features2.features.texture_compression_bc = ash::vk::TRUE;
         }
         if enabled_features.contains(&GraphicsDeviceFeature::SampleRateShading) {
             physical_features2.features.sample_rate_shading = ash::vk::TRUE;
@@ -930,21 +936,54 @@ impl Renderer for VulkanRenderer {
         options: &TextureOptions,
         data: &[u8],
     ) -> Result<Box<dyn RendererTexture>> {
+        let instance = self
+            .instance
+            .as_ref()
+            .ok_or(Error::invalid_operation("Renderer is not initialized"))?;
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(Error::invalid_operation("Device is not set."))?;
+
         if options.width == 0 || options.height == 0 {
             return Err(Error::invalid_argument(
                 "Texture dimensions must be greater than zero.",
             ));
         }
-
+        if options.format.is_bc_compressed()
+            && !device_context
+                .enabled_features
+                .contains(&GraphicsDeviceFeature::BcTextures)
+        {
+            return Err(Error::invalid_operation(
+                "BC textures require the `BcTextures` feature to be enabled.",
+            ));
+        }
         if options.mip_level_count == 0 {
             return Err(Error::invalid_argument("Mip level count cannot be zero."));
         }
+
         let max_mip_level_count =
             TextureOptions::max_mip_level_count(options.width, options.height);
         if options.mip_level_count > max_mip_level_count {
             return Err(Error::InvalidArgument(format!(
                 "Requested mip level count `{}` is greater than the maximum possible count this texture can have `{}`.",
                 options.mip_level_count, max_mip_level_count
+            )));
+        }
+
+        let vk_format: ash::vk::Format = options.format.into();
+        let format_properties = unsafe {
+            instance
+                .get_physical_device_format_properties(device_context.physical_device, vk_format)
+        };
+        if !format_properties
+            .optimal_tiling_features
+            .contains(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE)
+        {
+            return Err(Error::InvalidOperation(format!(
+                "The device does not support `{:?}` textures.",
+                options.format
             )));
         }
 
@@ -978,34 +1017,12 @@ impl Renderer for VulkanRenderer {
             ));
         };
 
-        let instance = self
-            .instance
-            .as_ref()
-            .ok_or(Error::invalid_operation("Renderer is not initialized"))?;
-        let device_context = self
-            .device_context
-            .as_mut()
-            .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
         let current_frame = &mut device_context.transfer_queue_context.frames
             [device_context.current_frame_index]
             .base
             .thread_contexts[thread_context_index];
 
-        let vk_format: ash::vk::Format = options.format.into();
-        let format_properties = unsafe {
-            instance
-                .get_physical_device_format_properties(device_context.physical_device, vk_format)
-        };
-        if !format_properties
-            .optimal_tiling_features
-            .contains(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE)
-        {
-            return Err(Error::InvalidOperation(format!(
-                "The device does not support `{:?}` textures.",
-                options.format
-            )));
-        }
         if generate_mip_levels
             && !format_properties.optimal_tiling_features.contains(
                 ash::vk::FormatFeatureFlags::BLIT_SRC

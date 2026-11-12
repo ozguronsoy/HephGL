@@ -183,6 +183,24 @@ impl TextureFormat {
             | Self::Bc7Srgb => 4,
         }
     }
+
+    /// Checks whether the format is BC block-compressed.
+    pub(super) fn is_bc_compressed(&self) -> bool {
+        matches!(
+            self,
+            Self::Bc1Unorm
+                | Self::Bc1Srgb
+                | Self::Bc2Unorm
+                | Self::Bc2Srgb
+                | Self::Bc3Unorm
+                | Self::Bc3Srgb
+                | Self::Bc4Unorm
+                | Self::Bc5Unorm
+                | Self::Bc6hUfloat
+                | Self::Bc7Unorm
+                | Self::Bc7Srgb
+        )
+    }
 }
 
 /// Downcasts the reference to the provided type.
@@ -221,5 +239,25 @@ mod tests {
         assert_eq!(TextureFormat::Bc6hUfloat.bytes_per_block(), 16);
         assert_eq!(TextureFormat::Bc7Unorm.bytes_per_block(), 16);
         assert_eq!(TextureFormat::Bc7Srgb.bytes_per_block(), 16);
+    }
+
+    #[test]
+    fn test_texture_format_is_bc_compressed() {
+        assert!(!TextureFormat::R8Unorm.is_bc_compressed());
+        assert!(!TextureFormat::R16Unorm.is_bc_compressed());
+        assert!(!TextureFormat::Rgba8Unorm.is_bc_compressed());
+        assert!(!TextureFormat::Rgba8Srgb.is_bc_compressed());
+        assert!(!TextureFormat::Bgra8Srgb.is_bc_compressed());
+        assert!(TextureFormat::Bc1Unorm.is_bc_compressed());
+        assert!(TextureFormat::Bc1Srgb.is_bc_compressed());
+        assert!(TextureFormat::Bc2Unorm.is_bc_compressed());
+        assert!(TextureFormat::Bc2Srgb.is_bc_compressed());
+        assert!(TextureFormat::Bc3Unorm.is_bc_compressed());
+        assert!(TextureFormat::Bc3Srgb.is_bc_compressed());
+        assert!(TextureFormat::Bc4Unorm.is_bc_compressed());
+        assert!(TextureFormat::Bc5Unorm.is_bc_compressed());
+        assert!(TextureFormat::Bc6hUfloat.is_bc_compressed());
+        assert!(TextureFormat::Bc7Unorm.is_bc_compressed());
+        assert!(TextureFormat::Bc7Srgb.is_bc_compressed());
     }
 }

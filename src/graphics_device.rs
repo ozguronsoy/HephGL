@@ -46,6 +46,8 @@ pub enum GraphicsDeviceFeature {
     WireframeMode,
     /// The device supports anisotropic texture filtering.
     AnisotropicFiltering,
+    /// The device supports sampling BC block-compressed textures.
+    BcTextures,
     /// The device supports shading individual samples of multisampled pixels.
     SampleRateShading,
     /// The device supports clamping fragment depth values instead of clipping primitives against
