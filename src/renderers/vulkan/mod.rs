@@ -1409,9 +1409,9 @@ impl Renderer for VulkanRenderer {
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let (anisotropy_enable, max_anisotropy) = match options.max_anisotropy {
             Some(max_anisotropy) => {
-                if !max_anisotropy.is_finite() || max_anisotropy < 1.0 {
+                if max_anisotropy < 1.0 {
                     return Err(Error::invalid_argument(
-                        "Maximum anisotropy must be finite and at least 1.0.",
+                        "Maximum anisotropy must be at least 1.0.",
                     ));
                 }
                 if !device_context

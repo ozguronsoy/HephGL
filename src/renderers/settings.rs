@@ -147,6 +147,16 @@ pub struct FeatureRequest {
     pub required: bool,
 }
 
+/// Defines the offset that is added to the depth value of fragments.
+#[derive(Clone, Copy)]
+pub struct DepthBias {
+    /// The constant offset, in units of the smallest depth difference the depth buffer can
+    /// resolve.
+    pub constant: f32,
+    /// The offset that is scaled by the depth slope of the polygon.
+    pub slope: f32,
+}
+
 /// Provides the capabilities of a graphics pipeline.
 #[derive(Clone, Copy)]
 pub struct GraphicsPipelineOptions {
@@ -169,6 +179,8 @@ pub struct GraphicsPipelineOptions {
     pub depth_clamp: bool,
     /// Indicates whether the pipeline renders into depth-only canvases.
     pub depth_only: bool,
+    /// The offset added to the depth value of fragments, or `None` if depth bias is disabled.
+    pub depth_bias: Option<DepthBias>,
     /// The minimum fraction of samples in each pixel that are shaded individually. The value must
     /// be between `0.0` and `1.0`.
     pub min_sample_shading: Option<f32>,
@@ -203,7 +215,7 @@ pub struct SamplerOptions {
     /// The addressing mode used for the W texture coordinate.
     pub address_mode_w: SamplerAddressMode,
     /// The maximum anisotropy level, clamped to the current device's limit. Set this to `None` to
-    /// disable anisotropic filtering. The value must be finite and at least `1.0`.
+    /// disable anisotropic filtering. The value must be at least `1.0`.
     pub max_anisotropy: Option<f32>,
 }
 
@@ -249,6 +261,7 @@ impl Default for GraphicsPipelineOptions {
             depth_write: true,
             depth_clamp: false,
             depth_only: false,
+            depth_bias: None,
             min_sample_shading: None,
         }
     }

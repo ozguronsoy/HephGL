@@ -331,7 +331,9 @@ impl VulkanRendering for RenderPassRendering {
             .polygon_mode(options.polygon_mode.into())
             .cull_mode(options.culling.into())
             .front_face(options.front_face.into())
-            .depth_bias_enable(false)
+            .depth_bias_enable(options.depth_bias.is_some())
+            .depth_bias_constant_factor(options.depth_bias.map_or(0.0, |bias| bias.constant))
+            .depth_bias_slope_factor(options.depth_bias.map_or(0.0, |bias| bias.slope))
             .line_width(1.0);
         let multisampling = PipelineMultisampleStateCreateInfo::default()
             .rasterization_samples(match options.depth_only {
