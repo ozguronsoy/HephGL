@@ -4,24 +4,9 @@ use fontdb::{Family, Query, Stretch, Style, Weight};
 
 use crate::{Error, Result, text::Font, text::FontOptions};
 
-#[cfg(target_os = "windows")]
-const SYSTEM_FONTS_DIRECTORY: &str = "C:/Windows/Fonts";
-#[cfg(target_os = "linux")]
-const SYSTEM_FONTS_DIRECTORY: &str = "/usr/share/fonts";
-#[cfg(target_os = "android")]
-const SYSTEM_FONTS_DIRECTORY: &str = "/system/fonts";
-#[cfg(any(
-    target_os = "macos",
-    target_os = "ios",
-    target_os = "tvos",
-    target_os = "watchos",
-    target_os = "visionos"
-))]
-const SYSTEM_FONTS_DIRECTORY: &str = "/System/Library/Fonts";
-
 pub(super) static SYSTEM_FONTS: LazyLock<fontdb::Database> = LazyLock::new(|| {
     let mut database = fontdb::Database::new();
-    database.load_fonts_dir(SYSTEM_FONTS_DIRECTORY);
+    database.load_system_fonts();
     database
 });
 
