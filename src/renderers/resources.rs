@@ -167,12 +167,6 @@ impl TextureFormat {
     /// Gets the width and height of a block in pixels.
     pub(super) fn block_extent(&self) -> u32 {
         match self {
-            Self::R8Unorm
-            | Self::R16Unorm
-            | Self::Rgba8Unorm
-            | Self::Rgba8Srgb
-            | Self::Bgra8Srgb
-            | Self::D32Sfloat => 1,
             Self::Bc1Unorm
             | Self::Bc1Srgb
             | Self::Bc2Unorm
@@ -184,6 +178,7 @@ impl TextureFormat {
             | Self::Bc6hUfloat
             | Self::Bc7Unorm
             | Self::Bc7Srgb => 4,
+            _ => 1,
         }
     }
 
