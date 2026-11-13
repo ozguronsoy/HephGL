@@ -21,7 +21,7 @@ use crate::{
         RendererCanvas,
         settings::{GraphicsPipelineOptions, Msaa, PolygonMode, Settings},
         vulkan::{
-            canvas::VulkanCanvas,
+            canvas::{VulkanColorCanvas, VulkanDepthCanvas},
             pipeline::VulkanGraphicsPipeline,
             rendering::{
                 VulkanRendering,
@@ -36,7 +36,10 @@ use crate::{
 
 /// Implements rendering via render pass.
 pub(super) struct RenderPassRendering {
+    /// Used for `VulkanColorCanvas`.
     render_pass: RenderPass,
+    /// Used for `VulkanDepthCanvas`.
+    depth_render_pass: RenderPass,
     msaa: Msaa,
 }
 
@@ -49,12 +52,20 @@ impl VulkanRendering for RenderPassRendering {
     where
         Self: Sized,
     {
+        let render_pass =
+            Self::create_render_pass(device, swapchain_context.format, settings.msaa.into())?;
+        let depth_render_pass = match Self::create_depth_render_pass(device) {
+            Ok(depth_render_pass) => depth_render_pass,
+            Err(error) => {
+                unsafe {
+                    device.destroy_render_pass(render_pass, None);
+                }
+                return Err(error);
+            }
+        };
         Ok(Self {
-            render_pass: Self::create_render_pass(
-                device,
-                swapchain_context.format,
-                settings.msaa.into(),
-            )?,
+            render_pass,
+            depth_render_pass,
             msaa: settings.msaa,
         })
     }
@@ -323,7 +334,10 @@ impl VulkanRendering for RenderPassRendering {
             .depth_bias_enable(false)
             .line_width(1.0);
         let multisampling = PipelineMultisampleStateCreateInfo::default()
-            .rasterization_samples(self.msaa.into())
+            .rasterization_samples(match options.depth_only {
+                true => ash::vk::SampleCountFlags::TYPE_1,
+                false => self.msaa.into(),
+            })
             .sample_shading_enable(options.min_sample_shading.is_some())
             .min_sample_shading(options.min_sample_shading.unwrap_or(0.0));
         let depth_stencil = PipelineDepthStencilStateCreateInfo::default()
@@ -333,8 +347,10 @@ impl VulkanRendering for RenderPassRendering {
             .depth_bounds_test_enable(false)
             .stencil_test_enable(false);
         let color_blend_attachment = options.blending.into();
-        let color_blend = PipelineColorBlendStateCreateInfo::default()
-            .attachments(std::slice::from_ref(&color_blend_attachment));
+        let mut color_blend = PipelineColorBlendStateCreateInfo::default();
+        if !options.depth_only {
+            color_blend = color_blend.attachments(std::slice::from_ref(&color_blend_attachment));
+        }
         let dynamic_states = [DynamicState::VIEWPORT, DynamicState::SCISSOR];
         let dynamic_state =
             PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
@@ -355,7 +371,10 @@ impl VulkanRendering for RenderPassRendering {
             .color_blend_state(&color_blend)
             .dynamic_state(&dynamic_state)
             .layout(pipeline_layout)
-            .render_pass(self.render_pass)
+            .render_pass(match options.depth_only {
+                true => self.depth_render_pass,
+                false => self.render_pass,
+            })
             .subpass(0);
         if let Some(tessellation_state) = &tessellation_state {
             pipeline_info = pipeline_info.tessellation_state(tessellation_state);
@@ -371,6 +390,7 @@ impl VulkanRendering for RenderPassRendering {
             descriptor_layouts,
             descriptor_binding_counts,
             descriptor_set_cache: DescriptorSetCache::new(),
+            depth_only: options.depth_only,
         })
     }
     fn destroy_graphics_pipeline(
@@ -391,10 +411,10 @@ impl VulkanRendering for RenderPassRendering {
         pipeline.descriptor_binding_counts.clear();
         Ok(())
     }
-    fn create_canvas_framebuffer(
+    fn create_color_canvas_framebuffer(
         &self,
         device: &ash::Device,
-        canvas: &mut VulkanCanvas,
+        canvas: &mut VulkanColorCanvas,
     ) -> Result<()> {
         canvas.render_pass = Self::create_render_pass(
             device,
@@ -422,11 +442,51 @@ impl VulkanRendering for RenderPassRendering {
         };
         Ok(())
     }
+    fn create_depth_canvas_framebuffer(
+        &self,
+        device: &ash::Device,
+        canvas: &mut VulkanDepthCanvas,
+    ) -> Result<()> {
+        canvas.render_pass = Self::create_depth_render_pass(device)?;
+        canvas.framebuffer = unsafe {
+            device.create_framebuffer(
+                &FramebufferCreateInfo::default()
+                    .render_pass(canvas.render_pass)
+                    .attachments(std::slice::from_ref(&canvas.texture.image_view))
+                    .width(canvas.width())
+                    .height(canvas.height())
+                    .layers(canvas.layer_count),
+                None,
+            )?
+        };
+        Ok(())
+    }
     fn begin(
         &mut self,
         device: &ash::Device,
         command_buffer: CommandBuffer,
-        canvas: &VulkanCanvas,
+        canvas: &VulkanColorCanvas,
+    ) -> Result<()> {
+        let begin_info = RenderPassBeginInfo::default()
+            .render_pass(canvas.render_pass)
+            .framebuffer(canvas.framebuffer)
+            .render_area(ash::vk::Rect2D {
+                offset: ash::vk::Offset2D { x: 0, y: 0 },
+                extent: ash::vk::Extent2D {
+                    width: canvas.width(),
+                    height: canvas.height(),
+                },
+            });
+        unsafe {
+            device.cmd_begin_render_pass(command_buffer, &begin_info, SubpassContents::INLINE);
+        }
+        Ok(())
+    }
+    fn begin_depth(
+        &mut self,
+        device: &ash::Device,
+        command_buffer: CommandBuffer,
+        canvas: &VulkanDepthCanvas,
     ) -> Result<()> {
         let begin_info = RenderPassBeginInfo::default()
             .render_pass(canvas.render_pass)
@@ -452,6 +512,7 @@ impl VulkanRendering for RenderPassRendering {
     fn destroy(&mut self, device: &ash::Device) -> Result<()> {
         unsafe {
             device.destroy_render_pass(self.render_pass, None);
+            device.destroy_render_pass(self.depth_render_pass, None);
         }
         Ok(())
     }
@@ -510,6 +571,32 @@ impl RenderPassRendering {
             Ok(device.create_render_pass(
                 &RenderPassCreateInfo::default()
                     .attachments(attachments)
+                    .subpasses(std::slice::from_ref(&subpass)),
+                None,
+            )?)
+        }
+    }
+
+    fn create_depth_render_pass(device: &ash::Device) -> Result<RenderPass> {
+        let depth_attachment = AttachmentDescription::default()
+            .format(ash::vk::Format::D32_SFLOAT)
+            .samples(SampleCountFlags::TYPE_1)
+            .load_op(AttachmentLoadOp::LOAD)
+            .store_op(AttachmentStoreOp::STORE)
+            .stencil_load_op(AttachmentLoadOp::DONT_CARE)
+            .stencil_store_op(AttachmentStoreOp::DONT_CARE)
+            .initial_layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+            .final_layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        let depth_reference = AttachmentReference::default()
+            .attachment(0)
+            .layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        let subpass = SubpassDescription::default()
+            .pipeline_bind_point(PipelineBindPoint::GRAPHICS)
+            .depth_stencil_attachment(&depth_reference);
+        unsafe {
+            Ok(device.create_render_pass(
+                &RenderPassCreateInfo::default()
+                    .attachments(std::slice::from_ref(&depth_attachment))
                     .subpasses(std::slice::from_ref(&subpass)),
                 None,
             )?)

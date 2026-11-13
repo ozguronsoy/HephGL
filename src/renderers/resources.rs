@@ -52,6 +52,8 @@ pub enum TextureFormat {
     Bc7Unorm,
     /// BC7 block-compressed RGBA using the sRGB color space.
     Bc7Srgb,
+    /// 32-bit floating-point depth value.
+    D32Sfloat,
 }
 
 /// Defines the types of resources being bound to a shader slot.
@@ -149,7 +151,7 @@ impl TextureFormat {
         match self {
             Self::R8Unorm => 1,
             Self::R16Unorm => 2,
-            Self::Rgba8Unorm | Self::Rgba8Srgb | Self::Bgra8Srgb => 4,
+            Self::Rgba8Unorm | Self::Rgba8Srgb | Self::Bgra8Srgb | Self::D32Sfloat => 4,
             Self::Bc1Unorm | Self::Bc1Srgb | Self::Bc4Unorm => 8,
             Self::Bc2Unorm
             | Self::Bc2Srgb
@@ -169,7 +171,8 @@ impl TextureFormat {
             | Self::R16Unorm
             | Self::Rgba8Unorm
             | Self::Rgba8Srgb
-            | Self::Bgra8Srgb => 1,
+            | Self::Bgra8Srgb
+            | Self::D32Sfloat => 1,
             Self::Bc1Unorm
             | Self::Bc1Srgb
             | Self::Bc2Unorm
@@ -239,6 +242,7 @@ mod tests {
         assert_eq!(TextureFormat::Bc6hUfloat.bytes_per_block(), 16);
         assert_eq!(TextureFormat::Bc7Unorm.bytes_per_block(), 16);
         assert_eq!(TextureFormat::Bc7Srgb.bytes_per_block(), 16);
+        assert_eq!(TextureFormat::D32Sfloat.bytes_per_block(), 4);
     }
 
     #[test]
@@ -259,5 +263,6 @@ mod tests {
         assert!(TextureFormat::Bc6hUfloat.is_bc_compressed());
         assert!(TextureFormat::Bc7Unorm.is_bc_compressed());
         assert!(TextureFormat::Bc7Srgb.is_bc_compressed());
+        assert!(!TextureFormat::D32Sfloat.is_bc_compressed());
     }
 }

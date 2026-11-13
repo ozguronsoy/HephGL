@@ -3,8 +3,8 @@ use std::time::{Duration, Instant};
 use heph_gl::{
     Shader,
     renderers::{
-        BufferUsage, GraphicsPipelineOptions, Renderer, RendererGraphicsPipeline, ResourceBinding,
-        SamplerOptions,
+        BufferUsage, CanvasOptions, GraphicsPipelineOptions, Renderer, RendererGraphicsPipeline,
+        ResourceBinding, SamplerOptions,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -68,7 +68,13 @@ fn example(
 
     // Canvases are created within a frame, since they are cleared to black on creation.
     renderer.begin_frame().unwrap();
-    let mut canvas = renderer.create_canvas(640, 360).unwrap();
+    let mut canvas = renderer
+        .create_canvas(&CanvasOptions {
+            width: 640,
+            height: 360,
+            ..Default::default()
+        })
+        .unwrap();
     renderer.end_frame().unwrap();
     let mut sampler = renderer.create_sampler(&SamplerOptions::default()).unwrap();
 

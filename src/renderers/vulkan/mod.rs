@@ -41,17 +41,15 @@ use crate::{
         BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererCanvas,
         RendererComputePipeline, RendererGraphicsPipeline, ResourceBinding, Settings, resource_mut,
         resource_ref,
-        resources::{
-            RendererBuffer, RendererResource, RendererSampler, RendererTexture, TextureFormat,
-        },
-        settings::{GraphicsPipelineOptions, Msaa, SamplerOptions, TextureOptions},
+        resources::{RendererBuffer, RendererSampler, RendererTexture},
+        settings::{CanvasOptions, GraphicsPipelineOptions, Msaa, SamplerOptions, TextureOptions},
         thread_context::{
             MAIN_THREAD_CONTEXT_INDEX, ThreadContextIndex, ThreadContextMask,
             ThreadContextMaskArray, is_thread_context_active,
         },
         version::DriverVersion,
         vulkan::{
-            canvas::{AttachmentImage, VulkanCanvas},
+            canvas::{VulkanCanvas, VulkanColorCanvas, VulkanDepthCanvas, vulkan_canvas_mut},
             device::{DeviceContext, VulkanGraphicsDeviceId},
             frame::{ComputeFrame, FrameState, GraphicsFrame, TransferFrame, VulkanFrame},
             pipeline::{VulkanComputePipeline, VulkanGraphicsPipeline},
@@ -1229,7 +1227,7 @@ impl Renderer for VulkanRenderer {
                 [device_context.current_frame_index]
                 .base
                 .thread_contexts[thread_context_index];
-            if let Some(render_target) = current_frame.render_target.take() {
+            if let Some((render_target, aspect_mask)) = current_frame.render_target.take() {
                 let rendering = device_context
                     .rendering
                     .as_mut()
@@ -1239,6 +1237,7 @@ impl Renderer for VulkanRenderer {
                     rendering.as_mut(),
                     current_frame.base.command_buffer,
                     render_target,
+                    aspect_mask,
                     self.settings.array_layer_count(),
                     device_context.sampling_stages,
                 )?;
@@ -1696,8 +1695,8 @@ impl Renderer for VulkanRenderer {
         )
     }
 
-    fn create_canvas(&mut self, width: u32, height: u32) -> Result<Box<dyn RendererCanvas>> {
-        if width == 0 || height == 0 {
+    fn create_canvas(&mut self, options: &CanvasOptions) -> Result<Box<dyn RendererCanvas>> {
+        if options.width == 0 || options.height == 0 {
             return Err(Error::invalid_argument(
                 "Canvas dimensions must be greater than zero.",
             ));
@@ -1709,10 +1708,6 @@ impl Renderer for VulkanRenderer {
             .ok_or(Error::invalid_operation("Renderer is not initialized"))?;
         let device_context = self
             .device_context
-            .as_ref()
-            .ok_or(Error::invalid_operation("Device is not set."))?;
-        let rendering = device_context
-            .rendering
             .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
@@ -1743,96 +1738,26 @@ impl Renderer for VulkanRenderer {
         let max_height = limits
             .max_image_dimension2_d
             .min(limits.max_framebuffer_height);
-        if width > max_width || height > max_height {
+        if options.width > max_width || options.height > max_height {
             return Err(Error::InvalidArgument(format!(
                 "Canvas dimensions cannot exceed {max_width}x{max_height}."
             )));
         }
 
-        let format = device_context.swapchain_context.format;
-        let texture_format = TextureFormat::try_from(format)?;
-        let extent = ash::vk::Extent2D { width, height };
         let layer_count = self.settings.array_layer_count();
-        let sample_count: ash::vk::SampleCountFlags = self.settings.msaa.into();
-
-        let color_image = Self::create_attachment_image(
-            device_context,
-            format,
-            extent,
-            layer_count,
-            ash::vk::SampleCountFlags::TYPE_1,
-            ash::vk::ImageUsageFlags::COLOR_ATTACHMENT
-                | ash::vk::ImageUsageFlags::SAMPLED
-                | ash::vk::ImageUsageFlags::TRANSFER_SRC
-                | ash::vk::ImageUsageFlags::TRANSFER_DST,
-            ash::vk::ImageAspectFlags::COLOR,
-        )?;
-        let msaa_color_image = match sample_count {
-            ash::vk::SampleCountFlags::TYPE_1 => None,
-            _ => Some(
-                match Self::create_attachment_image(
-                    device_context,
-                    format,
-                    extent,
-                    layer_count,
-                    sample_count,
-                    ash::vk::ImageUsageFlags::COLOR_ATTACHMENT
-                        | ash::vk::ImageUsageFlags::TRANSFER_DST,
-                    ash::vk::ImageAspectFlags::COLOR,
-                ) {
-                    Ok(msaa_color_image) => msaa_color_image,
-                    Err(error) => {
-                        Self::destroy_attachment_image(device_context, color_image);
-                        return Err(error);
-                    }
-                },
-            ),
+        let mut canvas: Box<dyn VulkanCanvas> = match options.depth_only {
+            true => Box::new(VulkanDepthCanvas::new(
+                device_context,
+                options,
+                layer_count,
+            )?),
+            false => Box::new(VulkanColorCanvas::new(
+                device_context,
+                options,
+                self.settings.msaa,
+                layer_count,
+            )?),
         };
-        let depth_image = match Self::create_attachment_image(
-            device_context,
-            ash::vk::Format::D32_SFLOAT,
-            extent,
-            layer_count,
-            sample_count,
-            ash::vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
-                | ash::vk::ImageUsageFlags::TRANSFER_DST,
-            ash::vk::ImageAspectFlags::DEPTH,
-        ) {
-            Ok(depth_image) => depth_image,
-            Err(error) => {
-                Self::destroy_attachment_image(device_context, color_image);
-                if let Some(msaa_color_image) = msaa_color_image {
-                    Self::destroy_attachment_image(device_context, msaa_color_image);
-                }
-                return Err(error);
-            }
-        };
-
-        let mut canvas = VulkanCanvas {
-            texture: VulkanTexture {
-                image: color_image.image,
-                image_view: color_image.view,
-                vma_allocation: color_image.allocation,
-                texture_options: TextureOptions {
-                    width,
-                    height,
-                    format: texture_format,
-                    mip_level_count: 1,
-                },
-            },
-            msaa_color_image,
-            depth_image,
-            render_pass: ash::vk::RenderPass::null(),
-            framebuffer: ash::vk::Framebuffer::null(),
-            msaa: self.settings.msaa,
-            layer_count,
-        };
-        if let Err(error) =
-            rendering.create_canvas_framebuffer(&device_context.logical_device, &mut canvas)
-        {
-            self.destroy_canvas(&mut canvas)?;
-            return Err(error);
-        }
 
         let device_context = self
             .device_context
@@ -1850,55 +1775,25 @@ impl Renderer for VulkanRenderer {
             &device_context.logical_device,
             rendering.as_mut(),
             current_frame,
-            &canvas,
+            canvas.as_ref(),
             device_context.sampling_stages,
         ) {
-            self.destroy_canvas(&mut canvas)?;
+            canvas.destroy(device_context);
             return Err(error);
         }
 
-        Ok(Box::new(canvas))
+        Ok(canvas)
     }
 
     fn destroy_canvas(&self, canvas: &mut dyn RendererCanvas) -> Result<()> {
-        let canvas = resource_mut::<VulkanCanvas>(canvas)?;
-        if !canvas.texture.is_allocated() {
-            return Ok(());
+        let canvas = vulkan_canvas_mut(canvas)?;
+        if canvas.texture().is_allocated() {
+            let device_context = self
+                .device_context
+                .as_ref()
+                .ok_or(Error::invalid_operation("Device is not set."))?;
+            canvas.destroy(device_context);
         }
-
-        let device_context = self
-            .device_context
-            .as_ref()
-            .ok_or(Error::invalid_operation("Device is not set."))?;
-
-        unsafe {
-            device_context
-                .logical_device
-                .destroy_framebuffer(canvas.framebuffer, None);
-            device_context
-                .logical_device
-                .destroy_render_pass(canvas.render_pass, None);
-        }
-        if let Some(msaa_color_image) = canvas.msaa_color_image.take() {
-            Self::destroy_attachment_image(device_context, msaa_color_image);
-        }
-        Self::destroy_attachment_image(device_context, canvas.depth_image);
-        Self::destroy_attachment_image(
-            device_context,
-            AttachmentImage {
-                image: canvas.texture.image,
-                view: canvas.texture.image_view,
-                allocation: canvas.texture.vma_allocation,
-            },
-        );
-
-        canvas.framebuffer = ash::vk::Framebuffer::null();
-        canvas.render_pass = ash::vk::RenderPass::null();
-        canvas.depth_image.image = ash::vk::Image::null();
-        canvas.depth_image.view = ash::vk::ImageView::null();
-        canvas.texture.image = ash::vk::Image::null();
-        canvas.texture.image_view = ash::vk::ImageView::null();
-        canvas.texture.texture_options = TextureOptions::default();
         Ok(())
     }
 
@@ -1913,7 +1808,7 @@ impl Renderer for VulkanRenderer {
         instance_count: u32,
     ) -> Result<()> {
         self.record_draw(
-            Some(resource_mut::<VulkanCanvas>(canvas)?),
+            Some(vulkan_canvas_mut(canvas)?),
             pipeline,
             index_buffer,
             vertex_bindings,
@@ -2112,9 +2007,13 @@ impl Renderer for VulkanRenderer {
 
         if is_in_main_thread && device_context.display_canvas.is_none() {
             let extent = device_context.swapchain_context.extent;
-            let display_canvas: Box<dyn Any> = self.create_canvas(extent.width, extent.height)?;
+            let display_canvas: Box<dyn Any> = self.create_canvas(&CanvasOptions {
+                width: extent.width,
+                height: extent.height,
+                depth_only: false,
+            })?;
             let display_canvas = display_canvas
-                .downcast::<VulkanCanvas>()
+                .downcast::<VulkanColorCanvas>()
                 .map_err(|_| Error::fail("Failed to create the display canvas."))?;
             self.device_context
                 .as_mut()
@@ -2147,7 +2046,7 @@ impl Renderer for VulkanRenderer {
         fn end_queue<Frame: VulkanFrame>(
             logical_device: &ash::Device,
             rendering: &mut dyn VulkanRendering,
-            display_canvas: Option<&VulkanCanvas>,
+            display_canvas: Option<&VulkanColorCanvas>,
             swapchain_images: &[ash::vk::Image],
             image_index: usize,
             layer_count: u32,
@@ -2169,12 +2068,13 @@ impl Renderer for VulkanRenderer {
                 if let Some(current_frame) =
                     <dyn Any>::downcast_mut::<GraphicsThreadContext>(current_frame)
                 {
-                    if let Some(image) = current_frame.render_target.take() {
+                    if let Some((image, aspect_mask)) = current_frame.render_target.take() {
                         VulkanRenderer::end_rendering(
                             logical_device,
                             rendering,
                             current_frame.base.command_buffer,
                             image,
+                            aspect_mask,
                             layer_count,
                             sampling_stages,
                         )?;
@@ -2452,7 +2352,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn clear_canvas(&mut self, canvas: &mut dyn RendererCanvas, color: RGB<f32>) -> Result<()> {
-        self.record_clear(Some(resource_mut::<VulkanCanvas>(canvas)?), color)
+        self.record_clear(Some(vulkan_canvas_mut(canvas)?), color)
     }
 }
 

@@ -8,7 +8,7 @@ use crate::{
         thread_context::ThreadContextMaskArray,
         vulkan::{
             MIN_API_VERSION, VulkanRenderer,
-            canvas::VulkanCanvas,
+            canvas::VulkanColorCanvas,
             frame::{ComputeFrame, GraphicsFrame, TransferFrame},
             queue::{QueueContext, QueueFamily},
             rendering::VulkanRendering,
@@ -59,7 +59,7 @@ pub(super) struct DeviceContext {
 
     pub(super) swapchain_context: SwapchainContext,
     pub(super) rendering: Option<Box<dyn VulkanRendering>>,
-    pub(super) display_canvas: Option<VulkanCanvas>,
+    pub(super) display_canvas: Option<VulkanColorCanvas>,
 
     pub(super) physical_device: ash::vk::PhysicalDevice,
     pub(super) logical_device: ash::Device,

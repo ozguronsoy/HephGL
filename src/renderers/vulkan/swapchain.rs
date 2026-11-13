@@ -8,7 +8,7 @@ use crate::{
     Error, Result,
     renderers::{
         Renderer, RendererCanvas,
-        vulkan::{VulkanRenderer, canvas::VulkanCanvas},
+        vulkan::{VulkanRenderer, canvas::VulkanColorCanvas},
     },
 };
 
@@ -292,7 +292,7 @@ impl VulkanRenderer {
     pub(super) fn copy_display_canvas(
         device: &ash::Device,
         command_buffer: ash::vk::CommandBuffer,
-        display_canvas: &VulkanCanvas,
+        display_canvas: &VulkanColorCanvas,
         swapchain_image: ash::vk::Image,
         layer_count: u32,
         sampling_stages: PipelineStageFlags,

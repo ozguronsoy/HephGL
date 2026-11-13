@@ -167,6 +167,8 @@ pub struct GraphicsPipelineOptions {
     /// Indicates whether fragment depth values are clamped to the depth range instead of clipping
     /// primitives against the near and far planes.
     pub depth_clamp: bool,
+    /// Indicates whether the pipeline renders into depth-only canvases.
+    pub depth_only: bool,
     /// The minimum fraction of samples in each pixel that are shaded individually. The value must
     /// be between `0.0` and `1.0`.
     pub min_sample_shading: Option<f32>,
@@ -205,6 +207,18 @@ pub struct SamplerOptions {
     pub max_anisotropy: Option<f32>,
 }
 
+/// Defines the properties of a canvas.
+#[derive(Default, Clone, Copy)]
+pub struct CanvasOptions {
+    /// The width of the canvas in pixels.
+    pub width: u32,
+    /// The height of the canvas in pixels.
+    pub height: u32,
+    /// Indicates whether the canvas has only a depth buffer. The texture of a depth-only canvas
+    /// contains the depth values, and only depth-only pipelines can render into it.
+    pub depth_only: bool,
+}
+
 impl Default for TextureOptions {
     fn default() -> Self {
         Self {
@@ -234,6 +248,7 @@ impl Default for GraphicsPipelineOptions {
             depth_test: true,
             depth_write: true,
             depth_clamp: false,
+            depth_only: false,
             min_sample_shading: None,
         }
     }
