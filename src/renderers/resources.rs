@@ -246,6 +246,27 @@ mod tests {
     }
 
     #[test]
+    fn test_texture_format_block_extent() {
+        assert_eq!(TextureFormat::R8Unorm.block_extent(), 1);
+        assert_eq!(TextureFormat::R16Unorm.block_extent(), 1);
+        assert_eq!(TextureFormat::Rgba8Unorm.block_extent(), 1);
+        assert_eq!(TextureFormat::Rgba8Srgb.block_extent(), 1);
+        assert_eq!(TextureFormat::Bgra8Srgb.block_extent(), 1);
+        assert_eq!(TextureFormat::Bc1Unorm.block_extent(), 4);
+        assert_eq!(TextureFormat::Bc1Srgb.block_extent(), 4);
+        assert_eq!(TextureFormat::Bc2Unorm.block_extent(), 4);
+        assert_eq!(TextureFormat::Bc2Srgb.block_extent(), 4);
+        assert_eq!(TextureFormat::Bc3Unorm.block_extent(), 4);
+        assert_eq!(TextureFormat::Bc3Srgb.block_extent(), 4);
+        assert_eq!(TextureFormat::Bc4Unorm.block_extent(), 4);
+        assert_eq!(TextureFormat::Bc5Unorm.block_extent(), 4);
+        assert_eq!(TextureFormat::Bc6hUfloat.block_extent(), 4);
+        assert_eq!(TextureFormat::Bc7Unorm.block_extent(), 4);
+        assert_eq!(TextureFormat::Bc7Srgb.block_extent(), 4);
+        assert_eq!(TextureFormat::D32Sfloat.block_extent(), 1);
+    }
+
+    #[test]
     fn test_texture_format_is_bc_compressed() {
         assert!(!TextureFormat::R8Unorm.is_bc_compressed());
         assert!(!TextureFormat::R16Unorm.is_bc_compressed());
