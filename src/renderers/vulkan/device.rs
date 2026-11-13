@@ -5,7 +5,6 @@ use crate::{
     graphics_device::{GraphicsDevice, GraphicsDeviceFeature},
     renderers::{
         Renderer,
-        settings::Msaa,
         thread_context::ThreadContextMaskArray,
         vulkan::{
             MIN_API_VERSION, VulkanRenderer,
@@ -66,7 +65,6 @@ pub(super) struct DeviceContext {
     pub(super) logical_device: ash::Device,
     pub(super) supports_timeline_semaphore: bool,
     pub(super) supports_dynamic_rendering: bool,
-    pub(super) supported_msaa_list: Vec<Msaa>,
     pub(super) sampling_stages: ash::vk::PipelineStageFlags,
     pub(super) max_tessellation_patch_size: u32,
 

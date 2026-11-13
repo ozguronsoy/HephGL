@@ -47,7 +47,9 @@ where
         let mut renderer = self.create_renderer_with_any_device(&[]);
 
         {
-            let msaa = heph_expect_success!(renderer.supported_msaa_list()).last();
+            let msaa = renderer
+                .get_device()
+                .and_then(|device| device.supported_msaa_levels().last());
             assert!(msaa.is_some());
             heph_expect_success!(renderer.set_settings(Settings {
                 msaa: *heph_expect_success!(
@@ -132,7 +134,10 @@ where
 
         let mut renderer =
             self.create_renderer_with_any_device(&[FeatureRequest::new(SampleRateShading, false)]);
-        let Some(&msaa) = heph_expect_success!(renderer.supported_msaa_list()).last() else {
+        let Some(&msaa) = renderer
+            .get_device()
+            .and_then(|device| device.supported_msaa_levels().last())
+        else {
             panic!("Failed to get a supported MSAA sample count.");
         };
         heph_expect_success!(renderer.set_settings(Settings {
@@ -492,7 +497,10 @@ where
             };
 
         let mut renderer = self.create_renderer_with_any_device(&[]);
-        let Some(&msaa) = heph_expect_success!(renderer.supported_msaa_list()).last() else {
+        let Some(&msaa) = renderer
+            .get_device()
+            .and_then(|device| device.supported_msaa_levels().last())
+        else {
             panic!("Failed to get a supported MSAA sample count.");
         };
         heph_expect_success!(renderer.set_settings(Settings {
@@ -629,7 +637,10 @@ where
 
         let mut renderer =
             self.create_renderer_with_any_device(&[FeatureRequest::new(AsyncTransfer, false)]);
-        let Some(&msaa) = heph_expect_success!(renderer.supported_msaa_list()).last() else {
+        let Some(&msaa) = renderer
+            .get_device()
+            .and_then(|device| device.supported_msaa_levels().last())
+        else {
             panic!("Failed to get a supported MSAA sample count.");
         };
         let settings = Settings {
@@ -872,7 +883,10 @@ where
         } else {
             None
         };
-        let Some(&msaa) = heph_expect_success!(renderer.supported_msaa_list()).last() else {
+        let Some(&msaa) = renderer
+            .get_device()
+            .and_then(|device| device.supported_msaa_levels().last())
+        else {
             panic!("Failed to get a supported MSAA sample count.");
         };
         let settings = Settings {
@@ -1185,7 +1199,10 @@ where
         } else {
             None
         };
-        let Some(&msaa) = heph_expect_success!(renderer.supported_msaa_list()).last() else {
+        let Some(&msaa) = renderer
+            .get_device()
+            .and_then(|device| device.supported_msaa_levels().last())
+        else {
             panic!("Failed to get a supported MSAA sample count.");
         };
         let settings = Settings {
@@ -1514,7 +1531,10 @@ where
         } else {
             None
         };
-        let Some(&msaa) = heph_expect_success!(renderer.supported_msaa_list()).last() else {
+        let Some(&msaa) = renderer
+            .get_device()
+            .and_then(|device| device.supported_msaa_levels().last())
+        else {
             panic!("Failed to get a supported MSAA sample count.");
         };
         let settings = Settings {
@@ -1916,7 +1936,10 @@ where
         } else {
             None
         };
-        let Some(&msaa) = heph_expect_success!(renderer.supported_msaa_list()).last() else {
+        let Some(&msaa) = renderer
+            .get_device()
+            .and_then(|device| device.supported_msaa_levels().last())
+        else {
             panic!("Failed to get a supported MSAA sample count.");
         };
         let settings = Settings {

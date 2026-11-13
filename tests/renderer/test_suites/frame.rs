@@ -31,8 +31,9 @@ where
 
         let mut renderer = self.create_renderer_with_any_device(&[]);
         let max_msaa = *heph_expect_success!(
-            heph_expect_success!(renderer.supported_msaa_list())
-                .last()
+            renderer
+                .get_device()
+                .and_then(|device| device.supported_msaa_levels().last())
                 .ok_or("No supported MSAA sample count.")
         );
         for msaa in [Msaa::X1, max_msaa] {
