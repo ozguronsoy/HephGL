@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use heph_gl::{
-    Camera, Font, FontOptions,
+    Camera, FontOptions,
     GraphicsDeviceFeature::AsyncTransfer,
     Projection, Shader, TextType, TextVertex, Transform,
     math::{Mat4, Quat, Vec3},
@@ -16,7 +16,6 @@ use renkrs::RGB;
 
 mod utils;
 
-const FONT_PATH: &str = "assets/liberation_sans/LiberationSans-Regular.ttf";
 const FONT_SIZE: f32 = 72.0;
 const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 
@@ -110,16 +109,13 @@ fn example(
 
     // Load the font and generate vertex data for each text mesh. We only need to calculate the
     // vertices once since we aren't changing the text or font during the animation.
-    let mut font = Font::from_file(
-        FONT_PATH,
-        &FontOptions {
-            size: FONT_SIZE,
-            enable_screen_text: true,
-            enable_world_text: true,
-            enable_extruded_text: true,
-            ..Default::default()
-        },
-    )
+    let mut font = heph_gl::fonts::serif(&FontOptions {
+        size: FONT_SIZE,
+        enable_screen_text: true,
+        enable_world_text: true,
+        enable_extruded_text: true,
+        ..Default::default()
+    })
     .unwrap();
     let screen_vertices = font
         .vertices(

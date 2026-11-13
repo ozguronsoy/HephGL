@@ -426,19 +426,17 @@ impl Font {
 mod tests {
     use super::*;
 
-    const FONT_DATA: &[u8] =
-        include_bytes!("../../assets/liberation_sans/LiberationSans-Regular.ttf");
+    fn create_font(options: FontOptions) -> Result<Font> {
+        fonts::serif(&options)
+    }
 
     #[test]
     fn test_screen_and_world_coordinates() {
-        let mut font = Font::new(
-            FONT_DATA.to_vec(),
-            &FontOptions {
-                enable_screen_text: true,
-                enable_world_text: true,
-                ..Default::default()
-            },
-        )
+        let mut font = create_font(FontOptions {
+            enable_screen_text: true,
+            enable_world_text: true,
+            ..Default::default()
+        })
         .unwrap();
         let viewport_size = [800.0, 600.0];
         let screen_position = Vec3::new(80.0, 40.0, 0.35);
@@ -478,13 +476,10 @@ mod tests {
 
     #[test]
     fn test_world_translation_and_scale() {
-        let mut font = Font::new(
-            FONT_DATA.to_vec(),
-            &FontOptions {
-                enable_world_text: true,
-                ..Default::default()
-            },
-        )
+        let mut font = create_font(FontOptions {
+            enable_world_text: true,
+            ..Default::default()
+        })
         .unwrap();
         let position = Vec3::new(4.0, -3.0, 8.0);
         let original = font
@@ -516,15 +511,12 @@ mod tests {
 
     #[test]
     fn test_multiline_text() {
-        let mut font = Font::new(
-            FONT_DATA.to_vec(),
-            &FontOptions {
-                enable_screen_text: true,
-                enable_world_text: true,
-                enable_extruded_text: true,
-                ..Default::default()
-            },
-        )
+        let mut font = create_font(FontOptions {
+            enable_screen_text: true,
+            enable_world_text: true,
+            enable_extruded_text: true,
+            ..Default::default()
+        })
         .unwrap();
         for text_type in [
             TextType::Screen {
@@ -562,14 +554,11 @@ mod tests {
 
     #[test]
     fn test_extruded_glyph_bounds_and_depth() {
-        let mut font = Font::new(
-            FONT_DATA.to_vec(),
-            &FontOptions {
-                enable_world_text: true,
-                enable_extruded_text: true,
-                ..Default::default()
-            },
-        )
+        let mut font = create_font(FontOptions {
+            enable_world_text: true,
+            enable_extruded_text: true,
+            ..Default::default()
+        })
         .unwrap();
         let position = Vec3::new(-2.0, 3.0, 5.0);
         let scale = 0.03125;
@@ -632,15 +621,12 @@ mod tests {
 
     #[test]
     fn test_empty_text() {
-        let mut font = Font::new(
-            FONT_DATA.to_vec(),
-            &FontOptions {
-                enable_screen_text: true,
-                enable_world_text: true,
-                enable_extruded_text: true,
-                ..Default::default()
-            },
-        )
+        let mut font = create_font(FontOptions {
+            enable_screen_text: true,
+            enable_world_text: true,
+            enable_extruded_text: true,
+            ..Default::default()
+        })
         .unwrap();
         for text_type in [
             TextType::Screen {
@@ -667,15 +653,12 @@ mod tests {
     fn test_disabled_text_types() {
         // Only screen text is enabled.
         {
-            let mut font = Font::new(
-                FONT_DATA.to_vec(),
-                &FontOptions {
-                    enable_screen_text: true,
-                    enable_world_text: false,
-                    enable_extruded_text: false,
-                    ..Default::default()
-                },
-            )
+            let mut font = create_font(FontOptions {
+                enable_screen_text: true,
+                enable_world_text: false,
+                enable_extruded_text: false,
+                ..Default::default()
+            })
             .unwrap();
             assert!(font.atlas_enabled());
             assert!(!font.atlas_data.is_empty());
@@ -701,15 +684,12 @@ mod tests {
 
         // Only world text is enabled.
         {
-            let mut font = Font::new(
-                FONT_DATA.to_vec(),
-                &FontOptions {
-                    enable_screen_text: false,
-                    enable_world_text: true,
-                    enable_extruded_text: false,
-                    ..Default::default()
-                },
-            )
+            let mut font = create_font(FontOptions {
+                enable_screen_text: false,
+                enable_world_text: true,
+                enable_extruded_text: false,
+                ..Default::default()
+            })
             .unwrap();
             assert!(font.atlas_enabled());
             assert!(!font.atlas_data.is_empty());
@@ -742,15 +722,12 @@ mod tests {
 
         // Only extruded text is enabled.
         {
-            let mut font = Font::new(
-                FONT_DATA.to_vec(),
-                &FontOptions {
-                    enable_screen_text: false,
-                    enable_world_text: false,
-                    enable_extruded_text: true,
-                    ..Default::default()
-                },
-            )
+            let mut font = create_font(FontOptions {
+                enable_screen_text: false,
+                enable_world_text: false,
+                enable_extruded_text: true,
+                ..Default::default()
+            })
             .unwrap();
             assert!(!font.atlas_enabled());
             assert!(font.atlas_data.is_empty());
@@ -775,15 +752,12 @@ mod tests {
 
     #[test]
     fn test_invalid_text_parameters() {
-        let mut font = Font::new(
-            FONT_DATA.to_vec(),
-            &FontOptions {
-                enable_screen_text: true,
-                enable_world_text: true,
-                enable_extruded_text: true,
-                ..Default::default()
-            },
-        )
+        let mut font = create_font(FontOptions {
+            enable_screen_text: true,
+            enable_world_text: true,
+            enable_extruded_text: true,
+            ..Default::default()
+        })
         .unwrap();
         for value in [0.0, -1.0] {
             for text_type in [
@@ -845,13 +819,10 @@ mod tests {
     fn test_invalid_font_size_and_data() {
         for size in [0.0, -1.0, 1_000_000.0] {
             assert!(matches!(
-                Font::new(
-                    FONT_DATA.to_vec(),
-                    &FontOptions {
-                        size,
-                        ..FontOptions::default()
-                    }
-                ),
+                create_font(FontOptions {
+                    size,
+                    ..FontOptions::default()
+                }),
                 Err(Error::InvalidArgument(_))
             ));
         }

@@ -19,7 +19,7 @@ const SYSTEM_FONTS_DIRECTORY: &str = "/system/fonts";
 ))]
 const SYSTEM_FONTS_DIRECTORY: &str = "/System/Library/Fonts";
 
-static SYSTEM_FONTS: LazyLock<fontdb::Database> = LazyLock::new(|| {
+pub(super) static SYSTEM_FONTS: LazyLock<fontdb::Database> = LazyLock::new(|| {
     let mut database = fontdb::Database::new();
     database.load_fonts_dir(SYSTEM_FONTS_DIRECTORY);
     database

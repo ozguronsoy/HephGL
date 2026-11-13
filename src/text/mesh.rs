@@ -174,9 +174,11 @@ impl ttf_parser::OutlineBuilder for Outline {
 
 #[cfg(test)]
 mod tests {
+    use fontdb::{Family, Query, Stretch, Style, Weight};
     use ttf_parser::OutlineBuilder;
 
     use super::*;
+    use crate::fonts::SYSTEM_FONTS;
 
     fn assert_closed_mesh(vertices: &[TextVertex]) {
         let mut edges = BTreeMap::new();
@@ -308,11 +310,18 @@ mod tests {
 
     #[test]
     fn test_extrude_font_glyphs() {
-        let face = ttf_parser::Face::parse(
-            include_bytes!("../../assets/liberation_sans/LiberationSans-Regular.ttf"),
-            0,
-        )
-        .unwrap();
+        let families = [Family::Serif];
+        let query = Query {
+            families: &families,
+            weight: Weight::NORMAL,
+            stretch: Stretch::Normal,
+            style: Style::Normal,
+        };
+        let id = SYSTEM_FONTS.query(&query).unwrap();
+        let data = SYSTEM_FONTS
+            .with_face_data(id, |font_data, _| font_data.to_vec())
+            .unwrap();
+        let face = ttf_parser::Face::parse(&data, 0).unwrap();
         let scale = 1.0 / face.units_per_em() as f32;
         for character in ['O', 'B', 'i', 'é', 'Ж'] {
             let glyph = face.glyph_index(character).unwrap();
