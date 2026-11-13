@@ -1,9 +1,9 @@
 use heph_gl::{
     Error,
     GraphicsDeviceFeature::{
-        AnisotropicFiltering, AsyncTransfer, BcTextures, ComputeShaders, DepthClamp,
-        GeometryShaders, RayTracing, SampleRateShading, TessellationShaders, VideoDecoding,
-        VideoEncoding, WireframeMode,
+        AnisotropicFiltering, AsyncTransfer, BcTextures, ComputeShaders, DepthBiasClamp,
+        DepthClamp, GeometryShaders, RayTracing, SampleRateShading, TessellationShaders,
+        VideoDecoding, VideoEncoding, WireframeMode,
     },
     Version,
     renderers::{
@@ -133,18 +133,19 @@ where
 
     pub(crate) fn test_set_device(&self) {
         let mut features = [
-            FeatureRequest::new(GeometryShaders, false),
-            FeatureRequest::new(TessellationShaders, false),
-            FeatureRequest::new(ComputeShaders, false),
-            FeatureRequest::new(WireframeMode, false),
             FeatureRequest::new(AnisotropicFiltering, false),
+            FeatureRequest::new(AsyncTransfer, false),
             FeatureRequest::new(BcTextures, false),
-            FeatureRequest::new(SampleRateShading, false),
+            FeatureRequest::new(ComputeShaders, false),
+            FeatureRequest::new(DepthBiasClamp, false),
             FeatureRequest::new(DepthClamp, false),
+            FeatureRequest::new(GeometryShaders, false),
             FeatureRequest::new(RayTracing, false),
+            FeatureRequest::new(SampleRateShading, false),
+            FeatureRequest::new(TessellationShaders, false),
             FeatureRequest::new(VideoDecoding, false),
             FeatureRequest::new(VideoEncoding, false),
-            FeatureRequest::new(AsyncTransfer, false),
+            FeatureRequest::new(WireframeMode, false),
         ];
         let mut renderer = self.create_renderer_with_any_device(&features);
         assert!(renderer.get_device().is_some());

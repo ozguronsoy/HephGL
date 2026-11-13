@@ -421,26 +421,29 @@ impl Renderer for VulkanRenderer {
             let mut supported_features = BTreeSet::<GraphicsDeviceFeature>::default();
             let extension_properties =
                 unsafe { instance.enumerate_device_extension_properties(physical_device)? };
-            if physical_features.geometry_shader == ash::vk::TRUE {
-                let _ = supported_features.insert(GraphicsDeviceFeature::GeometryShaders);
-            }
-            if physical_features.tessellation_shader == ash::vk::TRUE {
-                let _ = supported_features.insert(GraphicsDeviceFeature::TessellationShaders);
-            }
-            if physical_features.fill_mode_non_solid == ash::vk::TRUE {
-                let _ = supported_features.insert(GraphicsDeviceFeature::WireframeMode);
-            }
             if physical_features.sampler_anisotropy == ash::vk::TRUE {
                 let _ = supported_features.insert(GraphicsDeviceFeature::AnisotropicFiltering);
             }
             if physical_features.texture_compression_bc == ash::vk::TRUE {
                 let _ = supported_features.insert(GraphicsDeviceFeature::BcTextures);
             }
-            if physical_features.sample_rate_shading == ash::vk::TRUE {
-                let _ = supported_features.insert(GraphicsDeviceFeature::SampleRateShading);
+            if physical_features.depth_bias_clamp == ash::vk::TRUE {
+                let _ = supported_features.insert(GraphicsDeviceFeature::DepthBiasClamp);
             }
             if physical_features.depth_clamp == ash::vk::TRUE {
                 let _ = supported_features.insert(GraphicsDeviceFeature::DepthClamp);
+            }
+            if physical_features.geometry_shader == ash::vk::TRUE {
+                let _ = supported_features.insert(GraphicsDeviceFeature::GeometryShaders);
+            }
+            if physical_features.sample_rate_shading == ash::vk::TRUE {
+                let _ = supported_features.insert(GraphicsDeviceFeature::SampleRateShading);
+            }
+            if physical_features.tessellation_shader == ash::vk::TRUE {
+                let _ = supported_features.insert(GraphicsDeviceFeature::TessellationShaders);
+            }
+            if physical_features.fill_mode_non_solid == ash::vk::TRUE {
+                let _ = supported_features.insert(GraphicsDeviceFeature::WireframeMode);
             }
             for ext in extension_properties {
                 let name = unsafe { std::ffi::CStr::from_ptr(ext.extension_name.as_ptr()) };
@@ -635,26 +638,29 @@ impl Renderer for VulkanRenderer {
             device_extension_names.push(ash::vk::KHR_PORTABILITY_SUBSET_NAME.as_ptr());
         }
         let mut physical_features2 = PhysicalDeviceFeatures2::default();
-        if enabled_features.contains(&GraphicsDeviceFeature::GeometryShaders) {
-            physical_features2.features.geometry_shader = ash::vk::TRUE;
-        }
-        if enabled_features.contains(&GraphicsDeviceFeature::TessellationShaders) {
-            physical_features2.features.tessellation_shader = ash::vk::TRUE;
-        }
-        if enabled_features.contains(&GraphicsDeviceFeature::WireframeMode) {
-            physical_features2.features.fill_mode_non_solid = ash::vk::TRUE;
-        }
         if enabled_features.contains(&GraphicsDeviceFeature::AnisotropicFiltering) {
             physical_features2.features.sampler_anisotropy = ash::vk::TRUE;
         }
         if enabled_features.contains(&GraphicsDeviceFeature::BcTextures) {
             physical_features2.features.texture_compression_bc = ash::vk::TRUE;
         }
-        if enabled_features.contains(&GraphicsDeviceFeature::SampleRateShading) {
-            physical_features2.features.sample_rate_shading = ash::vk::TRUE;
+        if enabled_features.contains(&GraphicsDeviceFeature::DepthBiasClamp) {
+            physical_features2.features.depth_bias_clamp = ash::vk::TRUE;
         }
         if enabled_features.contains(&GraphicsDeviceFeature::DepthClamp) {
             physical_features2.features.depth_clamp = ash::vk::TRUE;
+        }
+        if enabled_features.contains(&GraphicsDeviceFeature::GeometryShaders) {
+            physical_features2.features.geometry_shader = ash::vk::TRUE;
+        }
+        if enabled_features.contains(&GraphicsDeviceFeature::SampleRateShading) {
+            physical_features2.features.sample_rate_shading = ash::vk::TRUE;
+        }
+        if enabled_features.contains(&GraphicsDeviceFeature::TessellationShaders) {
+            physical_features2.features.tessellation_shader = ash::vk::TRUE;
+        }
+        if enabled_features.contains(&GraphicsDeviceFeature::WireframeMode) {
+            physical_features2.features.fill_mode_non_solid = ash::vk::TRUE;
         }
 
         let mut supports_timeline_semaphore = false;

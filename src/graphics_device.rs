@@ -44,6 +44,8 @@ pub enum GraphicsDeviceFeature {
     BcTextures,
     /// The device supports shaders dedicated to general computing.
     ComputeShaders,
+    /// The device supports limiting the offset that depth bias adds to fragment depth values.
+    DepthBiasClamp,
     /// The device supports clamping fragment depth values instead of clipping primitives against
     /// the near and far planes.
     DepthClamp,

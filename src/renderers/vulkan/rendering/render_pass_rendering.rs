@@ -108,6 +108,15 @@ impl VulkanRendering for RenderPassRendering {
                 "Depth clamping requires the `DepthClamp` feature to be enabled.",
             ));
         }
+        if options
+            .depth_bias
+            .is_some_and(|depth_bias| depth_bias.clamp.is_some())
+            && !enabled_features.contains(&GraphicsDeviceFeature::DepthBiasClamp)
+        {
+            return Err(Error::invalid_operation(
+                "Depth bias clamping requires the `DepthBiasClamp` feature to be enabled.",
+            ));
+        }
 
         // Create shader stage infos.
         let mut shader_modules = ShaderModules {
@@ -334,6 +343,12 @@ impl VulkanRendering for RenderPassRendering {
             .depth_bias_enable(options.depth_bias.is_some())
             .depth_bias_constant_factor(options.depth_bias.map_or(0.0, |bias| bias.constant))
             .depth_bias_slope_factor(options.depth_bias.map_or(0.0, |bias| bias.slope))
+            .depth_bias_clamp(
+                options
+                    .depth_bias
+                    .and_then(|bias| bias.clamp)
+                    .unwrap_or(0.0),
+            )
             .line_width(1.0);
         let multisampling = PipelineMultisampleStateCreateInfo::default()
             .rasterization_samples(match options.depth_only {
