@@ -26,12 +26,6 @@ pub enum TextType {
 /// Defines the options for loading a font and generating text meshes.
 #[derive(Clone, Copy)]
 pub struct FontOptions {
-    /// The size of the font in pixels.
-    pub size: f32,
-    /// Indicates whether to load all unicode characters in the font. If `false`, only the ASCII
-    /// characters will be loaded immediately, and other characters will be loaded lazily
-    /// on-demand.
-    pub load_all_characters: bool,
     /// Indicates whether to enable rendering of screen-space text.
     pub enable_screen_text: bool,
     /// Indicates whether to enable rendering of world-space text.
@@ -43,8 +37,6 @@ pub struct FontOptions {
 impl Default for FontOptions {
     fn default() -> Self {
         Self {
-            size: 16.0,
-            load_all_characters: false,
             enable_screen_text: true,
             enable_world_text: false,
             enable_extruded_text: false,
