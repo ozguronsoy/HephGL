@@ -589,7 +589,7 @@ where
 
     pub(crate) fn test_render_text(&self) {
         const FONT_PATH: &str = "assets/liberation_sans/LiberationSans-Regular.ttf";
-        const FONT_SIZE: f32 = 72.0;
+        const FONT_SIZE: u32 = 72;
 
         let create_pipeline = |renderer: &mut TestRenderer,
                                vertex_shader: &str,
@@ -681,15 +681,14 @@ where
         let mut font = heph_expect_success!(Font::from_file(
             FONT_PATH,
             &FontOptions {
-                size: FONT_SIZE,
                 enable_screen_text: true,
                 enable_world_text: true,
                 enable_extruded_text: true,
-                ..Default::default()
             }
         ));
         let screen_vertices = heph_expect_success!(font.vertices(
             "Screen Text",
+            FONT_SIZE,
             &Vec3::new(460.0, 36.0, 0.0),
             [1.0, 1.0, 1.0, 1.0],
             TextType::Screen {
@@ -698,12 +697,14 @@ where
         ));
         let mut world_vertices = heph_expect_success!(font.vertices(
             "World Text",
+            FONT_SIZE * 3 / 4,
             &Vec3::ZERO,
             [0.3, 0.8, 1.0, 1.0],
             TextType::World { scale: 0.018 },
         ));
         let mut extruded_vertices = heph_expect_success!(font.vertices(
             "Extruded Text",
+            FONT_SIZE / 2,
             &Vec3::ZERO,
             [1.0, 0.65, 0.2, 1.0],
             TextType::Extruded {
