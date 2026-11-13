@@ -1,7 +1,7 @@
 use ash::vk::{ColorComponentFlags, PipelineColorBlendAttachmentState, SampleCountFlags};
 
 use crate::renderers::{
-    ColorBlending, CullingMode, Msaa, SamplerAddressMode, SamplerFilter,
+    ColorBlending, CompareOp, CullingMode, Msaa, SamplerAddressMode, SamplerFilter,
     settings::{FrontFace, PolygonMode, PrimitiveTopology},
 };
 
@@ -115,6 +115,21 @@ impl From<SamplerAddressMode> for ash::vk::SamplerAddressMode {
             SamplerAddressMode::Repeat => Self::REPEAT,
             SamplerAddressMode::MirroredRepeat => Self::MIRRORED_REPEAT,
             SamplerAddressMode::ClampToEdge => Self::CLAMP_TO_EDGE,
+        }
+    }
+}
+
+impl From<CompareOp> for ash::vk::CompareOp {
+    fn from(value: CompareOp) -> Self {
+        match value {
+            CompareOp::Never => Self::NEVER,
+            CompareOp::Equal => Self::EQUAL,
+            CompareOp::NotEqual => Self::NOT_EQUAL,
+            CompareOp::Less => Self::LESS,
+            CompareOp::LessOrEqual => Self::LESS_OR_EQUAL,
+            CompareOp::Greater => Self::GREATER,
+            CompareOp::GreaterOrEqual => Self::GREATER_OR_EQUAL,
+            CompareOp::Always => Self::ALWAYS,
         }
     }
 }
@@ -235,6 +250,42 @@ mod tests {
         assert_eq!(
             ash::vk::SamplerAddressMode::from(SamplerAddressMode::ClampToEdge),
             ash::vk::SamplerAddressMode::CLAMP_TO_EDGE
+        );
+    }
+
+    #[test]
+    fn test_compare_op() {
+        assert_eq!(
+            ash::vk::CompareOp::from(CompareOp::Never),
+            ash::vk::CompareOp::NEVER
+        );
+        assert_eq!(
+            ash::vk::CompareOp::from(CompareOp::Equal),
+            ash::vk::CompareOp::EQUAL
+        );
+        assert_eq!(
+            ash::vk::CompareOp::from(CompareOp::NotEqual),
+            ash::vk::CompareOp::NOT_EQUAL
+        );
+        assert_eq!(
+            ash::vk::CompareOp::from(CompareOp::Less),
+            ash::vk::CompareOp::LESS
+        );
+        assert_eq!(
+            ash::vk::CompareOp::from(CompareOp::LessOrEqual),
+            ash::vk::CompareOp::LESS_OR_EQUAL
+        );
+        assert_eq!(
+            ash::vk::CompareOp::from(CompareOp::Greater),
+            ash::vk::CompareOp::GREATER
+        );
+        assert_eq!(
+            ash::vk::CompareOp::from(CompareOp::GreaterOrEqual),
+            ash::vk::CompareOp::GREATER_OR_EQUAL
+        );
+        assert_eq!(
+            ash::vk::CompareOp::from(CompareOp::Always),
+            ash::vk::CompareOp::ALWAYS
         );
     }
 }

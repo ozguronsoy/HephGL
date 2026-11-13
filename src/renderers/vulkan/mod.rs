@@ -1421,12 +1421,11 @@ impl Renderer for VulkanRenderer {
                     ));
                 }
                 if !device_context
-                    .graphics_device
-                    .supported_features
+                    .enabled_features
                     .contains(&GraphicsDeviceFeature::AnisotropicFiltering)
                 {
                     return Err(Error::invalid_operation(
-                        "Anisotropic filtering is not supported by this device.",
+                        "Anisotropic filtering requires the `AnisotropicFiltering` feature to be enabled.",
                     ));
                 }
                 (
@@ -1446,7 +1445,14 @@ impl Renderer for VulkanRenderer {
             .min_lod(0.0)
             .max_lod(ash::vk::LOD_CLAMP_NONE)
             .anisotropy_enable(anisotropy_enable)
-            .max_anisotropy(max_anisotropy);
+            .max_anisotropy(max_anisotropy)
+            .compare_enable(options.compare_op.is_some())
+            .compare_op(
+                options
+                    .compare_op
+                    .map(|op| op.into())
+                    .unwrap_or(ash::vk::CompareOp::LESS),
+            );
         let sampler = unsafe {
             device_context
                 .logical_device

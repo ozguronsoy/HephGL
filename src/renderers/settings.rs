@@ -104,6 +104,28 @@ pub enum SamplerAddressMode {
     ClampToEdge,
 }
 
+/// Defines how a reference value is compared against an existing value.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CompareOp {
+    /// The comparison never passes.
+    Never,
+    /// The comparison passes if the reference value is equal to the existing value.
+    Equal,
+    /// The comparison passes if the reference value is not equal to the existing value.
+    NotEqual,
+    /// The comparison passes if the reference value is less than the existing value.
+    Less,
+    /// The comparison passes if the reference value is less than or equal to the existing value.
+    LessOrEqual,
+    /// The comparison passes if the reference value is greater than the existing value.
+    Greater,
+    /// The comparison passes if the reference value is greater than or equal to the existing
+    /// value.
+    GreaterOrEqual,
+    /// The comparison always passes.
+    Always,
+}
+
 /// Represents the settings used throughout the lifetime of the renderer.
 #[derive(Clone, Copy)]
 pub struct Settings {
@@ -219,6 +241,8 @@ pub struct SamplerOptions {
     /// The maximum anisotropy level, clamped to the current device's limit. The value must be at
     /// least `1.0`.
     pub max_anisotropy: Option<f32>,
+    /// The operation used to compare a reference value against the sampled depth value.
+    pub compare_op: Option<CompareOp>,
 }
 
 /// Defines the properties of a canvas.
