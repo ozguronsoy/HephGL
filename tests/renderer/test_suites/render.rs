@@ -677,7 +677,7 @@ where
             &GraphicsPipelineOptions::default(),
         );
 
-        let mut font = heph_expect_success!(heph_gl::fonts::serif(&FontOptions {
+        let mut font = heph_expect_success!(heph_gl::fonts::arial(&FontOptions {
             size: FONT_SIZE,
             enable_screen_text: true,
             enable_world_text: true,

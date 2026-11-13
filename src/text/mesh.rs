@@ -310,7 +310,7 @@ mod tests {
 
     #[test]
     fn test_extrude_font_glyphs() {
-        let families = [Family::Serif];
+        let families = [Family::Name("Arial")];
         let query = Query {
             families: &families,
             weight: Weight::NORMAL,

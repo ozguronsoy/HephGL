@@ -427,7 +427,7 @@ mod tests {
     use super::*;
 
     fn create_font(options: FontOptions) -> Result<Font> {
-        fonts::serif(&options)
+        fonts::arial(&options)
     }
 
     #[test]

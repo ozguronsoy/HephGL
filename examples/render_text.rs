@@ -109,7 +109,7 @@ fn example(
 
     // Load the font and generate vertex data for each text mesh. We only need to calculate the
     // vertices once since we aren't changing the text or font during the animation.
-    let mut font = heph_gl::fonts::serif(&FontOptions {
+    let mut font = heph_gl::fonts::arial(&FontOptions {
         size: FONT_SIZE,
         enable_screen_text: true,
         enable_world_text: true,
