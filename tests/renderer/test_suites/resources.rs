@@ -1,8 +1,13 @@
+use std::fs::File;
+
+use ddsfile::{Dds, DxgiFormat};
 use heph_gl::{
     Error,
+    GraphicsDeviceFeature::BcTextures,
     renderers::{
-        BufferUsage, Renderer, RendererBuffer, RendererHandle, RendererResource, RendererSampler,
-        RendererTexture, RendererWorkerFactory, SamplerOptions, TextureFormat, TextureOptions,
+        BufferUsage, FeatureRequest, Renderer, RendererBuffer, RendererHandle, RendererResource,
+        RendererSampler, RendererTexture, RendererWorkerFactory, SamplerOptions, TextureFormat,
+        TextureOptions,
     },
 };
 
@@ -258,36 +263,211 @@ where
     }
 
     pub(crate) fn test_texture(&self) {
-        const IMAGE_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_diff_1k.jpg";
+        const RGBA_IMAGE_PATH: &str = "assets/broken_brick_wall/broken_brick_wall_diff_1k.jpg";
+        const BC_IMAGE_PATH: &str = "assets/medieval_courtyard_scene/cobblestone_floor_04_1k/textures/cobblestone_floor_04_diff_1k.dds";
 
-        let mut renderer = self.create_renderer_with_any_device(&[]);
+        let rgba_image = heph_expect_success!(image::open(RGBA_IMAGE_PATH)).into_rgba8();
+        let rgba_image_max_mip_level_count =
+            TextureOptions::max_mip_level_count(rgba_image.width(), rgba_image.height());
 
-        let image = heph_expect_success!(image::open(IMAGE_PATH)).into_rgba8();
-        let texture_options = TextureOptions {
-            width: image.width(),
-            height: image.height(),
-            format: TextureFormat::Rgba8Srgb,
-            mip_level_count: TextureOptions::max_mip_level_count(image.width(), image.height()),
+        let bc_image =
+            heph_expect_success!(Dds::read(heph_expect_success!(File::open(BC_IMAGE_PATH))));
+        let bc_image_format = match heph_expect_success!(
+            bc_image
+                .get_dxgi_format()
+                .ok_or("Missing DDS pixel format.")
+        ) {
+            DxgiFormat::BC1_UNorm_sRGB => TextureFormat::Bc1Srgb,
+            DxgiFormat::BC2_UNorm_sRGB => TextureFormat::Bc2Srgb,
+            DxgiFormat::BC3_UNorm_sRGB => TextureFormat::Bc3Srgb,
+            DxgiFormat::BC4_UNorm => TextureFormat::Bc4Unorm,
+            DxgiFormat::BC5_UNorm => TextureFormat::Bc5Unorm,
+            DxgiFormat::BC6H_UF16 => TextureFormat::Bc6hUfloat,
+            DxgiFormat::BC7_UNorm => TextureFormat::Bc7Srgb,
+            format => panic!("Unsupported DDS pixel format: {format:?}"),
         };
 
-        heph_expect_success!(renderer.begin_frame());
-        let mut texture = heph_expect_success!(
-            renderer.create_texture(&texture_options, image.iter().as_slice())
-        );
-        heph_expect_success!(renderer.end_frame());
-        heph_expect_success!(renderer.wait_idle());
+        {
+            let mut renderer = self.create_renderer_with_any_device(&[]);
 
-        assert!(texture.is_allocated());
-        assert_eq!(texture.as_ref().width(), texture_options.width);
-        assert_eq!(texture.as_ref().height(), texture_options.height);
-        assert_eq!(texture.as_ref().format(), texture_options.format);
-        assert_eq!(
-            texture.as_ref().mip_level_count(),
-            texture_options.mip_level_count
-        );
+            for mip_level_count in 1..=rgba_image_max_mip_level_count {
+                let texture_options = TextureOptions {
+                    width: rgba_image.width(),
+                    height: rgba_image.height(),
+                    format: TextureFormat::Rgba8Srgb,
+                    mip_level_count,
+                };
 
-        heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
-        assert!(!texture.is_allocated());
+                heph_expect_success!(renderer.begin_frame());
+                let mut texture =
+                    heph_expect_success!(renderer.create_texture(&texture_options, &rgba_image));
+                heph_expect_success!(renderer.end_frame());
+                heph_expect_success!(renderer.wait_idle());
+
+                assert!(texture.is_allocated());
+                assert_eq!(texture.as_ref().width(), texture_options.width);
+                assert_eq!(texture.as_ref().height(), texture_options.height);
+                assert_eq!(texture.as_ref().format(), texture_options.format);
+                assert_eq!(
+                    texture.as_ref().mip_level_count(),
+                    texture_options.mip_level_count
+                );
+
+                heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
+                assert!(!texture.is_allocated());
+            }
+        }
+
+        {
+            let mut renderer = self.create_renderer_with_any_device(&[]);
+            heph_expect_success!(renderer.begin_frame());
+            heph_expect_err!(
+                renderer.create_texture(
+                    &TextureOptions {
+                        width: 0,
+                        height: rgba_image.height(),
+                        format: TextureFormat::Rgba8Srgb,
+                        mip_level_count: TextureOptions::max_mip_level_count(
+                            rgba_image.width(),
+                            rgba_image.height()
+                        ),
+                    },
+                    &rgba_image
+                ),
+                Error::invalid_argument("")
+            );
+            heph_expect_err!(
+                renderer.create_texture(
+                    &TextureOptions {
+                        width: rgba_image.width(),
+                        height: 0,
+                        format: TextureFormat::Rgba8Srgb,
+                        mip_level_count: TextureOptions::max_mip_level_count(
+                            rgba_image.width(),
+                            rgba_image.height()
+                        ),
+                    },
+                    &rgba_image
+                ),
+                Error::invalid_argument("")
+            );
+            heph_expect_err!(
+                renderer.create_texture(
+                    &TextureOptions {
+                        width: rgba_image.width(),
+                        height: rgba_image.height(),
+                        format: TextureFormat::Rgba8Srgb,
+                        mip_level_count: 0,
+                    },
+                    &rgba_image
+                ),
+                Error::invalid_argument("")
+            );
+            heph_expect_err!(
+                renderer.create_texture(
+                    &TextureOptions {
+                        width: rgba_image.width(),
+                        height: rgba_image.height(),
+                        format: TextureFormat::Rgba8Srgb,
+                        mip_level_count: TextureOptions::max_mip_level_count(
+                            rgba_image.width(),
+                            rgba_image.height()
+                        ) + 1,
+                    },
+                    &rgba_image
+                ),
+                Error::invalid_argument("")
+            );
+            heph_expect_success!(renderer.end_frame());
+        }
+
+        {
+            let mut renderer =
+                self.create_renderer_with_any_device(&[FeatureRequest::new(BcTextures, false)]);
+            if renderer
+                .get_device()
+                .is_some_and(|d| d.supported_features().contains(&BcTextures))
+            {
+                let texture_options = TextureOptions {
+                    width: bc_image.get_width(),
+                    height: bc_image.get_height(),
+                    format: bc_image_format,
+                    mip_level_count: bc_image.get_num_mipmap_levels(),
+                };
+
+                heph_expect_success!(renderer.begin_frame());
+                let mut texture =
+                    heph_expect_success!(renderer.create_texture(&texture_options, &bc_image.data));
+                heph_expect_success!(renderer.end_frame());
+                heph_expect_success!(renderer.wait_idle());
+
+                assert!(texture.is_allocated());
+                assert_eq!(texture.as_ref().width(), texture_options.width);
+                assert_eq!(texture.as_ref().height(), texture_options.height);
+                assert_eq!(texture.as_ref().format(), texture_options.format);
+                assert_eq!(
+                    texture.as_ref().mip_level_count(),
+                    texture_options.mip_level_count
+                );
+
+                heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
+                assert!(!texture.is_allocated());
+            }
+        }
+
+        {
+            let mut renderer = self.create_renderer_with_any_device(&[]);
+            heph_expect_success!(renderer.begin_frame());
+            heph_expect_err!(
+                renderer.create_texture(
+                    &TextureOptions {
+                        width: bc_image.get_width(),
+                        height: bc_image.get_height(),
+                        format: bc_image_format,
+                        mip_level_count: bc_image.get_num_mipmap_levels(),
+                    },
+                    &bc_image.data
+                ),
+                Error::invalid_operation("")
+            );
+            heph_expect_success!(renderer.end_frame());
+        }
+
+        {
+            let mut renderer =
+                self.create_renderer_with_any_device(&[FeatureRequest::new(BcTextures, false)]);
+            if renderer
+                .get_device()
+                .is_some_and(|d| d.supported_features().contains(&BcTextures))
+            {
+                heph_expect_success!(renderer.begin_frame());
+                heph_expect_err!(
+                    renderer.create_texture(
+                        &TextureOptions {
+                            width: bc_image.get_width(),
+                            height: bc_image.get_height(),
+                            format: bc_image_format,
+                            mip_level_count: bc_image.get_num_mipmap_levels() - 1,
+                        },
+                        &bc_image.data
+                    ),
+                    Error::invalid_operation("")
+                );
+                heph_expect_err!(
+                    renderer.create_texture(
+                        &TextureOptions {
+                            width: bc_image.get_width(),
+                            height: bc_image.get_height(),
+                            format: bc_image_format,
+                            mip_level_count: bc_image.get_num_mipmap_levels() + 1,
+                        },
+                        &bc_image.data
+                    ),
+                    Error::invalid_argument("")
+                );
+                heph_expect_success!(renderer.end_frame());
+            }
+        }
     }
 
     pub(crate) fn test_sampler(&self) {
