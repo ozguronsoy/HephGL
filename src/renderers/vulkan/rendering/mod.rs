@@ -11,14 +11,14 @@ use crate::{
     Error, Result,
     graphics_device::GraphicsDeviceFeature,
     renderers::{
-        BufferUsage, Renderer, RendererCanvas, ResourceBinding,
+        BufferUsage, Renderer, ResourceBinding,
         pipeline::RendererGraphicsPipeline,
         resource_mut, resource_ref,
         resources::{RendererBuffer, ResourceBindingType},
         settings::{GraphicsPipelineOptions, Settings},
         vulkan::{
             VulkanRenderer,
-            canvas::VulkanCanvas,
+            canvas::{VulkanCanvas, VulkanColorCanvas, VulkanDepthCanvas},
             frame::FrameState,
             pipeline::VulkanGraphicsPipeline,
             rendering::{
@@ -58,17 +58,31 @@ pub(super) trait VulkanRendering {
     ) -> Result<()>;
     /// Creates the render pass and the framebuffer of the canvas if the rendering method requires
     /// them.
-    fn create_canvas_framebuffer(
+    fn create_color_canvas_framebuffer(
         &self,
         device: &ash::Device,
-        canvas: &mut VulkanCanvas,
+        canvas: &mut VulkanColorCanvas,
+    ) -> Result<()>;
+    /// Creates the render pass and the framebuffer of the depth-only canvas if the rendering method
+    /// requires them.
+    fn create_depth_canvas_framebuffer(
+        &self,
+        device: &ash::Device,
+        canvas: &mut VulkanDepthCanvas,
     ) -> Result<()>;
     /// Starts rendering into the canvas, keeping its color and depth.
     fn begin(
         &mut self,
         device: &ash::Device,
         command_buffer: CommandBuffer,
-        canvas: &VulkanCanvas,
+        canvas: &VulkanColorCanvas,
+    ) -> Result<()>;
+    /// Starts rendering into the depth-only canvas, keeping its depth.
+    fn begin_depth(
+        &mut self,
+        device: &ash::Device,
+        command_buffer: CommandBuffer,
+        canvas: &VulkanDepthCanvas,
     ) -> Result<()>;
     /// Ends rendering into the canvas.
     fn end(&mut self, device: &ash::Device, command_buffer: CommandBuffer) -> Result<()>;
@@ -120,27 +134,41 @@ impl VulkanRenderer {
     }
 
     /// Ends rendering into the canvas that has the provided image as its texture, so the texture
-    /// can be sampled by shaders.
+    /// can be sampled by shaders. The aspect of the image is depth if the canvas is depth-only.
     pub(super) fn end_rendering(
         device: &ash::Device,
         rendering: &mut dyn VulkanRendering,
         command_buffer: CommandBuffer,
         image: ash::vk::Image,
+        aspect_mask: ash::vk::ImageAspectFlags,
         layer_count: u32,
         sampling_stages: ash::vk::PipelineStageFlags,
     ) -> Result<()> {
         rendering.end(device, command_buffer)?;
+        let (old_layout, src_access_mask, src_stage_mask) = match aspect_mask {
+            ash::vk::ImageAspectFlags::DEPTH => (
+                ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+                ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+                    | ash::vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
+            ),
+            _ => (
+                ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+            ),
+        };
         Self::transition_image_layout(
             device,
             command_buffer,
             image,
-            ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            old_layout,
             ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+            src_access_mask,
             ash::vk::AccessFlags::SHADER_READ,
-            ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+            src_stage_mask,
             sampling_stages,
-            ash::vk::ImageAspectFlags::COLOR,
+            aspect_mask,
             0,
             1,
             layer_count,
@@ -152,7 +180,7 @@ impl VulkanRenderer {
     /// no canvas.
     pub(super) fn record_draw(
         &mut self,
-        canvas: Option<&mut VulkanCanvas>,
+        canvas: Option<&mut dyn VulkanCanvas>,
         pipeline: &mut dyn RendererGraphicsPipeline,
         index_buffer: Option<&dyn RendererBuffer>,
         vertex_bindings: &[ResourceBinding<'_>],
@@ -176,13 +204,18 @@ impl VulkanRenderer {
         let current_frame = &mut graphics_queue_context.frames[device_context.current_frame_index]
             .base
             .thread_contexts[thread_context_index];
-        let canvas = match canvas {
+        let canvas: &mut dyn VulkanCanvas = match canvas {
             Some(canvas) => canvas,
             None => device_context
                 .display_canvas
                 .as_mut()
                 .ok_or(Error::invalid_operation("Device is not set."))?,
         };
+        if pipeline.depth_only != canvas.options().depth_only {
+            return Err(Error::invalid_argument(
+                "Depth-only pipelines can only render into depth-only canvases, and other pipelines cannot render into them.",
+            ));
+        }
         Self::begin_canvas_rendering(
             &device_context.logical_device,
             rendering.as_mut(),
@@ -283,10 +316,10 @@ impl VulkanRenderer {
     }
 
     /// Records a command that clears the color and depth of the canvas, or of the display canvas if
-    /// there is no canvas.
+    /// there is no canvas. Only the depth is cleared if the canvas is depth-only.
     pub(super) fn record_clear(
         &mut self,
-        canvas: Option<&mut VulkanCanvas>,
+        canvas: Option<&mut dyn VulkanCanvas>,
         color: RGB<f32>,
     ) -> Result<()> {
         let device_context = self
@@ -310,7 +343,7 @@ impl VulkanRenderer {
             }
         }
 
-        let canvas = match canvas {
+        let canvas: &mut dyn VulkanCanvas = match canvas {
             Some(canvas) => canvas,
             None => device_context
                 .display_canvas
@@ -354,11 +387,14 @@ impl VulkanRenderer {
                 },
             })
             .base_array_layer(0)
-            .layer_count(canvas.layer_count);
+            .layer_count(canvas.layer_count());
         unsafe {
             device_context.logical_device.cmd_clear_attachments(
                 current_frame.base.command_buffer,
-                &clear_attachments,
+                match canvas.options().depth_only {
+                    true => &clear_attachments[1..],
+                    false => &clear_attachments,
+                },
                 std::slice::from_ref(&clear_rect),
             );
         }

@@ -489,6 +489,7 @@ impl From<TextureFormat> for ash::vk::Format {
             TextureFormat::Bc6hUfloat => Self::BC6H_UFLOAT_BLOCK,
             TextureFormat::Bc7Unorm => Self::BC7_UNORM_BLOCK,
             TextureFormat::Bc7Srgb => Self::BC7_SRGB_BLOCK,
+            TextureFormat::D32Sfloat => Self::D32_SFLOAT,
         }
     }
 }
@@ -514,6 +515,7 @@ impl TryFrom<ash::vk::Format> for TextureFormat {
             ash::vk::Format::BC6H_UFLOAT_BLOCK => Ok(Self::Bc6hUfloat),
             ash::vk::Format::BC7_UNORM_BLOCK => Ok(Self::Bc7Unorm),
             ash::vk::Format::BC7_SRGB_BLOCK => Ok(Self::Bc7Srgb),
+            ash::vk::Format::D32_SFLOAT => Ok(Self::D32Sfloat),
             _ => Err(Error::InvalidArgument(format!(
                 "Vulkan format `{value:?}` has no matching texture format."
             ))),
@@ -639,6 +641,10 @@ mod tests {
             ash::vk::Format::from(TextureFormat::Bc7Srgb),
             ash::vk::Format::BC7_SRGB_BLOCK
         );
+        assert_eq!(
+            ash::vk::Format::from(TextureFormat::D32Sfloat),
+            ash::vk::Format::D32_SFLOAT
+        );
     }
 
     #[test]
@@ -707,6 +713,10 @@ mod tests {
             TextureFormat::try_from(ash::vk::Format::BC7_SRGB_BLOCK),
             Ok(TextureFormat::Bc7Srgb)
         );
+        assert_eq!(
+            TextureFormat::try_from(ash::vk::Format::D32_SFLOAT),
+            Ok(TextureFormat::D32Sfloat)
+        );
     }
 
     #[test]
@@ -716,7 +726,7 @@ mod tests {
             Err(Error::invalid_argument(""))
         );
         assert_eq!(
-            TextureFormat::try_from(ash::vk::Format::D32_SFLOAT),
+            TextureFormat::try_from(ash::vk::Format::A1R5G5B5_UNORM_PACK16),
             Err(Error::invalid_argument(""))
         );
     }

@@ -11,6 +11,7 @@ Sources: [Poly Haven](https://polyhaven.com)
 - [Potted Plant 02](https://polyhaven.com/a/potted_plant_02)
 - [Rock Moss Set 02](https://polyhaven.com/a/rock_moss_set_02)
 - [Wooden Lantern 01](https://polyhaven.com/a/wooden_lantern_01)
+- [Modular Fort 01](https://polyhaven.com/a/modular_fort_01)
 - [River Rocks](https://polyhaven.com/a/river_rocks)
 
 The glTF and binary files are unmodified. The textures were converted from the original JPG and EXR

@@ -15,7 +15,7 @@ use heph_gl::{
     TextVertex, Transform,
     math::{Mat4, Quat, Vec3},
     renderers::{
-        BufferUsage, ColorBlending, CullingMode, FeatureRequest, FrontFace,
+        BufferUsage, CanvasOptions, ColorBlending, CullingMode, FeatureRequest, FrontFace,
         GraphicsPipelineOptions, PrimitiveTopology, Renderer, RendererHandle,
         RendererWorkerFactory, ResourceBinding, SamplerAddressMode, SamplerOptions, Settings,
         TextureFormat, TextureOptions,
@@ -518,7 +518,11 @@ where
             create_pipeline(&mut renderer, "canvas_vert.spv", "canvas_frag.spv");
 
         heph_expect_success!(renderer.begin_frame());
-        let mut canvas = heph_expect_success!(renderer.create_canvas(640, 360));
+        let mut canvas = heph_expect_success!(renderer.create_canvas(&CanvasOptions {
+            width: 640,
+            height: 360,
+            ..Default::default()
+        }));
         heph_expect_success!(renderer.end_frame());
         let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
 
@@ -1925,10 +1929,17 @@ where
         };
 
         let mut renderer = self.create_renderer_with_any_device(&[
-            FeatureRequest::new(BcTextures, true),
+            FeatureRequest::new(BcTextures, false),
             FeatureRequest::new(AnisotropicFiltering, false),
             FeatureRequest::new(AsyncTransfer, false),
         ]);
+        if renderer
+            .get_device()
+            .map(|d| !d.supported_features().contains(&BcTextures))
+            .unwrap_or(true)
+        {
+            return;
+        }
         let max_anisotropy = if let Some(device) = renderer.get_device() {
             match device.supported_features().contains(&AnisotropicFiltering) {
                 true => Some(device.max_sampler_anisotropy()),

@@ -1,13 +1,14 @@
 use heph_gl::{
     Error,
     GraphicsDeviceFeature::{
-        DepthClamp, GeometryShaders, SampleRateShading, TessellationShaders, WireframeMode,
+        DepthBiasClamp, DepthClamp, GeometryShaders, SampleRateShading, TessellationShaders,
+        WireframeMode,
     },
     Shader,
     renderers::{
-        FeatureRequest, GraphicsPipelineOptions, PolygonMode, PrimitiveTopology, Renderer,
-        RendererComputePipeline, RendererGraphicsPipeline, RendererHandle, RendererPipeline,
-        RendererWorkerFactory,
+        DepthBias, FeatureRequest, GraphicsPipelineOptions, PolygonMode, PrimitiveTopology,
+        Renderer, RendererComputePipeline, RendererGraphicsPipeline, RendererHandle,
+        RendererPipeline, RendererWorkerFactory,
     },
 };
 
@@ -527,6 +528,64 @@ where
                     &[&frag_shader, &vert_shader],
                     &GraphicsPipelineOptions {
                         depth_clamp: true,
+                        ..Default::default()
+                    }
+                ),
+                Error::invalid_operation("")
+            );
+        }
+
+        {
+            let renderer =
+                self.create_renderer_with_any_device(&[FeatureRequest::new(DepthBiasClamp, false)]);
+            if renderer
+                .get_device()
+                .unwrap()
+                .supported_features()
+                .contains(&DepthBiasClamp)
+            {
+                let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/shapes/basic_triangle_frag.spv",
+                    SHADERS_DIR
+                )));
+                let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/shapes/basic_triangle_vert.spv",
+                    SHADERS_DIR
+                )));
+                let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+                    &[&frag_shader, &vert_shader],
+                    &GraphicsPipelineOptions {
+                        depth_bias: Some(DepthBias {
+                            constant: 1.0,
+                            slope: 1.0,
+                            clamp: Some(0.01),
+                        }),
+                        ..Default::default()
+                    }
+                ));
+                heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
+            }
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[]);
+            let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/shapes/basic_triangle_frag.spv",
+                SHADERS_DIR
+            )));
+            let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/shapes/basic_triangle_vert.spv",
+                SHADERS_DIR
+            )));
+            heph_expect_err!(
+                renderer.create_graphics_pipeline(
+                    &[&frag_shader, &vert_shader],
+                    &GraphicsPipelineOptions {
+                        depth_bias: Some(DepthBias {
+                            constant: 1.0,
+                            slope: 1.0,
+                            clamp: Some(0.01),
+                        }),
                         ..Default::default()
                     }
                 ),

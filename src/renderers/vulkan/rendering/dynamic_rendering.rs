@@ -21,7 +21,7 @@ use crate::{
         RendererCanvas,
         settings::{GraphicsPipelineOptions, Msaa, PolygonMode, Settings},
         vulkan::{
-            canvas::VulkanCanvas,
+            canvas::{VulkanColorCanvas, VulkanDepthCanvas},
             pipeline::VulkanGraphicsPipeline,
             rendering::{
                 VulkanRendering,
@@ -95,6 +95,15 @@ impl VulkanRendering for DynamicRendering {
         if options.depth_clamp && !enabled_features.contains(&GraphicsDeviceFeature::DepthClamp) {
             return Err(Error::invalid_operation(
                 "Depth clamping requires the `DepthClamp` feature to be enabled.",
+            ));
+        }
+        if options
+            .depth_bias
+            .is_some_and(|depth_bias| depth_bias.clamp.is_some())
+            && !enabled_features.contains(&GraphicsDeviceFeature::DepthBiasClamp)
+        {
+            return Err(Error::invalid_operation(
+                "Depth bias clamping requires the `DepthBiasClamp` feature to be enabled.",
             ));
         }
 
@@ -318,10 +327,21 @@ impl VulkanRendering for DynamicRendering {
             .polygon_mode(options.polygon_mode.into())
             .cull_mode(options.culling.into())
             .front_face(options.front_face.into())
-            .depth_bias_enable(false)
+            .depth_bias_enable(options.depth_bias.is_some())
+            .depth_bias_constant_factor(options.depth_bias.map_or(0.0, |bias| bias.constant))
+            .depth_bias_slope_factor(options.depth_bias.map_or(0.0, |bias| bias.slope))
+            .depth_bias_clamp(
+                options
+                    .depth_bias
+                    .and_then(|bias| bias.clamp)
+                    .unwrap_or(0.0),
+            )
             .line_width(1.0);
         let multisampling = PipelineMultisampleStateCreateInfo::default()
-            .rasterization_samples(self.msaa.into())
+            .rasterization_samples(match options.depth_only {
+                true => ash::vk::SampleCountFlags::TYPE_1,
+                false => self.msaa.into(),
+            })
             .sample_shading_enable(options.min_sample_shading.is_some())
             .min_sample_shading(options.min_sample_shading.unwrap_or(0.0));
         let depth_stencil = PipelineDepthStencilStateCreateInfo::default()
@@ -331,15 +351,19 @@ impl VulkanRendering for DynamicRendering {
             .depth_bounds_test_enable(false)
             .stencil_test_enable(false);
         let color_blend_attachment = options.blending.into();
-        let color_blend = PipelineColorBlendStateCreateInfo::default()
-            .attachments(std::slice::from_ref(&color_blend_attachment));
+        let mut color_blend = PipelineColorBlendStateCreateInfo::default();
+        if !options.depth_only {
+            color_blend = color_blend.attachments(std::slice::from_ref(&color_blend_attachment));
+        }
         let dynamic_states = [DynamicState::VIEWPORT, DynamicState::SCISSOR];
         let dynamic_state =
             PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
         let color_formats = [self.color_format];
-        let mut rendering_info = PipelineRenderingCreateInfo::default()
-            .color_attachment_formats(&color_formats)
-            .depth_attachment_format(self.depth_format);
+        let mut rendering_info =
+            PipelineRenderingCreateInfo::default().depth_attachment_format(self.depth_format);
+        if !options.depth_only {
+            rendering_info = rendering_info.color_attachment_formats(&color_formats);
+        }
         let tessellation_state = match options.topology {
             crate::renderers::PrimitiveTopology::PatchList { control_points } => Some(
                 PipelineTessellationStateCreateInfo::default().patch_control_points(control_points),
@@ -373,6 +397,7 @@ impl VulkanRendering for DynamicRendering {
             descriptor_layouts,
             descriptor_binding_counts,
             descriptor_set_cache: DescriptorSetCache::new(),
+            depth_only: options.depth_only,
         })
     }
     fn destroy_graphics_pipeline(
@@ -393,15 +418,25 @@ impl VulkanRendering for DynamicRendering {
         pipeline.descriptor_binding_counts.clear();
         Ok(())
     }
-    fn create_canvas_framebuffer(&self, _: &ash::Device, _: &mut VulkanCanvas) -> Result<()> {
-        // Dynamic rendering uses the image views of the canvas directly.
+    fn create_color_canvas_framebuffer(
+        &self,
+        _: &ash::Device,
+        _: &mut VulkanColorCanvas,
+    ) -> Result<()> {
+        Ok(())
+    }
+    fn create_depth_canvas_framebuffer(
+        &self,
+        _: &ash::Device,
+        _: &mut VulkanDepthCanvas,
+    ) -> Result<()> {
         Ok(())
     }
     fn begin(
         &mut self,
         device: &ash::Device,
         command_buffer: CommandBuffer,
-        canvas: &VulkanCanvas,
+        canvas: &VulkanColorCanvas,
     ) -> Result<()> {
         let color_attachment_info = match &canvas.msaa_color_image {
             None => RenderingAttachmentInfo::default()
@@ -433,6 +468,32 @@ impl VulkanRendering for DynamicRendering {
             })
             .layer_count(canvas.layer_count)
             .color_attachments(std::slice::from_ref(&color_attachment_info))
+            .depth_attachment(&depth_attachment_info);
+        unsafe {
+            device.cmd_begin_rendering(command_buffer, &rendering_info);
+        }
+        Ok(())
+    }
+    fn begin_depth(
+        &mut self,
+        device: &ash::Device,
+        command_buffer: CommandBuffer,
+        canvas: &VulkanDepthCanvas,
+    ) -> Result<()> {
+        let depth_attachment_info = RenderingAttachmentInfo::default()
+            .image_view(canvas.texture.image_view)
+            .image_layout(ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+            .load_op(AttachmentLoadOp::LOAD)
+            .store_op(AttachmentStoreOp::STORE);
+        let rendering_info = RenderingInfo::default()
+            .render_area(ash::vk::Rect2D {
+                offset: ash::vk::Offset2D { x: 0, y: 0 },
+                extent: ash::vk::Extent2D {
+                    width: canvas.width(),
+                    height: canvas.height(),
+                },
+            })
+            .layer_count(canvas.layer_count)
             .depth_attachment(&depth_attachment_info);
         unsafe {
             device.cmd_begin_rendering(command_buffer, &rendering_info);

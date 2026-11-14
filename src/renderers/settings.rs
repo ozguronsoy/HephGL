@@ -104,6 +104,28 @@ pub enum SamplerAddressMode {
     ClampToEdge,
 }
 
+/// Defines how a reference value is compared against an existing value.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CompareOp {
+    /// The comparison never passes.
+    Never,
+    /// The comparison passes if the reference value is equal to the existing value.
+    Equal,
+    /// The comparison passes if the reference value is not equal to the existing value.
+    NotEqual,
+    /// The comparison passes if the reference value is less than the existing value.
+    Less,
+    /// The comparison passes if the reference value is less than or equal to the existing value.
+    LessOrEqual,
+    /// The comparison passes if the reference value is greater than the existing value.
+    Greater,
+    /// The comparison passes if the reference value is greater than or equal to the existing
+    /// value.
+    GreaterOrEqual,
+    /// The comparison always passes.
+    Always,
+}
+
 /// Represents the settings used throughout the lifetime of the renderer.
 #[derive(Clone, Copy)]
 pub struct Settings {
@@ -147,6 +169,18 @@ pub struct FeatureRequest {
     pub required: bool,
 }
 
+/// Defines the offset that is added to the depth value of fragments.
+#[derive(Clone, Copy)]
+pub struct DepthBias {
+    /// The constant offset, in units of the smallest depth difference the depth buffer can
+    /// resolve.
+    pub constant: f32,
+    /// The offset that is scaled by the depth slope of the polygon.
+    pub slope: f32,
+    /// The largest offset that can be added, or the smallest one if the value is negative.
+    pub clamp: Option<f32>,
+}
+
 /// Provides the capabilities of a graphics pipeline.
 #[derive(Clone, Copy)]
 pub struct GraphicsPipelineOptions {
@@ -167,6 +201,10 @@ pub struct GraphicsPipelineOptions {
     /// Indicates whether fragment depth values are clamped to the depth range instead of clipping
     /// primitives against the near and far planes.
     pub depth_clamp: bool,
+    /// Indicates whether the pipeline renders into depth-only canvases.
+    pub depth_only: bool,
+    /// The offset added to the depth value of fragments.
+    pub depth_bias: Option<DepthBias>,
     /// The minimum fraction of samples in each pixel that are shaded individually. The value must
     /// be between `0.0` and `1.0`.
     pub min_sample_shading: Option<f32>,
@@ -200,9 +238,23 @@ pub struct SamplerOptions {
     pub address_mode_v: SamplerAddressMode,
     /// The addressing mode used for the W texture coordinate.
     pub address_mode_w: SamplerAddressMode,
-    /// The maximum anisotropy level, clamped to the current device's limit. Set this to `None` to
-    /// disable anisotropic filtering. The value must be finite and at least `1.0`.
+    /// The maximum anisotropy level, clamped to the current device's limit. The value must be at
+    /// least `1.0`.
     pub max_anisotropy: Option<f32>,
+    /// The operation used to compare a reference value against the sampled depth value.
+    pub compare_op: Option<CompareOp>,
+}
+
+/// Defines the properties of a canvas.
+#[derive(Default, Clone, Copy)]
+pub struct CanvasOptions {
+    /// The width of the canvas in pixels.
+    pub width: u32,
+    /// The height of the canvas in pixels.
+    pub height: u32,
+    /// Indicates whether the canvas has only a depth buffer. The texture of a depth-only canvas
+    /// contains the depth values, and only depth-only pipelines can render into it.
+    pub depth_only: bool,
 }
 
 impl Default for TextureOptions {
@@ -234,6 +286,8 @@ impl Default for GraphicsPipelineOptions {
             depth_test: true,
             depth_write: true,
             depth_clamp: false,
+            depth_only: false,
+            depth_bias: None,
             min_sample_shading: None,
         }
     }

@@ -232,6 +232,7 @@ where
                 create_trial!(versioned_test_suite, test_render_animated_meshes),
                 create_trial!(versioned_test_suite, test_render_exploding_mesh),
                 create_trial!(versioned_test_suite, test_render_compressed_assets),
+                create_trial!(versioned_test_suite, test_render_scene_medieval_courtyard),
             ];
             tests.append(&mut test_suite);
         }

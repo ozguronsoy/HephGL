@@ -23,6 +23,7 @@ pub(super) struct VulkanGraphicsPipeline {
     pub(super) descriptor_layouts: Vec<DescriptorSetLayout>,
     pub(super) descriptor_binding_counts: Vec<usize>,
     pub(super) descriptor_set_cache: DescriptorSetCache,
+    pub(super) depth_only: bool,
 }
 
 impl RendererPipeline for VulkanGraphicsPipeline {

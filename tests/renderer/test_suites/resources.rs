@@ -3,11 +3,11 @@ use std::fs::File;
 use ddsfile::{Dds, DxgiFormat};
 use heph_gl::{
     Error,
-    GraphicsDeviceFeature::BcTextures,
+    GraphicsDeviceFeature::{AnisotropicFiltering, BcTextures},
     renderers::{
-        BufferUsage, FeatureRequest, Renderer, RendererBuffer, RendererHandle, RendererResource,
-        RendererSampler, RendererTexture, RendererWorkerFactory, SamplerOptions, TextureFormat,
-        TextureOptions,
+        BufferUsage, CompareOp, FeatureRequest, Renderer, RendererBuffer, RendererHandle,
+        RendererResource, RendererSampler, RendererTexture, RendererWorkerFactory, SamplerOptions,
+        TextureFormat, TextureOptions,
     },
 };
 
@@ -471,11 +471,67 @@ where
     }
 
     pub(crate) fn test_sampler(&self) {
-        let renderer = self.create_renderer_with_any_device(&[]);
-        let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
-        assert!(sampler.as_ref().is_allocated());
-        heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
-        assert!(!sampler.as_ref().is_allocated());
+        {
+            let renderer = self.create_renderer_with_any_device(&[]);
+            let mut sampler =
+                heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
+            assert!(sampler.as_ref().is_allocated());
+            heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
+            assert!(!sampler.as_ref().is_allocated());
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[FeatureRequest::new(
+                AnisotropicFiltering,
+                false,
+            )]);
+            if renderer
+                .get_device()
+                .is_some_and(|d| d.supported_features().contains(&AnisotropicFiltering))
+            {
+                let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions {
+                    max_anisotropy: Some(1.0),
+                    ..Default::default()
+                }));
+                assert!(sampler.as_ref().is_allocated());
+                heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
+            }
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[FeatureRequest::new(
+                AnisotropicFiltering,
+                false,
+            )]);
+            heph_expect_err!(
+                renderer.create_sampler(&SamplerOptions {
+                    max_anisotropy: Some(0.5),
+                    ..Default::default()
+                }),
+                Error::invalid_argument("")
+            );
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[]);
+            heph_expect_err!(
+                renderer.create_sampler(&SamplerOptions {
+                    max_anisotropy: Some(1.0),
+                    ..Default::default()
+                }),
+                Error::invalid_operation("")
+            );
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[]);
+            let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions {
+                compare_op: Some(CompareOp::Less),
+                ..Default::default()
+            }));
+            assert!(sampler.as_ref().is_allocated());
+            heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
+        }
     }
 
     pub(crate) fn test_reject_foreign_resources(&self) {

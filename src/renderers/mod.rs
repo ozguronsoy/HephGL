@@ -137,8 +137,8 @@ pub trait Renderer {
         instance_count: u32,
     ) -> Result<()>;
 
-    /// Creates an off-screen canvas with the specified dimensions, cleared to black.
-    fn create_canvas(&mut self, width: u32, height: u32) -> Result<Box<dyn RendererCanvas>>;
+    /// Creates an off-screen canvas using the provided options, cleared to black.
+    fn create_canvas(&mut self, options: &CanvasOptions) -> Result<Box<dyn RendererCanvas>>;
     /// Frees the resources allocated for the provided canvas.
     fn destroy_canvas(&self, canvas: &mut dyn RendererCanvas) -> Result<()>;
     /// Creates a graphics workload for the GPU that renders into the canvas.
