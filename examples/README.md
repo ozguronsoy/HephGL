@@ -259,3 +259,24 @@ flowchart TD
     F -- No --> E
     F -- Yes --> K[Wait for GPU completion and release resources]
 ```
+
+### [render_scene_medieval_courtyard](render_scene_medieval_courtyard.rs)
+
+Renders a courtyard built from modular wall pieces and props, lit by a moving sun that casts
+shadows. Each frame first renders the scene's depth from the sun into a depth-only canvas, using
+depth bias against self-shadowing. The main pass then samples that canvas through a comparison
+sampler to find which surfaces the sun reaches.
+
+```mermaid
+flowchart TD
+    A[Configure renderer, shadow pipeline, and scene pipeline] --> B[Load meshes and place them]
+    B --> C[Create the depth-only shadow canvas and upload geometry, textures, and materials]
+    C --> D[Create a comparison sampler for the shadow canvas]
+    D --> E[Begin frame and move the sun]
+    E --> F[Clear the shadow canvas and record depth draws from the sun]
+    F --> G[Record scene draws that sample the shadow canvas]
+    G --> H[End frame]
+    H --> I{Animation finished?}
+    I -- No --> E
+    I -- Yes --> J[Wait for GPU completion and release resources]
+```
