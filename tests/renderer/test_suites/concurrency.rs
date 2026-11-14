@@ -36,6 +36,7 @@ where
                         window_handle: dummy_window_handle!(),
                         display_handle: dummy_display_handle!(),
                         api_version: LATEST_API_VERSION,
+                        debug: false,
                     }),
                     Error::invalid_operation("")
                 );

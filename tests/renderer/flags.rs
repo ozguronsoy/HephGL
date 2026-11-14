@@ -24,8 +24,8 @@ macro_rules! define_renderer_test_flags {
 }
 
 define_renderer_test_flags!(
-    test_invalid_app_name,
     test_initialize_renderer,
+    test_debug,
     test_enumerate_devices,
     test_set_device,
     test_set_settings,

@@ -55,6 +55,7 @@ where
             window_handle: test_env.raw_window_handle(),
             display_handle: test_env.raw_display_handle(),
             api_version: self.api_version,
+            debug: true,
         }));
         renderer
     }

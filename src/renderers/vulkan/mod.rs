@@ -1,4 +1,5 @@
 mod canvas;
+mod debug;
 mod descriptor_pool;
 mod device;
 mod error;
@@ -16,7 +17,7 @@ mod version;
 
 use std::{
     any::Any,
-    cell::Cell,
+    cell::{Cell, Ref, RefCell},
     collections::{BTreeSet, HashMap, HashSet},
     ffi::CString,
     sync::Mutex,
@@ -39,8 +40,9 @@ use crate::{
     graphics_device::{GraphicsDevice, GraphicsDeviceFeature, GraphicsDeviceType},
     renderers::{
         BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererCanvas,
-        RendererComputePipeline, RendererGraphicsPipeline, ResourceBinding, Settings, resource_mut,
-        resource_ref,
+        RendererComputePipeline, RendererGraphicsPipeline, ResourceBinding, Settings,
+        debug::Debugger,
+        resource_mut, resource_ref,
         resources::{RendererBuffer, RendererSampler, RendererTexture},
         settings::{CanvasOptions, GraphicsPipelineOptions, Msaa, SamplerOptions, TextureOptions},
         thread_context::{
@@ -88,6 +90,11 @@ pub struct VulkanRenderer {
 
     device_context: Option<DeviceContext>,
 
+    debugger: RefCell<Option<Box<Debugger>>>,
+    debug_enabled: bool,
+    debug_utils_loader: Option<ash::ext::debug_utils::Instance>,
+    debug_messenger: Cell<Option<ash::vk::DebugUtilsMessengerEXT>>,
+
     main_thread_id: std::thread::ThreadId,
 }
 
@@ -105,6 +112,11 @@ impl Renderer for VulkanRenderer {
             window_surface_loader: None,
 
             device_context: None,
+
+            debugger: RefCell::new(None),
+            debug_enabled: false,
+            debug_utils_loader: None,
+            debug_messenger: Cell::new(None),
 
             main_thread_id: std::thread::current().id(),
         }
@@ -135,6 +147,35 @@ impl Renderer for VulkanRenderer {
         };
         self.latest_api_version.set(Some(latest_api_version));
         Ok(latest_api_version)
+    }
+
+    fn debugger(&self) -> Option<Ref<'_, Debugger>> {
+        Ref::filter_map(self.debugger.borrow(), |debugger| debugger.as_deref()).ok()
+    }
+
+    fn attach_debugger(&self, debugger: Debugger) -> Result<()> {
+        if !self.debug_enabled {
+            return Err(Error::invalid_operation("Debugging is disabled."));
+        }
+        if self.debugger.borrow().is_some() {
+            return Err(Error::invalid_operation(
+                "A debugger is already attached to the renderer.",
+            ));
+        }
+        let _ = self.debugger.replace(Some(Box::new(debugger)));
+        if let Err(error) = self.create_debug_messenger() {
+            let _ = self.debugger.take();
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    fn detach_debugger(&self) -> Result<Debugger> {
+        self.destroy_debug_messenger();
+        self.debugger
+            .take()
+            .map(|debugger| *debugger)
+            .ok_or(Error::invalid_operation("No attached debugger found."))
     }
 
     fn get_settings(&self) -> &Settings {
@@ -267,8 +308,18 @@ impl Renderer for VulkanRenderer {
             required_extension_names.push(ash::vk::KHR_PORTABILITY_ENUMERATION_NAME.as_ptr());
         }
 
+        if options.debug {
+            if !extension_properties.iter().any(|ext| {
+                let name = unsafe { std::ffi::CStr::from_ptr(ext.extension_name.as_ptr()) };
+                name == ash::ext::debug_utils::NAME
+            }) {
+                return Err(Error::fail("The Vulkan driver does not support debugging."));
+            }
+            required_extension_names.push(ash::ext::debug_utils::NAME.as_ptr());
+        }
+
         let mut enabled_layer_names = Vec::new();
-        if cfg!(debug_assertions) {
+        if options.debug {
             let available_layers: Vec<_> = unsafe {
                 entry
                     .enumerate_instance_layer_properties()
@@ -301,8 +352,6 @@ impl Renderer for VulkanRenderer {
 
         let instance = unsafe { entry.create_instance(&instance_create_info, None)? };
 
-        // WSI for rendering to the native window.
-
         self.window_surface = Some(unsafe {
             ash_window::create_surface(
                 &entry,
@@ -313,6 +362,14 @@ impl Renderer for VulkanRenderer {
             )?
         });
         self.window_surface_loader = Some(ash::khr::surface::Instance::new(&entry, &instance));
+
+        if options.debug {
+            self.debug_utils_loader = Some(ash::ext::debug_utils::Instance::new(&entry, &instance));
+            if self.debugger.borrow().is_some() {
+                self.create_debug_messenger()?;
+            }
+        }
+        self.debug_enabled = options.debug;
 
         self.entry = Some(entry);
         self.instance = Some(instance);
@@ -331,6 +388,9 @@ impl Renderer for VulkanRenderer {
                 surface_loader.destroy_surface(surface, None);
             }
         }
+
+        self.destroy_debug_messenger();
+        self.debug_utils_loader = None;
 
         if let Some(instance) = self.instance.as_ref() {
             unsafe {

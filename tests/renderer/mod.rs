@@ -146,8 +146,8 @@ where
             }
 
             let mut test_suite = vec![
-                create_trial!(versioned_test_suite, test_invalid_app_name),
                 create_trial!(versioned_test_suite, test_initialize_renderer),
+                create_trial!(versioned_test_suite, test_debug),
                 create_trial!(versioned_test_suite, test_enumerate_devices),
                 create_trial!(versioned_test_suite, test_set_device),
                 create_trial!(versioned_test_suite, test_set_settings),

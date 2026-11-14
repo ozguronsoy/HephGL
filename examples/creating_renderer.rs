@@ -27,6 +27,7 @@ fn example(
         window_handle,
         display_handle,
         api_version: LATEST_API_VERSION,
+        debug: false,
     };
     renderer.initialize(&init_options).unwrap();
 
