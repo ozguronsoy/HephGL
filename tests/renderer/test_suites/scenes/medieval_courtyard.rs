@@ -12,7 +12,7 @@ use heph_gl::{
     Lighting, Mesh, MeshVertexAttribute, Projection, Shader,
     math::{Mat4, Quat, Vec3},
     renderers::{
-        BufferUsage, CanvasOptions, CompareOp, DepthBias, FeatureRequest, FrontFace,
+        BufferUsage, CanvasOptions, CompareOp, CullingMode, DepthBias, FeatureRequest, FrontFace,
         GraphicsPipelineOptions, Renderer, RendererBuffer, RendererHandle, RendererWorkerFactory,
         ResourceBinding, SamplerAddressMode, SamplerOptions, Settings, TextureFormat,
         TextureOptions,
@@ -109,6 +109,7 @@ struct Draw {
     index_count: u32,
     textures: [PathBuf; 3],
     material_buffer: Box<dyn RendererBuffer>,
+    double_sided: bool,
 }
 
 impl<TestRenderer: Renderer> RendererTests<TestRenderer>
@@ -146,7 +147,8 @@ where
                            vertices: &[f32],
                            indices: &[u32],
                            textures: [PathBuf; 3],
-                           material: [[f32; 4]; 2]| {
+                           material: [[f32; 4]; 2],
+                           double_sided: bool| {
             let mut vertex_buffer = heph_expect_success!(
                 renderer.create_buffer(std::mem::size_of_val(vertices), BufferUsage::Vertex)
             );
@@ -179,6 +181,7 @@ where
                 index_count: indices.len() as u32,
                 textures,
                 material_buffer,
+                double_sided,
             }
         };
 
@@ -228,24 +231,42 @@ where
             "{}/{}",
             SHADERS_DIR, "shadowed_mesh_frag.spv"
         )));
+        let shadow_pipeline_options = GraphicsPipelineOptions {
+            front_face: FrontFace::Clockwise,
+            culling: CullingMode::Back,
+            depth_only: true,
+            depth_bias: Some(DepthBias {
+                constant: 2.0,
+                slope: 2.5,
+                clamp: None,
+            }),
+            ..Default::default()
+        };
+        let pipeline_options = GraphicsPipelineOptions {
+            front_face: FrontFace::Clockwise,
+            culling: CullingMode::Back,
+            ..Default::default()
+        };
         let mut shadow_pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
             &[&vert_shader, &depth_frag_shader],
-            &GraphicsPipelineOptions {
-                front_face: FrontFace::Clockwise,
-                depth_only: true,
-                depth_bias: Some(DepthBias {
-                    constant: 2.0,
-                    slope: 2.5,
-                    clamp: None,
-                }),
-                ..Default::default()
-            },
+            &shadow_pipeline_options,
         ));
-        let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+        let mut pipeline = heph_expect_success!(
+            renderer.create_graphics_pipeline(&[&vert_shader, &frag_shader], &pipeline_options)
+        );
+        let mut double_sided_shadow_pipeline =
+            heph_expect_success!(renderer.create_graphics_pipeline(
+                &[&vert_shader, &depth_frag_shader],
+                &GraphicsPipelineOptions {
+                    culling: CullingMode::Disabled,
+                    ..shadow_pipeline_options
+                },
+            ));
+        let mut double_sided_pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
-                front_face: FrontFace::Clockwise,
-                ..Default::default()
+                culling: CullingMode::Disabled,
+                ..pipeline_options
             },
         ));
         drop(vert_shader);
@@ -320,6 +341,7 @@ where
             &[0, 2, 1, 0, 3, 2],
             floor_textures,
             [[1.0, 1.0, 1.0, 1.0], [1.0, 0.0, 1.0, 1.0]],
+            true,
         ));
 
         for placement in &PLACEMENTS {
@@ -416,6 +438,7 @@ where
                             f32::from(roughness_only),
                         ],
                     ],
+                    part.is_double_sided(),
                 ));
             }
         }
@@ -543,7 +566,10 @@ where
                 ];
                 heph_expect_success!(renderer.record_canvas_command(
                     shadow_canvas.as_mut(),
-                    shadow_pipeline.as_mut(),
+                    match draw.double_sided {
+                        true => double_sided_shadow_pipeline.as_mut(),
+                        false => shadow_pipeline.as_mut(),
+                    },
                     Some(draw.index_buffer.as_ref()),
                     &vertex_bindings,
                     &[&resource_bindings],
@@ -576,7 +602,10 @@ where
                     ResourceBinding::sampler(8, shadow_sampler.as_ref()),
                 ];
                 heph_expect_success!(renderer.record_graphics_command(
-                    pipeline.as_mut(),
+                    match draw.double_sided {
+                        true => double_sided_pipeline.as_mut(),
+                        false => pipeline.as_mut(),
+                    },
                     Some(draw.index_buffer.as_ref()),
                     &vertex_bindings,
                     &[&resource_bindings],
@@ -612,5 +641,9 @@ where
         heph_expect_success!(renderer.destroy_canvas(shadow_canvas.as_mut()));
         heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
         heph_expect_success!(renderer.destroy_graphics_pipeline(shadow_pipeline.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(double_sided_pipeline.as_mut()));
+        heph_expect_success!(
+            renderer.destroy_graphics_pipeline(double_sided_shadow_pipeline.as_mut())
+        );
     }
 }
