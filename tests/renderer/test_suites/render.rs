@@ -1929,10 +1929,17 @@ where
         };
 
         let mut renderer = self.create_renderer_with_any_device(&[
-            FeatureRequest::new(BcTextures, true),
+            FeatureRequest::new(BcTextures, false),
             FeatureRequest::new(AnisotropicFiltering, false),
             FeatureRequest::new(AsyncTransfer, false),
         ]);
+        if renderer
+            .get_device()
+            .map(|d| !d.supported_features().contains(&BcTextures))
+            .unwrap_or(true)
+        {
+            return;
+        }
         let max_anisotropy = if let Some(device) = renderer.get_device() {
             match device.supported_features().contains(&AnisotropicFiltering) {
                 true => Some(device.max_sampler_anisotropy()),

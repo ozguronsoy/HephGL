@@ -197,12 +197,16 @@ fn example(
         .set_device(
             Some(&device),
             &[
-                FeatureRequest::new(BcTextures, true),
+                FeatureRequest::new(BcTextures, false),
                 FeatureRequest::new(AnisotropicFiltering, false),
                 FeatureRequest::new(AsyncTransfer, false),
             ],
         )
         .unwrap();
+    if !device.supported_features().contains(&BcTextures) {
+        println!("The graphics device doesn't support BC textures, which the scene uses.");
+        std::process::exit(0);
+    }
     utils::renderer::set_best_msaa(renderer);
 
     let mut settings = *renderer.get_settings();

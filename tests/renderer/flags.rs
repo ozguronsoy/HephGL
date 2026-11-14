@@ -66,5 +66,6 @@ define_renderer_test_flags!(
     test_render_meshes,
     test_render_animated_meshes,
     test_render_exploding_mesh,
-    test_render_compressed_assets
+    test_render_compressed_assets,
+    test_render_scene_medieval_courtyard
 );
