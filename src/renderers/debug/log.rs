@@ -18,3 +18,11 @@ impl Log {
         self.severity
     }
 }
+
+impl std::fmt::Display for Log {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Severity: {:?}", self.severity)?;
+        writeln!(f, "{}", self.message)?;
+        Ok(())
+    }
+}

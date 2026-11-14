@@ -83,7 +83,7 @@ where
                                 for log in debugger.logs().iter().filter(|l| {
                                     matches!(l.severity(), Severity::Warning | Severity::Error)
                                 }) {
-                                    println!("{:?}", log);
+                                    println!("{}", log);
                                     debugger_assert = true;
                                 }
                                 assert!(!debugger_assert);
