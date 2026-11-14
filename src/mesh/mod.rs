@@ -43,6 +43,21 @@ pub enum MeshVertexAttribute {
     JointWeights(usize),
 }
 
+/// Defines how the alpha of a mesh part's base color is interpreted.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub enum MeshAlphaMode {
+    /// The alpha is ignored, and the part is fully opaque.
+    #[default]
+    Opaque,
+    /// The part is opaque where the alpha is at least `cutoff`, and invisible elsewhere.
+    Mask {
+        /// The smallest alpha that is rendered.
+        cutoff: f32,
+    },
+    /// The alpha is used to blend the part with what is behind it.
+    Blend,
+}
+
 /// Represents a 3D shape assembled from parts, with each part describing points on its surface and
 /// how they connect.
 #[derive(Default, Clone)]

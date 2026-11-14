@@ -14,8 +14,8 @@ Sources: [Poly Haven](https://polyhaven.com)
 - [Modular Fort 01](https://polyhaven.com/a/modular_fort_01)
 - [River Rocks](https://polyhaven.com/a/river_rocks)
 
-The glTF and binary files are unmodified. The textures were converted from the original JPG and EXR
-files to DDS files using BC1–BC7 compression with full mip chains, using [AMD
+The glTF and binary files are unmodified. The textures were converted from the original JPG, PNG,
+and EXR files to DDS files using BC1–BC7 compression with full mip chains, using [AMD
 Compressonator](https://github.com/GPUOpen-Tools/compressonator).
 
 The original assets are distributed under the [CC0 license](https://polyhaven.com/license).

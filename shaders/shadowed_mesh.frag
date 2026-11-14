@@ -8,6 +8,7 @@ layout(set = 0, binding = 4, std140) uniform MaterialData
 {
     vec4 base_color;
     vec4 parameters;
+    float alpha_cutoff;
 } material;
 layout(set = 0, binding = 6, std140) uniform SceneData
 {
@@ -110,7 +111,7 @@ void main()
 {
     vec4 base_color = texture(sampler2D(image_texture, image_sampler), frag_uv) * material.base_color;
     // Alpha-masked surfaces, such as leaves, are cut out instead of blended.
-    if (base_color.a < 0.5)
+    if (base_color.a < material.alpha_cutoff)
     {
         discard;
     }
@@ -157,5 +158,5 @@ void main()
         color += (diffuse + specular) * radiance * normal_dot_light * sun_visibility(geometry_normal);
     }
 
-    out_color = vec4(tone_map(color), 1.0);
+    out_color = vec4(tone_map(color), base_color.a);
 }
