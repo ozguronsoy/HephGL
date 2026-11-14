@@ -264,7 +264,7 @@ where
         heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
     }
 
-    pub(crate) fn test_render_textures(&self) {
+    pub(crate) fn test_render_texture(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[
             FeatureRequest::new(AnisotropicFiltering, false),
             FeatureRequest::new(AsyncTransfer, false),
@@ -288,7 +288,10 @@ where
         )));
         let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
-            &GraphicsPipelineOptions::default(),
+            &GraphicsPipelineOptions {
+                culling: CullingMode::Back,
+                ..Default::default()
+            },
         ));
         drop(vert_shader);
         drop(frag_shader);
@@ -872,7 +875,7 @@ where
         heph_expect_success!(renderer.destroy_graphics_pipeline(extruded_pipeline.as_mut()));
     }
 
-    pub(crate) fn test_render_meshes(&self) {
+    pub(crate) fn test_render_mesh(&self) {
         const MESH_PATH: &str = "assets/ship/ship_pinnace_1k.gltf";
         const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 
@@ -1188,7 +1191,7 @@ where
         heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
     }
 
-    pub(crate) fn test_render_animated_meshes(&self) {
+    pub(crate) fn test_render_animated_mesh(&self) {
         const MESH_PATH: &str = "assets/dragon/model.glb";
         const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 

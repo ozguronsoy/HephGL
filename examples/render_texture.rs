@@ -3,8 +3,9 @@ use heph_gl::{
     Lighting, MaterialProperties, Shader,
     math::Vec3,
     renderers::{
-        BufferUsage, FeatureRequest, GraphicsPipelineOptions, PrimitiveTopology, Renderer,
-        ResourceBinding, SamplerAddressMode, SamplerOptions, TextureFormat, TextureOptions,
+        BufferUsage, CullingMode, FeatureRequest, GraphicsPipelineOptions, PrimitiveTopology,
+        Renderer, ResourceBinding, SamplerAddressMode, SamplerOptions, TextureFormat,
+        TextureOptions,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -63,6 +64,7 @@ fn example(
         .create_graphics_pipeline(
             &[&vert_shader, &tesc_shader, &tese_shader, &frag_shader],
             &GraphicsPipelineOptions {
+                culling: CullingMode::Back,
                 // Each triangle of the sphere is a patch.
                 topology: PrimitiveTopology::PatchList { control_points: 3 },
                 ..Default::default()
