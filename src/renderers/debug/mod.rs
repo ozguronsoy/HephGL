@@ -27,3 +27,21 @@ impl Debugger {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_logs() {
+        const MESSAGE: &str = "Hello World!";
+        const SEVERITY: Severity = Severity::Warning;
+
+        let debugger = Debugger::default();
+        assert!(debugger.logs().is_empty());
+        debugger.log(MESSAGE, SEVERITY);
+        assert_eq!(debugger.logs().len(), 1);
+        assert_eq!(debugger.logs()[0].message(), MESSAGE);
+        assert_eq!(debugger.logs()[0].severity(), SEVERITY);
+    }
+}
