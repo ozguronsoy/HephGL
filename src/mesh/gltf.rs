@@ -12,7 +12,7 @@ use crate::{
     animation::{Animation, AnimationChannel, AnimationInterpolation, AnimationProperty},
     material::MaterialProperties,
     math::{Mat3, Mat4, Quat, Vec3, Vec4},
-    mesh::{Mesh, MeshPrimitive, MeshSampler, skin::MeshSkin, texture::MeshTexture},
+    mesh::{Mesh, MeshAlphaMode, MeshPrimitive, MeshSampler, skin::MeshSkin, texture::MeshTexture},
     renderers::{PrimitiveTopology, SamplerAddressMode, SamplerFilter},
     skeleton::{Joint, Skeleton},
     transform::Transform,
@@ -327,6 +327,13 @@ pub(super) fn from_file(path: &Path) -> Result<Mesh> {
             let material = gltf_primitive.material();
             primitive.material_index = material.index().map_or(0, |i| i + 1);
             primitive.double_sided = material.double_sided();
+            primitive.alpha_mode = match material.alpha_mode() {
+                gltf::material::AlphaMode::Opaque => MeshAlphaMode::Opaque,
+                gltf::material::AlphaMode::Mask => MeshAlphaMode::Mask {
+                    cutoff: material.alpha_cutoff().unwrap_or(0.5),
+                },
+                gltf::material::AlphaMode::Blend => MeshAlphaMode::Blend,
+            };
             let pbr = material.pbr_metallic_roughness();
             primitive.base_color_texture = pbr
                 .base_color_texture()

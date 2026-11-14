@@ -9,13 +9,13 @@ use ddsfile::{Dds, DxgiFormat};
 use heph_gl::{
     Camera,
     GraphicsDeviceFeature::{AnisotropicFiltering, AsyncTransfer, BcTextures},
-    Lighting, Mesh, MeshVertexAttribute, Projection, Shader,
+    Lighting, Mesh, MeshAlphaMode, MeshVertexAttribute, Projection, Shader,
     math::{Mat4, Quat, Vec3},
     renderers::{
-        BufferUsage, CanvasOptions, CompareOp, CullingMode, DepthBias, FeatureRequest, FrontFace,
-        GraphicsPipelineOptions, Renderer, RendererBuffer, RendererHandle, RendererWorkerFactory,
-        ResourceBinding, SamplerAddressMode, SamplerOptions, Settings, TextureFormat,
-        TextureOptions,
+        BufferUsage, CanvasOptions, ColorBlending, CompareOp, CullingMode, DepthBias,
+        FeatureRequest, FrontFace, GraphicsPipelineOptions, Renderer, RendererBuffer,
+        RendererHandle, RendererWorkerFactory, ResourceBinding, SamplerAddressMode, SamplerOptions,
+        Settings, TextureFormat, TextureOptions,
     },
 };
 use renkrs::RGB;
@@ -110,6 +110,8 @@ struct Draw {
     textures: [PathBuf; 3],
     material_buffer: Box<dyn RendererBuffer>,
     double_sided: bool,
+    blended: bool,
+    center: Vec3,
 }
 
 impl<TestRenderer: Renderer> RendererTests<TestRenderer>
@@ -147,8 +149,9 @@ where
                            vertices: &[f32],
                            indices: &[u32],
                            textures: [PathBuf; 3],
-                           material: [[f32; 4]; 2],
-                           double_sided: bool| {
+                           material: [[f32; 4]; 3],
+                           double_sided: bool,
+                           blended: bool| {
             let mut vertex_buffer = heph_expect_success!(
                 renderer.create_buffer(std::mem::size_of_val(vertices), BufferUsage::Vertex)
             );
@@ -182,6 +185,14 @@ where
                 textures,
                 material_buffer,
                 double_sided,
+                blended,
+                center: vertices
+                    .as_chunks::<8>()
+                    .0
+                    .iter()
+                    .map(|vertex| Vec3::from_slice(&vertex[..3]))
+                    .sum::<Vec3>()
+                    / (vertices.len() / 8) as f32,
             }
         };
 
@@ -269,6 +280,15 @@ where
                 ..pipeline_options
             },
         ));
+        let mut blended_pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+            &[&vert_shader, &frag_shader],
+            &GraphicsPipelineOptions {
+                blending: ColorBlending::Alpha,
+                culling: CullingMode::Disabled,
+                depth_write: false,
+                ..pipeline_options
+            },
+        ));
         drop(vert_shader);
         drop(depth_frag_shader);
         drop(frag_shader);
@@ -340,8 +360,13 @@ where
             &floor_vertices,
             &[0, 2, 1, 0, 3, 2],
             floor_textures,
-            [[1.0, 1.0, 1.0, 1.0], [1.0, 0.0, 1.0, 1.0]],
+            [
+                [1.0, 1.0, 1.0, 1.0],
+                [1.0, 0.0, 1.0, 1.0],
+                [0.0, 0.0, 0.0, 0.0],
+            ],
             true,
+            false,
         ));
 
         for placement in &PLACEMENTS {
@@ -418,6 +443,11 @@ where
                 });
                 let roughness_only =
                     textures[&part_textures[1]].format() == TextureFormat::Bc4Unorm;
+                let (alpha_cutoff, blended) = match part.alpha_mode() {
+                    MeshAlphaMode::Opaque => (0.0, false),
+                    MeshAlphaMode::Mask { cutoff } => (cutoff, false),
+                    MeshAlphaMode::Blend => (0.0, true),
+                };
                 let material = part.material();
                 draws.push(create_draw(
                     &mut renderer,
@@ -437,13 +467,21 @@ where
                             material.normal_scale,
                             f32::from(roughness_only),
                         ],
+                        [alpha_cutoff, 0.0, 0.0, 0.0],
                     ],
                     part.is_double_sided(),
+                    blended,
                 ));
             }
         }
         heph_expect_success!(renderer.end_frame());
         drop(meshes);
+
+        let distance = |draw: &Draw| draw.center.distance(camera.position);
+        draws.sort_by(|a, b| match (a.blended, b.blended) {
+            (true, true) => distance(b).total_cmp(&distance(a)),
+            (a_blended, b_blended) => a_blended.cmp(&b_blended),
+        });
 
         let camera_matrices = [
             Mat4::IDENTITY.to_cols_array(),
@@ -552,7 +590,11 @@ where
             heph_expect_success!(renderer.clear(sky_color));
 
             heph_expect_success!(renderer.clear_canvas(shadow_canvas.as_mut(), RGB::default()));
-            for (draw, [texture, _, _]) in draws.iter().zip(&draw_textures) {
+            for (draw, [texture, _, _]) in draws
+                .iter()
+                .zip(&draw_textures)
+                .filter(|(draw, _)| !draw.blended)
+            {
                 let vertex_bindings = [ResourceBinding::buffer(
                     0,
                     draw.vertex_buffer.as_ref(),
@@ -562,6 +604,12 @@ where
                 let resource_bindings = [
                     ResourceBinding::texture(0, *texture),
                     ResourceBinding::sampler(1, sampler.as_ref()),
+                    ResourceBinding::buffer(
+                        4,
+                        draw.material_buffer.as_ref(),
+                        0,
+                        draw.material_buffer.size(),
+                    ),
                     ResourceBinding::buffer(5, sun_buffer.as_ref(), 0, sun_buffer.size()),
                 ];
                 heph_expect_success!(renderer.record_canvas_command(
@@ -602,9 +650,10 @@ where
                     ResourceBinding::sampler(8, shadow_sampler.as_ref()),
                 ];
                 heph_expect_success!(renderer.record_graphics_command(
-                    match draw.double_sided {
-                        true => double_sided_pipeline.as_mut(),
-                        false => pipeline.as_mut(),
+                    match (draw.blended, draw.double_sided) {
+                        (true, _) => blended_pipeline.as_mut(),
+                        (false, true) => double_sided_pipeline.as_mut(),
+                        (false, false) => pipeline.as_mut(),
                     },
                     Some(draw.index_buffer.as_ref()),
                     &vertex_bindings,
@@ -645,5 +694,6 @@ where
         heph_expect_success!(
             renderer.destroy_graphics_pipeline(double_sided_shadow_pipeline.as_mut())
         );
+        heph_expect_success!(renderer.destroy_graphics_pipeline(blended_pipeline.as_mut()));
     }
 }

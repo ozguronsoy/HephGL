@@ -2,7 +2,7 @@ use crate::{
     Error, Result,
     material::MaterialProperties,
     math::Mat4,
-    mesh::{Mesh, MeshPrimitive, MeshVertexAttribute, texture::MeshTexture},
+    mesh::{Mesh, MeshAlphaMode, MeshPrimitive, MeshVertexAttribute, texture::MeshTexture},
     renderers::{PrimitiveTopology, SamplerAddressMode, SamplerFilter},
 };
 
@@ -17,6 +17,16 @@ impl<'a> MeshPart<'a> {
     /// Gets the primitive topology of the part.
     pub fn topology(&self) -> PrimitiveTopology {
         self.primitive.topology
+    }
+
+    /// Checks whether both faces of the part's triangles should be rendered.
+    pub fn is_double_sided(&self) -> bool {
+        self.primitive.double_sided
+    }
+
+    /// Gets how the alpha of the part's base color is interpreted.
+    pub fn alpha_mode(&self) -> MeshAlphaMode {
+        self.primitive.alpha_mode
     }
 
     /// Gets the number of components in a vertex with the requested layout.
@@ -115,11 +125,6 @@ impl<'a> MeshPart<'a> {
     /// Gets the part's material properties.
     pub fn material(&self) -> &MaterialProperties {
         &self.mesh.materials[self.primitive.material_index]
-    }
-
-    /// Checks whether both faces of the part's triangles should be rendered.
-    pub fn is_double_sided(&self) -> bool {
-        self.primitive.double_sided
     }
 
     /// Gets the skeleton joint controlling this part's rigid transform, if present.
@@ -391,6 +396,78 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_is_double_sided() {
+        {
+            const FILE_PATH: &str = "assets/ship/ship_pinnace_1k.gltf";
+            let mesh = Mesh::from_file(FILE_PATH).unwrap();
+            assert!(mesh.parts().all(|part| part.is_double_sided()));
+        }
+
+        {
+            let mesh = Mesh {
+                primitives: vec![MeshPrimitive::default()],
+                ..Default::default()
+            };
+            assert!(!mesh.parts().next().unwrap().is_double_sided());
+        }
+    }
+
+    #[test]
+    fn test_alpha_mode() {
+        {
+            const FILE_PATH: &str = "assets/ship/ship_pinnace_1k.gltf";
+            let mesh = Mesh::from_file(FILE_PATH).unwrap();
+            let alpha_modes: Vec<_> = mesh.parts().map(|part| part.alpha_mode()).collect();
+            assert_eq!(
+                alpha_modes
+                    .iter()
+                    .filter(|&&mode| mode == MeshAlphaMode::Mask { cutoff: 0.5 })
+                    .count(),
+                1
+            );
+            assert_eq!(
+                alpha_modes
+                    .iter()
+                    .filter(|&&mode| mode == MeshAlphaMode::Opaque)
+                    .count(),
+                alpha_modes.len() - 1
+            );
+        }
+
+        {
+            const FILE_PATH: &str =
+                "assets/medieval_courtyard_scene/wooden_lantern_01_1k/wooden_lantern_01_1k.gltf";
+            let mesh = Mesh::from_file(FILE_PATH).unwrap();
+            let alpha_modes: Vec<_> = mesh.parts().map(|part| part.alpha_mode()).collect();
+            assert_eq!(
+                alpha_modes
+                    .iter()
+                    .filter(|&&mode| mode == MeshAlphaMode::Blend)
+                    .count(),
+                2
+            );
+            assert_eq!(
+                alpha_modes
+                    .iter()
+                    .filter(|&&mode| mode == MeshAlphaMode::Opaque)
+                    .count(),
+                alpha_modes.len() - 2
+            );
+        }
+
+        {
+            let mesh = Mesh {
+                primitives: vec![MeshPrimitive::default()],
+                ..Default::default()
+            };
+            assert_eq!(
+                mesh.parts().next().unwrap().alpha_mode(),
+                MeshAlphaMode::Opaque
+            );
+        }
+    }
+
+    #[test]
     fn test_vertices_interleaves_vertex_attributes() {
         const FILE_PATH: &str = "assets/ship/ship_pinnace_1k.gltf";
         let mesh = Mesh::from_file(FILE_PATH).unwrap();
@@ -417,23 +494,6 @@ mod tests {
                 assert_eq!(&vertex[2..5], &positions[j * 3..j * 3 + 3]);
                 assert_eq!(&vertex[5..], &normals[j * 3..j * 3 + 3]);
             }
-        }
-    }
-
-    #[test]
-    fn test_is_double_sided() {
-        {
-            const FILE_PATH: &str = "assets/ship/ship_pinnace_1k.gltf";
-            let mesh = Mesh::from_file(FILE_PATH).unwrap();
-            assert!(mesh.parts().all(|part| part.is_double_sided()));
-        }
-
-        {
-            let mesh = Mesh {
-                primitives: vec![MeshPrimitive::default()],
-                ..Default::default()
-            };
-            assert!(!mesh.parts().next().unwrap().is_double_sided());
         }
     }
 

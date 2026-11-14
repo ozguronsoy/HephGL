@@ -1,8 +1,13 @@
-use crate::{mesh::texture::MeshTexture, renderers::PrimitiveTopology};
+use crate::{
+    mesh::{MeshAlphaMode, texture::MeshTexture},
+    renderers::PrimitiveTopology,
+};
 
 #[derive(Default, Clone)]
 pub(super) struct MeshPrimitive {
     pub(super) topology: PrimitiveTopology,
+    pub(super) alpha_mode: MeshAlphaMode,
+    pub(super) double_sided: bool,
     pub(super) vertex_count: usize,
     // start index, end index for all range tuples.
     pub(super) positions_range: Option<(usize, usize)>,
@@ -16,7 +21,6 @@ pub(super) struct MeshPrimitive {
     pub(super) joint_weights_ranges: Vec<(u32, (usize, usize))>,
     pub(super) indices_range: (usize, usize),
     pub(super) material_index: usize,
-    pub(super) double_sided: bool,
     pub(super) joint_index: Option<usize>,
     pub(super) skin_index: Option<usize>,
     pub(super) base_color_texture: Option<MeshTexture>,

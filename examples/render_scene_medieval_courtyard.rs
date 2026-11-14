@@ -9,12 +9,13 @@ use ddsfile::{Dds, DxgiFormat};
 use heph_gl::{
     Camera,
     GraphicsDeviceFeature::{AnisotropicFiltering, AsyncTransfer, BcTextures},
-    Lighting, Mesh, MeshVertexAttribute, Projection, Shader,
+    Lighting, Mesh, MeshAlphaMode, MeshVertexAttribute, Projection, Shader,
     math::{Mat4, Quat, Vec3},
     renderers::{
-        BufferUsage, CanvasOptions, CompareOp, CullingMode, DepthBias, FeatureRequest, FrontFace,
-        GraphicsPipelineOptions, Renderer, RendererBuffer, RendererTexture, ResourceBinding,
-        SamplerAddressMode, SamplerOptions, TextureFormat, TextureOptions,
+        BufferUsage, CanvasOptions, ColorBlending, CompareOp, CullingMode, DepthBias,
+        FeatureRequest, FrontFace, GraphicsPipelineOptions, Renderer, RendererBuffer,
+        RendererTexture, ResourceBinding, SamplerAddressMode, SamplerOptions, TextureFormat,
+        TextureOptions,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -117,6 +118,8 @@ struct Draw {
     textures: [PathBuf; 3],
     material_buffer: Box<dyn RendererBuffer>,
     double_sided: bool,
+    blended: bool,
+    center: Vec3,
 }
 
 /// Creates a texture from a DDS file that contains a block-compressed image and its mip levels.
@@ -157,8 +160,9 @@ fn create_draw(
     vertices: &[f32],
     indices: &[u32],
     textures: [PathBuf; 3],
-    material: [[f32; 4]; 2],
+    material: [[f32; 4]; 3],
     double_sided: bool,
+    blended: bool,
 ) -> Draw {
     let mut vertex_buffer = renderer
         .create_buffer(std::mem::size_of_val(vertices), BufferUsage::Vertex)
@@ -187,6 +191,14 @@ fn create_draw(
         textures,
         material_buffer,
         double_sided,
+        blended,
+        center: vertices
+            .as_chunks::<8>()
+            .0
+            .iter()
+            .map(|vertex| Vec3::from_slice(&vertex[..3]))
+            .sum::<Vec3>()
+            / (vertices.len() / 8) as f32,
     }
 }
 
@@ -277,6 +289,20 @@ fn example(
             },
         )
         .unwrap();
+    // Blended parts are tested against the depths of the opaque parts but don't write their own,
+    // so the blended parts behind them still show through. The scene's only blended parts, the
+    // lantern's glass panes, are double-sided.
+    let mut blended_pipeline = renderer
+        .create_graphics_pipeline(
+            &[&vert_shader, &frag_shader],
+            &GraphicsPipelineOptions {
+                blending: ColorBlending::Alpha,
+                culling: CullingMode::Disabled,
+                depth_write: false,
+                ..pipeline_options
+            },
+        )
+        .unwrap();
     drop(vert_shader);
     drop(depth_frag_shader);
     drop(frag_shader);
@@ -354,8 +380,13 @@ fn example(
         &floor_vertices,
         &[0, 2, 1, 0, 3, 2],
         floor_textures,
-        [[1.0, 1.0, 1.0, 1.0], [1.0, 0.0, 1.0, 1.0]],
+        [
+            [1.0, 1.0, 1.0, 1.0],
+            [1.0, 0.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0, 0.0],
+        ],
         true,
+        false,
     ));
 
     for placement in &PLACEMENTS {
@@ -414,6 +445,11 @@ fn example(
             });
             // Single-channel metallic-roughness textures store only the roughness.
             let roughness_only = textures[&part_textures[1]].format() == TextureFormat::Bc4Unorm;
+            let (alpha_cutoff, blended) = match part.alpha_mode() {
+                MeshAlphaMode::Opaque => (0.0, false),
+                MeshAlphaMode::Mask { cutoff } => (cutoff, false),
+                MeshAlphaMode::Blend => (0.0, true),
+            };
             let material = part.material();
             draws.push(create_draw(
                 renderer,
@@ -433,13 +469,23 @@ fn example(
                         material.normal_scale,
                         f32::from(roughness_only),
                     ],
+                    [alpha_cutoff, 0.0, 0.0, 0.0],
                 ],
                 part.is_double_sided(),
+                blended,
             ));
         }
     }
     renderer.end_frame().unwrap();
     drop(meshes);
+
+    // Blended parts are drawn last, from back to front, so each one blends with everything behind
+    // it.
+    let distance = |draw: &Draw| draw.center.distance(camera.position);
+    draws.sort_by(|a, b| match (a.blended, b.blended) {
+        (true, true) => distance(b).total_cmp(&distance(a)),
+        (a_blended, b_blended) => a_blended.cmp(&b_blended),
+    });
 
     // Every vertex is already in world space, so the model and normal matrices are identities.
     let camera_matrices = [
@@ -553,11 +599,16 @@ fn example(
 
         renderer.clear(sky_color).unwrap();
 
-        // Render the depths seen from the sun into the shadow map.
+        // Render the depths seen from the sun into the shadow map. Blended parts let the light
+        // through, so they don't cast shadows.
         renderer
             .clear_canvas(shadow_canvas.as_mut(), RGB::default())
             .unwrap();
-        for (draw, [texture, _, _]) in draws.iter().zip(&draw_textures) {
+        for (draw, [texture, _, _]) in draws
+            .iter()
+            .zip(&draw_textures)
+            .filter(|(draw, _)| !draw.blended)
+        {
             let vertex_bindings = [ResourceBinding::buffer(
                 0,
                 draw.vertex_buffer.as_ref(),
@@ -567,6 +618,12 @@ fn example(
             let resource_bindings = [
                 ResourceBinding::texture(0, *texture),
                 ResourceBinding::sampler(1, sampler.as_ref()),
+                ResourceBinding::buffer(
+                    4,
+                    draw.material_buffer.as_ref(),
+                    0,
+                    draw.material_buffer.size(),
+                ),
                 ResourceBinding::buffer(5, sun_buffer.as_ref(), 0, sun_buffer.size()),
             ];
             renderer
@@ -611,9 +668,10 @@ fn example(
             ];
             renderer
                 .record_graphics_command(
-                    match draw.double_sided {
-                        true => double_sided_pipeline.as_mut(),
-                        false => pipeline.as_mut(),
+                    match (draw.blended, draw.double_sided) {
+                        (true, _) => blended_pipeline.as_mut(),
+                        (false, true) => double_sided_pipeline.as_mut(),
+                        (false, false) => pipeline.as_mut(),
                     },
                     Some(draw.index_buffer.as_ref()),
                     &vertex_bindings,
@@ -665,6 +723,9 @@ fn example(
         .unwrap();
     renderer
         .destroy_graphics_pipeline(double_sided_shadow_pipeline.as_mut())
+        .unwrap();
+    renderer
+        .destroy_graphics_pipeline(blended_pipeline.as_mut())
         .unwrap();
 
     std::process::exit(0);
