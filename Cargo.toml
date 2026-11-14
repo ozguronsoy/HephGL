@@ -10,6 +10,12 @@ readme = "README.md"
 keywords = ["vulkan"]
 categories = ["graphics"]
 
+include = [
+    "/src/",
+    "/LICENSE",
+    "/README.md",
+]
+
 [dependencies]
 renkrs = "0.1.1"
 glam = "0.34.1"
