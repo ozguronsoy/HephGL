@@ -223,7 +223,7 @@ where
         std::thread::scope(|s| {
             let (tx, rx) = std::sync::mpsc::channel();
             let barrier = std::sync::Arc::new(std::sync::Barrier::new(n_threads + 1));
-            let renderer_handle = RendererHandle::from(&mut renderer);
+            let renderer_handle = RendererHandle::from(&mut renderer.renderer);
 
             for thread_id in 0..n_threads {
                 let tx = tx.clone();

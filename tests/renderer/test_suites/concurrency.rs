@@ -22,7 +22,7 @@ where
 {
     pub(crate) fn test_calling_main_thread_only_fn_from_worker_thread(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[]);
-        let renderer_handle = RendererHandle::from(&mut renderer);
+        let renderer_handle = RendererHandle::from(&mut renderer.renderer);
         std::thread::scope(|s| {
             let _ = s.spawn(move || {
                 let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
@@ -52,7 +52,7 @@ where
 
     pub(crate) fn test_multiple_workers_per_thread(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[]);
-        let renderer_handle = RendererHandle::from(&mut renderer);
+        let renderer_handle = RendererHandle::from(&mut renderer.renderer);
 
         std::thread::scope(|s| {
             let _ = s.spawn(move || {
@@ -76,7 +76,7 @@ where
         const FRAMES_IN_FLIGHT: usize = 3;
 
         let mut renderer = self.create_renderer_with_any_device(&[]);
-        let renderer_handle = RendererHandle::from(&mut renderer);
+        let renderer_handle = RendererHandle::from(&mut renderer.renderer);
 
         heph_expect_success!(renderer.set_settings(Settings {
             frames_in_flight: FRAMES_IN_FLIGHT,
@@ -128,7 +128,7 @@ where
         let thread_count = heph_gl::renderers::max_concurrent_threads() + 1;
 
         let mut renderer = self.create_renderer_with_any_device(&[]);
-        let renderer_handle = RendererHandle::from(&mut renderer);
+        let renderer_handle = RendererHandle::from(&mut renderer.renderer);
         let fail_count = AtomicUsize::new(0);
         std::thread::scope(|s| {
             let barrier = std::sync::Arc::new(std::sync::Barrier::new(thread_count));

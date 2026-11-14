@@ -42,11 +42,36 @@ macro_rules! test_env {
     };
 }
 
+pub struct TestRendererDropGuard<'a, TestRenderer: Renderer> {
+    pub renderer: TestRenderer,
+    tests: &'a RendererTests<TestRenderer>,
+}
+
+impl<'a, TestRenderer: Renderer> std::ops::Deref for TestRendererDropGuard<'a, TestRenderer> {
+    type Target = TestRenderer;
+
+    fn deref(&self) -> &TestRenderer {
+        &self.renderer
+    }
+}
+impl<'a, TestRenderer: Renderer> std::ops::DerefMut for TestRendererDropGuard<'a, TestRenderer> {
+    fn deref_mut(&mut self) -> &mut TestRenderer {
+        &mut self.renderer
+    }
+}
+impl<'a, TestRenderer: Renderer> Drop for TestRendererDropGuard<'a, TestRenderer> {
+    fn drop(&mut self) {
+        self.tests
+            .debugger
+            .set(heph_expect_success!(self.renderer.detach_debugger()));
+    }
+}
+
 impl<TestRenderer: Renderer> RendererTests<TestRenderer>
 where
     RendererHandle<TestRenderer>: RendererWorkerFactory<TestRenderer>,
 {
-    pub(super) fn create_renderer(&self) -> TestRenderer {
+    pub(super) fn create_renderer(&self) -> TestRendererDropGuard<'_, TestRenderer> {
         let test_env = test_env!();
         let app_name = format!("{} Tests", std::any::type_name::<TestRenderer>());
         let mut renderer = TestRenderer::new();
@@ -57,7 +82,11 @@ where
             api_version: self.api_version,
             debug: true,
         }));
-        renderer
+        heph_expect_success!(renderer.attach_debugger(self.debugger.take()));
+        TestRendererDropGuard {
+            renderer,
+            tests: self,
+        }
     }
 
     pub(super) fn create_renderer_with_target_device(
@@ -65,7 +94,7 @@ where
         target_device_type: GraphicsDeviceType,
         requested_features: &[FeatureRequest],
         target_device_type_required: bool,
-    ) -> Option<TestRenderer> {
+    ) -> Option<TestRendererDropGuard<'_, TestRenderer>> {
         let mut renderer = self.create_renderer();
         let devices = heph_expect_success!(renderer.enumerate_devices());
         let target_device = devices
@@ -96,7 +125,7 @@ where
     pub(super) fn create_renderer_with_any_device(
         &self,
         requested_features: &[FeatureRequest],
-    ) -> TestRenderer {
+    ) -> TestRendererDropGuard<'_, TestRenderer> {
         let mut renderer = self.create_renderer();
         let devices = heph_expect_success!(renderer.enumerate_devices());
         assert!(!devices.is_empty(), "Invalid Test Env: No device found.",);

@@ -2,13 +2,15 @@ pub mod flags;
 mod test_suites;
 pub mod versioned_test_suite;
 
-use std::{marker::PhantomData, process::ExitCode};
+use std::{cell::Cell, marker::PhantomData, process::ExitCode};
 
 use heph_gl::{
-    GraphicsDeviceType,
-    GraphicsDeviceType::{Cpu, DiscreteGpu, IntegratedGpu, VirtualGpu},
+    GraphicsDeviceType::{self, Cpu, DiscreteGpu, IntegratedGpu, VirtualGpu},
     Version,
-    renderers::{LATEST_API_VERSION, Renderer, RendererHandle, RendererWorkerFactory},
+    renderers::{
+        LATEST_API_VERSION, Renderer, RendererHandle, RendererWorkerFactory,
+        debug::{Debugger, Severity},
+    },
 };
 use libtest_mimic::{Arguments, Trial};
 
@@ -17,6 +19,7 @@ use crate::renderer::versioned_test_suite::RendererVersionedTestSuite;
 
 pub struct RendererTests<TestRenderer: Renderer> {
     api_version: Option<Version>,
+    debugger: Cell<Debugger>,
     _marker: PhantomData<TestRenderer>,
 }
 
@@ -27,6 +30,7 @@ where
     fn new(api_version: Option<Version>) -> Self {
         Self {
             api_version,
+            debugger: Cell::new(Debugger::default()),
             _marker: PhantomData,
         }
     }
@@ -43,7 +47,8 @@ where
         let args = Arguments::from_args();
 
         let device_type_exists = |device_type: GraphicsDeviceType| -> bool {
-            let renderer = Self::new(LATEST_API_VERSION).create_renderer();
+            let renderer_tests = Self::new(LATEST_API_VERSION);
+            let renderer = renderer_tests.create_renderer();
             let devices = heph_expect_success!(renderer.enumerate_devices());
             devices
                 .iter()
@@ -71,7 +76,14 @@ where
                         );
                         Trial::test(test_name, move || {
                             let result = std::panic::catch_unwind(|| {
-                                Self::new(versioned_test_suite.api_version).$tfn();
+                                let renderer_tests = Self::new(versioned_test_suite.api_version);
+                                renderer_tests.$tfn();
+                                let debugger = renderer_tests.debugger.take();
+                                assert!(
+                                    !debugger.logs()
+                                        .iter()
+                                        .any(|l| matches!(l.severity(), Severity::Error))
+                                );
                             });
 
                             let todo = versioned_test_suite.flags.[<todo_ $tfn>];

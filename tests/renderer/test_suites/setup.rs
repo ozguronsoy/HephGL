@@ -242,7 +242,7 @@ where
             std::thread::scope(|s| {
                 let b1 = std::sync::Arc::new(std::sync::Barrier::new(2));
                 let b2 = b1.clone();
-                let renderer_handle = RendererHandle::from(&mut renderer);
+                let renderer_handle = RendererHandle::from(&mut renderer.renderer);
                 let _ = s.spawn(move || {
                     let _renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
                     let _ = b2.wait();
