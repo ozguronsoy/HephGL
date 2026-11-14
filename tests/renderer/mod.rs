@@ -79,11 +79,14 @@ where
                                 let renderer_tests = Self::new(versioned_test_suite.api_version);
                                 renderer_tests.$tfn();
                                 let debugger = renderer_tests.debugger.take();
-                                assert!(
-                                    !debugger.logs()
-                                        .iter()
-                                        .any(|l| matches!(l.severity(), Severity::Error))
-                                );
+                                let mut debugger_assert = false;
+                                for log in debugger.logs().iter().filter(|l| {
+                                    matches!(l.severity(), Severity::Warning | Severity::Error)
+                                }) {
+                                    println!("{:?}", log);
+                                    debugger_assert = true;
+                                }
+                                assert!(!debugger_assert);
                             });
 
                             let todo = versioned_test_suite.flags.[<todo_ $tfn>];
@@ -97,13 +100,11 @@ where
                                 let panic = heph_expect_success!(
                                     result.err().ok_or("Expected a panic.")
                                 );
-                                let panic_msg = panic.downcast_ref::<&str>()
-                                                    .copied()
-                                                    .or_else(||
-                                                        panic
-                                                        .downcast_ref::<String>()
-                                                        .map(String::as_str)
-                                                    ).unwrap_or("");
+                                let panic_msg = panic
+                                    .downcast_ref::<&str>()
+                                    .copied()
+                                    .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
+                                    .unwrap_or("");
                                 if todo {
                                     assert!(
                                         panic_msg.contains("not yet implemented"),
