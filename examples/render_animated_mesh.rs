@@ -6,8 +6,8 @@ use heph_gl::{
     Lighting, Projection, Shader,
     math::{Mat4, Vec3},
     renderers::{
-        BufferUsage, FeatureRequest, FrontFace, GraphicsPipelineOptions, Renderer, ResourceBinding,
-        SamplerOptions, TextureFormat, TextureOptions,
+        BufferUsage, CullingMode, FeatureRequest, FrontFace, GraphicsPipelineOptions, Renderer,
+        ResourceBinding, SamplerOptions, TextureFormat, TextureOptions,
     },
     {Mesh, MeshVertexAttribute},
 };
@@ -45,22 +45,27 @@ fn example(
         Shader::from_file(format!("{}/{}", utils::SHADERS_DIR, "animation_vert.spv")).unwrap();
     let frag_shader =
         Shader::from_file(format!("{}/{}", utils::SHADERS_DIR, "mesh_frag.spv")).unwrap();
+
+    let mesh = Mesh::from_file(MESH_PATH).unwrap();
+
+    // The dragon has a single skinned part and two animation clips.
+    let part = mesh.parts().next().unwrap();
+    // Double-sided parts are visible from behind, so their back faces aren't culled.
     let mut pipeline = renderer
         .create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
                 front_face: FrontFace::Clockwise,
+                culling: match part.is_double_sided() {
+                    true => CullingMode::Disabled,
+                    false => CullingMode::Back,
+                },
                 ..Default::default()
             },
         )
         .unwrap();
     drop(vert_shader);
     drop(frag_shader);
-
-    let mesh = Mesh::from_file(MESH_PATH).unwrap();
-
-    // The dragon has a single skinned part and two animation clips.
-    let part = mesh.parts().next().unwrap();
     let skeleton = mesh.skeleton().unwrap();
     let default_transforms = skeleton.transforms();
     let mut transforms = default_transforms.clone();

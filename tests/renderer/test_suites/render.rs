@@ -264,7 +264,7 @@ where
         heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
     }
 
-    pub(crate) fn test_render_textures(&self) {
+    pub(crate) fn test_render_texture(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[
             FeatureRequest::new(AnisotropicFiltering, false),
             FeatureRequest::new(AsyncTransfer, false),
@@ -288,7 +288,10 @@ where
         )));
         let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
-            &GraphicsPipelineOptions::default(),
+            &GraphicsPipelineOptions {
+                culling: CullingMode::Back,
+                ..Default::default()
+            },
         ));
         drop(vert_shader);
         drop(frag_shader);
@@ -872,7 +875,7 @@ where
         heph_expect_success!(renderer.destroy_graphics_pipeline(extruded_pipeline.as_mut()));
     }
 
-    pub(crate) fn test_render_meshes(&self) {
+    pub(crate) fn test_render_mesh(&self) {
         const MESH_PATH: &str = "assets/ship/ship_pinnace_1k.gltf";
         const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 
@@ -910,11 +913,19 @@ where
             "{}/{}",
             SHADERS_DIR, "mesh_frag.spv"
         )));
-        let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+        let pipeline_options = GraphicsPipelineOptions {
+            front_face: FrontFace::Clockwise,
+            culling: CullingMode::Back,
+            ..Default::default()
+        };
+        let mut pipeline = heph_expect_success!(
+            renderer.create_graphics_pipeline(&[&vert_shader, &frag_shader], &pipeline_options)
+        );
+        let mut double_sided_pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
-                front_face: FrontFace::Clockwise,
-                ..Default::default()
+                culling: CullingMode::Disabled,
+                ..pipeline_options
             },
         ));
         drop(vert_shader);
@@ -1090,12 +1101,13 @@ where
                 indices.len() as u32,
                 part_textures,
                 material_buffer,
+                part.is_double_sided(),
             ));
         }
 
         let part_textures: Vec<_> = part_buffers
             .iter()
-            .map(|(_, _, _, uris, _)| uris.each_ref().map(|uri| textures[uri].as_ref()))
+            .map(|(_, _, _, uris, _, _)| uris.each_ref().map(|uri| textures[uri].as_ref()))
             .collect();
 
         heph_expect_success!(renderer.end_frame());
@@ -1136,7 +1148,7 @@ where
             ));
 
             for (
-                (vertex_buffer, index_buffer, index_count, _, material_buffer),
+                (vertex_buffer, index_buffer, index_count, _, material_buffer, double_sided),
                 [texture, arm_texture, normal_texture],
             ) in part_buffers.iter().zip(&part_textures)
             {
@@ -1155,7 +1167,10 @@ where
                     ResourceBinding::buffer(5, uniform_buffer.as_ref(), 0, uniform_buffer.size()),
                 ];
                 heph_expect_success!(renderer.record_graphics_command(
-                    pipeline.as_mut(),
+                    match double_sided {
+                        true => double_sided_pipeline.as_mut(),
+                        false => pipeline.as_mut(),
+                    },
                     Some(index_buffer.as_ref()),
                     &vertex_bindings,
                     &[&resource_bindings],
@@ -1177,7 +1192,7 @@ where
             heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
         }
 
-        for (vertex_buffer, index_buffer, _, _, material_buffer) in &mut part_buffers {
+        for (vertex_buffer, index_buffer, _, _, material_buffer, _) in &mut part_buffers {
             heph_expect_success!(renderer.destroy_buffer(material_buffer.as_mut()));
             heph_expect_success!(renderer.destroy_buffer(vertex_buffer.as_mut()));
             heph_expect_success!(renderer.destroy_buffer(index_buffer.as_mut()));
@@ -1186,9 +1201,10 @@ where
             heph_expect_success!(renderer.destroy_buffer(uniform_buffer.as_mut()));
         }
         heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(double_sided_pipeline.as_mut()));
     }
 
-    pub(crate) fn test_render_animated_meshes(&self) {
+    pub(crate) fn test_render_animated_mesh(&self) {
         const MESH_PATH: &str = "assets/dragon/model.glb";
         const ANIMATION_DURATION: Duration = Duration::from_secs(5);
 
@@ -1226,19 +1242,23 @@ where
             "{}/{}",
             SHADERS_DIR, "mesh_frag.spv"
         )));
+
+        let mesh = heph_expect_success!(Mesh::from_file(MESH_PATH));
+
+        let part = heph_expect_success!(mesh.parts().next().ok_or("Missing mesh part."));
         let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
                 front_face: FrontFace::Clockwise,
+                culling: match part.is_double_sided() {
+                    true => CullingMode::Disabled,
+                    false => CullingMode::Back,
+                },
                 ..Default::default()
             },
         ));
         drop(vert_shader);
         drop(frag_shader);
-
-        let mesh = heph_expect_success!(Mesh::from_file(MESH_PATH));
-
-        let part = heph_expect_success!(mesh.parts().next().ok_or("Missing mesh part."));
         let skeleton = heph_expect_success!(mesh.skeleton().ok_or("Missing skeleton."));
         let default_transforms = skeleton.transforms();
         let mut transforms = default_transforms.clone();
@@ -1562,11 +1582,20 @@ where
             "{}/{}",
             SHADERS_DIR, "mesh_frag.spv"
         )));
+        let pipeline_options = GraphicsPipelineOptions {
+            front_face: FrontFace::Clockwise,
+            culling: CullingMode::Back,
+            ..Default::default()
+        };
         let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
             &[&vert_shader, &geom_shader, &frag_shader],
+            &pipeline_options,
+        ));
+        let mut double_sided_pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+            &[&vert_shader, &geom_shader, &frag_shader],
             &GraphicsPipelineOptions {
-                front_face: FrontFace::Clockwise,
-                ..Default::default()
+                culling: CullingMode::Disabled,
+                ..pipeline_options
             },
         ));
         drop(vert_shader);
@@ -1743,12 +1772,13 @@ where
                 indices.len() as u32,
                 part_textures,
                 material_buffer,
+                part.is_double_sided(),
             ));
         }
 
         let part_textures: Vec<_> = part_buffers
             .iter()
-            .map(|(_, _, _, uris, _)| uris.each_ref().map(|uri| textures[uri].as_ref()))
+            .map(|(_, _, _, uris, _, _)| uris.each_ref().map(|uri| textures[uri].as_ref()))
             .collect();
 
         heph_expect_success!(renderer.end_frame());
@@ -1809,7 +1839,7 @@ where
             ));
 
             for (
-                (vertex_buffer, index_buffer, index_count, _, material_buffer),
+                (vertex_buffer, index_buffer, index_count, _, material_buffer, double_sided),
                 [texture, arm_texture, normal_texture],
             ) in part_buffers.iter().zip(&part_textures)
             {
@@ -1834,7 +1864,10 @@ where
                     ),
                 ];
                 heph_expect_success!(renderer.record_graphics_command(
-                    pipeline.as_mut(),
+                    match double_sided {
+                        true => double_sided_pipeline.as_mut(),
+                        false => pipeline.as_mut(),
+                    },
                     Some(index_buffer.as_ref()),
                     &vertex_bindings,
                     &[&resource_bindings],
@@ -1856,7 +1889,7 @@ where
             heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
         }
 
-        for (vertex_buffer, index_buffer, _, _, material_buffer) in &mut part_buffers {
+        for (vertex_buffer, index_buffer, _, _, material_buffer, _) in &mut part_buffers {
             heph_expect_success!(renderer.destroy_buffer(material_buffer.as_mut()));
             heph_expect_success!(renderer.destroy_buffer(vertex_buffer.as_mut()));
             heph_expect_success!(renderer.destroy_buffer(index_buffer.as_mut()));
@@ -1866,6 +1899,7 @@ where
             heph_expect_success!(renderer.destroy_buffer(explosion_buffer.as_mut()));
         }
         heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(double_sided_pipeline.as_mut()));
     }
 
     pub(crate) fn test_render_compressed_assets(&self) {
@@ -1972,13 +2006,24 @@ where
                 ..Default::default()
             },
         );
+        let mesh_pipeline_options = GraphicsPipelineOptions {
+            front_face: FrontFace::Clockwise,
+            culling: CullingMode::Back,
+            ..Default::default()
+        };
         let mut mesh_pipeline = create_pipeline(
             &mut renderer,
             "camera_vert.spv",
             "compressed_mesh_frag.spv",
+            &mesh_pipeline_options,
+        );
+        let mut double_sided_mesh_pipeline = create_pipeline(
+            &mut renderer,
+            "camera_vert.spv",
+            "compressed_mesh_frag.spv",
             &GraphicsPipelineOptions {
-                front_face: FrontFace::Clockwise,
-                ..Default::default()
+                culling: CullingMode::Disabled,
+                ..mesh_pipeline_options
             },
         );
 
@@ -2161,13 +2206,14 @@ where
                     indices.len() as u32,
                     part_textures,
                     material_buffer,
+                    part.is_double_sided(),
                 ));
             }
         }
 
         let part_textures: Vec<_> = part_buffers
             .iter()
-            .map(|(_, _, _, paths, _)| paths.each_ref().map(|path| textures[path].as_ref()))
+            .map(|(_, _, _, paths, _, _)| paths.each_ref().map(|path| textures[path].as_ref()))
             .collect();
 
         heph_expect_success!(renderer.end_frame());
@@ -2227,7 +2273,7 @@ where
             ));
 
             for (
-                (vertex_buffer, index_buffer, index_count, _, material_buffer),
+                (vertex_buffer, index_buffer, index_count, _, material_buffer, double_sided),
                 [texture, arm_texture, normal_texture],
             ) in part_buffers.iter().zip(&part_textures)
             {
@@ -2246,7 +2292,10 @@ where
                     ResourceBinding::buffer(5, uniform_buffer.as_ref(), 0, uniform_buffer.size()),
                 ];
                 heph_expect_success!(renderer.record_graphics_command(
-                    mesh_pipeline.as_mut(),
+                    match double_sided {
+                        true => double_sided_mesh_pipeline.as_mut(),
+                        false => mesh_pipeline.as_mut(),
+                    },
                     Some(index_buffer.as_ref()),
                     &vertex_bindings,
                     &[&resource_bindings],
@@ -2269,7 +2318,7 @@ where
             heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
         }
 
-        for (vertex_buffer, index_buffer, _, _, material_buffer) in &mut part_buffers {
+        for (vertex_buffer, index_buffer, _, _, material_buffer, _) in &mut part_buffers {
             heph_expect_success!(renderer.destroy_buffer(material_buffer.as_mut()));
             heph_expect_success!(renderer.destroy_buffer(vertex_buffer.as_mut()));
             heph_expect_success!(renderer.destroy_buffer(index_buffer.as_mut()));
@@ -2279,6 +2328,9 @@ where
         }
         heph_expect_success!(renderer.destroy_buffer(sky_vertex_buffer.as_mut()));
         heph_expect_success!(renderer.destroy_graphics_pipeline(mesh_pipeline.as_mut()));
+        heph_expect_success!(
+            renderer.destroy_graphics_pipeline(double_sided_mesh_pipeline.as_mut())
+        );
         heph_expect_success!(renderer.destroy_graphics_pipeline(sky_pipeline.as_mut()));
     }
 

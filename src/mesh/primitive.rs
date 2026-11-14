@@ -16,6 +16,7 @@ pub(super) struct MeshPrimitive {
     pub(super) joint_weights_ranges: Vec<(u32, (usize, usize))>,
     pub(super) indices_range: (usize, usize),
     pub(super) material_index: usize,
+    pub(super) double_sided: bool,
     pub(super) joint_index: Option<usize>,
     pub(super) skin_index: Option<usize>,
     pub(super) base_color_texture: Option<MeshTexture>,

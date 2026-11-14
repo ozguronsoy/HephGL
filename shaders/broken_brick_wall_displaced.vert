@@ -15,7 +15,7 @@ const float ROTATION_X_DEGREES = 0.0;
 const float ROTATION_Y_DEGREES = 0.0;
 const float ROTATION_Z_DEGREES = 0.0;
 
-// Match the sphere vertex count and centers in `test_render_textures`.
+// Match the sphere vertex count and centers in `test_render_texture`.
 const int SPHERE_VERTEX_COUNT = 512 * 1024 * 6;
 const float SPHERE_CENTERS_X[3] = float[](-1.2, -0.4, 0.8);
 

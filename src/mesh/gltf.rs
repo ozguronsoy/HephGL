@@ -326,6 +326,7 @@ pub(super) fn from_file(path: &Path) -> Result<Mesh> {
 
             let material = gltf_primitive.material();
             primitive.material_index = material.index().map_or(0, |i| i + 1);
+            primitive.double_sided = material.double_sided();
             let pbr = material.pbr_metallic_roughness();
             primitive.base_color_texture = pbr
                 .base_color_texture()

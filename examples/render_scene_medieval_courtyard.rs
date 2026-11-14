@@ -12,7 +12,7 @@ use heph_gl::{
     Lighting, Mesh, MeshVertexAttribute, Projection, Shader,
     math::{Mat4, Quat, Vec3},
     renderers::{
-        BufferUsage, CanvasOptions, CompareOp, DepthBias, FeatureRequest, FrontFace,
+        BufferUsage, CanvasOptions, CompareOp, CullingMode, DepthBias, FeatureRequest, FrontFace,
         GraphicsPipelineOptions, Renderer, RendererBuffer, RendererTexture, ResourceBinding,
         SamplerAddressMode, SamplerOptions, TextureFormat, TextureOptions,
     },
@@ -116,6 +116,7 @@ struct Draw {
     /// The base-color, metallic-roughness, and normal texture paths.
     textures: [PathBuf; 3],
     material_buffer: Box<dyn RendererBuffer>,
+    double_sided: bool,
 }
 
 /// Creates a texture from a DDS file that contains a block-compressed image and its mip levels.
@@ -157,6 +158,7 @@ fn create_draw(
     indices: &[u32],
     textures: [PathBuf; 3],
     material: [[f32; 4]; 2],
+    double_sided: bool,
 ) -> Draw {
     let mut vertex_buffer = renderer
         .create_buffer(std::mem::size_of_val(vertices), BufferUsage::Vertex)
@@ -184,6 +186,7 @@ fn create_draw(
         index_count: indices.len() as u32,
         textures,
         material_buffer,
+        double_sided,
     }
 }
 
@@ -230,27 +233,47 @@ fn example(
     .unwrap();
     // The shadow pass renders the scene from the sun into a depth-only canvas. Depth bias pushes
     // the stored depths away from the sun, so lit surfaces don't shadow themselves.
+    let shadow_pipeline_options = GraphicsPipelineOptions {
+        front_face: FrontFace::Clockwise,
+        culling: CullingMode::Back,
+        depth_only: true,
+        depth_bias: Some(DepthBias {
+            constant: 2.0,
+            slope: 2.5,
+            clamp: None,
+        }),
+        ..Default::default()
+    };
+    let pipeline_options = GraphicsPipelineOptions {
+        front_face: FrontFace::Clockwise,
+        culling: CullingMode::Back,
+        ..Default::default()
+    };
     let mut shadow_pipeline = renderer
         .create_graphics_pipeline(
             &[&vert_shader, &depth_frag_shader],
-            &GraphicsPipelineOptions {
-                front_face: FrontFace::Clockwise,
-                depth_only: true,
-                depth_bias: Some(DepthBias {
-                    constant: 2.0,
-                    slope: 2.5,
-                    clamp: None,
-                }),
-                ..Default::default()
-            },
+            &shadow_pipeline_options,
         )
         .unwrap();
     let mut pipeline = renderer
+        .create_graphics_pipeline(&[&vert_shader, &frag_shader], &pipeline_options)
+        .unwrap();
+    // Double-sided parts are visible from behind, so their back faces aren't culled.
+    let mut double_sided_shadow_pipeline = renderer
+        .create_graphics_pipeline(
+            &[&vert_shader, &depth_frag_shader],
+            &GraphicsPipelineOptions {
+                culling: CullingMode::Disabled,
+                ..shadow_pipeline_options
+            },
+        )
+        .unwrap();
+    let mut double_sided_pipeline = renderer
         .create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
-                front_face: FrontFace::Clockwise,
-                ..Default::default()
+                culling: CullingMode::Disabled,
+                ..pipeline_options
             },
         )
         .unwrap();
@@ -332,6 +355,7 @@ fn example(
         &[0, 2, 1, 0, 3, 2],
         floor_textures,
         [[1.0, 1.0, 1.0, 1.0], [1.0, 0.0, 1.0, 1.0]],
+        true,
     ));
 
     for placement in &PLACEMENTS {
@@ -410,6 +434,7 @@ fn example(
                         f32::from(roughness_only),
                     ],
                 ],
+                part.is_double_sided(),
             ));
         }
     }
@@ -547,7 +572,10 @@ fn example(
             renderer
                 .record_canvas_command(
                     shadow_canvas.as_mut(),
-                    shadow_pipeline.as_mut(),
+                    match draw.double_sided {
+                        true => double_sided_shadow_pipeline.as_mut(),
+                        false => shadow_pipeline.as_mut(),
+                    },
                     Some(draw.index_buffer.as_ref()),
                     &vertex_bindings,
                     &[&resource_bindings],
@@ -583,7 +611,10 @@ fn example(
             ];
             renderer
                 .record_graphics_command(
-                    pipeline.as_mut(),
+                    match draw.double_sided {
+                        true => double_sided_pipeline.as_mut(),
+                        false => pipeline.as_mut(),
+                    },
                     Some(draw.index_buffer.as_ref()),
                     &vertex_bindings,
                     &[&resource_bindings],
@@ -628,6 +659,12 @@ fn example(
         .unwrap();
     renderer
         .destroy_graphics_pipeline(shadow_pipeline.as_mut())
+        .unwrap();
+    renderer
+        .destroy_graphics_pipeline(double_sided_pipeline.as_mut())
+        .unwrap();
+    renderer
+        .destroy_graphics_pipeline(double_sided_shadow_pipeline.as_mut())
         .unwrap();
 
     std::process::exit(0);

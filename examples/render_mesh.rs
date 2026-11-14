@@ -10,8 +10,8 @@ use heph_gl::{
     Lighting, Mesh, MeshVertexAttribute, Projection, Shader, Transform,
     math::{Mat4, Quat, Vec3},
     renderers::{
-        BufferUsage, FeatureRequest, FrontFace, GraphicsPipelineOptions, Renderer, ResourceBinding,
-        SamplerAddressMode, SamplerOptions, TextureFormat, TextureOptions,
+        BufferUsage, CullingMode, FeatureRequest, FrontFace, GraphicsPipelineOptions, Renderer,
+        ResourceBinding, SamplerAddressMode, SamplerOptions, TextureFormat, TextureOptions,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -48,12 +48,21 @@ fn example(
         Shader::from_file(format!("{}/{}", utils::SHADERS_DIR, "camera_vert.spv")).unwrap();
     let frag_shader =
         Shader::from_file(format!("{}/{}", utils::SHADERS_DIR, "mesh_frag.spv")).unwrap();
+    let pipeline_options = GraphicsPipelineOptions {
+        front_face: FrontFace::Clockwise,
+        culling: CullingMode::Back,
+        ..Default::default()
+    };
     let mut pipeline = renderer
+        .create_graphics_pipeline(&[&vert_shader, &frag_shader], &pipeline_options)
+        .unwrap();
+    // Double-sided parts are visible from behind, so their back faces aren't culled.
+    let mut double_sided_pipeline = renderer
         .create_graphics_pipeline(
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
-                front_face: FrontFace::Clockwise,
-                ..Default::default()
+                culling: CullingMode::Disabled,
+                ..pipeline_options
             },
         )
         .unwrap();
@@ -219,6 +228,7 @@ fn example(
             indices.len() as u32,
             part_textures,
             material_buffer,
+            part.is_double_sided(),
         ));
     }
 
@@ -246,7 +256,7 @@ fn example(
 
     let part_texture_handles: Vec<_> = part_buffers
         .iter()
-        .map(|(_, _, _, uris, _)| uris.each_ref().map(|uri| &textures[uri]))
+        .map(|(_, _, _, uris, _, _)| uris.each_ref().map(|uri| &textures[uri]))
         .collect();
 
     let mut frame_index = 0;
@@ -269,7 +279,7 @@ fn example(
             .unwrap();
 
         for (
-            (vertex_buffer, index_buffer, index_count, _, material_buffer),
+            (vertex_buffer, index_buffer, index_count, _, material_buffer, double_sided),
             [texture, arm_texture, normal_texture],
         ) in part_buffers.iter().zip(&part_texture_handles)
         {
@@ -289,7 +299,10 @@ fn example(
             ];
             renderer
                 .record_graphics_command(
-                    pipeline.as_mut(),
+                    match double_sided {
+                        true => double_sided_pipeline.as_mut(),
+                        false => pipeline.as_mut(),
+                    },
                     Some(index_buffer.as_ref()),
                     &vertex_bindings,
                     &[&resource_bindings],
@@ -314,7 +327,7 @@ fn example(
         renderer.destroy_texture(texture.as_mut()).unwrap();
     }
 
-    for (vertex_buffer, index_buffer, _, _, material_buffer) in &mut part_buffers {
+    for (vertex_buffer, index_buffer, _, _, material_buffer, _) in &mut part_buffers {
         renderer.destroy_buffer(material_buffer.as_mut()).unwrap();
         renderer.destroy_buffer(vertex_buffer.as_mut()).unwrap();
         renderer.destroy_buffer(index_buffer.as_mut()).unwrap();
@@ -324,6 +337,9 @@ fn example(
     }
     renderer
         .destroy_graphics_pipeline(pipeline.as_mut())
+        .unwrap();
+    renderer
+        .destroy_graphics_pipeline(double_sided_pipeline.as_mut())
         .unwrap();
 
     std::process::exit(0);

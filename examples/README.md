@@ -164,7 +164,7 @@ flowchart TD
     C -- No --> D
 ```
 
-### [render_textures](render_textures.rs)
+### [render_texture](render_texture.rs)
 
 Applies textures and material properties to geometry. Uploads image data to the GPU, configures
 sampling, and binds textures alongside geometry and material uniforms when recording draws.
@@ -219,7 +219,7 @@ flowchart TD
     F -- Yes --> J[Wait for GPU completion and release resources]
 ```
 
-### [render_meshes](render_meshes.rs)
+### [render_mesh](render_mesh.rs)
 
 Loads a mesh and renders its parts with their geometry, textures, and materials. Uses a camera and
 object transforms to place the mesh in a scene, and stores transform updates in per-frame
@@ -239,7 +239,7 @@ flowchart TD
     F -- Yes --> J[Wait for GPU completion and release resources]
 ```
 
-### [render_animated_meshes](render_animated_meshes.rs)
+### [render_animated_mesh](render_animated_mesh.rs)
 
 Animates a skinned mesh using a skeleton and animation clips. Samples an animation at the current
 playback time, computes joint matrices, and updates GPU resources so the vertex shader can deform

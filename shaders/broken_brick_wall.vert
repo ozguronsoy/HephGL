@@ -9,7 +9,7 @@ layout(location = 1) out vec3 out_normal;
 layout(location = 2) out vec2 out_uv;
 layout(location = 3) out vec3 out_center;
 
-// Match the sphere vertex count and centers in render_textures.rs.
+// Match the sphere vertex count and centers in render_texture.rs.
 const int SPHERE_VERTEX_COUNT = 32 * 64 * 6;
 const float SPHERE_CENTERS_X[3] = float[](-1.2, -0.4, 0.8);
 

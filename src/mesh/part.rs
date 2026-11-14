@@ -117,6 +117,11 @@ impl<'a> MeshPart<'a> {
         &self.mesh.materials[self.primitive.material_index]
     }
 
+    /// Checks whether both faces of the part's triangles should be rendered.
+    pub fn is_double_sided(&self) -> bool {
+        self.primitive.double_sided
+    }
+
     /// Gets the skeleton joint controlling this part's rigid transform, if present.
     pub fn joint_index(&self) -> Option<usize> {
         self.primitive.joint_index
@@ -412,6 +417,23 @@ mod tests {
                 assert_eq!(&vertex[2..5], &positions[j * 3..j * 3 + 3]);
                 assert_eq!(&vertex[5..], &normals[j * 3..j * 3 + 3]);
             }
+        }
+    }
+
+    #[test]
+    fn test_is_double_sided() {
+        {
+            const FILE_PATH: &str = "assets/ship/ship_pinnace_1k.gltf";
+            let mesh = Mesh::from_file(FILE_PATH).unwrap();
+            assert!(mesh.parts().all(|part| part.is_double_sided()));
+        }
+
+        {
+            let mesh = Mesh {
+                primitives: vec![MeshPrimitive::default()],
+                ..Default::default()
+            };
+            assert!(!mesh.parts().next().unwrap().is_double_sided());
         }
     }
 
