@@ -20,6 +20,7 @@ use std::{
     cell::{Cell, Ref, RefCell},
     collections::{BTreeSet, HashMap, HashSet},
     ffi::CString,
+    mem::DropGuard,
     sync::Mutex,
     time::{Duration, Instant},
 };
@@ -260,7 +261,7 @@ impl Renderer for VulkanRenderer {
         self.main_thread_only()?;
         if self.entry.is_some() || self.instance.is_some() {
             return Err(Error::invalid_operation(
-                "VulkanRenderer is already initialized",
+                "The renderer is already initialized.",
             ));
         }
 
@@ -349,30 +350,49 @@ impl Renderer for VulkanRenderer {
             pp_enabled_layer_names: enabled_layer_names.as_ptr(),
             ..Default::default()
         };
+        let instance = DropGuard::new(
+            unsafe { entry.create_instance(&instance_create_info, None)? },
+            move |instance| unsafe {
+                instance.destroy_instance(None);
+            },
+        );
 
-        let instance = unsafe { entry.create_instance(&instance_create_info, None)? };
-
-        self.window_surface = Some(unsafe {
-            ash_window::create_surface(
-                &entry,
-                &instance,
-                options.display_handle,
-                options.window_handle,
-                None,
-            )?
-        });
-        self.window_surface_loader = Some(ash::khr::surface::Instance::new(&entry, &instance));
+        let window_surface = DropGuard::new(
+            (
+                ash::khr::surface::Instance::new(&entry, &instance),
+                unsafe {
+                    ash_window::create_surface(
+                        &entry,
+                        &instance,
+                        options.display_handle,
+                        options.window_handle,
+                        None,
+                    )?
+                },
+            ),
+            |(loader, surface)| unsafe {
+                loader.destroy_surface(surface, None);
+            },
+        );
 
         if options.debug {
             self.debug_utils_loader = Some(ash::ext::debug_utils::Instance::new(&entry, &instance));
-            if self.debugger.borrow().is_some() {
-                self.create_debug_messenger()?;
+            if self.debugger.borrow().is_some()
+                && let Err(error) = self.create_debug_messenger()
+            {
+                self.debug_utils_loader = None;
+                return Err(error);
             }
         }
+
         self.debug_enabled = options.debug;
 
         self.entry = Some(entry);
-        self.instance = Some(instance);
+        self.instance = Some(DropGuard::dismiss(instance));
+
+        let (window_surface_loader, window_surface) = DropGuard::dismiss(window_surface);
+        self.window_surface_loader = Some(window_surface_loader);
+        self.window_surface = Some(window_surface);
 
         Ok(())
     }
