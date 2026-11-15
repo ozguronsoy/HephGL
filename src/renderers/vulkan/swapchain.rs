@@ -1,3 +1,5 @@
+use std::mem::DropGuard;
+
 use ash::vk::{
     AccessFlags, ColorSpaceKHR, CompositeAlphaFlagsKHR, Extent3D, ImageAspectFlags, ImageCopy,
     ImageLayout, ImageSubresourceLayers, ImageUsageFlags, PipelineStageFlags, PresentModeKHR,
@@ -42,6 +44,8 @@ impl SwapchainContext {
 impl VulkanRenderer {
     /// Creates the swapchain, images, and semaphores for the renderer.
     pub(super) fn create_swapchain(&mut self) -> Result<()> {
+        self.destroy_swapchain()?;
+
         let window_surface_loader = self
             .window_surface_loader
             .as_ref()
@@ -107,18 +111,15 @@ impl VulkanRenderer {
             ));
         }
 
-        self.destroy_swapchain()?;
         let device_context = self
             .device_context
             .as_mut()
             .ok_or(Error::invalid_operation("Device is not set."))?;
-        device_context.swapchain_context.format = format;
-        device_context.swapchain_context.extent = extent;
-
         let array_layer_count = self
             .settings
             .array_layer_count()
             .min(surface_capabilities.max_image_array_layers);
+
         // `0` means there is no limit for number of images.
         let requested_image_count = match surface_capabilities.max_image_count == 0 {
             true => frames_in_flight.max(surface_capabilities.min_image_count),
@@ -133,15 +134,24 @@ impl VulkanRenderer {
                 frames_in_flight
             )));
         }
+        if !device_context
+            .graphics_device
+            .supported_msaa_levels
+            .contains(&self.settings.msaa)
+        {
+            return Err(Error::invalid_argument(
+                "Requested MSAA sample count is not supported by the selected device.",
+            ));
+        }
 
         // Create the swapchain and semaphores.
         unsafe {
             let swapchain_create_info = SwapchainCreateInfoKHR::default()
                 .surface(window_surface)
                 .min_image_count(requested_image_count)
-                .image_format(device_context.swapchain_context.format)
+                .image_format(format)
                 .image_color_space(color_space)
-                .image_extent(device_context.swapchain_context.extent)
+                .image_extent(extent)
                 .image_array_layers(array_layer_count)
                 .image_usage(ImageUsageFlags::TRANSFER_DST)
                 .image_sharing_mode(SharingMode::EXCLUSIVE)
@@ -155,41 +165,65 @@ impl VulkanRenderer {
                     },
                 )
                 .clipped(true);
-            device_context.swapchain_context.swapchain = device_context
+            let swapchain = DropGuard::new(
+                device_context
+                    .swapchain_context
+                    .loader
+                    .create_swapchain(&swapchain_create_info, None)?,
+                |swapchain| {
+                    device_context
+                        .swapchain_context
+                        .loader
+                        .destroy_swapchain(swapchain, None);
+                },
+            );
+            let swapchain_images = device_context
                 .swapchain_context
                 .loader
-                .create_swapchain(&swapchain_create_info, None)?;
+                .get_swapchain_images(*swapchain)?;
 
-            device_context.swapchain_context.images = device_context
-                .swapchain_context
-                .loader
-                .get_swapchain_images(device_context.swapchain_context.swapchain)?;
-
-            let image_count = device_context.swapchain_context.images.len();
-            device_context.swapchain_context.semaphores = Vec::with_capacity(image_count);
+            let image_count = swapchain_images.len();
+            let mut image_available_semaphores =
+                DropGuard::new(Vec::with_capacity(image_count), |semaphores| {
+                    for semaphore in semaphores {
+                        device_context
+                            .logical_device
+                            .destroy_semaphore(semaphore, None);
+                    }
+                });
+            let mut render_finished_semaphores =
+                DropGuard::new(Vec::with_capacity(image_count), |semaphores| {
+                    for semaphore in semaphores {
+                        device_context
+                            .logical_device
+                            .destroy_semaphore(semaphore, None);
+                    }
+                });
             for _ in 0..image_count {
                 let semaphore_create_info = SemaphoreCreateInfo::default();
-                device_context.swapchain_context.semaphores.push((
+                image_available_semaphores.push(
                     device_context
                         .logical_device
                         .create_semaphore(&semaphore_create_info, None)?,
+                );
+                render_finished_semaphores.push(
                     device_context
                         .logical_device
                         .create_semaphore(&semaphore_create_info, None)?,
-                ));
+                );
             }
+
+            device_context.swapchain_context.swapchain = DropGuard::dismiss(swapchain);
+            device_context.swapchain_context.images = swapchain_images;
+            device_context.swapchain_context.semaphores =
+                DropGuard::dismiss(image_available_semaphores)
+                    .into_iter()
+                    .zip(DropGuard::dismiss(render_finished_semaphores))
+                    .collect();
         }
 
-        if !device_context
-            .graphics_device
-            .supported_msaa_levels
-            .contains(&self.settings.msaa)
-        {
-            return Err(Error::invalid_argument(
-                "Requested MSAA sample count is not supported by the selected device.",
-            ));
-        }
-
+        device_context.swapchain_context.format = format;
+        device_context.swapchain_context.extent = extent;
         device_context
             .swapchain_context
             .image_avaliable_semaphore_index = SwapchainContext::INVALID_INDEX;
