@@ -105,28 +105,19 @@ with the corresponding raw handles from your chosen windowing library. Shader pa
 the repository root, these shaders generate the triangle's vertices without vertex buffers.
 
 ```rust
-use heph_gl::{
-    renderers::{
-        Renderer,
-        settings::{GraphicsPipelineOptions, InitializeOptions},
-        vulkan::VulkanRenderer,
-    },
-    shader::Shader,
-};
-use renkrs::RGB;
-
 let mut renderer = VulkanRenderer::new();
 renderer.initialize(&InitializeOptions {
-        app_name: "Basic Triangle",
+        app_name: "Render Triangle",
         window_handle: <raw_window_handle>,
         display_handle: <raw_display_handle>,
-        api_version: VulkanRenderer::LATEST_API_VERSION,
+        api_version: LATEST_API_VERSION,
+        debug: false,
     }).unwrap();
-renderer.set_device(VulkanRenderer::DEFAULT_DEVICE, &[]).unwrap();
+renderer.set_device(DEFAULT_DEVICE, &[]).unwrap();
 
 let vert_shader = Shader::from_file("shaders/shapes/basic_triangle_vert.spv").unwrap();
 let frag_shader = Shader::from_file("shaders/shapes/basic_triangle_frag.spv").unwrap();
-let pipeline = renderer.create_graphics_pipeline(
+let mut pipeline = renderer.create_graphics_pipeline(
         &[&vert_shader, &frag_shader],
         &GraphicsPipelineOptions::default(),
     ).unwrap();
@@ -135,12 +126,12 @@ drop(frag_shader);
 
 renderer.begin_frame().unwrap();
 renderer.clear(RGB::default()).unwrap();
-// Three vertices, one instance.
-renderer.record_graphics_command(&pipeline, &[], 3, 1).unwrap();
+// No index buffer, vertex bindings or binding sets. Three vertices, one instance.
+renderer.record_graphics_command(pipeline.as_mut(), None, &[], &[], 3, 1).unwrap();
 renderer.end_frame().unwrap();
 
 renderer.wait_idle().unwrap();
-renderer.destroy_graphics_pipeline(&pipeline).unwrap();
+renderer.destroy_graphics_pipeline(pipeline.as_mut()).unwrap();
 ```
 
 Check out the [examples directory](examples/) for more examples and flowcharts.
