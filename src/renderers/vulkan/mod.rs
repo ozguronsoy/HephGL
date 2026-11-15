@@ -20,6 +20,7 @@ use std::{
     cell::{Cell, Ref, RefCell},
     collections::{BTreeSet, HashMap, HashSet},
     ffi::CString,
+    mem::DropGuard,
     sync::Mutex,
     time::{Duration, Instant},
 };
@@ -260,7 +261,7 @@ impl Renderer for VulkanRenderer {
         self.main_thread_only()?;
         if self.entry.is_some() || self.instance.is_some() {
             return Err(Error::invalid_operation(
-                "VulkanRenderer is already initialized",
+                "The renderer is already initialized.",
             ));
         }
 
@@ -349,30 +350,44 @@ impl Renderer for VulkanRenderer {
             pp_enabled_layer_names: enabled_layer_names.as_ptr(),
             ..Default::default()
         };
+        let instance = DropGuard::new(
+            unsafe { entry.create_instance(&instance_create_info, None)? },
+            |instance| unsafe {
+                instance.destroy_instance(None);
+            },
+        );
 
-        let instance = unsafe { entry.create_instance(&instance_create_info, None)? };
-
-        self.window_surface = Some(unsafe {
-            ash_window::create_surface(
-                &entry,
-                &instance,
-                options.display_handle,
-                options.window_handle,
-                None,
-            )?
-        });
-        self.window_surface_loader = Some(ash::khr::surface::Instance::new(&entry, &instance));
+        let window_surface_loader = ash::khr::surface::Instance::new(&entry, &instance);
+        let window_surface = DropGuard::new(
+            unsafe {
+                ash_window::create_surface(
+                    &entry,
+                    &instance,
+                    options.display_handle,
+                    options.window_handle,
+                    None,
+                )?
+            },
+            |surface| unsafe {
+                window_surface_loader.destroy_surface(surface, None);
+            },
+        );
 
         if options.debug {
             self.debug_utils_loader = Some(ash::ext::debug_utils::Instance::new(&entry, &instance));
-            if self.debugger.borrow().is_some() {
-                self.create_debug_messenger()?;
+            if self.debugger.borrow().is_some()
+                && let Err(error) = self.create_debug_messenger()
+            {
+                self.debug_utils_loader = None;
+                return Err(error);
             }
         }
         self.debug_enabled = options.debug;
 
         self.entry = Some(entry);
-        self.instance = Some(instance);
+        self.instance = Some(DropGuard::dismiss(instance));
+        self.window_surface = Some(DropGuard::dismiss(window_surface));
+        self.window_surface_loader = Some(window_surface_loader);
 
         Ok(())
     }
@@ -758,8 +773,12 @@ impl Renderer for VulkanRenderer {
             device_create_info = device_create_info.push_next(&mut vulkan_13_features);
         }
         device_create_info = device_create_info.push_next(&mut physical_features2);
-        let logical_device =
-            unsafe { instance.create_device(physical_device, &device_create_info, None)? };
+        let logical_device = DropGuard::new(
+            unsafe { instance.create_device(physical_device, &device_create_info, None)? },
+            |logical_device| unsafe {
+                logical_device.destroy_device(None);
+            },
+        );
 
         let mut extracted_queue_counts: HashMap<u32, u32> = HashMap::new();
         let mut get_next_queue = |family_index: u32, max_queues: u32| {
@@ -835,7 +854,7 @@ impl Renderer for VulkanRenderer {
             display_canvas: None,
 
             physical_device,
-            logical_device,
+            logical_device: DropGuard::dismiss(logical_device),
             supports_timeline_semaphore,
             supports_dynamic_rendering,
             sampling_stages,
@@ -1126,15 +1145,20 @@ impl Renderer for VulkanRenderer {
                 | vk_mem::AllocationCreateFlags::HOST_ACCESS_SEQUENTIAL_WRITE,
             ..Default::default()
         };
-        let (staging_buffer, mut staging_allocation) = unsafe {
-            device_context
-                .vma_allocator
-                .create_buffer(&staging_buffer_info, &staging_allocation_info)?
-        };
+        let staging = DropGuard::new(
+            unsafe {
+                device_context
+                    .vma_allocator
+                    .create_buffer(&staging_buffer_info, &staging_allocation_info)?
+            },
+            |(buffer, mut allocation)| unsafe {
+                device_context
+                    .vma_allocator
+                    .destroy_buffer(buffer, &mut allocation);
+            },
+        );
         unsafe {
-            let allocation_info = device_context
-                .vma_allocator
-                .get_allocation_info(&staging_allocation);
+            let allocation_info = device_context.vma_allocator.get_allocation_info(&staging.1);
             let mut data_offset = 0;
             for (copy_region, &size) in copy_regions.iter().zip(&mip_level_sizes) {
                 std::ptr::copy_nonoverlapping(
@@ -1146,18 +1170,9 @@ impl Renderer for VulkanRenderer {
                 data_offset += size;
             }
         }
-        if let Err(error) = device_context.vma_allocator.flush_allocation(
-            &staging_allocation,
-            0,
-            staging_size as u64,
-        ) {
-            unsafe {
-                device_context
-                    .vma_allocator
-                    .destroy_buffer(staging_buffer, &mut staging_allocation);
-            }
-            return Err(error.into());
-        }
+        device_context
+            .vma_allocator
+            .flush_allocation(&staging.1, 0, staging_size as u64)?;
 
         let image_info = ash::vk::ImageCreateInfo::default()
             .image_type(ash::vk::ImageType::TYPE_2D)
@@ -1182,23 +1197,20 @@ impl Renderer for VulkanRenderer {
             usage: vk_mem::MemoryUsage::AutoPreferDevice,
             ..Default::default()
         };
-        let (image, mut image_allocation) = match unsafe {
-            device_context
-                .vma_allocator
-                .create_image(&image_info, &image_allocation_info)
-        } {
-            Ok(result) => result,
-            Err(error) => {
-                unsafe {
-                    device_context
-                        .vma_allocator
-                        .destroy_buffer(staging_buffer, &mut staging_allocation);
-                }
-                return Err(error.into());
-            }
-        };
+        let image = DropGuard::new(
+            unsafe {
+                device_context
+                    .vma_allocator
+                    .create_image(&image_info, &image_allocation_info)?
+            },
+            |(image, mut allocation)| unsafe {
+                device_context
+                    .vma_allocator
+                    .destroy_image(image, &mut allocation);
+            },
+        );
         let image_view_info = ash::vk::ImageViewCreateInfo::default()
-            .image(image)
+            .image(image.0)
             .view_type(ash::vk::ImageViewType::TYPE_2D)
             .format(vk_format)
             .subresource_range(
@@ -1209,29 +1221,23 @@ impl Renderer for VulkanRenderer {
                     .base_array_layer(0)
                     .layer_count(1),
             );
-        let image_view = match unsafe {
-            device_context
-                .logical_device
-                .create_image_view(&image_view_info, None)
-        } {
-            Ok(image_view) => image_view,
-            Err(error) => {
-                unsafe {
-                    device_context
-                        .vma_allocator
-                        .destroy_image(image, &mut image_allocation);
-                    device_context
-                        .vma_allocator
-                        .destroy_buffer(staging_buffer, &mut staging_allocation);
-                }
-                return Err(error.into());
-            }
-        };
+        let image_view = DropGuard::new(
+            unsafe {
+                device_context
+                    .logical_device
+                    .create_image_view(&image_view_info, None)?
+            },
+            |image_view| unsafe {
+                device_context
+                    .logical_device
+                    .destroy_image_view(image_view, None);
+            },
+        );
 
         Self::transition_image_layout(
             &device_context.logical_device,
             current_frame.base.command_buffer,
-            image,
+            image.0,
             ash::vk::ImageLayout::UNDEFINED,
             ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             ash::vk::AccessFlags::empty(),
@@ -1247,8 +1253,8 @@ impl Renderer for VulkanRenderer {
         unsafe {
             device_context.logical_device.cmd_copy_buffer_to_image(
                 current_frame.base.command_buffer,
-                staging_buffer,
-                image,
+                staging.0,
+                image.0,
                 ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                 &copy_regions,
             );
@@ -1266,7 +1272,7 @@ impl Renderer for VulkanRenderer {
                 .new_layout(ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                 .src_queue_family_index(device_context.transfer_queue_context.queue_family_index)
                 .dst_queue_family_index(device_context.graphics_queue_context.queue_family_index)
-                .image(image)
+                .image(image.0)
                 .subresource_range(
                     ash::vk::ImageSubresourceRange::default()
                         .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
@@ -1332,7 +1338,7 @@ impl Renderer for VulkanRenderer {
                 Self::transition_image_layout(
                     &device_context.logical_device,
                     command_buffer,
-                    image,
+                    image.0,
                     ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                     ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                     ash::vk::AccessFlags::TRANSFER_WRITE,
@@ -1384,9 +1390,9 @@ impl Renderer for VulkanRenderer {
                 unsafe {
                     device_context.logical_device.cmd_blit_image(
                         command_buffer,
-                        image,
+                        image.0,
                         ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                        image,
+                        image.0,
                         ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                         std::slice::from_ref(&blit),
                         ash::vk::Filter::LINEAR,
@@ -1396,7 +1402,7 @@ impl Renderer for VulkanRenderer {
                 Self::transition_image_layout(
                     &device_context.logical_device,
                     command_buffer,
-                    image,
+                    image.0,
                     ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                     ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
                     ash::vk::AccessFlags::TRANSFER_READ,
@@ -1418,7 +1424,7 @@ impl Renderer for VulkanRenderer {
         Self::transition_image_layout(
             &device_context.logical_device,
             command_buffer,
-            image,
+            image.0,
             ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             ash::vk::AccessFlags::TRANSFER_WRITE,
@@ -1432,6 +1438,7 @@ impl Renderer for VulkanRenderer {
             1,
         );
 
+        let (staging_buffer, staging_allocation) = DropGuard::dismiss(staging);
         current_frame.transfer_buffers.push(VulkanBuffer {
             buffer: staging_buffer,
             vma_allocation: staging_allocation,
@@ -1440,6 +1447,8 @@ impl Renderer for VulkanRenderer {
         });
         current_frame.base.recorded = true;
 
+        let (image, image_allocation) = DropGuard::dismiss(image);
+        let image_view = DropGuard::dismiss(image_view);
         Ok(Box::new(VulkanTexture {
             image,
             image_view,
@@ -1537,20 +1546,6 @@ impl Renderer for VulkanRenderer {
     }
 
     fn create_compute_pipeline(&self, shader: &Shader) -> Result<Box<dyn RendererComputePipeline>> {
-        struct ShaderModuleGuard<'a> {
-            module: ash::vk::ShaderModule,
-            device_context: &'a DeviceContext,
-        }
-        impl<'a> Drop for ShaderModuleGuard<'a> {
-            fn drop(&mut self) {
-                unsafe {
-                    self.device_context
-                        .logical_device
-                        .destroy_shader_module(self.module, None);
-                }
-            }
-        }
-
         let device_context = self
             .device_context
             .as_ref()
@@ -1563,14 +1558,18 @@ impl Renderer for VulkanRenderer {
                 shader.file_path
             )));
         }
-        let shader_module_guard = ShaderModuleGuard {
-            module: unsafe {
+        let shader_module = DropGuard::new(
+            unsafe {
                 device_context
                     .logical_device
                     .create_shader_module(&ShaderModuleCreateInfo::default().code(code_u32), None)?
             },
-            device_context,
-        };
+            |shader_module| unsafe {
+                device_context
+                    .logical_device
+                    .destroy_shader_module(shader_module, None);
+            },
+        );
         let shader_stage = shader.metadata.stage.into();
 
         let mut binding_sets = vec![
@@ -1587,10 +1586,19 @@ impl Renderer for VulkanRenderer {
             );
         }
 
-        let mut descriptor_layouts = Vec::with_capacity(binding_sets.len());
+        let mut descriptor_set_layouts = DropGuard::new(
+            Vec::with_capacity(binding_sets.len()),
+            |descriptor_set_layouts| unsafe {
+                for descriptor_set_layout in descriptor_set_layouts {
+                    device_context
+                        .logical_device
+                        .destroy_descriptor_set_layout(descriptor_set_layout, None);
+                }
+            },
+        );
         for binding_set in &binding_sets {
             let layout_info = DescriptorSetLayoutCreateInfo::default().bindings(binding_set);
-            descriptor_layouts.push(unsafe {
+            descriptor_set_layouts.push(unsafe {
                 device_context
                     .logical_device
                     .create_descriptor_set_layout(&layout_info, None)?
@@ -1598,21 +1606,27 @@ impl Renderer for VulkanRenderer {
         }
 
         let pipeline_layout_info =
-            PipelineLayoutCreateInfo::default().set_layouts(&descriptor_layouts);
-        let layout = unsafe {
-            device_context
-                .logical_device
-                .create_pipeline_layout(&pipeline_layout_info, None)?
-        };
+            PipelineLayoutCreateInfo::default().set_layouts(&descriptor_set_layouts);
+        let layout = DropGuard::new(
+            unsafe {
+                device_context
+                    .logical_device
+                    .create_pipeline_layout(&pipeline_layout_info, None)?
+            },
+            |layout| unsafe {
+                device_context
+                    .logical_device
+                    .destroy_pipeline_layout(layout, None);
+            },
+        );
 
         let shader_entry_name = CString::new(shader.metadata.entry_name.clone())?;
         let stage_info = PipelineShaderStageCreateInfo::default()
             .stage(shader_stage)
-            .module(shader_module_guard.module)
+            .module(*shader_module)
             .name(&shader_entry_name);
-
         let compute_info = ComputePipelineCreateInfo::default()
-            .layout(layout)
+            .layout(*layout)
             .stage(stage_info);
         let pipeline = unsafe {
             device_context.logical_device.create_compute_pipelines(
@@ -1624,8 +1638,8 @@ impl Renderer for VulkanRenderer {
 
         Ok(Box::new(VulkanComputePipeline {
             pipeline,
-            layout,
-            descriptor_layouts,
+            layout: DropGuard::dismiss(layout),
+            descriptor_layouts: DropGuard::dismiss(descriptor_set_layouts),
             descriptor_binding_counts: binding_sets.iter().map(Vec::len).collect(),
             descriptor_set_cache: DescriptorSetCache::new(),
         }))
@@ -1780,7 +1794,7 @@ impl Renderer for VulkanRenderer {
             .ok_or(Error::invalid_operation("Renderer is not initialized"))?;
         let device_context = self
             .device_context
-            .as_ref()
+            .as_mut()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
         {
@@ -1830,26 +1844,19 @@ impl Renderer for VulkanRenderer {
                 layer_count,
             )?),
         };
-
-        let device_context = self
-            .device_context
-            .as_mut()
-            .ok_or(Error::invalid_operation("Device is not set."))?;
-        let rendering = device_context
-            .rendering
-            .as_mut()
-            .ok_or(Error::invalid_operation("Device is not set."))?;
-        let current_frame = &mut device_context.graphics_queue_context.frames
-            [device_context.current_frame_index]
-            .base
-            .thread_contexts[thread_context_index];
-        if let Err(error) = Self::clear_new_canvas(
-            &device_context.logical_device,
-            rendering.as_mut(),
-            current_frame,
-            canvas.as_ref(),
-            device_context.sampling_stages,
-        ) {
+        if let Err(error) = match device_context.rendering.as_mut() {
+            Some(rendering) => Self::clear_new_canvas(
+                &device_context.logical_device,
+                rendering.as_mut(),
+                &mut device_context.graphics_queue_context.frames
+                    [device_context.current_frame_index]
+                    .base
+                    .thread_contexts[thread_context_index],
+                canvas.as_ref(),
+                device_context.sampling_stages,
+            ),
+            None => Err(Error::invalid_operation("Device is not set.")),
+        } {
             canvas.destroy(device_context);
             return Err(error);
         }
@@ -2084,13 +2091,13 @@ impl Renderer for VulkanRenderer {
                 height: extent.height,
                 depth_only: false,
             })?;
-            let display_canvas = display_canvas
-                .downcast::<VulkanColorCanvas>()
-                .map_err(|_| Error::fail("Failed to create the display canvas."))?;
-            self.device_context
-                .as_mut()
-                .ok_or(Error::invalid_operation("Device is not set."))?
-                .display_canvas = Some(*display_canvas);
+            let Ok(display_canvas) = display_canvas.downcast::<VulkanColorCanvas>() else {
+                unreachable!();
+            };
+            let Some(device_context) = self.device_context.as_mut() else {
+                unreachable!();
+            };
+            device_context.display_canvas = Some(*display_canvas);
         }
 
         Ok(())

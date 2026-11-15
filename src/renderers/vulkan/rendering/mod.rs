@@ -1,5 +1,4 @@
 mod dynamic_rendering;
-mod lifetime_guards;
 mod render_pass_rendering;
 
 use std::collections::HashSet;

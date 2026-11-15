@@ -1,3 +1,5 @@
+use std::mem::DropGuard;
+
 use ash::vk::{Fence, SubmitInfo};
 
 use crate::{Result, renderers::vulkan::sync::VulkanFrameSync};
@@ -17,14 +19,21 @@ impl VulkanFrameSync for FenceFrameSync {
     where
         Self: Sized,
     {
-        let mut instance = FenceFrameSync {
-            fences: vec![(Fence::default(), false); frames_in_flight],
-        };
+        let mut fences = DropGuard::new(Vec::with_capacity(frames_in_flight), |fences| unsafe {
+            for (fence, _) in fences {
+                device.destroy_fence(fence, None);
+            }
+        });
         let fence_create_info = ash::vk::FenceCreateInfo::default();
-        for (fence, _) in &mut instance.fences {
-            *fence = unsafe { device.create_fence(&fence_create_info, None)? };
+        for _ in 0..frames_in_flight {
+            fences.push((
+                unsafe { device.create_fence(&fence_create_info, None)? },
+                false,
+            ));
         }
-        Ok(instance)
+        Ok(FenceFrameSync {
+            fences: DropGuard::dismiss(fences),
+        })
     }
     fn submit(
         &mut self,
