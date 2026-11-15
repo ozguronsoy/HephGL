@@ -327,7 +327,13 @@ impl VulkanRendering for RenderPassRendering {
 
         let input_assembly = PipelineInputAssemblyStateCreateInfo::default()
             .topology(PrimitiveTopology::from(options.topology))
-            .primitive_restart_enable(false);
+            // Metal cannot disable primitive restart for strips, so it is enabled on every
+            // platform for consistent behavior.
+            .primitive_restart_enable(matches!(
+                options.topology,
+                crate::renderers::PrimitiveTopology::LineStrip
+                    | crate::renderers::PrimitiveTopology::TriangleStrip
+            ));
 
         // Viewport and scissor are dynamic so pipelines don't need to be recreated when the
         // swapchain extent changes.
