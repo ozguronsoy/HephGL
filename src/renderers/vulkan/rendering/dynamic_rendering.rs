@@ -1,4 +1,4 @@
-use std::{collections::HashSet, ffi::CString};
+use std::{collections::HashSet, ffi::CString, mem::DropGuard};
 
 use ash::vk::{
     AttachmentLoadOp, AttachmentStoreOp, CommandBuffer, DescriptorSetLayoutBinding,
@@ -23,10 +23,7 @@ use crate::{
         vulkan::{
             canvas::{VulkanColorCanvas, VulkanDepthCanvas},
             pipeline::VulkanGraphicsPipeline,
-            rendering::{
-                VulkanRendering,
-                lifetime_guards::{PipelineResources, ShaderModules},
-            },
+            rendering::VulkanRendering,
             resources::DescriptorSetCache,
             swapchain::SwapchainContext,
         },
@@ -108,10 +105,12 @@ impl VulkanRendering for DynamicRendering {
         }
 
         // Create shader stage infos.
-        let mut shader_modules = ShaderModules {
-            device,
-            modules: Vec::with_capacity(shaders.len()),
-        };
+        let mut shader_modules =
+            DropGuard::new(Vec::with_capacity(shaders.len()), |shader_modules| unsafe {
+                for shader_module in shader_modules {
+                    device.destroy_shader_module(shader_module, None);
+                }
+            });
         let mut entry_names = Vec::with_capacity(shaders.len());
         let mut shader_stages = Vec::with_capacity(shaders.len());
         for shader in shaders {
@@ -170,7 +169,7 @@ impl VulkanRendering for DynamicRendering {
                     ));
                 }
             }
-            shader_modules.modules.push(unsafe {
+            shader_modules.push(unsafe {
                 device.create_shader_module(&ShaderModuleCreateInfo::default().code(code), None)?
             });
             shader_stages.push(shader_stage);
@@ -192,7 +191,7 @@ impl VulkanRendering for DynamicRendering {
         }
         let stage_infos = shader_stages
             .iter()
-            .zip(&shader_modules.modules)
+            .zip(shader_modules.iter())
             .zip(&entry_names)
             .map(|((stage, module), entry_name)| {
                 PipelineShaderStageCreateInfo::default()
@@ -242,15 +241,18 @@ impl VulkanRendering for DynamicRendering {
             }
         }
 
-        let mut resources = PipelineResources {
-            device,
-            layout: None,
-            descriptor_layouts: Vec::with_capacity(binding_sets.len()),
-        };
+        let mut descriptor_set_layouts = DropGuard::new(
+            Vec::with_capacity(binding_sets.len()),
+            |descriptor_set_layouts| unsafe {
+                for descriptor_set_layout in descriptor_set_layouts {
+                    device.destroy_descriptor_set_layout(descriptor_set_layout, None);
+                }
+            },
+        );
         let descriptor_binding_counts = binding_sets.iter().map(Vec::len).collect();
         for binding_set in &mut binding_sets {
             binding_set.sort_by_key(|binding| binding.binding);
-            resources.descriptor_layouts.push(unsafe {
+            descriptor_set_layouts.push(unsafe {
                 device.create_descriptor_set_layout(
                     &DescriptorSetLayoutCreateInfo::default().bindings(binding_set),
                     None,
@@ -259,10 +261,13 @@ impl VulkanRendering for DynamicRendering {
         }
 
         let pipeline_layout_info =
-            PipelineLayoutCreateInfo::default().set_layouts(&resources.descriptor_layouts);
-        let pipeline_layout =
-            unsafe { device.create_pipeline_layout(&pipeline_layout_info, None)? };
-        resources.layout = Some(pipeline_layout);
+            PipelineLayoutCreateInfo::default().set_layouts(&descriptor_set_layouts);
+        let pipeline_layout = DropGuard::new(
+            unsafe { device.create_pipeline_layout(&pipeline_layout_info, None)? },
+            |pipeline_layout| unsafe {
+                device.destroy_pipeline_layout(pipeline_layout, None);
+            },
+        );
 
         let vertex_shader = shaders
             .iter()
@@ -386,7 +391,7 @@ impl VulkanRendering for DynamicRendering {
             .depth_stencil_state(&depth_stencil)
             .color_blend_state(&color_blend)
             .dynamic_state(&dynamic_state)
-            .layout(pipeline_layout)
+            .layout(*pipeline_layout)
             .render_pass(ash::vk::RenderPass::null())
             .push_next(&mut rendering_info);
         if let Some(tessellation_state) = &tessellation_state {
@@ -395,12 +400,10 @@ impl VulkanRendering for DynamicRendering {
         let pipeline = unsafe {
             device.create_graphics_pipelines(PipelineCache::null(), &[pipeline_info], None)?[0]
         };
-        resources.layout = None;
-        let descriptor_layouts = std::mem::take(&mut resources.descriptor_layouts);
         Ok(VulkanGraphicsPipeline {
             pipeline,
-            layout: pipeline_layout,
-            descriptor_layouts,
+            layout: DropGuard::dismiss(pipeline_layout),
+            descriptor_layouts: DropGuard::dismiss(descriptor_set_layouts),
             descriptor_binding_counts,
             descriptor_set_cache: DescriptorSetCache::new(),
             depth_only: options.depth_only,
