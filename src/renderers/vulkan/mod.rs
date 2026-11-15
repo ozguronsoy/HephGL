@@ -1546,20 +1546,6 @@ impl Renderer for VulkanRenderer {
     }
 
     fn create_compute_pipeline(&self, shader: &Shader) -> Result<Box<dyn RendererComputePipeline>> {
-        struct ShaderModuleGuard<'a> {
-            module: ash::vk::ShaderModule,
-            device_context: &'a DeviceContext,
-        }
-        impl<'a> Drop for ShaderModuleGuard<'a> {
-            fn drop(&mut self) {
-                unsafe {
-                    self.device_context
-                        .logical_device
-                        .destroy_shader_module(self.module, None);
-                }
-            }
-        }
-
         let device_context = self
             .device_context
             .as_ref()
@@ -1572,14 +1558,18 @@ impl Renderer for VulkanRenderer {
                 shader.file_path
             )));
         }
-        let shader_module_guard = ShaderModuleGuard {
-            module: unsafe {
+        let shader_module = DropGuard::new(
+            unsafe {
                 device_context
                     .logical_device
                     .create_shader_module(&ShaderModuleCreateInfo::default().code(code_u32), None)?
             },
-            device_context,
-        };
+            |shader_module| unsafe {
+                device_context
+                    .logical_device
+                    .destroy_shader_module(shader_module, None);
+            },
+        );
         let shader_stage = shader.metadata.stage.into();
 
         let mut binding_sets = vec![
@@ -1596,10 +1586,19 @@ impl Renderer for VulkanRenderer {
             );
         }
 
-        let mut descriptor_layouts = Vec::with_capacity(binding_sets.len());
+        let mut descriptor_set_layouts = DropGuard::new(
+            Vec::with_capacity(binding_sets.len()),
+            |descriptor_set_layouts| unsafe {
+                for descriptor_set_layout in descriptor_set_layouts {
+                    device_context
+                        .logical_device
+                        .destroy_descriptor_set_layout(descriptor_set_layout, None);
+                }
+            },
+        );
         for binding_set in &binding_sets {
             let layout_info = DescriptorSetLayoutCreateInfo::default().bindings(binding_set);
-            descriptor_layouts.push(unsafe {
+            descriptor_set_layouts.push(unsafe {
                 device_context
                     .logical_device
                     .create_descriptor_set_layout(&layout_info, None)?
@@ -1607,21 +1606,27 @@ impl Renderer for VulkanRenderer {
         }
 
         let pipeline_layout_info =
-            PipelineLayoutCreateInfo::default().set_layouts(&descriptor_layouts);
-        let layout = unsafe {
-            device_context
-                .logical_device
-                .create_pipeline_layout(&pipeline_layout_info, None)?
-        };
+            PipelineLayoutCreateInfo::default().set_layouts(&descriptor_set_layouts);
+        let layout = DropGuard::new(
+            unsafe {
+                device_context
+                    .logical_device
+                    .create_pipeline_layout(&pipeline_layout_info, None)?
+            },
+            |layout| unsafe {
+                device_context
+                    .logical_device
+                    .destroy_pipeline_layout(layout, None);
+            },
+        );
 
         let shader_entry_name = CString::new(shader.metadata.entry_name.clone())?;
         let stage_info = PipelineShaderStageCreateInfo::default()
             .stage(shader_stage)
-            .module(shader_module_guard.module)
+            .module(*shader_module)
             .name(&shader_entry_name);
-
         let compute_info = ComputePipelineCreateInfo::default()
-            .layout(layout)
+            .layout(*layout)
             .stage(stage_info);
         let pipeline = unsafe {
             device_context.logical_device.create_compute_pipelines(
@@ -1633,8 +1638,8 @@ impl Renderer for VulkanRenderer {
 
         Ok(Box::new(VulkanComputePipeline {
             pipeline,
-            layout,
-            descriptor_layouts,
+            layout: DropGuard::dismiss(layout),
+            descriptor_layouts: DropGuard::dismiss(descriptor_set_layouts),
             descriptor_binding_counts: binding_sets.iter().map(Vec::len).collect(),
             descriptor_set_cache: DescriptorSetCache::new(),
         }))
