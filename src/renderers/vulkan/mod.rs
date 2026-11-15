@@ -352,7 +352,7 @@ impl Renderer for VulkanRenderer {
         };
         let instance = DropGuard::new(
             unsafe { entry.create_instance(&instance_create_info, None)? },
-            move |instance| unsafe {
+            |instance| unsafe {
                 instance.destroy_instance(None);
             },
         );
@@ -778,8 +778,12 @@ impl Renderer for VulkanRenderer {
             device_create_info = device_create_info.push_next(&mut vulkan_13_features);
         }
         device_create_info = device_create_info.push_next(&mut physical_features2);
-        let logical_device =
-            unsafe { instance.create_device(physical_device, &device_create_info, None)? };
+        let logical_device = DropGuard::new(
+            unsafe { instance.create_device(physical_device, &device_create_info, None)? },
+            |logical_device| unsafe {
+                logical_device.destroy_device(None);
+            },
+        );
 
         let mut extracted_queue_counts: HashMap<u32, u32> = HashMap::new();
         let mut get_next_queue = |family_index: u32, max_queues: u32| {
@@ -855,7 +859,7 @@ impl Renderer for VulkanRenderer {
             display_canvas: None,
 
             physical_device,
-            logical_device,
+            logical_device: DropGuard::dismiss(logical_device),
             supports_timeline_semaphore,
             supports_dynamic_rendering,
             sampling_stages,
