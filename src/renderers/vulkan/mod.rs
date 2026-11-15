@@ -357,21 +357,19 @@ impl Renderer for VulkanRenderer {
             },
         );
 
+        let window_surface_loader = ash::khr::surface::Instance::new(&entry, &instance);
         let window_surface = DropGuard::new(
-            (
-                ash::khr::surface::Instance::new(&entry, &instance),
-                unsafe {
-                    ash_window::create_surface(
-                        &entry,
-                        &instance,
-                        options.display_handle,
-                        options.window_handle,
-                        None,
-                    )?
-                },
-            ),
-            |(loader, surface)| unsafe {
-                loader.destroy_surface(surface, None);
+            unsafe {
+                ash_window::create_surface(
+                    &entry,
+                    &instance,
+                    options.display_handle,
+                    options.window_handle,
+                    None,
+                )?
+            },
+            |surface| unsafe {
+                window_surface_loader.destroy_surface(surface, None);
             },
         );
 
@@ -384,15 +382,12 @@ impl Renderer for VulkanRenderer {
                 return Err(error);
             }
         }
-
         self.debug_enabled = options.debug;
 
         self.entry = Some(entry);
         self.instance = Some(DropGuard::dismiss(instance));
-
-        let (window_surface_loader, window_surface) = DropGuard::dismiss(window_surface);
+        self.window_surface = Some(DropGuard::dismiss(window_surface));
         self.window_surface_loader = Some(window_surface_loader);
-        self.window_surface = Some(window_surface);
 
         Ok(())
     }
@@ -1150,15 +1145,20 @@ impl Renderer for VulkanRenderer {
                 | vk_mem::AllocationCreateFlags::HOST_ACCESS_SEQUENTIAL_WRITE,
             ..Default::default()
         };
-        let (staging_buffer, mut staging_allocation) = unsafe {
-            device_context
-                .vma_allocator
-                .create_buffer(&staging_buffer_info, &staging_allocation_info)?
-        };
+        let staging = DropGuard::new(
+            unsafe {
+                device_context
+                    .vma_allocator
+                    .create_buffer(&staging_buffer_info, &staging_allocation_info)?
+            },
+            |(buffer, mut allocation)| unsafe {
+                device_context
+                    .vma_allocator
+                    .destroy_buffer(buffer, &mut allocation);
+            },
+        );
         unsafe {
-            let allocation_info = device_context
-                .vma_allocator
-                .get_allocation_info(&staging_allocation);
+            let allocation_info = device_context.vma_allocator.get_allocation_info(&staging.1);
             let mut data_offset = 0;
             for (copy_region, &size) in copy_regions.iter().zip(&mip_level_sizes) {
                 std::ptr::copy_nonoverlapping(
@@ -1170,18 +1170,9 @@ impl Renderer for VulkanRenderer {
                 data_offset += size;
             }
         }
-        if let Err(error) = device_context.vma_allocator.flush_allocation(
-            &staging_allocation,
-            0,
-            staging_size as u64,
-        ) {
-            unsafe {
-                device_context
-                    .vma_allocator
-                    .destroy_buffer(staging_buffer, &mut staging_allocation);
-            }
-            return Err(error.into());
-        }
+        device_context
+            .vma_allocator
+            .flush_allocation(&staging.1, 0, staging_size as u64)?;
 
         let image_info = ash::vk::ImageCreateInfo::default()
             .image_type(ash::vk::ImageType::TYPE_2D)
@@ -1206,23 +1197,20 @@ impl Renderer for VulkanRenderer {
             usage: vk_mem::MemoryUsage::AutoPreferDevice,
             ..Default::default()
         };
-        let (image, mut image_allocation) = match unsafe {
-            device_context
-                .vma_allocator
-                .create_image(&image_info, &image_allocation_info)
-        } {
-            Ok(result) => result,
-            Err(error) => {
-                unsafe {
-                    device_context
-                        .vma_allocator
-                        .destroy_buffer(staging_buffer, &mut staging_allocation);
-                }
-                return Err(error.into());
-            }
-        };
+        let image = DropGuard::new(
+            unsafe {
+                device_context
+                    .vma_allocator
+                    .create_image(&image_info, &image_allocation_info)?
+            },
+            |(image, mut allocation)| unsafe {
+                device_context
+                    .vma_allocator
+                    .destroy_image(image, &mut allocation);
+            },
+        );
         let image_view_info = ash::vk::ImageViewCreateInfo::default()
-            .image(image)
+            .image(image.0)
             .view_type(ash::vk::ImageViewType::TYPE_2D)
             .format(vk_format)
             .subresource_range(
@@ -1233,29 +1221,23 @@ impl Renderer for VulkanRenderer {
                     .base_array_layer(0)
                     .layer_count(1),
             );
-        let image_view = match unsafe {
-            device_context
-                .logical_device
-                .create_image_view(&image_view_info, None)
-        } {
-            Ok(image_view) => image_view,
-            Err(error) => {
-                unsafe {
-                    device_context
-                        .vma_allocator
-                        .destroy_image(image, &mut image_allocation);
-                    device_context
-                        .vma_allocator
-                        .destroy_buffer(staging_buffer, &mut staging_allocation);
-                }
-                return Err(error.into());
-            }
-        };
+        let image_view = DropGuard::new(
+            unsafe {
+                device_context
+                    .logical_device
+                    .create_image_view(&image_view_info, None)?
+            },
+            |image_view| unsafe {
+                device_context
+                    .logical_device
+                    .destroy_image_view(image_view, None);
+            },
+        );
 
         Self::transition_image_layout(
             &device_context.logical_device,
             current_frame.base.command_buffer,
-            image,
+            image.0,
             ash::vk::ImageLayout::UNDEFINED,
             ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             ash::vk::AccessFlags::empty(),
@@ -1271,8 +1253,8 @@ impl Renderer for VulkanRenderer {
         unsafe {
             device_context.logical_device.cmd_copy_buffer_to_image(
                 current_frame.base.command_buffer,
-                staging_buffer,
-                image,
+                staging.0,
+                image.0,
                 ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                 &copy_regions,
             );
@@ -1290,7 +1272,7 @@ impl Renderer for VulkanRenderer {
                 .new_layout(ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                 .src_queue_family_index(device_context.transfer_queue_context.queue_family_index)
                 .dst_queue_family_index(device_context.graphics_queue_context.queue_family_index)
-                .image(image)
+                .image(image.0)
                 .subresource_range(
                     ash::vk::ImageSubresourceRange::default()
                         .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
@@ -1356,7 +1338,7 @@ impl Renderer for VulkanRenderer {
                 Self::transition_image_layout(
                     &device_context.logical_device,
                     command_buffer,
-                    image,
+                    image.0,
                     ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                     ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                     ash::vk::AccessFlags::TRANSFER_WRITE,
@@ -1408,9 +1390,9 @@ impl Renderer for VulkanRenderer {
                 unsafe {
                     device_context.logical_device.cmd_blit_image(
                         command_buffer,
-                        image,
+                        image.0,
                         ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                        image,
+                        image.0,
                         ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                         std::slice::from_ref(&blit),
                         ash::vk::Filter::LINEAR,
@@ -1420,7 +1402,7 @@ impl Renderer for VulkanRenderer {
                 Self::transition_image_layout(
                     &device_context.logical_device,
                     command_buffer,
-                    image,
+                    image.0,
                     ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                     ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
                     ash::vk::AccessFlags::TRANSFER_READ,
@@ -1442,7 +1424,7 @@ impl Renderer for VulkanRenderer {
         Self::transition_image_layout(
             &device_context.logical_device,
             command_buffer,
-            image,
+            image.0,
             ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             ash::vk::AccessFlags::TRANSFER_WRITE,
@@ -1456,6 +1438,7 @@ impl Renderer for VulkanRenderer {
             1,
         );
 
+        let (staging_buffer, staging_allocation) = DropGuard::dismiss(staging);
         current_frame.transfer_buffers.push(VulkanBuffer {
             buffer: staging_buffer,
             vma_allocation: staging_allocation,
@@ -1464,6 +1447,8 @@ impl Renderer for VulkanRenderer {
         });
         current_frame.base.recorded = true;
 
+        let (image, image_allocation) = DropGuard::dismiss(image);
+        let image_view = DropGuard::dismiss(image_view);
         Ok(Box::new(VulkanTexture {
             image,
             image_view,
