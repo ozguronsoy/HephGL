@@ -2091,13 +2091,13 @@ impl Renderer for VulkanRenderer {
                 height: extent.height,
                 depth_only: false,
             })?;
-            let display_canvas = display_canvas
-                .downcast::<VulkanColorCanvas>()
-                .map_err(|_| Error::fail("Failed to create the display canvas."))?;
-            self.device_context
-                .as_mut()
-                .ok_or(Error::invalid_operation("Device is not set."))?
-                .display_canvas = Some(*display_canvas);
+            let Ok(display_canvas) = display_canvas.downcast::<VulkanColorCanvas>() else {
+                unreachable!();
+            };
+            let Some(device_context) = self.device_context.as_mut() else {
+                unreachable!();
+            };
+            device_context.display_canvas = Some(*display_canvas);
         }
 
         Ok(())
