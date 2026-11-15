@@ -1794,7 +1794,7 @@ impl Renderer for VulkanRenderer {
             .ok_or(Error::invalid_operation("Renderer is not initialized"))?;
         let device_context = self
             .device_context
-            .as_ref()
+            .as_mut()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
         {
@@ -1844,26 +1844,19 @@ impl Renderer for VulkanRenderer {
                 layer_count,
             )?),
         };
-
-        let device_context = self
-            .device_context
-            .as_mut()
-            .ok_or(Error::invalid_operation("Device is not set."))?;
-        let rendering = device_context
-            .rendering
-            .as_mut()
-            .ok_or(Error::invalid_operation("Device is not set."))?;
-        let current_frame = &mut device_context.graphics_queue_context.frames
-            [device_context.current_frame_index]
-            .base
-            .thread_contexts[thread_context_index];
-        if let Err(error) = Self::clear_new_canvas(
-            &device_context.logical_device,
-            rendering.as_mut(),
-            current_frame,
-            canvas.as_ref(),
-            device_context.sampling_stages,
-        ) {
+        if let Err(error) = match device_context.rendering.as_mut() {
+            Some(rendering) => Self::clear_new_canvas(
+                &device_context.logical_device,
+                rendering.as_mut(),
+                &mut device_context.graphics_queue_context.frames
+                    [device_context.current_frame_index]
+                    .base
+                    .thread_contexts[thread_context_index],
+                canvas.as_ref(),
+                device_context.sampling_stages,
+            ),
+            None => Err(Error::invalid_operation("Device is not set.")),
+        } {
             canvas.destroy(device_context);
             return Err(error);
         }
