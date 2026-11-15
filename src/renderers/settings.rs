@@ -156,6 +156,8 @@ pub struct InitializeOptions<'a> {
     /// The underlying backend's API version. Set this to `None` for using the latest available
     /// version.
     pub api_version: Option<crate::Version>,
+    /// Indicates whether the debugging is enabled.
+    pub debug: bool,
 }
 
 /// Represents a request for a specific graphics feature, indicating whether it

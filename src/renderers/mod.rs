@@ -1,5 +1,6 @@
 mod canvas;
 mod concurrency;
+pub mod debug;
 mod pipeline;
 mod resources;
 mod settings;
@@ -12,7 +13,7 @@ use renkrs::RGB;
 pub use crate::renderers::{
     canvas::*, concurrency::*, pipeline::*, resources::*, settings::*, version::*,
 };
-use crate::{Result, graphics_device::GraphicsDevice, shader::Shader};
+use crate::{Result, graphics_device::GraphicsDevice, renderers::debug::Debugger, shader::Shader};
 
 /// Represents an automatic version selection. When used, the renderer will initialize with the
 /// latest API version supported by the current hardware.
@@ -37,6 +38,13 @@ pub trait Renderer {
     fn is_api_version_supported(&self, api_version: crate::Version) -> Result<bool> {
         Ok(api_version >= self.min_api_version() && api_version <= self.latest_api_version()?)
     }
+
+    /// Gets the attached debugger if there is one.
+    fn debugger(&self) -> Option<std::cell::Ref<'_, Debugger>>;
+    /// Attaches a debugger. Any debugger that is already attached must be detached first.
+    fn attach_debugger(&self, debugger: Debugger) -> Result<()>;
+    /// Detaches the debugger.
+    fn detach_debugger(&self) -> Result<Debugger>;
 
     /// Returns the current settings used by the renderer.
     fn get_settings(&self) -> &Settings;

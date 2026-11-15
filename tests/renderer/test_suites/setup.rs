@@ -8,7 +8,7 @@ use heph_gl::{
     Version,
     renderers::{
         FeatureRequest, InitializeOptions, Renderer, RendererHandle, RendererWorkerFactory,
-        Settings,
+        Settings, debug::Debugger,
     },
 };
 
@@ -22,17 +22,6 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer>
 where
     RendererHandle<TestRenderer>: RendererWorkerFactory<TestRenderer>,
 {
-    pub(crate) fn test_invalid_app_name(&self) {
-        let test_env = test_env!();
-        let mut renderer = TestRenderer::new();
-        heph_expect_err!(renderer.initialize(&InitializeOptions {
-            app_name: "\0",
-            window_handle: test_env.raw_window_handle(),
-            display_handle: test_env.raw_display_handle(),
-            api_version: self.api_version,
-        }));
-    }
-
     pub(crate) fn test_initialize_renderer(&self) {
         {
             let test_env = test_env!();
@@ -42,6 +31,7 @@ where
                 window_handle: test_env.raw_window_handle(),
                 display_handle: test_env.raw_display_handle(),
                 api_version: self.api_version,
+                debug: false,
             };
             heph_expect_success!(renderer.initialize(&init_options));
             heph_expect_err!(
@@ -54,11 +44,24 @@ where
         {
             let test_env = test_env!();
             let mut renderer = TestRenderer::new();
+            heph_expect_err!(renderer.initialize(&InitializeOptions {
+                app_name: "\0",
+                window_handle: test_env.raw_window_handle(),
+                display_handle: test_env.raw_display_handle(),
+                api_version: self.api_version,
+                debug: false,
+            }));
+        }
+
+        {
+            let test_env = test_env!();
+            let mut renderer = TestRenderer::new();
             let init_options = InitializeOptions {
                 app_name: "",
                 window_handle: test_env.raw_window_handle(),
                 display_handle: test_env.raw_display_handle(),
                 api_version: Some(Version::new(u32::MIN, u32::MIN, u32::MIN)),
+                debug: false,
             };
             heph_expect_err!(
                 renderer.initialize(&init_options),
@@ -74,6 +77,7 @@ where
                 window_handle: test_env.raw_window_handle(),
                 display_handle: test_env.raw_display_handle(),
                 api_version: Some(Version::new(u32::MAX, u32::MAX, u32::MAX)),
+                debug: false,
             };
             heph_expect_err!(
                 renderer.initialize(&init_options),
@@ -89,6 +93,7 @@ where
                 window_handle: test_env.raw_window_handle(),
                 display_handle: dummy_display_handle!(),
                 api_version: self.api_version,
+                debug: false,
             };
             heph_expect_err!(renderer.initialize(&init_options));
         }
@@ -101,6 +106,7 @@ where
                 window_handle: dummy_window_handle!(),
                 display_handle: test_env.raw_display_handle(),
                 api_version: self.api_version,
+                debug: false,
             };
             heph_expect_err!(renderer.initialize(&init_options));
         }
@@ -112,8 +118,53 @@ where
                 window_handle: dummy_window_handle!(),
                 display_handle: dummy_display_handle!(),
                 api_version: self.api_version,
+                debug: false,
             };
             heph_expect_err!(renderer.initialize(&init_options));
+        }
+    }
+
+    pub(crate) fn test_debug(&self) {
+        {
+            let test_env = test_env!();
+            let mut renderer = TestRenderer::new();
+            heph_expect_success!(renderer.initialize(&InitializeOptions {
+                app_name: "",
+                window_handle: test_env.raw_window_handle(),
+                display_handle: test_env.raw_display_handle(),
+                api_version: self.api_version,
+                debug: true,
+            }));
+            assert!(renderer.debugger().is_none());
+            heph_expect_err!(renderer.detach_debugger(), Error::invalid_operation(""));
+            heph_expect_success!(renderer.attach_debugger(Debugger::default()));
+            heph_expect_err!(
+                renderer.attach_debugger(Debugger::default()),
+                Error::invalid_operation("")
+            );
+            let debugger = heph_expect_success!(renderer.detach_debugger());
+            heph_expect_success!(renderer.attach_debugger(debugger));
+        }
+
+        {
+            let test_env = test_env!();
+            let mut renderer = TestRenderer::new();
+            heph_expect_err!(
+                renderer.attach_debugger(Debugger::default()),
+                Error::invalid_operation("")
+            );
+            heph_expect_success!(renderer.initialize(&InitializeOptions {
+                app_name: "",
+                window_handle: test_env.raw_window_handle(),
+                display_handle: test_env.raw_display_handle(),
+                api_version: self.api_version,
+                debug: false,
+            }));
+            heph_expect_err!(
+                renderer.attach_debugger(Debugger::default()),
+                Error::invalid_operation("")
+            );
+            heph_expect_err!(renderer.detach_debugger(), Error::invalid_operation(""));
         }
     }
 
@@ -191,7 +242,7 @@ where
             std::thread::scope(|s| {
                 let b1 = std::sync::Arc::new(std::sync::Barrier::new(2));
                 let b2 = b1.clone();
-                let renderer_handle = RendererHandle::from(&mut renderer);
+                let renderer_handle = RendererHandle::from(&mut renderer.renderer);
                 let _ = s.spawn(move || {
                     let _renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
                     let _ = b2.wait();

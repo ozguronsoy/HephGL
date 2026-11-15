@@ -51,7 +51,7 @@ where
                 .get_device()
                 .and_then(|device| device.supported_msaa_levels().last());
             assert!(msaa.is_some());
-            heph_expect_success!(renderer.set_settings(Settings {
+            heph_expect_success!(renderer.renderer.set_settings(Settings {
                 msaa: *heph_expect_success!(
                     msaa.ok_or("Failed to get a supported MSAA sample count.")
                 ),

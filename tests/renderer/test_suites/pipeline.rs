@@ -120,7 +120,7 @@ where
                     "{}/camera_vert.spv",
                     SHADERS_DIR
                 )));
-                for polygon_mode in [PolygonMode::Fill, PolygonMode::Line, PolygonMode::Point] {
+                for polygon_mode in [PolygonMode::Fill, PolygonMode::Line] {
                     let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
                         &[&frag_shader, &vert_shader],
                         &GraphicsPipelineOptions {
