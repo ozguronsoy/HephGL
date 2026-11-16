@@ -26,12 +26,12 @@ use std::{
 };
 
 use ash::vk::{
-    ApplicationInfo, BufferCreateInfo, BufferUsageFlags, CommandBufferBeginInfo,
+    ApplicationInfo, BufferCreateInfo, BufferUsageFlags, ColorSpaceKHR, CommandBufferBeginInfo,
     CommandBufferUsageFlags, ComputePipelineCreateInfo, DescriptorSetLayoutBinding,
-    DescriptorSetLayoutCreateInfo, DeviceCreateInfo, DeviceQueueCreateInfo, InstanceCreateInfo,
-    MemoryHeapFlags, PhysicalDeviceFeatures2, PhysicalDeviceType, PipelineBindPoint, PipelineCache,
-    PipelineLayoutCreateInfo, PipelineShaderStageCreateInfo, QueueFlags, ShaderModuleCreateInfo,
-    StructureType, SubmitInfo, SurfaceKHR, SwapchainKHR,
+    DescriptorSetLayoutCreateInfo, DeviceCreateInfo, DeviceQueueCreateInfo, Format,
+    InstanceCreateInfo, MemoryHeapFlags, PhysicalDeviceFeatures2, PhysicalDeviceType,
+    PipelineBindPoint, PipelineCache, PipelineLayoutCreateInfo, PipelineShaderStageCreateInfo,
+    QueueFlags, ShaderModuleCreateInfo, StructureType, SubmitInfo, SurfaceKHR, SwapchainKHR,
 };
 use renkrs::RGB;
 use vk_mem::Alloc;
@@ -45,7 +45,9 @@ use crate::{
         debug::Debugger,
         downcast_mut, downcast_ref,
         resources::{RendererBuffer, RendererSampler, RendererTexture},
-        settings::{CanvasOptions, GraphicsPipelineOptions, Msaa, SamplerOptions, TextureOptions},
+        settings::{
+            CanvasOptions, GraphicsPipelineOptions, HdrMode, Msaa, SamplerOptions, TextureOptions,
+        },
         thread_context::{
             MAIN_THREAD_CONTEXT_INDEX, ThreadContextIndex, ThreadContextMask,
             ThreadContextMaskArray, is_thread_context_active,
@@ -88,6 +90,7 @@ pub struct VulkanRenderer {
 
     window_surface: Option<SurfaceKHR>,
     window_surface_loader: Option<ash::khr::surface::Instance>,
+    swapchain_colorspace_enabled: bool,
 
     device_context: Option<DeviceContext>,
 
@@ -111,6 +114,7 @@ impl Renderer for VulkanRenderer {
 
             window_surface: None,
             window_surface_loader: None,
+            swapchain_colorspace_enabled: false,
 
             device_context: None,
 
@@ -148,6 +152,44 @@ impl Renderer for VulkanRenderer {
         };
         self.latest_api_version.set(Some(latest_api_version));
         Ok(latest_api_version)
+    }
+
+    fn is_hdr_mode_supported(&self, hdr_mode: HdrMode) -> Result<bool> {
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(Error::invalid_operation("Device is not set."))?;
+
+        if hdr_mode == HdrMode::Disabled {
+            return Ok(true);
+        }
+        if !self.swapchain_colorspace_enabled {
+            return Ok(false);
+        }
+
+        let (Some(surface), Some(surface_loader)) =
+            (self.window_surface, self.window_surface_loader.as_ref())
+        else {
+            return Err(Error::invalid_operation("Renderer is not initialized."));
+        };
+        let surface_formats = unsafe {
+            surface_loader
+                .get_physical_device_surface_formats(device_context.physical_device, surface)?
+        };
+        Ok(surface_formats.iter().any(|surface_format| match hdr_mode {
+            HdrMode::Disabled => true,
+            HdrMode::Hdr10 => {
+                surface_format.color_space == ColorSpaceKHR::HDR10_ST2084_EXT
+                    && matches!(
+                        surface_format.format,
+                        Format::A2B10G10R10_UNORM_PACK32 | Format::A2R10G10B10_UNORM_PACK32
+                    )
+            }
+            HdrMode::Scrgb => {
+                surface_format.color_space == ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT
+                    && surface_format.format == Format::R16G16B16A16_SFLOAT
+            }
+        }))
     }
 
     fn debugger(&self) -> Option<Ref<'_, Debugger>> {
@@ -316,6 +358,14 @@ impl Renderer for VulkanRenderer {
             required_extension_names.push(ash::vk::KHR_PORTABILITY_ENUMERATION_NAME.as_ptr());
         }
 
+        let supports_swapchain_colorspace = extension_properties.iter().any(|ext| {
+            let name = unsafe { std::ffi::CStr::from_ptr(ext.extension_name.as_ptr()) };
+            name == ash::ext::swapchain_colorspace::NAME
+        });
+        if supports_swapchain_colorspace {
+            required_extension_names.push(ash::ext::swapchain_colorspace::NAME.as_ptr());
+        }
+
         if options.debug {
             if !extension_properties.iter().any(|ext| {
                 let name = unsafe { std::ffi::CStr::from_ptr(ext.extension_name.as_ptr()) };
@@ -395,6 +445,7 @@ impl Renderer for VulkanRenderer {
         self.instance = Some(DropGuard::dismiss(instance));
         self.window_surface = Some(DropGuard::dismiss(window_surface));
         self.window_surface_loader = Some(window_surface_loader);
+        self.swapchain_colorspace_enabled = supports_swapchain_colorspace;
 
         Ok(())
     }
@@ -421,6 +472,7 @@ impl Renderer for VulkanRenderer {
         }
 
         self.window_surface_loader = None;
+        self.swapchain_colorspace_enabled = false;
         self.window_surface = None;
         self.instance = None;
         self.entry = None;
@@ -432,7 +484,7 @@ impl Renderer for VulkanRenderer {
         let instance = self
             .instance
             .as_ref()
-            .ok_or(Error::invalid_operation("Renderer is not initialized"))?;
+            .ok_or(Error::invalid_operation("Renderer is not initialized."))?;
 
         let mut devices = Vec::<GraphicsDevice>::new();
         let physical_devices = unsafe { instance.enumerate_physical_devices()? };
@@ -607,7 +659,7 @@ impl Renderer for VulkanRenderer {
         let instance = self
             .instance
             .as_ref()
-            .ok_or(Error::invalid_operation("Renderer is not initialized"))?;
+            .ok_or(Error::invalid_operation("Renderer is not initialized."))?;
 
         // Create logical device and queues.
 
@@ -1027,7 +1079,7 @@ impl Renderer for VulkanRenderer {
         let instance = self
             .instance
             .as_ref()
-            .ok_or(Error::invalid_operation("Renderer is not initialized"))?;
+            .ok_or(Error::invalid_operation("Renderer is not initialized."))?;
         let device_context = self
             .device_context
             .as_mut()
@@ -1805,7 +1857,7 @@ impl Renderer for VulkanRenderer {
         let instance = self
             .instance
             .as_ref()
-            .ok_or(Error::invalid_operation("Renderer is not initialized"))?;
+            .ok_or(Error::invalid_operation("Renderer is not initialized."))?;
         let device_context = self
             .device_context
             .as_mut()
