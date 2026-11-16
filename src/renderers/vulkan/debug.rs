@@ -1,4 +1,4 @@
-use std::ffi::{CStr, c_void};
+use std::ffi::{CStr, CString, c_void};
 
 use ash::vk::{
     Bool32, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
@@ -8,12 +8,66 @@ use ash::vk::{
 use crate::{
     Error, Result,
     renderers::{
-        debug::{Debugger, Severity},
-        vulkan::VulkanRenderer,
+        debug::{DebugWriter, Debugger, RendererDebugObject, Severity},
+        downcast_ref,
+        vulkan::{
+            VulkanBuffer, VulkanColorCanvas, VulkanComputePipeline, VulkanDepthCanvas,
+            VulkanGraphicsPipeline, VulkanRenderer, VulkanSampler, VulkanTexture,
+        },
     },
 };
 
+pub(super) struct VulkanDebugWriter {
+    pub(super) device: ash::ext::debug_utils::Device,
+}
+
+impl DebugWriter for VulkanDebugWriter {
+    fn set_object_name(&self, object: &dyn RendererDebugObject, name: &str) -> Result<()> {
+        let name = CString::new(name)?;
+        let mut name_info = ash::vk::DebugUtilsObjectNameInfoEXT::default().object_name(&name);
+        if let Ok(buffer) = downcast_ref::<VulkanBuffer>(object) {
+            name_info = name_info.object_handle(buffer.buffer);
+        } else if let Ok(texture) = downcast_ref::<VulkanTexture>(object) {
+            name_info = name_info.object_handle(texture.image);
+        } else if let Ok(sampler) = downcast_ref::<VulkanSampler>(object) {
+            name_info = name_info.object_handle(sampler.sampler);
+        } else if let Ok(pipeline) = downcast_ref::<VulkanComputePipeline>(object) {
+            name_info = name_info.object_handle(pipeline.pipeline);
+        } else if let Ok(pipeline) = downcast_ref::<VulkanGraphicsPipeline>(object) {
+            name_info = name_info.object_handle(pipeline.pipeline);
+        } else if let Ok(canvas) = downcast_ref::<VulkanColorCanvas>(object) {
+            name_info = name_info.object_handle(canvas.texture.image);
+        } else if let Ok(canvas) = downcast_ref::<VulkanDepthCanvas>(object) {
+            name_info = name_info.object_handle(canvas.texture.image);
+        } else {
+            return Err(Error::invalid_argument(
+                "Provided object is not a Vulkan debug object.",
+            ));
+        }
+        if name_info.object_handle == 0 {
+            return Err(Error::invalid_argument("Provided object is destroyed."));
+        }
+        unsafe { self.device.set_debug_utils_object_name(&name_info)? };
+        Ok(())
+    }
+}
+
 impl VulkanRenderer {
+    pub(super) fn set_debug_writer(&self, debugger: &Debugger) -> Result<()> {
+        let instance = self
+            .instance
+            .as_ref()
+            .ok_or(Error::invalid_operation("Renderer is not initialized"))?;
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(Error::invalid_operation("Device is not set."))?;
+        let _ = debugger.set_writer(Some(Box::new(VulkanDebugWriter {
+            device: ash::ext::debug_utils::Device::new(instance, &device_context.logical_device),
+        })));
+        Ok(())
+    }
+
     /// Creates the messenger that forwards the validation messages to the attached debugger.
     pub(super) fn create_debug_messenger(&self) -> Result<()> {
         let debug_utils_loader =

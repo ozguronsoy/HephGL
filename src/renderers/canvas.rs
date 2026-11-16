@@ -1,9 +1,9 @@
-use std::any::Any;
-
-use crate::renderers::{resources::RendererTexture, settings::CanvasOptions};
+use crate::renderers::{
+    debug::RendererDebugObject, resources::RendererTexture, settings::CanvasOptions,
+};
 
 /// Represents an off-screen render target.
-pub trait RendererCanvas: Any + Send + Sync {
+pub trait RendererCanvas: RendererDebugObject {
     /// Returns the canvas width in pixels.
     fn width(&self) -> u32;
     /// Returns the canvas height in pixels.

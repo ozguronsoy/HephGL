@@ -10,9 +10,8 @@ use crate::{
     Error, Result,
     graphics_device::GraphicsDeviceFeature,
     renderers::{
-        BufferUsage, Renderer, ResourceBinding,
+        BufferUsage, Renderer, ResourceBinding, downcast_mut, downcast_ref,
         pipeline::RendererGraphicsPipeline,
-        resource_mut, resource_ref,
         resources::{RendererBuffer, ResourceBindingType},
         settings::{GraphicsPipelineOptions, Settings},
         vulkan::{
@@ -187,7 +186,7 @@ impl VulkanRenderer {
         draw_count: u32,
         instance_count: u32,
     ) -> Result<()> {
-        let pipeline = resource_mut::<VulkanGraphicsPipeline>(pipeline)?;
+        let pipeline = downcast_mut::<VulkanGraphicsPipeline>(pipeline)?;
         let mapped_range = self.create_graphics_resource_sets(pipeline, binding_sets)?;
 
         let device_context = self
@@ -260,7 +259,7 @@ impl VulkanRenderer {
                     ));
                 }
 
-                let vertex_buffer = resource_ref::<VulkanBuffer>(buffer)?;
+                let vertex_buffer = downcast_ref::<VulkanBuffer>(buffer)?;
                 if offset
                     .checked_add(size)
                     .is_none_or(|x| x > vertex_buffer.size)
@@ -284,7 +283,7 @@ impl VulkanRenderer {
                     ));
                 }
 
-                let index_buffer = resource_ref::<VulkanBuffer>(index_buffer)?;
+                let index_buffer = downcast_ref::<VulkanBuffer>(index_buffer)?;
                 device_context.logical_device.cmd_bind_index_buffer(
                     current_frame.base.command_buffer,
                     index_buffer.buffer,

@@ -43,7 +43,7 @@ use crate::{
         BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererCanvas,
         RendererComputePipeline, RendererGraphicsPipeline, ResourceBinding, Settings,
         debug::Debugger,
-        resource_mut, resource_ref,
+        downcast_mut, downcast_ref,
         resources::{RendererBuffer, RendererSampler, RendererTexture},
         settings::{CanvasOptions, GraphicsPipelineOptions, Msaa, SamplerOptions, TextureOptions},
         thread_context::{
@@ -154,19 +154,23 @@ impl Renderer for VulkanRenderer {
         Ref::filter_map(self.debugger.borrow(), |debugger| debugger.as_deref()).ok()
     }
 
-    fn attach_debugger(&self, debugger: Debugger) -> Result<()> {
+    fn attach_debugger(&self, debugger: Debugger) -> std::result::Result<(), (Error, Debugger)> {
         if !self.debug_enabled {
-            return Err(Error::invalid_operation("Debugging is disabled."));
+            return Err((Error::invalid_operation("Debugging is disabled."), debugger));
         }
         if self.debugger.borrow().is_some() {
-            return Err(Error::invalid_operation(
-                "A debugger is already attached to the renderer.",
+            return Err((
+                Error::invalid_operation("A debugger is already attached to the renderer."),
+                debugger,
             ));
         }
+        // The device may not be set yet. If that's the case, we will set the writer in
+        // `set_device`.
+        let _ = self.set_debug_writer(&debugger);
         let _ = self.debugger.replace(Some(Box::new(debugger)));
         if let Err(error) = self.create_debug_messenger() {
-            let _ = self.debugger.take();
-            return Err(error);
+            let debugger = self.debugger.take().unwrap();
+            return Err((error, debugger.as_ref().clone()));
         }
         Ok(())
     }
@@ -175,7 +179,10 @@ impl Renderer for VulkanRenderer {
         self.destroy_debug_messenger();
         self.debugger
             .take()
-            .map(|debugger| *debugger)
+            .map(|debugger| {
+                let _ = debugger.set_writer(None);
+                *debugger
+            })
             .ok_or(Error::invalid_operation("No attached debugger found."))
     }
 
@@ -580,7 +587,7 @@ impl Renderer for VulkanRenderer {
         self.main_thread_only()?;
         if let Some(device) = device {
             // Check whether the `device` is a Vulkan device.
-            let _ = resource_ref::<VulkanGraphicsDeviceId>(device.device_id.as_ref())?;
+            let _ = downcast_ref::<VulkanGraphicsDeviceId>(device.device_id.as_ref())?;
         }
         if self.device_context.is_some() {
             self.uninitialize_device()?;
@@ -872,6 +879,13 @@ impl Renderer for VulkanRenderer {
         self.create_swapchain()?;
         self.create_rendering()?;
 
+        if self.debug_enabled {
+            let debugger = self.debugger.borrow();
+            if let Some(debugger) = &*debugger {
+                self.set_debug_writer(debugger.as_ref())?;
+            }
+        }
+
         Ok(())
     }
 
@@ -917,7 +931,7 @@ impl Renderer for VulkanRenderer {
         offset: usize,
         src: &[u8],
     ) -> Result<()> {
-        let buffer = resource_ref::<VulkanBuffer>(buffer)?;
+        let buffer = downcast_ref::<VulkanBuffer>(buffer)?;
         if offset >= buffer.size {
             return Err(Error::invalid_argument(
                 "Offset is greater than the source buffer size.",
@@ -955,7 +969,7 @@ impl Renderer for VulkanRenderer {
         offset: usize,
         dest: &mut [u8],
     ) -> Result<()> {
-        let buffer = resource_ref::<VulkanBuffer>(buffer)?;
+        let buffer = downcast_ref::<VulkanBuffer>(buffer)?;
         if offset >= buffer.size {
             return Err(Error::invalid_argument(
                 "Offset is greater than the source buffer size.",
@@ -990,7 +1004,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn destroy_buffer(&self, buffer: &mut dyn RendererBuffer) -> Result<()> {
-        let buffer = resource_mut::<VulkanBuffer>(buffer)?;
+        let buffer = downcast_mut::<VulkanBuffer>(buffer)?;
         let device_context = self
             .device_context
             .as_ref()
@@ -1458,7 +1472,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn destroy_texture(&self, texture: &mut dyn RendererTexture) -> Result<()> {
-        let texture = resource_mut::<VulkanTexture>(texture)?;
+        let texture = downcast_mut::<VulkanTexture>(texture)?;
         let device_context = self
             .device_context
             .as_ref()
@@ -1531,7 +1545,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn destroy_sampler(&self, sampler: &mut dyn RendererSampler) -> Result<()> {
-        let sampler = resource_mut::<VulkanSampler>(sampler)?;
+        let sampler = downcast_mut::<VulkanSampler>(sampler)?;
         let device_context = self
             .device_context
             .as_ref()
@@ -1646,7 +1660,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn destroy_compute_pipeline(&self, pipeline: &mut dyn RendererComputePipeline) -> Result<()> {
-        let pipeline = resource_mut::<VulkanComputePipeline>(pipeline)?;
+        let pipeline = downcast_mut::<VulkanComputePipeline>(pipeline)?;
         let device_context = self
             .device_context
             .as_ref()
@@ -1676,7 +1690,7 @@ impl Renderer for VulkanRenderer {
         binding_sets: &[&[ResourceBinding<'_>]],
         group_count: (u32, u32, u32),
     ) -> Result<()> {
-        let pipeline = resource_mut::<VulkanComputePipeline>(pipeline)?;
+        let pipeline = downcast_mut::<VulkanComputePipeline>(pipeline)?;
         let mapped_range = self.create_compute_resource_sets(pipeline, binding_sets)?;
 
         let device_context = self
@@ -1749,7 +1763,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn destroy_graphics_pipeline(&self, pipeline: &mut dyn RendererGraphicsPipeline) -> Result<()> {
-        let pipeline = resource_mut::<VulkanGraphicsPipeline>(pipeline)?;
+        let pipeline = downcast_mut::<VulkanGraphicsPipeline>(pipeline)?;
         let device_context = self
             .device_context
             .as_ref()

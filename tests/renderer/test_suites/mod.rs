@@ -82,7 +82,12 @@ where
             api_version: self.api_version,
             debug: true,
         }));
-        heph_expect_success!(renderer.attach_debugger(self.debugger.take()));
+        heph_expect_success!(renderer.attach_debugger(self.debugger.take()).map_err(
+            |(error, debugger)| {
+                self.debugger.set(debugger);
+                error
+            }
+        ));
         TestRendererDropGuard {
             renderer,
             tests: self,

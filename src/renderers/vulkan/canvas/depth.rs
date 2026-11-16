@@ -7,6 +7,7 @@ use crate::{
     Error, Result,
     renderers::{
         RendererCanvas,
+        debug::RendererDebugObject,
         resources::{RendererTexture, TextureFormat},
         settings::{CanvasOptions, Settings, TextureOptions},
         vulkan::{
@@ -32,6 +33,8 @@ pub struct VulkanDepthCanvas {
     /// The number of array layers of the depth buffer.
     pub layer_count: u32,
 }
+
+impl RendererDebugObject for VulkanDepthCanvas {}
 
 impl RendererCanvas for VulkanDepthCanvas {
     fn width(&self) -> u32 {

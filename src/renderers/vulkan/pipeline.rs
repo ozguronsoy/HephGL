@@ -2,7 +2,7 @@ use ash::vk::{DescriptorSetLayout, Handle, Pipeline, PipelineLayout};
 
 use crate::renderers::{
     RendererComputePipeline, RendererGraphicsPipeline, RendererPipeline,
-    vulkan::resources::DescriptorSetCache,
+    debug::RendererDebugObject, vulkan::resources::DescriptorSetCache,
 };
 
 /// Represents a Vulkan compute pipeline.
@@ -26,6 +26,7 @@ pub(super) struct VulkanGraphicsPipeline {
     pub(super) depth_only: bool,
 }
 
+impl RendererDebugObject for VulkanGraphicsPipeline {}
 impl RendererPipeline for VulkanGraphicsPipeline {
     fn is_allocated(&self) -> bool {
         !(self.pipeline.is_null() || self.layout.is_null())
@@ -33,6 +34,7 @@ impl RendererPipeline for VulkanGraphicsPipeline {
 }
 impl RendererGraphicsPipeline for VulkanGraphicsPipeline {}
 
+impl RendererDebugObject for VulkanComputePipeline {}
 impl RendererPipeline for VulkanComputePipeline {
     fn is_allocated(&self) -> bool {
         !(self.pipeline.is_null() || self.layout.is_null())

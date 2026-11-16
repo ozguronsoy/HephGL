@@ -1,6 +1,4 @@
-use std::any::{Any, type_name};
-
-use crate::{Error, Result};
+use crate::renderers::debug::RendererDebugObject;
 
 /// Defines the possible usages of a buffer.
 #[derive(Debug, Clone, Copy, Hash, PartialEq)]
@@ -82,7 +80,7 @@ pub struct ResourceBinding<'a> {
 }
 
 /// Represents a resource managed by a renderer.
-pub trait RendererResource: Any + Send + Sync {
+pub trait RendererResource: RendererDebugObject {
     /// Indicates whether the resource currently has an allocation.
     fn is_allocated(&self) -> bool;
 }
@@ -199,20 +197,6 @@ impl TextureFormat {
                 | Self::Bc7Srgb
         )
     }
-}
-
-/// Downcasts the reference to the provided type.
-pub(super) fn resource_ref<T: Any>(resource: &dyn Any) -> Result<&T> {
-    resource.downcast_ref::<T>().ok_or_else(|| {
-        Error::invalid_argument(format!("Type mismatch: expected {}.", type_name::<T>()))
-    })
-}
-
-/// Downcasts the mutable reference to the provided type.
-pub(super) fn resource_mut<T: Any>(resource: &mut dyn Any) -> Result<&mut T> {
-    resource.downcast_mut::<T>().ok_or_else(|| {
-        Error::invalid_argument(format!("Type mismatch: expected {}.", type_name::<T>()))
-    })
 }
 
 #[cfg(test)]

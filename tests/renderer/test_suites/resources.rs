@@ -7,7 +7,7 @@ use heph_gl::{
     renderers::{
         BufferUsage, CompareOp, FeatureRequest, Renderer, RendererBuffer, RendererHandle,
         RendererResource, RendererSampler, RendererTexture, RendererWorkerFactory, SamplerOptions,
-        TextureFormat, TextureOptions,
+        TextureFormat, TextureOptions, debug::RendererDebugObject,
     },
 };
 
@@ -16,6 +16,7 @@ use crate::{heph_expect_err, heph_expect_success, renderer::RendererTests};
 const BUFFER_SIZE: usize = 1024;
 
 struct ForeignBuffer;
+impl RendererDebugObject for ForeignBuffer {}
 impl RendererResource for ForeignBuffer {
     fn is_allocated(&self) -> bool {
         false
@@ -31,6 +32,7 @@ impl RendererBuffer for ForeignBuffer {
 }
 
 struct ForeignTexture;
+impl RendererDebugObject for ForeignTexture {}
 impl RendererResource for ForeignTexture {
     fn is_allocated(&self) -> bool {
         false
@@ -52,6 +54,7 @@ impl RendererTexture for ForeignTexture {
 }
 
 struct ForeignSampler;
+impl RendererDebugObject for ForeignSampler {}
 impl RendererResource for ForeignSampler {
     fn is_allocated(&self) -> bool {
         false

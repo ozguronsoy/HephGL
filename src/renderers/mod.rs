@@ -8,12 +8,16 @@ mod thread_context;
 mod version;
 pub mod vulkan;
 
+use std::any::{Any, type_name};
+
 use renkrs::RGB;
 
 pub use crate::renderers::{
     canvas::*, concurrency::*, pipeline::*, resources::*, settings::*, version::*,
 };
-use crate::{Result, graphics_device::GraphicsDevice, renderers::debug::Debugger, shader::Shader};
+use crate::{
+    Error, Result, graphics_device::GraphicsDevice, renderers::debug::Debugger, shader::Shader,
+};
 
 /// Represents an automatic version selection. When used, the renderer will initialize with the
 /// latest API version supported by the current hardware.
@@ -42,7 +46,7 @@ pub trait Renderer {
     /// Gets the attached debugger if there is one.
     fn debugger(&self) -> Option<std::cell::Ref<'_, Debugger>>;
     /// Attaches a debugger. Any debugger that is already attached must be detached first.
-    fn attach_debugger(&self, debugger: Debugger) -> Result<()>;
+    fn attach_debugger(&self, debugger: Debugger) -> std::result::Result<(), (Error, Debugger)>;
     /// Detaches the debugger.
     fn detach_debugger(&self) -> Result<Debugger>;
 
@@ -182,4 +186,18 @@ pub trait Renderer {
 /// Gets the maximum number of threads that can execute concurrently.
 pub const fn max_concurrent_threads() -> usize {
     crate::renderers::thread_context::thread_context_count()
+}
+
+/// Downcasts the reference to the provided type.
+fn downcast_ref<T: Any>(value: &dyn Any) -> Result<&T> {
+    value.downcast_ref::<T>().ok_or_else(|| {
+        Error::invalid_argument(format!("Type mismatch: expected {}.", type_name::<T>()))
+    })
+}
+
+/// Downcasts the mutable reference to the provided type.
+fn downcast_mut<T: Any>(value: &mut dyn Any) -> Result<&mut T> {
+    value.downcast_mut::<T>().ok_or_else(|| {
+        Error::invalid_argument(format!("Type mismatch: expected {}.", type_name::<T>()))
+    })
 }
