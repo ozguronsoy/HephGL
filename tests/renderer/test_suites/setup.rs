@@ -5,10 +5,12 @@ use heph_gl::{
         DepthClamp, GeometryShaders, RayTracing, SampleRateShading, TessellationShaders,
         VideoDecoding, VideoEncoding, WireframeMode,
     },
-    Version,
+    Shader, Version,
     renderers::{
-        FeatureRequest, InitializeOptions, Renderer, RendererHandle, RendererWorkerFactory,
-        Settings, debug::Debugger,
+        BufferUsage, CanvasOptions, FeatureRequest, GraphicsPipelineOptions, InitializeOptions,
+        Renderer, RendererHandle, RendererWorkerFactory, SamplerOptions, Settings, TextureFormat,
+        TextureOptions,
+        debug::{Debugger, RendererDebugObject},
     },
 };
 
@@ -16,6 +18,7 @@ use crate::{
     dummy_display_handle, dummy_window_handle, heph_expect_err, heph_expect_success,
     renderer::{RendererTests, test_suites::TEST_ENV},
     test_env,
+    utils::SHADERS_DIR,
 };
 
 impl<TestRenderer: Renderer> RendererTests<TestRenderer>
@@ -44,13 +47,16 @@ where
         {
             let test_env = test_env!();
             let mut renderer = TestRenderer::new();
-            heph_expect_err!(renderer.initialize(&InitializeOptions {
-                app_name: "\0",
-                window_handle: test_env.raw_window_handle(),
-                display_handle: test_env.raw_display_handle(),
-                api_version: self.api_version,
-                debug: false,
-            }));
+            heph_expect_err!(
+                renderer.initialize(&InitializeOptions {
+                    app_name: "\0",
+                    window_handle: test_env.raw_window_handle(),
+                    display_handle: test_env.raw_display_handle(),
+                    api_version: self.api_version,
+                    debug: false,
+                }),
+                Error::invalid_argument("")
+            );
         }
 
         {
@@ -125,6 +131,9 @@ where
     }
 
     pub(crate) fn test_debug(&self) {
+        struct ForeignDebugObject;
+        impl RendererDebugObject for ForeignDebugObject {}
+
         {
             let test_env = test_env!();
             let mut renderer = TestRenderer::new();
@@ -175,6 +184,142 @@ where
                 Error::invalid_operation("")
             );
             heph_expect_err!(renderer.detach_debugger(), Error::invalid_operation(""));
+        }
+
+        {
+            let debugger = Debugger::default();
+            heph_expect_err!(
+                debugger.set_object_name(&ForeignDebugObject, "Foreign Object"),
+                Error::invalid_operation("")
+            );
+        }
+
+        {
+            let mut renderer = self.create_renderer_with_any_device(&[]);
+            let mut buffer =
+                heph_expect_success!(renderer.create_buffer(1024, BufferUsage::Storage));
+            heph_expect_success!(renderer.begin_frame());
+            let mut texture = heph_expect_success!(renderer.create_texture(
+                &TextureOptions {
+                    width: 1,
+                    height: 1,
+                    format: TextureFormat::Rgba8Unorm,
+                    mip_level_count: 1,
+                },
+                &[0; 4]
+            ));
+            let mut color_canvas = heph_expect_success!(renderer.create_canvas(&CanvasOptions {
+                width: 64,
+                height: 64,
+                ..Default::default()
+            }));
+            let mut depth_canvas = heph_expect_success!(renderer.create_canvas(&CanvasOptions {
+                width: 64,
+                height: 64,
+                depth_only: true,
+            }));
+            heph_expect_success!(renderer.end_frame());
+            heph_expect_success!(renderer.wait_idle());
+            let mut sampler =
+                heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
+            let compute_shader =
+                heph_expect_success!(Shader::from_file(format!("{}/addition.spv", SHADERS_DIR)));
+            let mut compute_pipeline =
+                heph_expect_success!(renderer.create_compute_pipeline(&compute_shader));
+            let frag_shader =
+                heph_expect_success!(Shader::from_file(format!("{}/mesh_frag.spv", SHADERS_DIR)));
+            let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                "{}/camera_vert.spv",
+                SHADERS_DIR
+            )));
+            let mut graphics_pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+                &[&frag_shader, &vert_shader],
+                &GraphicsPipelineOptions::default()
+            ));
+
+            {
+                let debugger =
+                    heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."));
+                heph_expect_success!(debugger.set_object_name(buffer.as_ref(), "Buffer"));
+                heph_expect_success!(debugger.set_object_name(texture.as_ref(), "Texture"));
+                heph_expect_success!(debugger.set_object_name(sampler.as_ref(), "Sampler"));
+                heph_expect_success!(
+                    debugger.set_object_name(compute_pipeline.as_ref(), "Compute Pipeline")
+                );
+                heph_expect_success!(
+                    debugger.set_object_name(graphics_pipeline.as_ref(), "Graphics Pipeline")
+                );
+                heph_expect_success!(
+                    debugger.set_object_name(color_canvas.as_ref(), "Color Canvas")
+                );
+                heph_expect_success!(
+                    debugger.set_object_name(depth_canvas.as_ref(), "Depth Canvas")
+                );
+                heph_expect_success!(debugger.set_object_name(buffer.as_ref(), ""));
+                heph_expect_err!(
+                    debugger.set_object_name(buffer.as_ref(), "Buf\0fer"),
+                    Error::invalid_argument("")
+                );
+                heph_expect_err!(
+                    debugger.set_object_name(&ForeignDebugObject, "Foreign Object"),
+                    Error::invalid_argument("")
+                );
+            }
+
+            heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
+            heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
+            heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
+            heph_expect_success!(renderer.destroy_compute_pipeline(compute_pipeline.as_mut()));
+            heph_expect_success!(renderer.destroy_graphics_pipeline(graphics_pipeline.as_mut()));
+            heph_expect_success!(renderer.destroy_canvas(color_canvas.as_mut()));
+            heph_expect_success!(renderer.destroy_canvas(depth_canvas.as_mut()));
+
+            {
+                let debugger =
+                    heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."));
+                heph_expect_err!(
+                    debugger.set_object_name(buffer.as_ref(), "Buffer"),
+                    Error::invalid_argument("")
+                );
+                heph_expect_err!(
+                    debugger.set_object_name(texture.as_ref(), "Texture"),
+                    Error::invalid_argument("")
+                );
+                heph_expect_err!(
+                    debugger.set_object_name(sampler.as_ref(), "Sampler"),
+                    Error::invalid_argument("")
+                );
+                heph_expect_err!(
+                    debugger.set_object_name(compute_pipeline.as_ref(), "Compute Pipeline"),
+                    Error::invalid_argument("")
+                );
+                heph_expect_err!(
+                    debugger.set_object_name(graphics_pipeline.as_ref(), "Graphics Pipeline"),
+                    Error::invalid_argument("")
+                );
+                heph_expect_err!(
+                    debugger.set_object_name(color_canvas.as_ref(), "Color Canvas"),
+                    Error::invalid_argument("")
+                );
+                heph_expect_err!(
+                    debugger.set_object_name(depth_canvas.as_ref(), "Depth Canvas"),
+                    Error::invalid_argument("")
+                );
+            }
+
+            let mut buffer =
+                heph_expect_success!(renderer.create_buffer(1024, BufferUsage::Storage));
+            let debugger = heph_expect_success!(renderer.detach_debugger());
+            heph_expect_err!(
+                debugger.set_object_name(buffer.as_ref(), "Buffer"),
+                Error::invalid_operation("")
+            );
+            heph_expect_success!(renderer.attach_debugger(debugger).map_err(|(e, _)| e));
+            heph_expect_success!(
+                heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."))
+                    .set_object_name(buffer.as_ref(), "Buffer")
+            );
+            heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
         }
     }
 

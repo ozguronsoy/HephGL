@@ -3,8 +3,6 @@ use crate::graphics_device::GraphicsDeviceFeature;
 /// Defines the error types.
 #[derive(Debug, Clone)]
 pub enum Error {
-    /// An invalid app name is entered when initializing the renderer.
-    InvalidAppName,
     /// An invalid argument was provided.
     InvalidArgument(String),
     /// An invalid or unsupported operation was attempted.
@@ -35,9 +33,6 @@ impl PartialEq for Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidAppName => {
-                write!(f, "Invalid application name provided.")
-            }
             Self::InvalidArgument(err) => {
                 write!(f, "Invalid argument: {}", err)
             }
@@ -120,9 +115,6 @@ mod tests {
 
     #[test]
     fn test_error_display() {
-        let err = Error::InvalidAppName;
-        assert_eq!(err.to_string(), "Invalid application name provided.");
-
         let err = Error::invalid_argument("bad_ptr");
         assert_eq!(err.to_string(), "Invalid argument: bad_ptr");
 

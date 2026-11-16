@@ -1,8 +1,8 @@
 use crate::Error;
 
 impl From<std::ffi::NulError> for Error {
-    fn from(_: std::ffi::NulError) -> Self {
-        Self::InvalidAppName
+    fn from(e: std::ffi::NulError) -> Self {
+        Error::InvalidArgument(e.to_string())
     }
 }
 impl From<ash::LoadingError> for Error {
@@ -30,8 +30,9 @@ mod tests {
     #[test]
     fn test_from_nul_error() {
         let nul_error = CString::new(b"invalid\0name".to_vec()).unwrap_err();
+        let message = nul_error.to_string();
         let err = Error::from(nul_error);
-        assert_eq!(err, Error::InvalidAppName);
+        assert!(matches!(err, Error::InvalidArgument(ref msg) if *msg == message));
     }
 
     #[test]
