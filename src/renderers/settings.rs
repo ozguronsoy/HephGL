@@ -158,6 +158,10 @@ pub struct Settings {
     /// The multisample anti-aliasing sample count.
     pub msaa: Msaa,
     /// The HDR output mode.
+    ///
+    /// ### Note
+    /// If the mode is not supported by the current device and window, the renderer falls back to
+    /// [`HdrMode::Disabled`].
     pub hdr_mode: HdrMode,
 }
 

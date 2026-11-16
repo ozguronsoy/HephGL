@@ -10,6 +10,7 @@ use crate::{
     Error, Result,
     renderers::{
         HdrMode, Renderer, RendererCanvas,
+        debug::Severity,
         vulkan::{VulkanRenderer, canvas::VulkanColorCanvas},
     },
 };
@@ -96,7 +97,23 @@ impl VulkanRenderer {
 
         let hdr_mode = match self.is_hdr_mode_supported(self.settings.hdr_mode)? {
             true => self.settings.hdr_mode,
-            false => HdrMode::Disabled,
+            false => {
+                if self.debug_enabled {
+                    let debugger = self.debugger.borrow();
+                    if let Some(debugger) = debugger.as_ref() {
+                        debugger.log(
+                            format!(
+                                "`{:?}` is not supported, using `{:?}` instead.",
+                                self.settings.hdr_mode,
+                                HdrMode::Disabled
+                            ),
+                            Severity::Warning,
+                        );
+                    }
+                }
+                self.settings.hdr_mode = HdrMode::Disabled;
+                HdrMode::Disabled
+            }
         };
         let (format, color_space) = match hdr_mode {
             HdrMode::Disabled => (
