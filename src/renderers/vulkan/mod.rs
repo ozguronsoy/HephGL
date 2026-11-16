@@ -588,6 +588,7 @@ impl Renderer for VulkanRenderer {
             });
         }
 
+        devices.sort_by_key(|d| (d.device_type, std::cmp::Reverse(d.vram)));
         Ok(devices)
     }
 

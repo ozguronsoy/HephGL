@@ -1,10 +1,6 @@
 #![allow(dead_code)]
 
-use heph_gl::{
-    GraphicsDevice,
-    GraphicsDeviceType::{DiscreteGpu, IntegratedGpu},
-    renderers::Renderer,
-};
+use heph_gl::{GraphicsDevice, renderers::Renderer};
 
 #[cfg(feature = "vulkan")]
 pub type ExampleRenderer = heph_gl::renderers::vulkan::VulkanRenderer;
@@ -95,15 +91,7 @@ pub fn sphere_vertices(radius: f32, x_offset: f32) -> Vec<SphereVertex> {
 }
 
 pub fn get_best_device(renderer: &ExampleRenderer) -> GraphicsDevice {
-    let devices = renderer.enumerate_devices().unwrap();
-    let mut device = devices.iter().find(|d| d.device_type() == DiscreteGpu);
-    if device.is_none() {
-        device = devices.iter().find(|d| d.device_type() == IntegratedGpu);
-    }
-    if device.is_none() {
-        device = devices.first();
-    }
-    device.unwrap().clone()
+    renderer.enumerate_devices().unwrap()[0].clone()
 }
 
 pub fn set_best_msaa(renderer: &mut ExampleRenderer) {

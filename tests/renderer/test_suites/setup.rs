@@ -330,8 +330,9 @@ where
             !devices.is_empty(),
             "Invalid Test Env: No graphics device found to run remaining tests."
         );
+        assert!(devices.is_sorted_by_key(|d| (d.device_type(), std::cmp::Reverse(d.vram()))));
 
-        // For debugging CI.
+        // For debugging in CI.
         for device in &devices {
             println!("{}", device);
         }
