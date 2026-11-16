@@ -166,7 +166,7 @@ impl VulkanRenderer {
             if self.debug_enabled {
                 let debugger = self.debugger.borrow();
                 if let Some(debugger) = &*debugger {
-                    debugger.set_writer(None);
+                    let _ = debugger.set_writer(None);
                 }
             }
 

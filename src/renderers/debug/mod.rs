@@ -1,12 +1,13 @@
 mod log;
 mod object;
 mod severity;
-pub(super) mod writer;
+mod writer;
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
+pub(super) use super::debug::writer::*;
 pub use super::debug::{log::*, object::*, severity::*};
-use crate::{Error, Result, renderers::debug::writer::DebugWriter};
+use crate::{Error, Result};
 
 /// Provides debugging facilities for inspecting and diagnosing the renderer.
 #[derive(Default)]
@@ -42,10 +43,19 @@ impl Debugger {
         }
     }
 
-    pub(super) fn set_writer(&self, writer: Option<Box<dyn DebugWriter>>) {
-        *self.writer.lock().unwrap_or_else(PoisonError::into_inner) = writer;
+    /// Sets the writer of the debugger, or removes it if `writer` is `None`. Returns the previous
+    /// writer if there is one.
+    pub(super) fn set_writer(
+        &self,
+        writer: Option<Box<dyn DebugWriter>>,
+    ) -> Option<Box<dyn DebugWriter>> {
+        std::mem::replace(
+            &mut *self.writer.lock().unwrap_or_else(PoisonError::into_inner),
+            writer,
+        )
     }
 
+    /// Clones the debugger with only its logs.
     pub(super) fn clone(&self) -> Self {
         let clone = Self::default();
         for log in self.logs().iter() {
@@ -98,13 +108,13 @@ mod tests {
         ));
 
         let names = Arc::new(Mutex::new(Vec::new()));
-        debugger.set_writer(Some(Box::new(TestWriter {
+        let _ = debugger.set_writer(Some(Box::new(TestWriter {
             names: names.clone(),
         })));
         assert!(debugger.set_object_name(&TestObject, NAME).is_ok());
         assert_eq!(*names.lock().unwrap(), [NAME]);
 
-        debugger.set_writer(None);
+        let _ = debugger.set_writer(None);
         assert!(matches!(
             debugger.set_object_name(&TestObject, NAME),
             Err(Error::InvalidOperation(_))
@@ -119,7 +129,7 @@ mod tests {
 
         let debugger = Debugger::default();
         debugger.log(MESSAGE, SEVERITY);
-        debugger.set_writer(Some(Box::new(TestWriter {
+        let _ = debugger.set_writer(Some(Box::new(TestWriter {
             names: Arc::new(Mutex::new(Vec::new())),
         })));
 

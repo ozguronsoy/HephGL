@@ -10,7 +10,7 @@ use crate::{
     Error, Result,
     renderers::{
         debug::RendererDebugObject,
-        resource_ref,
+        downcast_ref,
         resources::{
             BufferUsage, RendererBuffer, RendererResource, RendererSampler, RendererTexture,
             ResourceBinding, ResourceBindingType, TextureFormat,
@@ -334,7 +334,7 @@ impl VulkanRenderer {
                     offset,
                     size,
                 } => {
-                    let Ok(buffer) = resource_ref::<VulkanBuffer>(buffer) else {
+                    let Ok(buffer) = downcast_ref::<VulkanBuffer>(buffer) else {
                         return Err(Error::invalid_argument(
                             "Invalid buffer type, expected a VulkanBuffer.",
                         ));
@@ -345,7 +345,7 @@ impl VulkanRenderer {
                     size.hash(&mut hasher);
                 }
                 ResourceBindingType::Texture { texture } => {
-                    let Ok(texture) = resource_ref::<VulkanTexture>(texture) else {
+                    let Ok(texture) = downcast_ref::<VulkanTexture>(texture) else {
                         return Err(Error::invalid_argument(
                             "Invalid buffer type, expected a VulkanTexture.",
                         ));
@@ -354,7 +354,7 @@ impl VulkanRenderer {
                     texture.image_view.hash(&mut hasher);
                 }
                 ResourceBindingType::Sampler { sampler } => {
-                    let Ok(sampler) = resource_ref::<VulkanSampler>(sampler) else {
+                    let Ok(sampler) = downcast_ref::<VulkanSampler>(sampler) else {
                         return Err(Error::invalid_argument(
                             "Invalid buffer type, expected a VulkanSampler.",
                         ));
@@ -412,7 +412,7 @@ impl VulkanRenderer {
                             BufferUsage::Uniform => ash::vk::DescriptorType::UNIFORM_BUFFER,
                             _ => unreachable!(),
                         };
-                        let buffer = resource_ref::<VulkanBuffer>(buffer)?;
+                        let buffer = downcast_ref::<VulkanBuffer>(buffer)?;
                         let info = ash::vk::DescriptorBufferInfo::default()
                             .buffer(buffer.buffer)
                             .offset(offset as u64)
@@ -423,7 +423,7 @@ impl VulkanRenderer {
                         unsafe { logical_device.update_descriptor_sets(&[write], &[]) };
                     }
                     ResourceBindingType::Texture { texture } => {
-                        let texture = resource_ref::<VulkanTexture>(texture)?;
+                        let texture = downcast_ref::<VulkanTexture>(texture)?;
                         let info = ash::vk::DescriptorImageInfo::default()
                             .image_view(texture.image_view)
                             .image_layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
@@ -433,7 +433,7 @@ impl VulkanRenderer {
                         unsafe { logical_device.update_descriptor_sets(&[write], &[]) };
                     }
                     ResourceBindingType::Sampler { sampler } => {
-                        let sampler = resource_ref::<VulkanSampler>(sampler)?;
+                        let sampler = downcast_ref::<VulkanSampler>(sampler)?;
                         let info = ash::vk::DescriptorImageInfo::default().sampler(sampler.sampler);
                         let write = write
                             .descriptor_type(ash::vk::DescriptorType::SAMPLER)

@@ -8,6 +8,8 @@ mod thread_context;
 mod version;
 pub mod vulkan;
 
+use std::any::{Any, type_name};
+
 use renkrs::RGB;
 
 pub use crate::renderers::{
@@ -184,4 +186,18 @@ pub trait Renderer {
 /// Gets the maximum number of threads that can execute concurrently.
 pub const fn max_concurrent_threads() -> usize {
     crate::renderers::thread_context::thread_context_count()
+}
+
+/// Downcasts the reference to the provided type.
+fn downcast_ref<T: Any>(value: &dyn Any) -> Result<&T> {
+    value.downcast_ref::<T>().ok_or_else(|| {
+        Error::invalid_argument(format!("Type mismatch: expected {}.", type_name::<T>()))
+    })
+}
+
+/// Downcasts the mutable reference to the provided type.
+fn downcast_mut<T: Any>(value: &mut dyn Any) -> Result<&mut T> {
+    value.downcast_mut::<T>().ok_or_else(|| {
+        Error::invalid_argument(format!("Type mismatch: expected {}.", type_name::<T>()))
+    })
 }

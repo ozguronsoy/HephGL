@@ -12,7 +12,7 @@ pub(super) use crate::renderers::vulkan::canvas::{
 use crate::{
     Error, Result,
     renderers::{
-        RendererCanvas, resource_mut,
+        RendererCanvas, downcast_mut,
         settings::Settings,
         vulkan::{
             VulkanRenderer, device::DeviceContext, rendering::VulkanRendering,
@@ -52,10 +52,10 @@ pub(super) trait VulkanCanvas: RendererCanvas {
 pub(super) fn vulkan_canvas_mut(canvas: &mut dyn RendererCanvas) -> Result<&mut dyn VulkanCanvas> {
     let canvas: &mut dyn Any = canvas;
     if canvas.is::<VulkanColorCanvas>() {
-        return Ok(resource_mut::<VulkanColorCanvas>(canvas)?);
+        return Ok(downcast_mut::<VulkanColorCanvas>(canvas)?);
     }
     if canvas.is::<VulkanDepthCanvas>() {
-        return Ok(resource_mut::<VulkanDepthCanvas>(canvas)?);
+        return Ok(downcast_mut::<VulkanDepthCanvas>(canvas)?);
     }
     Err(Error::invalid_argument(
         "Type mismatch: expected a Vulkan canvas.",

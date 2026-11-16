@@ -8,8 +8,8 @@ use ash::vk::{
 use crate::{
     Error, Result,
     renderers::{
-        debug::{Debugger, RendererDebugObject, Severity, writer::DebugWriter},
-        resource_ref,
+        debug::{DebugWriter, Debugger, RendererDebugObject, Severity},
+        downcast_ref,
         vulkan::{
             VulkanBuffer, VulkanColorCanvas, VulkanComputePipeline, VulkanDepthCanvas,
             VulkanGraphicsPipeline, VulkanRenderer, VulkanSampler, VulkanTexture,
@@ -25,19 +25,19 @@ impl DebugWriter for VulkanDebugWriter {
     fn set_object_name(&self, object: &dyn RendererDebugObject, name: &str) -> Result<()> {
         let name = CString::new(name)?;
         let mut name_info = ash::vk::DebugUtilsObjectNameInfoEXT::default().object_name(&name);
-        if let Ok(buffer) = resource_ref::<VulkanBuffer>(object) {
+        if let Ok(buffer) = downcast_ref::<VulkanBuffer>(object) {
             name_info = name_info.object_handle(buffer.buffer);
-        } else if let Ok(texture) = resource_ref::<VulkanTexture>(object) {
+        } else if let Ok(texture) = downcast_ref::<VulkanTexture>(object) {
             name_info = name_info.object_handle(texture.image);
-        } else if let Ok(sampler) = resource_ref::<VulkanSampler>(object) {
+        } else if let Ok(sampler) = downcast_ref::<VulkanSampler>(object) {
             name_info = name_info.object_handle(sampler.sampler);
-        } else if let Ok(pipeline) = resource_ref::<VulkanComputePipeline>(object) {
+        } else if let Ok(pipeline) = downcast_ref::<VulkanComputePipeline>(object) {
             name_info = name_info.object_handle(pipeline.pipeline);
-        } else if let Ok(pipeline) = resource_ref::<VulkanGraphicsPipeline>(object) {
+        } else if let Ok(pipeline) = downcast_ref::<VulkanGraphicsPipeline>(object) {
             name_info = name_info.object_handle(pipeline.pipeline);
-        } else if let Ok(canvas) = resource_ref::<VulkanColorCanvas>(object) {
+        } else if let Ok(canvas) = downcast_ref::<VulkanColorCanvas>(object) {
             name_info = name_info.object_handle(canvas.texture.image);
-        } else if let Ok(canvas) = resource_ref::<VulkanDepthCanvas>(object) {
+        } else if let Ok(canvas) = downcast_ref::<VulkanDepthCanvas>(object) {
             name_info = name_info.object_handle(canvas.texture.image);
         } else {
             return Err(Error::invalid_argument(
@@ -45,7 +45,7 @@ impl DebugWriter for VulkanDebugWriter {
             ));
         }
         if name_info.object_handle == 0 {
-            return Err(Error::invalid_argument("Provided object is not allocated."));
+            return Err(Error::invalid_argument("Provided object is destroyed."));
         }
         unsafe { self.device.set_debug_utils_object_name(&name_info)? };
         Ok(())
@@ -62,7 +62,7 @@ impl VulkanRenderer {
             .device_context
             .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
-        debugger.set_writer(Some(Box::new(VulkanDebugWriter {
+        let _ = debugger.set_writer(Some(Box::new(VulkanDebugWriter {
             device: ash::ext::debug_utils::Device::new(instance, &device_context.logical_device),
         })));
         Ok(())
