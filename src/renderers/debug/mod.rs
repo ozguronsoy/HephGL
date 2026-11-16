@@ -57,7 +57,22 @@ impl Debugger {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
+
+    struct TestObject;
+    impl RendererDebugObject for TestObject {}
+
+    struct TestWriter {
+        names: Arc<Mutex<Vec<String>>>,
+    }
+    impl DebugWriter for TestWriter {
+        fn set_object_name(&self, _: &dyn RendererDebugObject, name: &str) -> Result<()> {
+            self.names.lock()?.push(name.to_string());
+            Ok(())
+        }
+    }
 
     #[test]
     fn test_logs() {
@@ -70,5 +85,49 @@ mod tests {
         assert_eq!(debugger.logs().len(), 1);
         assert_eq!(debugger.logs()[0].message(), MESSAGE);
         assert_eq!(debugger.logs()[0].severity(), SEVERITY);
+    }
+
+    #[test]
+    fn test_set_object_name() {
+        const NAME: &str = "Test Object";
+
+        let debugger = Debugger::default();
+        assert!(matches!(
+            debugger.set_object_name(&TestObject, NAME),
+            Err(Error::InvalidOperation(_))
+        ));
+
+        let names = Arc::new(Mutex::new(Vec::new()));
+        debugger.set_writer(Some(Box::new(TestWriter {
+            names: names.clone(),
+        })));
+        assert!(debugger.set_object_name(&TestObject, NAME).is_ok());
+        assert_eq!(*names.lock().unwrap(), [NAME]);
+
+        debugger.set_writer(None);
+        assert!(matches!(
+            debugger.set_object_name(&TestObject, NAME),
+            Err(Error::InvalidOperation(_))
+        ));
+        assert_eq!(names.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_clone() {
+        const MESSAGE: &str = "Hello World!";
+        const SEVERITY: Severity = Severity::Warning;
+
+        let debugger = Debugger::default();
+        debugger.log(MESSAGE, SEVERITY);
+        debugger.set_writer(Some(Box::new(TestWriter {
+            names: Arc::new(Mutex::new(Vec::new())),
+        })));
+
+        let clone = debugger.clone();
+        assert_eq!(*clone.logs(), *debugger.logs());
+        assert!(matches!(
+            clone.set_object_name(&TestObject, "Test Object"),
+            Err(Error::InvalidOperation(_))
+        ));
     }
 }
