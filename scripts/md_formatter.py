@@ -1,8 +1,36 @@
-import textwrap
+import re
 from pathlib import Path
 
 IGNORE_DIRS = {'.git', 'target'}
 MAX_WIDTH = 99
+BLOCK_START = re.compile(r'#{1,6}|[-*+]|\d{1,9}[.)]|[-*_=]+|[>|<].*|```.*')
+
+def is_block_start(text: str) -> bool:
+    return BLOCK_START.fullmatch(text.split(maxsplit=1)[0]) is not None
+
+def wrap_text(text: str) -> list[str]:
+    wrapped = []
+    current = []
+
+    for word in re.findall(r'\s*\S+', text):
+        if not current or len("".join([*current, word]).lstrip()) <= MAX_WIDTH:
+            current.append(word)
+            continue
+
+        next_line = [word]
+        while len(current) > 1 and is_block_start(next_line[0]):
+            next_line.insert(0, current.pop())
+
+        if is_block_start(next_line[0]):
+            current.extend(next_line)
+        else:
+            wrapped.append("".join(current).lstrip())
+            current = next_line
+
+    if current:
+        wrapped.append("".join(current).lstrip())
+
+    return wrapped
 
 def wrap_markdown_file(filepath: Path):
     with open(filepath, 'r', encoding='utf-8') as f:
@@ -15,31 +43,34 @@ def wrap_markdown_file(filepath: Path):
     def flush_paragraph():
         if paragraph_buffer:
             text = " ".join(line.strip() for line in paragraph_buffer)
-            wrapped = textwrap.wrap(
-                text, width=MAX_WIDTH, break_long_words=False, break_on_hyphens=False
-            )
-            out_lines.extend(wrapped)
+            out_lines.extend(wrap_text(text))
             paragraph_buffer.clear()
 
     for line in lines:
+        line = line.rstrip('\n')
         stripped = line.strip()
 
         if stripped.startswith("```"):
             flush_paragraph()
             in_code_block = not in_code_block
-            out_lines.append(line.rstrip('\n'))
+            out_lines.append(line)
             continue
 
         if in_code_block:
-            out_lines.append(line.rstrip('\n'))
+            out_lines.append(line)
             continue
 
-        if not stripped or stripped.startswith(('#', '>', '-', '*', '|', '<')):
+        if not stripped or line.startswith(('    ', '\t')) or is_block_start(stripped):
             flush_paragraph()
-            out_lines.append(line.rstrip('\n'))
+            out_lines.append(line)
             continue
 
         paragraph_buffer.append(line)
+
+        if line.endswith(('  ', '\\')):
+            flush_paragraph()
+            if line.endswith('  '):
+                out_lines[-1] += '  '
 
     flush_paragraph()
 
