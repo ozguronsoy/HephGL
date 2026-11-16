@@ -2,7 +2,7 @@
 
 pub mod renderer;
 
-use heph_gl::renderers::{InitializeOptions, LATEST_API_VERSION, Msaa, Renderer, Settings};
+use heph_gl::renderers::{InitializeOptions, LATEST_API_VERSION, Renderer, Settings};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use winit::{
     application::ApplicationHandler,
@@ -80,12 +80,8 @@ impl ApplicationHandler for App {
             renderer.initialize(&init_options).unwrap();
             renderer
                 .set_settings(Settings {
-                    frames_in_flight: 1,
                     vsync: true,
-                    max_fps: None,
-                    stereoscopic_3d_rendering: false,
-                    default_size: (1920, 1080),
-                    msaa: Msaa::X1,
+                    ..Default::default()
                 })
                 .unwrap();
         }

@@ -1,15 +1,17 @@
 use std::mem::DropGuard;
 
 use ash::vk::{
-    AccessFlags, ColorSpaceKHR, CompositeAlphaFlagsKHR, Extent3D, ImageAspectFlags, ImageCopy,
-    ImageLayout, ImageSubresourceLayers, ImageUsageFlags, PipelineStageFlags, PresentModeKHR,
-    SemaphoreCreateInfo, SharingMode, SwapchainCreateInfoKHR, SwapchainKHR,
+    AccessFlags, ColorSpaceKHR, CompositeAlphaFlagsKHR, Extent3D, Format, FormatFeatureFlags,
+    ImageAspectFlags, ImageCopy, ImageLayout, ImageSubresourceLayers, ImageUsageFlags,
+    PipelineStageFlags, PresentModeKHR, SemaphoreCreateInfo, SharingMode, SurfaceFormatKHR,
+    SwapchainCreateInfoKHR, SwapchainKHR,
 };
 
 use crate::{
     Error, Result,
     renderers::{
-        Renderer, RendererCanvas,
+        HdrMode, Renderer, RendererCanvas,
+        debug::Severity,
         vulkan::{VulkanRenderer, canvas::VulkanColorCanvas},
     },
 };
@@ -40,6 +42,12 @@ impl SwapchainContext {
     /// Indicates an invalid index.
     pub(super) const INVALID_INDEX: usize = usize::MAX;
 }
+
+/// The surface format used when HDR is disabled.
+const SDR_SURFACE_FORMAT: SurfaceFormatKHR = SurfaceFormatKHR {
+    format: Format::B8G8R8A8_SRGB,
+    color_space: ColorSpaceKHR::SRGB_NONLINEAR,
+};
 
 impl VulkanRenderer {
     /// Creates the swapchain, images, and semaphores for the renderer.
@@ -88,9 +96,26 @@ impl VulkanRenderer {
             ));
         }
 
-        // TODO: Add an enum for enabling HDR.
-        let format = ash::vk::Format::B8G8R8A8_SRGB;
-        let color_space = ColorSpaceKHR::SRGB_NONLINEAR;
+        let surface_format = match self.select_surface_format(self.settings.hdr_mode)? {
+            Some(surface_format) => surface_format,
+            None => {
+                if self.debug_enabled {
+                    let debugger = self.debugger.borrow();
+                    if let Some(debugger) = debugger.as_ref() {
+                        debugger.log(
+                            format!(
+                                "`{:?}` is not supported, using `{:?}` instead.",
+                                self.settings.hdr_mode,
+                                HdrMode::Disabled
+                            ),
+                            Severity::Warning,
+                        );
+                    }
+                }
+                self.settings.hdr_mode = HdrMode::Disabled;
+                SDR_SURFACE_FORMAT
+            }
+        };
 
         let extent = match surface_capabilities.current_extent.width == u32::MAX {
             true => ash::vk::Extent2D {
@@ -149,8 +174,8 @@ impl VulkanRenderer {
             let swapchain_create_info = SwapchainCreateInfoKHR::default()
                 .surface(window_surface)
                 .min_image_count(requested_image_count)
-                .image_format(format)
-                .image_color_space(color_space)
+                .image_format(surface_format.format)
+                .image_color_space(surface_format.color_space)
                 .image_extent(extent)
                 .image_array_layers(array_layer_count)
                 .image_usage(ImageUsageFlags::TRANSFER_DST)
@@ -222,7 +247,7 @@ impl VulkanRenderer {
                     .collect();
         }
 
-        device_context.swapchain_context.format = format;
+        device_context.swapchain_context.format = surface_format.format;
         device_context.swapchain_context.extent = extent;
         device_context
             .swapchain_context
@@ -417,6 +442,71 @@ impl VulkanRenderer {
             1,
             layer_count,
         );
+    }
+
+    /// Selects the swapchain format and color space for the `hdr_mode`, or `None` if the mode is
+    /// not supported by the current device and window.
+    pub(super) fn select_surface_format(
+        &self,
+        hdr_mode: HdrMode,
+    ) -> Result<Option<SurfaceFormatKHR>> {
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(Error::invalid_operation("Device is not set."))?;
+
+        let (color_space, formats): (ColorSpaceKHR, &[Format]) = match hdr_mode {
+            HdrMode::Disabled => return Ok(Some(SDR_SURFACE_FORMAT)),
+            HdrMode::Hdr10 => (
+                ColorSpaceKHR::HDR10_ST2084_EXT,
+                &[
+                    Format::A2B10G10R10_UNORM_PACK32,
+                    Format::A2R10G10B10_UNORM_PACK32,
+                ],
+            ),
+            HdrMode::Scrgb => (
+                ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT,
+                &[Format::R16G16B16A16_SFLOAT],
+            ),
+        };
+        if !self.swapchain_colorspace_enabled {
+            return Ok(None);
+        }
+
+        let (Some(instance), Some(surface), Some(surface_loader)) = (
+            self.instance.as_ref(),
+            self.window_surface,
+            self.window_surface_loader.as_ref(),
+        ) else {
+            return Err(Error::invalid_operation("Renderer is not initialized."));
+        };
+        let surface_formats = unsafe {
+            surface_loader
+                .get_physical_device_surface_formats(device_context.physical_device, surface)?
+        };
+
+        // The display canvas renders in the swapchain format and is copied into the swapchain.
+        let required_features = FormatFeatureFlags::COLOR_ATTACHMENT
+            | FormatFeatureFlags::COLOR_ATTACHMENT_BLEND
+            | FormatFeatureFlags::SAMPLED_IMAGE
+            | FormatFeatureFlags::TRANSFER_SRC
+            | FormatFeatureFlags::TRANSFER_DST;
+        let format = formats.iter().copied().find(|format| {
+            let format_properties = unsafe {
+                instance
+                    .get_physical_device_format_properties(device_context.physical_device, *format)
+            };
+            surface_formats.iter().any(|surface_format| {
+                surface_format.format == *format && surface_format.color_space == color_space
+            }) && format_properties
+                .optimal_tiling_features
+                .contains(required_features)
+        });
+
+        Ok(format.map(|format| SurfaceFormatKHR {
+            format,
+            color_space,
+        }))
     }
 
     pub(super) fn transition_image_layout(

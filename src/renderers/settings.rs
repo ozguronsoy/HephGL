@@ -20,6 +20,20 @@ pub enum Msaa {
     X64,
 }
 
+/// Defines the HDR output modes used when presenting.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub enum HdrMode {
+    /// Disables HDR and presents in the sRGB color space.
+    #[default]
+    Disabled,
+    /// Presents 10-bit color in the Rec.2020 color space, encoded with the PQ (ST.2084) transfer
+    /// function.
+    Hdr10,
+    /// Presents 16-bit floating-point linear color with Rec.709 primaries, where 1.0 corresponds
+    /// to 80 nits and values outside the 0.0 to 1.0 range are allowed.
+    Scrgb,
+}
+
 /// Defines the color blending modes supported by the renderers.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum ColorBlending {
@@ -143,6 +157,12 @@ pub struct Settings {
     pub default_size: (u32, u32),
     /// The multisample anti-aliasing sample count.
     pub msaa: Msaa,
+    /// The HDR output mode.
+    ///
+    /// ### Note
+    /// If the mode is not supported by the current device and window, the renderer falls back to
+    /// [`HdrMode::Disabled`].
+    pub hdr_mode: HdrMode,
 }
 
 /// Represents the options used while initializing the renderer.
@@ -311,6 +331,7 @@ impl Default for Settings {
             stereoscopic_3d_rendering: false,
             default_size: (1920, 1080),
             msaa: Msaa::X1,
+            hdr_mode: HdrMode::Disabled,
         }
     }
 }

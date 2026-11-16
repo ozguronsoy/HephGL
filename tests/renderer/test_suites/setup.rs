@@ -7,10 +7,10 @@ use heph_gl::{
     },
     Shader, Version,
     renderers::{
-        BufferUsage, CanvasOptions, FeatureRequest, GraphicsPipelineOptions, InitializeOptions,
-        Renderer, RendererHandle, RendererWorkerFactory, SamplerOptions, Settings, TextureFormat,
-        TextureOptions,
-        debug::{Debugger, RendererDebugObject},
+        BufferUsage, CanvasOptions, FeatureRequest, GraphicsPipelineOptions, HdrMode,
+        InitializeOptions, Renderer, RendererHandle, RendererWorkerFactory, SamplerOptions,
+        Settings, TextureFormat, TextureOptions,
+        debug::{Debugger, RendererDebugObject, Severity},
     },
 };
 
@@ -421,6 +421,44 @@ where
                 }),
                 Error::invalid_argument("")
             );
+        }
+    }
+
+    pub(crate) fn test_is_hdr_mode_supported(&self) {
+        {
+            let renderer = self.create_renderer();
+            heph_expect_err!(
+                renderer.is_hdr_mode_supported(HdrMode::Disabled),
+                Error::invalid_operation("")
+            );
+        }
+
+        {
+            let mut renderer = self.create_renderer_with_any_device(&[]);
+            assert!(heph_expect_success!(
+                renderer.is_hdr_mode_supported(HdrMode::Disabled)
+            ));
+            for hdr_mode in [HdrMode::Hdr10, HdrMode::Scrgb] {
+                let supported = heph_expect_success!(renderer.is_hdr_mode_supported(hdr_mode));
+                heph_expect_success!(renderer.set_settings(Settings {
+                    hdr_mode,
+                    ..Default::default()
+                }));
+                if supported {
+                    assert_eq!(renderer.get_settings().hdr_mode, hdr_mode);
+                } else {
+                    assert_eq!(renderer.get_settings().hdr_mode, HdrMode::Disabled);
+                    let debugger =
+                        heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."));
+                    let mut logs = debugger.logs();
+                    let index = heph_expect_success!(
+                        logs.iter()
+                            .position(|log| matches!(log.severity(), Severity::Warning))
+                            .ok_or("No fallback warning found.")
+                    );
+                    let _ = logs.remove(index);
+                }
+            }
         }
     }
 }

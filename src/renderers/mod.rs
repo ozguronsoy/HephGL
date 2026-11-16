@@ -43,6 +43,9 @@ pub trait Renderer {
         Ok(api_version >= self.min_api_version() && api_version <= self.latest_api_version()?)
     }
 
+    /// Checks whether the HDR mode is supported by the current device and window.
+    fn is_hdr_mode_supported(&self, hdr_mode: HdrMode) -> Result<bool>;
+
     /// Gets the attached debugger if there is one.
     fn debugger(&self) -> Option<std::cell::Ref<'_, Debugger>>;
     /// Attaches a debugger. Any debugger that is already attached must be detached first.
