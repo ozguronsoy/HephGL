@@ -1,7 +1,7 @@
-use std::any::Any;
+use crate::renderers::debug::RendererDebugObject;
 
 /// Represents a compiled pipeline.
-pub trait RendererPipeline: Any + Send + Sync {
+pub trait RendererPipeline: RendererDebugObject {
     /// Indicates whether the pipeline currently has an allocation.
     fn is_allocated(&self) -> bool;
 }

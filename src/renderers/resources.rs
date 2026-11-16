@@ -1,6 +1,6 @@
 use std::any::{Any, type_name};
 
-use crate::{Error, Result};
+use crate::{Error, Result, renderers::debug::RendererDebugObject};
 
 /// Defines the possible usages of a buffer.
 #[derive(Debug, Clone, Copy, Hash, PartialEq)]
@@ -82,7 +82,7 @@ pub struct ResourceBinding<'a> {
 }
 
 /// Represents a resource managed by a renderer.
-pub trait RendererResource: Any + Send + Sync {
+pub trait RendererResource: RendererDebugObject {
     /// Indicates whether the resource currently has an allocation.
     fn is_allocated(&self) -> bool;
 }

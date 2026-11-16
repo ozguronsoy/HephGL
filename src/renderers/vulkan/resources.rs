@@ -9,6 +9,7 @@ use ash::vk::{Buffer, DescriptorSet, DescriptorType, Handle};
 use crate::{
     Error, Result,
     renderers::{
+        debug::RendererDebugObject,
         resource_ref,
         resources::{
             BufferUsage, RendererBuffer, RendererResource, RendererSampler, RendererTexture,
@@ -57,6 +58,7 @@ pub(super) struct VulkanSampler {
     pub(super) sampler: ash::vk::Sampler,
 }
 
+impl RendererDebugObject for VulkanSampler {}
 impl RendererResource for VulkanSampler {
     fn is_allocated(&self) -> bool {
         !self.sampler.is_null()
@@ -64,6 +66,7 @@ impl RendererResource for VulkanSampler {
 }
 impl RendererSampler for VulkanSampler {}
 
+impl RendererDebugObject for VulkanTexture {}
 impl RendererResource for VulkanTexture {
     fn is_allocated(&self) -> bool {
         !(self.image.is_null() || self.image_view.is_null())
@@ -87,6 +90,7 @@ impl RendererTexture for VulkanTexture {
     }
 }
 
+impl RendererDebugObject for VulkanBuffer {}
 impl RendererResource for VulkanBuffer {
     fn is_allocated(&self) -> bool {
         !self.buffer.is_null()

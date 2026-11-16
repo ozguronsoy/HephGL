@@ -137,20 +137,28 @@ where
             }));
             assert!(renderer.debugger().is_none());
             heph_expect_err!(renderer.detach_debugger(), Error::invalid_operation(""));
-            heph_expect_success!(renderer.attach_debugger(Debugger::default()));
+            heph_expect_success!(
+                renderer
+                    .attach_debugger(Debugger::default())
+                    .map_err(|(e, _)| e)
+            );
             heph_expect_err!(
-                renderer.attach_debugger(Debugger::default()),
+                renderer
+                    .attach_debugger(Debugger::default())
+                    .map_err(|(e, _)| e),
                 Error::invalid_operation("")
             );
             let debugger = heph_expect_success!(renderer.detach_debugger());
-            heph_expect_success!(renderer.attach_debugger(debugger));
+            heph_expect_success!(renderer.attach_debugger(debugger).map_err(|(e, _)| e));
         }
 
         {
             let test_env = test_env!();
             let mut renderer = TestRenderer::new();
             heph_expect_err!(
-                renderer.attach_debugger(Debugger::default()),
+                renderer
+                    .attach_debugger(Debugger::default())
+                    .map_err(|(e, _)| e),
                 Error::invalid_operation("")
             );
             heph_expect_success!(renderer.initialize(&InitializeOptions {
@@ -161,7 +169,9 @@ where
                 debug: false,
             }));
             heph_expect_err!(
-                renderer.attach_debugger(Debugger::default()),
+                renderer
+                    .attach_debugger(Debugger::default())
+                    .map_err(|(e, _)| e),
                 Error::invalid_operation("")
             );
             heph_expect_err!(renderer.detach_debugger(), Error::invalid_operation(""));

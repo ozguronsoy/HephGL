@@ -162,6 +162,14 @@ impl VulkanRenderer {
     pub(super) fn uninitialize_device(&mut self) -> Result<()> {
         if self.device_context.is_some() {
             self.wait_idle()?;
+
+            if self.debug_enabled {
+                let debugger = self.debugger.borrow();
+                if let Some(debugger) = &*debugger {
+                    debugger.set_writer(None);
+                }
+            }
+
             self.destroy_rendering()?;
             self.destroy_swapchain()?;
             self.destroy_frame_sync()?;

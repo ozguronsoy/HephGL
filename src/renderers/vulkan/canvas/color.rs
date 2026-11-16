@@ -7,6 +7,7 @@ use crate::{
     Error, Result,
     renderers::{
         RendererCanvas,
+        debug::RendererDebugObject,
         resources::{RendererTexture, TextureFormat},
         settings::{CanvasOptions, Msaa, Settings, TextureOptions},
         vulkan::{
@@ -38,6 +39,8 @@ pub struct VulkanColorCanvas {
     /// The number of array layers of the canvas images.
     pub layer_count: u32,
 }
+
+impl RendererDebugObject for VulkanColorCanvas {}
 
 impl RendererCanvas for VulkanColorCanvas {
     fn width(&self) -> u32 {

@@ -154,19 +154,23 @@ impl Renderer for VulkanRenderer {
         Ref::filter_map(self.debugger.borrow(), |debugger| debugger.as_deref()).ok()
     }
 
-    fn attach_debugger(&self, debugger: Debugger) -> Result<()> {
+    fn attach_debugger(&self, debugger: Debugger) -> std::result::Result<(), (Error, Debugger)> {
         if !self.debug_enabled {
-            return Err(Error::invalid_operation("Debugging is disabled."));
+            return Err((Error::invalid_operation("Debugging is disabled."), debugger));
         }
         if self.debugger.borrow().is_some() {
-            return Err(Error::invalid_operation(
-                "A debugger is already attached to the renderer.",
+            return Err((
+                Error::invalid_operation("A debugger is already attached to the renderer."),
+                debugger,
             ));
         }
+        // The device may not be set yet. If that's the case, we will set the writer in
+        // `set_device`.
+        let _ = self.set_debug_writer(&debugger);
         let _ = self.debugger.replace(Some(Box::new(debugger)));
         if let Err(error) = self.create_debug_messenger() {
-            let _ = self.debugger.take();
-            return Err(error);
+            let debugger = self.debugger.take().unwrap();
+            return Err((error, debugger.clone()));
         }
         Ok(())
     }
@@ -175,7 +179,10 @@ impl Renderer for VulkanRenderer {
         self.destroy_debug_messenger();
         self.debugger
             .take()
-            .map(|debugger| *debugger)
+            .map(|debugger| {
+                debugger.set_writer(None);
+                *debugger
+            })
             .ok_or(Error::invalid_operation("No attached debugger found."))
     }
 
@@ -871,6 +878,13 @@ impl Renderer for VulkanRenderer {
         self.create_frame_sync()?;
         self.create_swapchain()?;
         self.create_rendering()?;
+
+        if self.debug_enabled {
+            let debugger = self.debugger.borrow();
+            if let Some(debugger) = &*debugger {
+                self.set_debug_writer(debugger.as_ref())?;
+            }
+        }
 
         Ok(())
     }

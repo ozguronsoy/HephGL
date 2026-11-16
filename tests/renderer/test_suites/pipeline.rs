@@ -8,13 +8,14 @@ use heph_gl::{
     renderers::{
         DepthBias, FeatureRequest, GraphicsPipelineOptions, PolygonMode, PrimitiveTopology,
         Renderer, RendererComputePipeline, RendererGraphicsPipeline, RendererHandle,
-        RendererPipeline, RendererWorkerFactory,
+        RendererPipeline, RendererWorkerFactory, debug::RendererDebugObject,
     },
 };
 
 use crate::{heph_expect_err, heph_expect_success, renderer::RendererTests, utils::SHADERS_DIR};
 
 struct ForeignComputePipeline;
+impl RendererDebugObject for ForeignComputePipeline {}
 impl RendererPipeline for ForeignComputePipeline {
     fn is_allocated(&self) -> bool {
         false
@@ -23,6 +24,7 @@ impl RendererPipeline for ForeignComputePipeline {
 impl RendererComputePipeline for ForeignComputePipeline {}
 
 struct ForeignGraphicsPipeline;
+impl RendererDebugObject for ForeignGraphicsPipeline {}
 impl RendererPipeline for ForeignGraphicsPipeline {
     fn is_allocated(&self) -> bool {
         false

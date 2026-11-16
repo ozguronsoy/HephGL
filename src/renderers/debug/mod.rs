@@ -1,20 +1,35 @@
 mod log;
+mod object;
 mod severity;
+pub(super) mod writer;
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-pub use super::debug::{log::*, severity::*};
+pub use super::debug::{log::*, object::*, severity::*};
+use crate::{Error, Result, renderers::debug::writer::DebugWriter};
 
 /// Provides debugging facilities for inspecting and diagnosing the renderer.
 #[derive(Default)]
 pub struct Debugger {
     logs: Mutex<Vec<Log>>,
+    writer: Mutex<Option<Box<dyn DebugWriter>>>,
 }
 
 impl Debugger {
     /// Gets the logs recorded so far.
     pub fn logs(&self) -> MutexGuard<'_, Vec<Log>> {
         self.logs.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Sets the name of the object, which shows up in validation messages and graphics debuggers.
+    pub fn set_object_name(&self, object: &dyn RendererDebugObject, name: &str) -> Result<()> {
+        self.writer
+            .lock()?
+            .as_ref()
+            .ok_or(Error::invalid_operation(
+                "Debugger is not attached to a renderer.",
+            ))?
+            .set_object_name(object, name)
     }
 
     /// Appends a single log to the recorded logs.
@@ -25,6 +40,18 @@ impl Debugger {
                 severity,
             });
         }
+    }
+
+    pub(super) fn set_writer(&self, writer: Option<Box<dyn DebugWriter>>) {
+        *self.writer.lock().unwrap_or_else(PoisonError::into_inner) = writer;
+    }
+
+    pub(super) fn clone(&self) -> Self {
+        let clone = Self::default();
+        for log in self.logs().iter() {
+            clone.log(log.message(), log.severity());
+        }
+        clone
     }
 }
 
