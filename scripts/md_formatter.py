@@ -15,7 +15,9 @@ def wrap_markdown_file(filepath: Path):
     def flush_paragraph():
         if paragraph_buffer:
             text = " ".join(line.strip() for line in paragraph_buffer)
-            wrapped = textwrap.wrap(text, width=MAX_WIDTH, break_long_words=False)
+            wrapped = textwrap.wrap(
+                text, width=MAX_WIDTH, break_long_words=False, break_on_hyphens=False
+            )
             out_lines.extend(wrapped)
             paragraph_buffer.clear()
 
