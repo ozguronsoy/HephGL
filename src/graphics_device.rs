@@ -3,7 +3,7 @@ use std::{any::Any, collections::BTreeSet, fmt::Display};
 use crate::{Version, renderers::Msaa};
 
 /// Defines the supported GPU types.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum GraphicsDeviceType {
     /// A dedicated graphics card.
     DiscreteGpu,

@@ -72,7 +72,8 @@ pub trait Renderer {
     /// This function can only be called from the main thread.
     fn uninitialize(&mut self) -> Result<()>;
 
-    /// Enumerates all available graphics devices on the system.
+    /// Enumerates the graphics devices available on the system, with the most capable devices
+    /// first.
     fn enumerate_devices(&self) -> Result<Vec<GraphicsDevice>>;
     /// Returns the currently active device, or `None` if there is no active
     /// device.
