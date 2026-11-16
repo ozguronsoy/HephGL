@@ -27,8 +27,8 @@ Backends:
 > Currently only Vulkan is supported.
 
 The shared [utilities](utils/mod.rs) create the window and renderer, and initialize the renderer
-for every example except `creating_renderer`, which demonstrates initialization explicitly. The
-flowcharts describe reusable library workflows.
+for every example except `creating_renderer` and `debugger`, which demonstrate initialization
+explicitly. The flowcharts describe reusable library workflows.
 
 ## Initialization
 
@@ -53,6 +53,20 @@ Discovers available graphics devices and prints their capabilities.
 flowchart LR
     A[Initialized renderer] --> B[Enumerate graphics devices]
     B --> C[Print device information]
+```
+
+### [debugger](debugger.rs)
+
+Initializes the renderer with debugging enabled and attaches a debugger that records the validation
+messages. Names an object so it can be identified in the messages, then leaks it so the validation
+layer reports it when the renderer is uninitialized.
+
+```mermaid
+flowchart LR
+    A[Initialize renderer with debugging enabled] --> B[Attach debugger]
+    B --> C[Create an object and set its name]
+    C --> D[Uninitialize renderer to leak the object]
+    D --> E[Detach debugger and print its logs]
 ```
 
 ## Compute
