@@ -25,9 +25,11 @@ jobs:
           nextest: true
           cache-key: examples-${{ matrix.os }}
 
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
       - name: Run Examples
         shell: bash
-        run: |
-          for file in examples/*.rs; do
-            $HEPHGL_GUI_PREFIX cargo run --example "$(basename "$file" .rs)"
-          done
+        run: $HEPHGL_GUI_PREFIX python scripts/run_examples.py
