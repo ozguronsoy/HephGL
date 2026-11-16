@@ -28,6 +28,12 @@ pub enum TextureFormat {
     Rgba8Srgb,
     /// 8-bit BGRA using the sRGB color space.
     Bgra8Srgb,
+    /// Packed 10-bit RGB with 2-bit alpha using linear color values.
+    Rgb10a2Unorm,
+    /// Packed 10-bit BGR with 2-bit alpha using linear color values.
+    Bgr10a2Unorm,
+    /// 16-bit RGBA using signed floating-point color values.
+    Rgba16Sfloat,
     /// BC1 block-compressed RGB with 1-bit alpha using linear color values.
     Bc1Unorm,
     /// BC1 block-compressed RGB with 1-bit alpha using the sRGB color space.
@@ -149,8 +155,13 @@ impl TextureFormat {
         match self {
             Self::R8Unorm => 1,
             Self::R16Unorm => 2,
-            Self::Rgba8Unorm | Self::Rgba8Srgb | Self::Bgra8Srgb | Self::D32Sfloat => 4,
-            Self::Bc1Unorm | Self::Bc1Srgb | Self::Bc4Unorm => 8,
+            Self::Rgba8Unorm
+            | Self::Rgba8Srgb
+            | Self::Bgra8Srgb
+            | Self::Rgb10a2Unorm
+            | Self::Bgr10a2Unorm
+            | Self::D32Sfloat => 4,
+            Self::Rgba16Sfloat | Self::Bc1Unorm | Self::Bc1Srgb | Self::Bc4Unorm => 8,
             Self::Bc2Unorm
             | Self::Bc2Srgb
             | Self::Bc3Unorm
@@ -210,6 +221,9 @@ mod tests {
         assert_eq!(TextureFormat::Rgba8Unorm.bytes_per_block(), 4);
         assert_eq!(TextureFormat::Rgba8Srgb.bytes_per_block(), 4);
         assert_eq!(TextureFormat::Bgra8Srgb.bytes_per_block(), 4);
+        assert_eq!(TextureFormat::Rgb10a2Unorm.bytes_per_block(), 4);
+        assert_eq!(TextureFormat::Bgr10a2Unorm.bytes_per_block(), 4);
+        assert_eq!(TextureFormat::Rgba16Sfloat.bytes_per_block(), 8);
         assert_eq!(TextureFormat::Bc1Unorm.bytes_per_block(), 8);
         assert_eq!(TextureFormat::Bc1Srgb.bytes_per_block(), 8);
         assert_eq!(TextureFormat::Bc2Unorm.bytes_per_block(), 16);
@@ -231,6 +245,9 @@ mod tests {
         assert_eq!(TextureFormat::Rgba8Unorm.block_extent(), 1);
         assert_eq!(TextureFormat::Rgba8Srgb.block_extent(), 1);
         assert_eq!(TextureFormat::Bgra8Srgb.block_extent(), 1);
+        assert_eq!(TextureFormat::Rgb10a2Unorm.block_extent(), 1);
+        assert_eq!(TextureFormat::Bgr10a2Unorm.block_extent(), 1);
+        assert_eq!(TextureFormat::Rgba16Sfloat.block_extent(), 1);
         assert_eq!(TextureFormat::Bc1Unorm.block_extent(), 4);
         assert_eq!(TextureFormat::Bc1Srgb.block_extent(), 4);
         assert_eq!(TextureFormat::Bc2Unorm.block_extent(), 4);
@@ -252,6 +269,9 @@ mod tests {
         assert!(!TextureFormat::Rgba8Unorm.is_bc_compressed());
         assert!(!TextureFormat::Rgba8Srgb.is_bc_compressed());
         assert!(!TextureFormat::Bgra8Srgb.is_bc_compressed());
+        assert!(!TextureFormat::Rgb10a2Unorm.is_bc_compressed());
+        assert!(!TextureFormat::Bgr10a2Unorm.is_bc_compressed());
+        assert!(!TextureFormat::Rgba16Sfloat.is_bc_compressed());
         assert!(TextureFormat::Bc1Unorm.is_bc_compressed());
         assert!(TextureFormat::Bc1Srgb.is_bc_compressed());
         assert!(TextureFormat::Bc2Unorm.is_bc_compressed());

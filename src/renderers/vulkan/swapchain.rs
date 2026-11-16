@@ -9,7 +9,7 @@ use ash::vk::{
 use crate::{
     Error, Result,
     renderers::{
-        Renderer, RendererCanvas,
+        HdrMode, Renderer, RendererCanvas,
         vulkan::{VulkanRenderer, canvas::VulkanColorCanvas},
     },
 };
@@ -65,6 +65,12 @@ impl VulkanRenderer {
                 window_surface,
             )?
         };
+        let surface_formats = unsafe {
+            window_surface_loader.get_physical_device_surface_formats(
+                device_context.physical_device,
+                window_surface,
+            )?
+        };
         let present_modes = unsafe {
             window_surface_loader.get_physical_device_surface_present_modes(
                 device_context.physical_device,
@@ -88,9 +94,36 @@ impl VulkanRenderer {
             ));
         }
 
-        // TODO: Add an enum for enabling HDR.
-        let format = ash::vk::Format::B8G8R8A8_SRGB;
-        let color_space = ColorSpaceKHR::SRGB_NONLINEAR;
+        let hdr_mode = match self.is_hdr_mode_supported(self.settings.hdr_mode)? {
+            true => self.settings.hdr_mode,
+            false => HdrMode::Disabled,
+        };
+        let (format, color_space) = match hdr_mode {
+            HdrMode::Disabled => (
+                ash::vk::Format::B8G8R8A8_SRGB,
+                ColorSpaceKHR::SRGB_NONLINEAR,
+            ),
+            HdrMode::Hdr10 => {
+                if surface_formats.iter().any(|f| {
+                    f.color_space == ColorSpaceKHR::HDR10_ST2084_EXT
+                        && f.format == ash::vk::Format::A2B10G10R10_UNORM_PACK32
+                }) {
+                    (
+                        ash::vk::Format::A2B10G10R10_UNORM_PACK32,
+                        ColorSpaceKHR::HDR10_ST2084_EXT,
+                    )
+                } else {
+                    (
+                        ash::vk::Format::A2R10G10B10_UNORM_PACK32,
+                        ColorSpaceKHR::HDR10_ST2084_EXT,
+                    )
+                }
+            }
+            HdrMode::Scrgb => (
+                ash::vk::Format::R16G16B16A16_SFLOAT,
+                ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT,
+            ),
+        };
 
         let extent = match surface_capabilities.current_extent.width == u32::MAX {
             true => ash::vk::Extent2D {

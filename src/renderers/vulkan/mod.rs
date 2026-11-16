@@ -28,10 +28,10 @@ use std::{
 use ash::vk::{
     ApplicationInfo, BufferCreateInfo, BufferUsageFlags, ColorSpaceKHR, CommandBufferBeginInfo,
     CommandBufferUsageFlags, ComputePipelineCreateInfo, DescriptorSetLayoutBinding,
-    DescriptorSetLayoutCreateInfo, DeviceCreateInfo, DeviceQueueCreateInfo, Format,
-    InstanceCreateInfo, MemoryHeapFlags, PhysicalDeviceFeatures2, PhysicalDeviceType,
-    PipelineBindPoint, PipelineCache, PipelineLayoutCreateInfo, PipelineShaderStageCreateInfo,
-    QueueFlags, ShaderModuleCreateInfo, StructureType, SubmitInfo, SurfaceKHR, SwapchainKHR,
+    DescriptorSetLayoutCreateInfo, DeviceCreateInfo, DeviceQueueCreateInfo, InstanceCreateInfo,
+    MemoryHeapFlags, PhysicalDeviceFeatures2, PhysicalDeviceType, PipelineBindPoint, PipelineCache,
+    PipelineLayoutCreateInfo, PipelineShaderStageCreateInfo, QueueFlags, ShaderModuleCreateInfo,
+    StructureType, SubmitInfo, SurfaceKHR, SwapchainKHR,
 };
 use renkrs::RGB;
 use vk_mem::Alloc;
@@ -167,28 +167,49 @@ impl Renderer for VulkanRenderer {
             return Ok(false);
         }
 
-        let (Some(surface), Some(surface_loader)) =
-            (self.window_surface, self.window_surface_loader.as_ref())
-        else {
+        let (Some(instance), Some(surface), Some(surface_loader)) = (
+            self.instance.as_ref(),
+            self.window_surface,
+            self.window_surface_loader.as_ref(),
+        ) else {
             return Err(Error::invalid_operation("Renderer is not initialized."));
         };
         let surface_formats = unsafe {
             surface_loader
                 .get_physical_device_surface_formats(device_context.physical_device, surface)?
         };
-        Ok(surface_formats.iter().any(|surface_format| match hdr_mode {
-            HdrMode::Disabled => true,
-            HdrMode::Hdr10 => {
-                surface_format.color_space == ColorSpaceKHR::HDR10_ST2084_EXT
-                    && matches!(
-                        surface_format.format,
-                        Format::A2B10G10R10_UNORM_PACK32 | Format::A2R10G10B10_UNORM_PACK32
-                    )
+        Ok(surface_formats.iter().any(|surface_format| {
+            let is_hdr_format = match hdr_mode {
+                HdrMode::Disabled => true,
+                HdrMode::Hdr10 => {
+                    surface_format.color_space == ColorSpaceKHR::HDR10_ST2084_EXT
+                        && matches!(
+                            surface_format.format,
+                            ash::vk::Format::A2B10G10R10_UNORM_PACK32
+                                | ash::vk::Format::A2R10G10B10_UNORM_PACK32
+                        )
+                }
+                HdrMode::Scrgb => {
+                    surface_format.color_space == ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT
+                        && surface_format.format == ash::vk::Format::R16G16B16A16_SFLOAT
+                }
+            };
+            if !is_hdr_format {
+                return false;
             }
-            HdrMode::Scrgb => {
-                surface_format.color_space == ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT
-                    && surface_format.format == Format::R16G16B16A16_SFLOAT
-            }
+
+            let format_properties = unsafe {
+                instance.get_physical_device_format_properties(
+                    device_context.physical_device,
+                    surface_format.format,
+                )
+            };
+            format_properties.optimal_tiling_features.contains(
+                ash::vk::FormatFeatureFlags::COLOR_ATTACHMENT
+                    | ash::vk::FormatFeatureFlags::SAMPLED_IMAGE
+                    | ash::vk::FormatFeatureFlags::TRANSFER_SRC
+                    | ash::vk::FormatFeatureFlags::TRANSFER_DST,
+            )
         }))
     }
 
