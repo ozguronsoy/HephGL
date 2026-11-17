@@ -207,9 +207,9 @@ impl Renderer for VulkanRenderer {
         if self.device_context.is_some() {
             let temp_settings = self.settings;
 
+            self.destroy_frame_sync()?;
             self.destroy_rendering()?;
             self.destroy_swapchain()?;
-            self.destroy_frame_sync()?;
             self.uninitialize_thread()?;
 
             self.settings = settings;
@@ -261,10 +261,10 @@ impl Renderer for VulkanRenderer {
             device_context.current_frame_index = 0;
             device_context.next_frame_deadline = None;
 
-            self.create_frame_sync()?;
             self.initialize_thread()?;
             self.create_swapchain()?;
             self.create_rendering()?;
+            self.create_frame_sync()?;
         } else {
             self.settings = settings;
         }
@@ -894,9 +894,9 @@ impl Renderer for VulkanRenderer {
         });
 
         self.initialize_thread()?;
-        self.create_frame_sync()?;
         self.create_swapchain()?;
         self.create_rendering()?;
+        self.create_frame_sync()?;
 
         if self.debug_enabled {
             let debugger = self.debugger.borrow();
