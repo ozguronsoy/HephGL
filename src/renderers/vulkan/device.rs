@@ -170,9 +170,9 @@ impl VulkanRenderer {
                 }
             }
 
+            self.destroy_frame_sync()?;
             self.destroy_rendering()?;
             self.destroy_swapchain()?;
-            self.destroy_frame_sync()?;
             self.uninitialize_thread()?;
         }
 
