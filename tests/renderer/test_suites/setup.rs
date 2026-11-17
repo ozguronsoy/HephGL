@@ -39,7 +39,7 @@ where
             heph_expect_success!(renderer.initialize(&init_options));
             heph_expect_err!(
                 renderer.initialize(&init_options),
-                Error::invalid_operation("")
+                Error::InvalidOperation(_)
             );
             heph_expect_success!(renderer.uninitialize());
         }
@@ -55,7 +55,7 @@ where
                     api_version: self.api_version,
                     debug: false,
                 }),
-                Error::invalid_argument("")
+                Error::InvalidArgument(_)
             );
         }
 
@@ -71,7 +71,7 @@ where
             };
             heph_expect_err!(
                 renderer.initialize(&init_options),
-                Error::invalid_argument("")
+                Error::InvalidArgument(_)
             );
         }
 
@@ -87,7 +87,7 @@ where
             };
             heph_expect_err!(
                 renderer.initialize(&init_options),
-                Error::invalid_argument("")
+                Error::InvalidArgument(_)
             );
         }
 
@@ -145,7 +145,7 @@ where
                 debug: true,
             }));
             assert!(renderer.debugger().is_none());
-            heph_expect_err!(renderer.detach_debugger(), Error::invalid_operation(""));
+            heph_expect_err!(renderer.detach_debugger(), Error::InvalidOperation(_));
             heph_expect_success!(
                 renderer
                     .attach_debugger(Debugger::default())
@@ -155,7 +155,7 @@ where
                 renderer
                     .attach_debugger(Debugger::default())
                     .map_err(|(e, _)| e),
-                Error::invalid_operation("")
+                Error::InvalidOperation(_)
             );
             let debugger = heph_expect_success!(renderer.detach_debugger());
             heph_expect_success!(renderer.attach_debugger(debugger).map_err(|(e, _)| e));
@@ -168,7 +168,7 @@ where
                 renderer
                     .attach_debugger(Debugger::default())
                     .map_err(|(e, _)| e),
-                Error::invalid_operation("")
+                Error::InvalidOperation(_)
             );
             heph_expect_success!(renderer.initialize(&InitializeOptions {
                 app_name: "",
@@ -181,16 +181,16 @@ where
                 renderer
                     .attach_debugger(Debugger::default())
                     .map_err(|(e, _)| e),
-                Error::invalid_operation("")
+                Error::InvalidOperation(_)
             );
-            heph_expect_err!(renderer.detach_debugger(), Error::invalid_operation(""));
+            heph_expect_err!(renderer.detach_debugger(), Error::InvalidOperation(_));
         }
 
         {
             let debugger = Debugger::default();
             heph_expect_err!(
                 debugger.set_object_name(&ForeignDebugObject, "Foreign Object"),
-                Error::invalid_operation("")
+                Error::InvalidOperation(_)
             );
         }
 
@@ -258,11 +258,11 @@ where
                 heph_expect_success!(debugger.set_object_name(buffer.as_ref(), ""));
                 heph_expect_err!(
                     debugger.set_object_name(buffer.as_ref(), "Buf\0fer"),
-                    Error::invalid_argument("")
+                    Error::InvalidArgument(_)
                 );
                 heph_expect_err!(
                     debugger.set_object_name(&ForeignDebugObject, "Foreign Object"),
-                    Error::invalid_argument("")
+                    Error::InvalidArgument(_)
                 );
             }
 
@@ -279,31 +279,31 @@ where
                     heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."));
                 heph_expect_err!(
                     debugger.set_object_name(buffer.as_ref(), "Buffer"),
-                    Error::invalid_argument("")
+                    Error::InvalidArgument(_)
                 );
                 heph_expect_err!(
                     debugger.set_object_name(texture.as_ref(), "Texture"),
-                    Error::invalid_argument("")
+                    Error::InvalidArgument(_)
                 );
                 heph_expect_err!(
                     debugger.set_object_name(sampler.as_ref(), "Sampler"),
-                    Error::invalid_argument("")
+                    Error::InvalidArgument(_)
                 );
                 heph_expect_err!(
                     debugger.set_object_name(compute_pipeline.as_ref(), "Compute Pipeline"),
-                    Error::invalid_argument("")
+                    Error::InvalidArgument(_)
                 );
                 heph_expect_err!(
                     debugger.set_object_name(graphics_pipeline.as_ref(), "Graphics Pipeline"),
-                    Error::invalid_argument("")
+                    Error::InvalidArgument(_)
                 );
                 heph_expect_err!(
                     debugger.set_object_name(color_canvas.as_ref(), "Color Canvas"),
-                    Error::invalid_argument("")
+                    Error::InvalidArgument(_)
                 );
                 heph_expect_err!(
                     debugger.set_object_name(depth_canvas.as_ref(), "Depth Canvas"),
-                    Error::invalid_argument("")
+                    Error::InvalidArgument(_)
                 );
             }
 
@@ -312,7 +312,7 @@ where
             let debugger = heph_expect_success!(renderer.detach_debugger());
             heph_expect_err!(
                 debugger.set_object_name(buffer.as_ref(), "Buffer"),
-                Error::invalid_operation("")
+                Error::InvalidOperation(_)
             );
             heph_expect_success!(renderer.attach_debugger(debugger).map_err(|(e, _)| e));
             heph_expect_success!(
@@ -368,7 +368,7 @@ where
             }
             heph_expect_err!(
                 renderer.set_device(Some(device), &features),
-                Error::UnsupportedRequiredFeature(RayTracing)
+                Error::UnsupportedRequiredFeature(_)
             );
         }
     }
@@ -405,10 +405,7 @@ where
                     let _ = b2.wait();
                 });
                 let _ = b1.wait();
-                heph_expect_err!(
-                    renderer.set_settings(settings),
-                    Error::invalid_operation("")
-                );
+                heph_expect_err!(renderer.set_settings(settings), Error::InvalidOperation(_));
                 let _ = b1.wait();
             });
         }
@@ -420,7 +417,7 @@ where
                     max_fps: Some(0),
                     ..Default::default()
                 }),
-                Error::invalid_argument("")
+                Error::InvalidArgument(_)
             );
         }
     }
@@ -430,7 +427,7 @@ where
             let renderer = self.create_renderer();
             heph_expect_err!(
                 renderer.is_hdr_mode_supported(HdrMode::Disabled),
-                Error::invalid_operation("")
+                Error::InvalidOperation(_)
             );
         }
 

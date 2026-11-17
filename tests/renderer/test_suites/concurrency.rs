@@ -28,7 +28,7 @@ where
                 let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
                 heph_expect_err!(
                     renderer_worker.set_settings(Settings::default()),
-                    Error::invalid_operation("")
+                    Error::InvalidOperation(_)
                 );
                 heph_expect_err!(
                     renderer_worker.initialize(&InitializeOptions {
@@ -38,14 +38,14 @@ where
                         api_version: LATEST_API_VERSION,
                         debug: false,
                     }),
-                    Error::invalid_operation("")
+                    Error::InvalidOperation(_)
                 );
-                heph_expect_err!(renderer_worker.uninitialize(), Error::invalid_operation(""));
+                heph_expect_err!(renderer_worker.uninitialize(), Error::InvalidOperation(_));
                 heph_expect_err!(
                     renderer_worker.set_device(None, &[]),
-                    Error::invalid_operation("")
+                    Error::InvalidOperation(_)
                 );
-                heph_expect_err!(renderer_worker.wait_idle(), Error::invalid_operation(""));
+                heph_expect_err!(renderer_worker.wait_idle(), Error::InvalidOperation(_));
             });
         });
     }
@@ -65,7 +65,7 @@ where
         std::thread::scope(|s| {
             let _ = s.spawn(move || {
                 let _w1 = heph_expect_success!(renderer_handle.spawn_worker());
-                heph_expect_err!(renderer_handle.spawn_worker(), Error::invalid_operation(""));
+                heph_expect_err!(renderer_handle.spawn_worker(), Error::InvalidOperation(_));
             });
         });
     }
@@ -138,7 +138,7 @@ where
                 let _ = s.spawn(move || {
                     let result = renderer_handle.spawn_worker();
                     if let Err(e) = result {
-                        if e == Error::fail("") {
+                        if matches!(e, Error::Fail(_)) {
                             let _ = fail_count_ref.fetch_add(1, Ordering::Relaxed);
                         }
                         let _ = barrier.wait();

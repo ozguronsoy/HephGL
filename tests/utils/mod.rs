@@ -18,13 +18,16 @@ macro_rules! heph_expect_success {
 
 #[macro_export]
 macro_rules! heph_expect_err {
-    ($expr: expr, $expected_err: expr) => {
-        let expected = $expected_err;
+    ($expr: expr, $expected_err: pat) => {
         match $expr {
             Ok(_) => panic!("Expected error, got success"),
             Err(err) => {
-                if err != expected {
-                    panic!("Expected `{:?}` but got `{:?}`", expected, err)
+                if !matches!(&err, $expected_err) {
+                    panic!(
+                        "Expected `{}` but got `{:?}`",
+                        stringify!($expected_err),
+                        err
+                    )
                 }
             }
         }

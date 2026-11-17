@@ -39,8 +39,7 @@ mod tests {
     fn test_from_ash_vk_result() {
         let vk_result = ash::vk::Result::ERROR_DEVICE_LOST;
         let err = Error::from(vk_result);
-        assert_eq!(err, Error::fail(""));
-        assert_eq!(err.to_string(), vk_result.to_string());
+        assert_eq!(err, Error::Fail(vk_result.to_string()));
     }
 
     #[test]
@@ -48,8 +47,7 @@ mod tests {
         let vk_result = ash::vk::Result::ERROR_OUT_OF_DEVICE_MEMORY;
         let pipelines: Vec<ash::vk::Pipeline> = vec![];
         let err = Error::from((pipelines, vk_result));
-        assert_eq!(err, Error::fail(""));
-        assert_eq!(err.to_string(), vk_result.to_string());
+        assert_eq!(err, Error::Fail(vk_result.to_string()));
     }
 
     #[test]
@@ -57,7 +55,6 @@ mod tests {
         let loading_error = unsafe { ash::Entry::load_from("").err().expect("Expected to fail") };
         let expected_msg = loading_error.to_string();
         let err = Error::from(loading_error);
-        assert_eq!(err, Error::fail(""));
-        assert_eq!(err.to_string(), expected_msg);
+        assert_eq!(err, Error::Fail(expected_msg));
     }
 }
