@@ -147,7 +147,7 @@ where
             let mut buffer = create_buffer();
             heph_expect_err!(
                 renderer.read_buffer(buffer.as_ref(), 0, bytemuck::cast_slice_mut(&mut result)),
-                Error::fail("")
+                Error::Fail(_)
             );
             heph_expect_err!(
                 renderer.read_buffer(
@@ -155,7 +155,7 @@ where
                     2 * size_of::<u32>(),
                     bytemuck::cast_slice_mut(&mut result[..5])
                 ),
-                Error::fail("")
+                Error::Fail(_)
             );
             heph_expect_err!(
                 renderer.read_buffer(
@@ -163,7 +163,7 @@ where
                     5 * size_of::<u32>(),
                     bytemuck::cast_slice_mut(&mut result[..5])
                 ),
-                Error::invalid_argument("")
+                Error::InvalidArgument(_)
             );
             heph_expect_err!(
                 renderer.read_buffer(
@@ -171,7 +171,7 @@ where
                     6 * size_of::<u32>(),
                     bytemuck::cast_slice_mut(&mut result[..5])
                 ),
-                Error::invalid_argument("")
+                Error::InvalidArgument(_)
             );
             heph_expect_err!(
                 renderer.read_buffer(
@@ -179,7 +179,7 @@ where
                     2 * size_of::<u32>(),
                     bytemuck::cast_slice_mut(&mut result[..0])
                 ),
-                Error::invalid_argument("")
+                Error::InvalidArgument(_)
             );
             heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
         }
@@ -189,7 +189,7 @@ where
             let mut buffer = create_buffer();
             heph_expect_err!(
                 renderer.write_buffer(buffer.as_mut(), 0, bytemuck::cast_slice(&new_data)),
-                Error::fail("")
+                Error::Fail(_)
             );
             heph_expect_err!(
                 renderer.write_buffer(
@@ -197,7 +197,7 @@ where
                     2 * size_of::<u32>(),
                     bytemuck::cast_slice(&new_data[..5])
                 ),
-                Error::fail("")
+                Error::Fail(_)
             );
             heph_expect_err!(
                 renderer.write_buffer(
@@ -205,7 +205,7 @@ where
                     5 * size_of::<u32>(),
                     bytemuck::cast_slice(&new_data[..1])
                 ),
-                Error::invalid_argument("")
+                Error::InvalidArgument(_)
             );
             heph_expect_err!(
                 renderer.write_buffer(
@@ -213,7 +213,7 @@ where
                     6 * size_of::<u32>(),
                     bytemuck::cast_slice(&new_data[..1])
                 ),
-                Error::invalid_argument("")
+                Error::InvalidArgument(_)
             );
             heph_expect_err!(
                 renderer.write_buffer(
@@ -221,7 +221,7 @@ where
                     2 * size_of::<u32>(),
                     bytemuck::cast_slice(&new_data[..0])
                 ),
-                Error::invalid_argument("")
+                Error::InvalidArgument(_)
             );
             heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
         }
@@ -337,7 +337,7 @@ where
                     },
                     &rgba_image
                 ),
-                Error::invalid_argument("")
+                Error::InvalidArgument(_)
             );
             heph_expect_err!(
                 renderer.create_texture(
@@ -352,7 +352,7 @@ where
                     },
                     &rgba_image
                 ),
-                Error::invalid_argument("")
+                Error::InvalidArgument(_)
             );
             heph_expect_err!(
                 renderer.create_texture(
@@ -364,7 +364,7 @@ where
                     },
                     &rgba_image
                 ),
-                Error::invalid_argument("")
+                Error::InvalidArgument(_)
             );
             heph_expect_err!(
                 renderer.create_texture(
@@ -379,7 +379,7 @@ where
                     },
                     &rgba_image
                 ),
-                Error::invalid_argument("")
+                Error::InvalidArgument(_)
             );
             heph_expect_success!(renderer.end_frame());
         }
@@ -431,7 +431,7 @@ where
                     },
                     &bc_image.data
                 ),
-                Error::invalid_operation("")
+                Error::InvalidOperation(_)
             );
             heph_expect_success!(renderer.end_frame());
         }
@@ -454,7 +454,7 @@ where
                         },
                         &bc_image.data
                     ),
-                    Error::invalid_operation("")
+                    Error::InvalidOperation(_)
                 );
                 heph_expect_err!(
                     renderer.create_texture(
@@ -466,7 +466,7 @@ where
                         },
                         &bc_image.data
                     ),
-                    Error::invalid_argument("")
+                    Error::InvalidArgument(_)
                 );
                 heph_expect_success!(renderer.end_frame());
             }
@@ -511,7 +511,7 @@ where
                     max_anisotropy: Some(0.5),
                     ..Default::default()
                 }),
-                Error::invalid_argument("")
+                Error::InvalidArgument(_)
             );
         }
 
@@ -522,7 +522,7 @@ where
                     max_anisotropy: Some(1.0),
                     ..Default::default()
                 }),
-                Error::invalid_operation("")
+                Error::InvalidOperation(_)
             );
         }
 
@@ -545,23 +545,23 @@ where
 
         heph_expect_err!(
             renderer.write_buffer(buffer.as_mut(), 0, &[0; 4]),
-            Error::invalid_argument("")
+            Error::InvalidArgument(_)
         );
         heph_expect_err!(
             renderer.read_buffer(buffer.as_ref(), 0, &mut [0; 4]),
-            Error::invalid_argument("")
+            Error::InvalidArgument(_)
         );
         heph_expect_err!(
             renderer.destroy_buffer(buffer.as_mut()),
-            Error::invalid_argument("")
+            Error::InvalidArgument(_)
         );
         heph_expect_err!(
             renderer.destroy_texture(texture.as_mut()),
-            Error::invalid_argument("")
+            Error::InvalidArgument(_)
         );
         heph_expect_err!(
             renderer.destroy_sampler(sampler.as_mut()),
-            Error::invalid_argument("")
+            Error::InvalidArgument(_)
         );
     }
 

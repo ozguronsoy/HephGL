@@ -755,13 +755,13 @@ mod tests {
 
     #[test]
     fn test_unsupported_vk_format_to_texture_format() {
-        assert_eq!(
+        assert!(matches!(
             TextureFormat::try_from(ash::vk::Format::UNDEFINED),
-            Err(Error::invalid_argument(""))
-        );
-        assert_eq!(
+            Err(Error::InvalidArgument(_))
+        ));
+        assert!(matches!(
             TextureFormat::try_from(ash::vk::Format::A1R5G5B5_UNORM_PACK16),
-            Err(Error::invalid_argument(""))
-        );
+            Err(Error::InvalidArgument(_))
+        ));
     }
 }

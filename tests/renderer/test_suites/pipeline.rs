@@ -80,7 +80,7 @@ where
                     &[&frag_shader, &vert_shader, &vert_shader],
                     &GraphicsPipelineOptions::default()
                 ),
-                Error::invalid_argument("")
+                Error::InvalidArgument(_)
             );
         }
 
@@ -101,7 +101,7 @@ where
                     &[&frag_shader, &vert_shader, &comp_shader],
                     &GraphicsPipelineOptions::default()
                 ),
-                Error::invalid_argument("")
+                Error::InvalidArgument(_)
             );
         }
 
@@ -154,7 +154,7 @@ where
                             ..Default::default()
                         }
                     ),
-                    Error::invalid_operation("")
+                    Error::InvalidOperation(_)
                 );
             }
         }
@@ -176,7 +176,7 @@ where
                     &[&frag_shader, &geom_shader, &vert_shader],
                     &GraphicsPipelineOptions::default()
                 ),
-                Error::invalid_operation("")
+                Error::InvalidOperation(_)
             );
         }
 
@@ -227,7 +227,7 @@ where
                                 ..Default::default()
                             }
                         ),
-                        Error::invalid_argument("")
+                        Error::InvalidArgument(_)
                     );
                 }
                 heph_expect_err!(
@@ -235,7 +235,7 @@ where
                         &[&frag_shader, &geom_shader, &geom_shader, &vert_shader],
                         &GraphicsPipelineOptions::default()
                     ),
-                    Error::invalid_argument("")
+                    Error::InvalidArgument(_)
                 );
             }
         }
@@ -266,7 +266,7 @@ where
                         ..Default::default()
                     }
                 ),
-                Error::invalid_operation("")
+                Error::InvalidOperation(_)
             );
         }
 
@@ -308,21 +308,21 @@ where
                 heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
                 heph_expect_err!(
                     renderer.create_graphics_pipeline(&[&frag_shader, &vert_shader], &patch_list),
-                    Error::invalid_argument("")
+                    Error::InvalidArgument(_)
                 );
                 heph_expect_err!(
                     renderer.create_graphics_pipeline(
                         &[&frag_shader, &tesc_shader, &vert_shader],
                         &patch_list
                     ),
-                    Error::invalid_argument("")
+                    Error::InvalidArgument(_)
                 );
                 heph_expect_err!(
                     renderer.create_graphics_pipeline(
                         &[&frag_shader, &tese_shader, &vert_shader],
                         &patch_list
                     ),
-                    Error::invalid_argument("")
+                    Error::InvalidArgument(_)
                 );
                 heph_expect_err!(
                     renderer.create_graphics_pipeline(
@@ -335,14 +335,14 @@ where
                         ],
                         &patch_list
                     ),
-                    Error::invalid_argument("")
+                    Error::InvalidArgument(_)
                 );
                 heph_expect_err!(
                     renderer.create_graphics_pipeline(
                         &[&frag_shader, &tese_shader, &tesc_shader, &vert_shader],
                         &GraphicsPipelineOptions::default()
                     ),
-                    Error::invalid_argument("")
+                    Error::InvalidArgument(_)
                 );
                 for control_points in [0, u32::MAX] {
                     heph_expect_err!(
@@ -353,7 +353,7 @@ where
                                 ..Default::default()
                             }
                         ),
-                        Error::invalid_argument("")
+                        Error::InvalidArgument(_)
                     );
                 }
             }
@@ -418,7 +418,7 @@ where
                         ],
                         &patch_list
                     ),
-                    Error::invalid_argument("")
+                    Error::InvalidArgument(_)
                 );
             }
         }
@@ -441,7 +441,7 @@ where
                         ..Default::default()
                     }
                 ),
-                Error::invalid_operation("")
+                Error::InvalidOperation(_)
             );
         }
 
@@ -481,7 +481,7 @@ where
                                 ..Default::default()
                             }
                         ),
-                        Error::invalid_argument("")
+                        Error::InvalidArgument(_)
                     );
                 }
             }
@@ -533,7 +533,7 @@ where
                         ..Default::default()
                     }
                 ),
-                Error::invalid_operation("")
+                Error::InvalidOperation(_)
             );
         }
 
@@ -591,7 +591,7 @@ where
                         ..Default::default()
                     }
                 ),
-                Error::invalid_operation("")
+                Error::InvalidOperation(_)
             );
         }
     }
@@ -605,19 +605,19 @@ where
 
         heph_expect_err!(
             renderer.record_compute_command(compute_pipeline.as_mut(), &[], (1, 1, 1)),
-            Error::invalid_argument("")
+            Error::InvalidArgument(_)
         );
         heph_expect_err!(
             renderer.destroy_compute_pipeline(compute_pipeline.as_mut()),
-            Error::invalid_argument("")
+            Error::InvalidArgument(_)
         );
         heph_expect_err!(
             renderer.record_graphics_command(graphics_pipeline.as_mut(), None, &[], &[], 3, 1),
-            Error::invalid_argument("")
+            Error::InvalidArgument(_)
         );
         heph_expect_err!(
             renderer.destroy_graphics_pipeline(graphics_pipeline.as_mut()),
-            Error::invalid_argument("")
+            Error::InvalidArgument(_)
         );
     }
 }

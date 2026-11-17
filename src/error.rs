@@ -1,7 +1,7 @@
 use crate::graphics_device::GraphicsDeviceFeature;
 
 /// Defines the error types.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Error {
     /// An invalid argument was provided.
     InvalidArgument(String),
@@ -24,42 +24,9 @@ pub enum Error {
 /// Represents the result of a library operation.
 pub type Result<T> = std::result::Result<T, Error>;
 
-impl PartialEq for Error {
-    fn eq(&self, other: &Self) -> bool {
-        std::mem::discriminant(self) == std::mem::discriminant(other)
-    }
-}
-
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidArgument(err) => {
-                write!(f, "Invalid argument: {}", err)
-            }
-            Self::InvalidOperation(err) => {
-                write!(f, "Invalid operation: {}", err)
-            }
-            Self::Fail(err) => write!(f, "{}", err),
-            Self::UnsupportedRequiredFeature(feature) => {
-                write!(
-                    f,
-                    "Required hardware feature is not supported: {:?}",
-                    feature
-                )
-            }
-            Self::UnsupportedShaderLanguage => {
-                write!(f, "Unsupported shader language.")
-            }
-            Self::Io(err) => {
-                write!(f, "IO Error: {}", err)
-            }
-            Self::Font(err) => {
-                write!(f, "Failed to load the font: {}", err)
-            }
-            Self::Geometry(err) => {
-                write!(f, "Failed to generate text geometry: {}", err)
-            }
-        }
+        write!(f, "{:?}", self)
     }
 }
 
@@ -111,42 +78,11 @@ mod tests {
     };
 
     use super::*;
-    use crate::graphics_device::GraphicsDeviceFeature::ComputeShaders;
 
     #[test]
     fn test_error_display() {
-        let err = Error::invalid_argument("bad_ptr");
-        assert_eq!(err.to_string(), "Invalid argument: bad_ptr");
-
-        let err = Error::invalid_operation("wrong state");
-        assert_eq!(err.to_string(), "Invalid operation: wrong state");
-
-        let err = Error::fail("generic crash");
-        assert_eq!(err.to_string(), "generic crash");
-
-        let err = Error::UnsupportedRequiredFeature(ComputeShaders);
-        assert_eq!(
-            err.to_string(),
-            "Required hardware feature is not supported: ComputeShaders"
-        );
-
-        let err = Error::UnsupportedShaderLanguage;
-        assert_eq!(err.to_string(), "Unsupported shader language.");
-
-        let err = Error::io("file not found");
-        assert_eq!(err.to_string(), "IO Error: file not found");
-
-        let err = Error::font("invalid font data");
-        assert_eq!(
-            err.to_string(),
-            "Failed to load the font: invalid font data"
-        );
-
-        let err = Error::geometry("invalid glyph outline");
-        assert_eq!(
-            err.to_string(),
-            "Failed to generate text geometry: invalid glyph outline"
-        );
+        let err = Error::invalid_argument("hello");
+        assert_eq!(err.to_string(), format!("{:?}", err));
     }
 
     #[test]
@@ -169,7 +105,7 @@ mod tests {
 
         let poison_error = mutex.lock().unwrap_err();
         let err = Error::from(poison_error);
-        assert_eq!(err, Error::fail(""));
+        assert!(matches!(err, Error::Fail(_)));
         assert!(err.to_string().contains("poisoned lock"));
     }
 }

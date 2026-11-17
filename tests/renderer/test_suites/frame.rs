@@ -12,12 +12,12 @@ where
     pub(crate) fn test_begin_twice(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[]);
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_err!(renderer.begin_frame(), Error::invalid_operation(""));
+        heph_expect_err!(renderer.begin_frame(), Error::InvalidOperation(_));
     }
 
     pub(crate) fn test_end_without_begin(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[]);
-        heph_expect_err!(renderer.end_frame(), Error::invalid_operation(""));
+        heph_expect_err!(renderer.end_frame(), Error::InvalidOperation(_));
     }
 
     pub(crate) fn test_resize_window(&self) {
