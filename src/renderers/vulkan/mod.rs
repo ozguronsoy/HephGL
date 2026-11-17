@@ -1728,6 +1728,9 @@ impl Renderer for VulkanRenderer {
             .base
             .thread_contexts[thread_context_index];
 
+        current_frame.debug_label |=
+            Self::begin_label(&self.debugger.borrow(), current_frame.base.command_buffer)?;
+
         unsafe {
             if current_frame.bound_pipeline != Some(pipeline.pipeline) {
                 device_context.logical_device.cmd_bind_pipeline(
@@ -2168,6 +2171,7 @@ impl Renderer for VulkanRenderer {
             frame_index: usize,
             thread_context_index: usize,
             present: &mut bool,
+            debugger: Ref<Option<Box<Debugger>>>,
         ) -> Result<()> {
             let current_frame = &mut queue_context.frames[frame_index].base_mut().thread_contexts
                 [thread_context_index];
@@ -2180,6 +2184,13 @@ impl Renderer for VulkanRenderer {
                 if let Some(current_frame) =
                     <dyn Any>::downcast_mut::<GraphicsThreadContext>(current_frame)
                 {
+                    if current_frame.debug_label {
+                        let _ = VulkanRenderer::end_label(
+                            &debugger,
+                            current_frame.base().command_buffer,
+                        )?;
+                        current_frame.debug_label = false;
+                    }
                     if let Some((image, aspect_mask)) = current_frame.render_target.take() {
                         VulkanRenderer::end_rendering(
                             logical_device,
@@ -2205,6 +2216,13 @@ impl Renderer for VulkanRenderer {
                         current_frame.base.recorded = true;
                         *present = true;
                     }
+                } else if let Some(current_frame) =
+                    <dyn Any>::downcast_mut::<ComputeThreadContext>(current_frame)
+                    && current_frame.debug_label
+                {
+                    let _ =
+                        VulkanRenderer::end_label(&debugger, current_frame.base().command_buffer)?;
+                    current_frame.debug_label = false;
                 }
                 logical_device.end_command_buffer(current_frame.base().command_buffer)?;
             }
@@ -2226,6 +2244,7 @@ impl Renderer for VulkanRenderer {
             device_context.current_frame_index,
             thread_context_index,
             &mut present,
+            self.debugger.borrow(),
         )?;
         end_queue(
             &device_context.logical_device,
@@ -2240,6 +2259,7 @@ impl Renderer for VulkanRenderer {
             device_context.current_frame_index,
             thread_context_index,
             &mut present,
+            self.debugger.borrow(),
         )?;
         if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
             end_queue(
@@ -2255,8 +2275,10 @@ impl Renderer for VulkanRenderer {
                 device_context.current_frame_index,
                 thread_context_index,
                 &mut present,
+                self.debugger.borrow(),
             )?;
         }
+        Self::validate_labels(self.debugger.borrow())?;
 
         if is_in_main_thread {
             let image_available_semaphores = [device_context.swapchain_context.semaphores

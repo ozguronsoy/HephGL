@@ -214,6 +214,10 @@ impl VulkanRenderer {
                 "Depth-only pipelines can only render into depth-only canvases, and other pipelines cannot render into them.",
             ));
         }
+
+        current_frame.debug_label |=
+            Self::begin_label(&self.debugger.borrow(), current_frame.base.command_buffer)?;
+
         Self::begin_canvas_rendering(
             &device_context.logical_device,
             rendering.as_mut(),
@@ -340,6 +344,9 @@ impl VulkanRenderer {
                 return Err(Error::invalid_operation("Cannot clear outside of a frame."));
             }
         }
+
+        current_frame.debug_label |=
+            Self::begin_label(&self.debugger.borrow(), current_frame.base.command_buffer)?;
 
         let canvas: &mut dyn VulkanCanvas = match canvas {
             Some(canvas) => canvas,

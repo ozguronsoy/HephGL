@@ -1,11 +1,16 @@
+mod label;
 mod log;
 mod object;
 mod severity;
 mod writer;
 
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::{
+    collections::HashMap,
+    sync::{Mutex, MutexGuard, PoisonError},
+    thread::ThreadId,
+};
 
-pub(super) use super::debug::writer::*;
+pub(super) use super::debug::{label::*, writer::*};
 pub use super::debug::{log::*, object::*, severity::*};
 use crate::{Error, Result};
 
@@ -13,6 +18,7 @@ use crate::{Error, Result};
 #[derive(Default)]
 pub struct Debugger {
     logs: Mutex<Vec<Log>>,
+    labels: Mutex<HashMap<ThreadId, Vec<DebugLabel>>>,
     writer: Mutex<Option<Box<dyn DebugWriter>>>,
 }
 
@@ -33,6 +39,40 @@ impl Debugger {
             .set_object_name(object, name)
     }
 
+    /// Pushes a label to the debugger, which will begin while recording the next command.
+    pub fn push_label(&self, label: &str) -> Result<()> {
+        let mut labels = self.labels.lock()?;
+        let labels = labels.entry(std::thread::current().id()).or_default();
+        if let Some(label) = labels.last()
+            && label.state != DebugLabelState::Ended
+        {
+            return Err(Error::invalid_operation(
+                "You must pop the current label before pushing a new one.",
+            ));
+        }
+        labels.push(DebugLabel::new(label));
+        Ok(())
+    }
+
+    /// Pops the label from the debugger, which will either end while recording the next command, or
+    /// at the end of the current frame.
+    pub fn pop_label(&self) -> Result<()> {
+        let mut labels = self.labels.lock()?;
+        let thread_id = std::thread::current().id();
+        let Some(labels) = labels.get_mut(&thread_id) else {
+            return Err(Error::invalid_operation("No label found to pop."));
+        };
+        let Some(label) = labels.last_mut() else {
+            return Err(Error::invalid_operation("No label found to pop."));
+        };
+        if label.state == DebugLabelState::Idle {
+            let _ = labels.pop();
+        } else if label.state == DebugLabelState::Begun {
+            label.state = DebugLabelState::Ended;
+        }
+        Ok(())
+    }
+
     /// Appends a single log to the recorded logs.
     pub(super) fn log(&self, message: impl Into<String>, severity: Severity) {
         if let Ok(logs) = &mut self.logs.lock() {
@@ -41,6 +81,10 @@ impl Debugger {
                 severity,
             });
         }
+    }
+
+    pub(super) fn writer(&self) -> Result<MutexGuard<'_, Option<Box<dyn DebugWriter>>>> {
+        Ok(self.writer.lock()?)
     }
 
     /// Sets the writer of the debugger, or removes it if `writer` is `None`. Returns the previous
@@ -53,6 +97,36 @@ impl Debugger {
             &mut *self.writer.lock().unwrap_or_else(PoisonError::into_inner),
             writer,
         )
+    }
+
+    /// Gets a clone of the pushed debug label.
+    pub(super) fn label(&self) -> Option<DebugLabel> {
+        if let Ok(labels) = self.labels.lock()
+            && let Some(labels) = labels.get(&std::thread::current().id())
+        {
+            labels.first().cloned()
+        } else {
+            None
+        }
+    }
+
+    /// Sets the label's state to `Begun`.
+    pub(super) fn begin_label(&self) {
+        if let Ok(mut labels) = self.labels.lock()
+            && let Some(labels) = labels.get_mut(&std::thread::current().id())
+            && let Some(label) = labels.last_mut()
+        {
+            label.state = DebugLabelState::Begun;
+        }
+    }
+
+    /// Removes the label.
+    pub(super) fn end_label(&self) {
+        if let Ok(mut labels) = self.labels.lock()
+            && let Some(labels) = labels.get_mut(&std::thread::current().id())
+        {
+            let _ = labels.remove(0);
+        }
     }
 
     /// Clones the debugger with only its logs.

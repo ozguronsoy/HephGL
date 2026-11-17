@@ -1,14 +1,17 @@
-use std::ffi::{CStr, CString, c_void};
+use std::{
+    cell::Ref,
+    ffi::{CStr, CString, c_void},
+};
 
 use ash::vk::{
-    Bool32, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
+    Bool32, DebugUtilsLabelEXT, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
     DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerCreateInfoEXT,
 };
 
 use crate::{
     Error, Result,
     renderers::{
-        debug::{DebugWriter, Debugger, RendererDebugObject, Severity},
+        debug::{DebugLabelState, DebugWriter, Debugger, RendererDebugObject, Severity},
         downcast_ref,
         vulkan::{
             VulkanBuffer, VulkanColorCanvas, VulkanComputePipeline, VulkanDepthCanvas,
@@ -66,6 +69,73 @@ impl VulkanRenderer {
             device: ash::ext::debug_utils::Device::new(instance, &device_context.logical_device),
         })));
         Ok(())
+    }
+
+    /// Begins a label if a debugger is attached and a label is pushed. Otherwise, does nothing.
+    pub(super) fn begin_label(
+        debugger: &Ref<Option<Box<Debugger>>>,
+        command_buffer: ash::vk::CommandBuffer,
+    ) -> Result<bool> {
+        // Remove the popped label first if there is one.
+        let _ = Self::end_label(debugger, command_buffer)?;
+        let mut begun = false;
+        if let Some(debugger) = debugger.as_ref()
+            && let Some(label) = debugger.label()
+            && label.state() == DebugLabelState::Idle
+        {
+            let writer = debugger.writer()?;
+            let Some(writer) = writer.as_ref() else {
+                // Writer's lifetime is tied to the device context.
+                return Err(Error::invalid_operation("Device is not set."));
+            };
+            let writer = downcast_ref::<VulkanDebugWriter>(writer.as_ref())?;
+            let label = CString::new(label.label())?;
+            let label = DebugUtilsLabelEXT::default().label_name(label.as_c_str());
+            unsafe {
+                writer
+                    .device
+                    .cmd_begin_debug_utils_label(command_buffer, &label)
+            };
+            debugger.begin_label();
+            begun = true;
+        }
+        Ok(begun)
+    }
+
+    /// Ends a label if a debugger is attached and a label has begun. Otherwise, does nothing.
+    pub(super) fn end_label(
+        debugger: &Ref<Option<Box<Debugger>>>,
+        command_buffer: ash::vk::CommandBuffer,
+    ) -> Result<bool> {
+        let mut ended = false;
+        if let Some(debugger) = debugger.as_ref()
+            && let Some(label) = debugger.label()
+            && label.state() == DebugLabelState::Ended
+        {
+            let writer = debugger.writer()?;
+            let Some(writer) = writer.as_ref() else {
+                // Writer's lifetime is tied to the device context.
+                return Err(Error::invalid_operation("Device is not set."));
+            };
+            let writer = downcast_ref::<VulkanDebugWriter>(writer.as_ref())?;
+            unsafe { writer.device.cmd_end_debug_utils_label(command_buffer) };
+            debugger.end_label();
+            ended = true;
+        }
+        Ok(ended)
+    }
+
+    /// Validates whether all labels have been popped.
+    pub(super) fn validate_labels(debugger: Ref<Option<Box<Debugger>>>) -> Result<()> {
+        if let Some(debugger) = debugger.as_ref()
+            && debugger.label().is_some()
+        {
+            Err(Error::fail(
+                "All labels should be popped before ending the frame.",
+            ))
+        } else {
+            Ok(())
+        }
     }
 
     /// Creates the messenger that forwards the validation messages to the attached debugger.
