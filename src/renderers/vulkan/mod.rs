@@ -1050,6 +1050,8 @@ impl Renderer for VulkanRenderer {
         options: &TextureOptions,
         data: &[u8],
     ) -> Result<Box<dyn RendererTexture>> {
+        self.frame_only()?;
+
         let instance = self
             .instance
             .as_ref()
@@ -1059,22 +1061,6 @@ impl Renderer for VulkanRenderer {
             .as_mut()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
-
-        {
-            let state = device_context.transfer_queue_context.frames
-                [device_context.current_frame_index]
-                .base
-                .thread_contexts[thread_context_index]
-                .base
-                .sync_state
-                .0
-                .lock()?;
-            if *state != FrameState::Started {
-                return Err(Error::invalid_operation(
-                    "Cannot create a texture outside of a frame.",
-                ));
-            }
-        }
 
         if options.width == 0 || options.height == 0 {
             return Err(Error::invalid_argument(
@@ -1735,6 +1721,8 @@ impl Renderer for VulkanRenderer {
         binding_sets: &[&[ResourceBinding<'_>]],
         group_count: (u32, u32, u32),
     ) -> Result<()> {
+        self.frame_only()?;
+
         let pipeline = downcast_mut::<VulkanComputePipeline>(pipeline)?;
         let device_context = self
             .device_context
@@ -1842,6 +1830,8 @@ impl Renderer for VulkanRenderer {
         draw_count: u32,
         instance_count: u32,
     ) -> Result<()> {
+        self.frame_only()?;
+
         let pipeline = downcast_mut::<VulkanGraphicsPipeline>(pipeline)?;
 
         let device_context = self
@@ -1984,6 +1974,8 @@ impl Renderer for VulkanRenderer {
     }
 
     fn create_canvas(&mut self, options: &CanvasOptions) -> Result<Box<dyn RendererCanvas>> {
+        self.frame_only()?;
+
         let instance = self
             .instance
             .as_ref()
@@ -1993,22 +1985,6 @@ impl Renderer for VulkanRenderer {
             .as_mut()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
-
-        {
-            let state = device_context.graphics_queue_context.frames
-                [device_context.current_frame_index]
-                .base
-                .thread_contexts[thread_context_index]
-                .base
-                .sync_state
-                .0
-                .lock()?;
-            if *state != FrameState::Started {
-                return Err(Error::invalid_operation(
-                    "Cannot create a canvas outside of a frame.",
-                ));
-            }
-        }
 
         if options.width == 0 || options.height == 0 {
             return Err(Error::invalid_argument(
@@ -2631,6 +2607,8 @@ impl Renderer for VulkanRenderer {
         target_canvas: Option<&mut dyn RendererCanvas>,
         color: RGB<f32>,
     ) -> Result<()> {
+        self.frame_only()?;
+
         let device_context = self
             .device_context
             .as_mut()
@@ -2644,13 +2622,6 @@ impl Renderer for VulkanRenderer {
             [device_context.current_frame_index]
             .base
             .thread_contexts[thread_context_index];
-
-        {
-            let state = current_frame.base.sync_state.0.lock()?;
-            if *state != FrameState::Started {
-                return Err(Error::invalid_operation("Cannot clear outside of a frame."));
-            }
-        }
 
         current_frame.base.debug_label |=
             Self::begin_labels(self.debugger.as_deref(), current_frame.base.command_buffer)?;
