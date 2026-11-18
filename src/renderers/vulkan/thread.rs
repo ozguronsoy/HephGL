@@ -27,6 +27,8 @@ pub(super) struct ThreadContextBase {
     pub(super) recorded: bool,
     /// Indicates whether the current thread began the current frame.
     pub(super) sync_state: (std::sync::Mutex<FrameState>, std::sync::Condvar),
+    /// Indicates whether any debug label had begun in the current frame.
+    pub(super) debug_label: bool,
 }
 
 /// Represents the per-thread resources used for recording commands to the compute queue.
@@ -287,6 +289,10 @@ impl VulkanRenderer {
             &THREAD_CONTEXT_INDEX,
             &mut *device_context.thread_context_masks.lock()?,
         );
+
+        if let Some(debugger) = self.debugger.as_deref() {
+            debugger.clear_labels();
+        }
 
         Ok(())
     }

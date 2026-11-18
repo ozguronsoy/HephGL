@@ -7,13 +7,13 @@ use heph_gl::{
     Error,
     renderers::{
         InitializeOptions, LATEST_API_VERSION, Renderer, RendererHandle, RendererWorkerFactory,
-        Settings,
+        Settings, debug::Debugger,
     },
 };
 
 use crate::{
     dummy_display_handle, dummy_window_handle, heph_expect_err, heph_expect_success,
-    renderer::RendererTests,
+    renderer::RendererTests, renderer::test_suites::TEST_ENV, test_env,
 };
 
 impl<TestRenderer: Renderer> RendererTests<TestRenderer>
@@ -21,33 +21,64 @@ where
     RendererHandle<TestRenderer>: RendererWorkerFactory<TestRenderer>,
 {
     pub(crate) fn test_calling_main_thread_only_fn_from_worker_thread(&self) {
-        let mut renderer = self.create_renderer_with_any_device(&[]);
-        let renderer_handle = RendererHandle::from(&mut renderer.renderer);
-        std::thread::scope(|s| {
-            let _ = s.spawn(move || {
-                let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
-                heph_expect_err!(
-                    renderer_worker.set_settings(Settings::default()),
-                    Error::InvalidOperation(_)
-                );
-                heph_expect_err!(
-                    renderer_worker.initialize(&InitializeOptions {
-                        app_name: "",
-                        window_handle: dummy_window_handle!(),
-                        display_handle: dummy_display_handle!(),
-                        api_version: LATEST_API_VERSION,
-                        debug: false,
-                    }),
-                    Error::InvalidOperation(_)
-                );
-                heph_expect_err!(renderer_worker.uninitialize(), Error::InvalidOperation(_));
-                heph_expect_err!(
-                    renderer_worker.set_device(None, &[]),
-                    Error::InvalidOperation(_)
-                );
-                heph_expect_err!(renderer_worker.wait_idle(), Error::InvalidOperation(_));
+        {
+            let test_env = test_env!();
+            let mut renderer = TestRenderer::new();
+            heph_expect_success!(renderer.initialize(&InitializeOptions {
+                app_name: "",
+                window_handle: test_env.raw_window_handle(),
+                display_handle: test_env.raw_display_handle(),
+                api_version: self.api_version,
+                debug: true,
+            }));
+            heph_expect_success!(renderer.set_device(None, &[]));
+            let renderer_handle = RendererHandle::from(&mut renderer);
+            std::thread::scope(|s| {
+                let _ = s.spawn(move || {
+                    let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
+                    heph_expect_err!(
+                        renderer_worker
+                            .attach_debugger(Debugger::default())
+                            .map_err(|(e, _)| e),
+                        Error::InvalidOperation(_)
+                    );
+                    heph_expect_err!(
+                        renderer_worker.detach_debugger(),
+                        Error::InvalidOperation(_)
+                    );
+                });
             });
-        });
+        }
+
+        {
+            let mut renderer = self.create_renderer_with_any_device(&[]);
+            let renderer_handle = RendererHandle::from(&mut renderer.renderer);
+            std::thread::scope(|s| {
+                let _ = s.spawn(move || {
+                    let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
+                    heph_expect_err!(
+                        renderer_worker.set_settings(Settings::default()),
+                        Error::InvalidOperation(_)
+                    );
+                    heph_expect_err!(
+                        renderer_worker.initialize(&InitializeOptions {
+                            app_name: "",
+                            window_handle: dummy_window_handle!(),
+                            display_handle: dummy_display_handle!(),
+                            api_version: LATEST_API_VERSION,
+                            debug: false,
+                        }),
+                        Error::InvalidOperation(_)
+                    );
+                    heph_expect_err!(renderer_worker.uninitialize(), Error::InvalidOperation(_));
+                    heph_expect_err!(
+                        renderer_worker.set_device(None, &[]),
+                        Error::InvalidOperation(_)
+                    );
+                    heph_expect_err!(renderer_worker.wait_idle(), Error::InvalidOperation(_));
+                });
+            });
+        }
     }
 
     pub(crate) fn test_multiple_workers_per_thread(&self) {

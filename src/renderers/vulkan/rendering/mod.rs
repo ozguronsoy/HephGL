@@ -187,7 +187,6 @@ impl VulkanRenderer {
         instance_count: u32,
     ) -> Result<()> {
         let pipeline = downcast_mut::<VulkanGraphicsPipeline>(pipeline)?;
-        let mapped_range = self.create_graphics_resource_sets(pipeline, binding_sets)?;
 
         let device_context = self
             .device_context
@@ -199,7 +198,8 @@ impl VulkanRenderer {
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let graphics_queue_context = &mut device_context.graphics_queue_context;
         let thread_context_index = Self::thread_context_index()?;
-        let current_frame = &mut graphics_queue_context.frames[device_context.current_frame_index]
+        let mut current_frame = &mut graphics_queue_context.frames
+            [device_context.current_frame_index]
             .base
             .thread_contexts[thread_context_index];
         let canvas: &mut dyn VulkanCanvas = match canvas {
@@ -214,6 +214,10 @@ impl VulkanRenderer {
                 "Depth-only pipelines can only render into depth-only canvases, and other pipelines cannot render into them.",
             ));
         }
+
+        current_frame.base.debug_label |=
+            Self::begin_labels(self.debugger.as_deref(), current_frame.base.command_buffer)?;
+
         Self::begin_canvas_rendering(
             &device_context.logical_device,
             rendering.as_mut(),
@@ -232,6 +236,16 @@ impl VulkanRenderer {
                 );
                 current_frame.bound_pipeline = Some(pipeline.pipeline);
             }
+            let mapped_range = Self::create_graphics_resource_sets(
+                &device_context.logical_device,
+                graphics_queue_context,
+                device_context.current_frame_index,
+                pipeline,
+                binding_sets,
+            )?;
+            current_frame = &mut graphics_queue_context.frames[device_context.current_frame_index]
+                .base
+                .thread_contexts[thread_context_index];
             if !mapped_range.is_empty() {
                 device_context.logical_device.cmd_bind_descriptor_sets(
                     current_frame.base.command_buffer,
@@ -340,6 +354,9 @@ impl VulkanRenderer {
                 return Err(Error::invalid_operation("Cannot clear outside of a frame."));
             }
         }
+
+        current_frame.base.debug_label |=
+            Self::begin_labels(self.debugger.as_deref(), current_frame.base.command_buffer)?;
 
         let canvas: &mut dyn VulkanCanvas = match canvas {
             Some(canvas) => canvas,

@@ -47,11 +47,18 @@ pub trait Renderer {
     fn is_hdr_mode_supported(&self, hdr_mode: HdrMode) -> Result<bool>;
 
     /// Gets the attached debugger if there is one.
-    fn debugger(&self) -> Option<std::cell::Ref<'_, Debugger>>;
+    fn debugger(&self) -> Option<&Debugger>;
     /// Attaches a debugger. Any debugger that is already attached must be detached first.
-    fn attach_debugger(&self, debugger: Debugger) -> std::result::Result<(), (Error, Debugger)>;
+    ///
+    /// ### Note
+    /// This function can only be called from the main thread.
+    fn attach_debugger(&mut self, debugger: Debugger)
+    -> std::result::Result<(), (Error, Debugger)>;
     /// Detaches the debugger.
-    fn detach_debugger(&self) -> Result<Debugger>;
+    ///
+    /// ### Note
+    /// This function can only be called from the main thread.
+    fn detach_debugger(&mut self) -> Result<Debugger>;
 
     /// Returns the current settings used by the renderer.
     fn get_settings(&self) -> &Settings;

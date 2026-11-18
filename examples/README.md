@@ -58,15 +58,17 @@ flowchart LR
 ### [debugger](debugger.rs)
 
 Initializes the renderer with debugging enabled and attaches a debugger that records the validation
-messages. Names an object so it can be identified in the messages, then leaks it so the validation
-layer reports it when the renderer is uninitialized.
+messages. Names an object so it can be identified in the messages, and groups the commands of a
+frame under nested labels so they can be identified in graphics debuggers. Then leaks the object so
+the validation layer reports it when the renderer is uninitialized.
 
 ```mermaid
 flowchart LR
     A[Initialize renderer with debugging enabled] --> B[Attach debugger]
     B --> C[Create an object and set its name]
-    C --> D[Uninitialize renderer to leak the object]
-    D --> E[Detach debugger and print its logs]
+    C --> D[Label the commands of a frame]
+    D --> E[Uninitialize renderer to leak the object]
+    E --> F[Detach debugger and print its logs]
 ```
 
 ## Compute

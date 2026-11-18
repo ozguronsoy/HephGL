@@ -163,11 +163,10 @@ impl VulkanRenderer {
         if self.device_context.is_some() {
             self.wait_idle()?;
 
-            if self.debug_enabled {
-                let debugger = self.debugger.borrow();
-                if let Some(debugger) = &*debugger {
-                    let _ = debugger.set_writer(None);
-                }
+            if self.debug_enabled
+                && let Some(debugger) = self.debugger.as_deref()
+            {
+                let _ = debugger.set_writer(None);
             }
 
             self.destroy_frame_sync()?;

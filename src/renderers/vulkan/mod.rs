@@ -17,7 +17,7 @@ mod version;
 
 use std::{
     any::Any,
-    cell::{Cell, Ref, RefCell},
+    cell::Cell,
     collections::{BTreeSet, HashMap, HashSet},
     ffi::CString,
     mem::DropGuard,
@@ -94,7 +94,7 @@ pub struct VulkanRenderer {
 
     device_context: Option<DeviceContext>,
 
-    debugger: RefCell<Option<Box<Debugger>>>,
+    debugger: Option<Box<Debugger>>,
     debug_enabled: bool,
     debug_utils_loader: Option<ash::ext::debug_utils::Instance>,
     debug_messenger: Cell<Option<ash::vk::DebugUtilsMessengerEXT>>,
@@ -118,7 +118,7 @@ impl Renderer for VulkanRenderer {
 
             device_context: None,
 
-            debugger: RefCell::new(None),
+            debugger: None,
             debug_enabled: false,
             debug_utils_loader: None,
             debug_messenger: Cell::new(None),
@@ -158,15 +158,21 @@ impl Renderer for VulkanRenderer {
         Ok(self.select_surface_format(hdr_mode)?.is_some())
     }
 
-    fn debugger(&self) -> Option<Ref<'_, Debugger>> {
-        Ref::filter_map(self.debugger.borrow(), |debugger| debugger.as_deref()).ok()
+    fn debugger(&self) -> Option<&Debugger> {
+        self.debugger.as_deref()
     }
 
-    fn attach_debugger(&self, debugger: Debugger) -> std::result::Result<(), (Error, Debugger)> {
+    fn attach_debugger(
+        &mut self,
+        debugger: Debugger,
+    ) -> std::result::Result<(), (Error, Debugger)> {
+        if let Err(error) = self.main_thread_only() {
+            return Err((error, debugger));
+        }
         if !self.debug_enabled {
             return Err((Error::invalid_operation("Debugging is disabled."), debugger));
         }
-        if self.debugger.borrow().is_some() {
+        if self.debugger.is_some() {
             return Err((
                 Error::invalid_operation("A debugger is already attached to the renderer."),
                 debugger,
@@ -175,7 +181,7 @@ impl Renderer for VulkanRenderer {
         // The device may not be set yet. If that's the case, we will set the writer in
         // `set_device`.
         let _ = self.set_debug_writer(&debugger);
-        let _ = self.debugger.replace(Some(Box::new(debugger)));
+        self.debugger = Some(Box::new(debugger));
         if let Err(error) = self.create_debug_messenger() {
             let debugger = self.debugger.take().unwrap();
             return Err((error, debugger.as_ref().clone()));
@@ -183,12 +189,14 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn detach_debugger(&self) -> Result<Debugger> {
+    fn detach_debugger(&mut self) -> Result<Debugger> {
+        self.main_thread_only()?;
         self.destroy_debug_messenger();
         self.debugger
             .take()
             .map(|debugger| {
                 let _ = debugger.set_writer(None);
+                debugger.clear_all_labels();
                 *debugger
             })
             .ok_or(Error::invalid_operation("No attached debugger found."))
@@ -398,7 +406,7 @@ impl Renderer for VulkanRenderer {
 
         if options.debug {
             self.debug_utils_loader = Some(ash::ext::debug_utils::Instance::new(&entry, &instance));
-            if self.debugger.borrow().is_some()
+            if self.debugger.is_some()
                 && let Err(error) = self.create_debug_messenger()
             {
                 self.debug_utils_loader = None;
@@ -898,11 +906,10 @@ impl Renderer for VulkanRenderer {
         self.create_rendering()?;
         self.create_frame_sync()?;
 
-        if self.debug_enabled {
-            let debugger = self.debugger.borrow();
-            if let Some(debugger) = &*debugger {
-                self.set_debug_writer(debugger.as_ref())?;
-            }
+        if self.debug_enabled
+            && let Some(debugger) = self.debugger.as_deref()
+        {
+            self.set_debug_writer(debugger)?;
         }
 
         Ok(())
@@ -1141,6 +1148,9 @@ impl Renderer for VulkanRenderer {
                 "The texture does not support multiple mip levels.",
             ));
         }
+
+        current_frame.base.debug_label |=
+            Self::begin_labels(self.debugger.as_deref(), current_frame.base.command_buffer)?;
 
         let mut copy_regions = Vec::with_capacity(mip_level_sizes.len());
         let mut staging_size = 0;
@@ -1710,8 +1720,6 @@ impl Renderer for VulkanRenderer {
         group_count: (u32, u32, u32),
     ) -> Result<()> {
         let pipeline = downcast_mut::<VulkanComputePipeline>(pipeline)?;
-        let mapped_range = self.create_compute_resource_sets(pipeline, binding_sets)?;
-
         let device_context = self
             .device_context
             .as_mut()
@@ -1724,9 +1732,13 @@ impl Renderer for VulkanRenderer {
                     "Device is not initialized with the `ComputeShaders` feature.",
                 ))?;
         let thread_context_index = Self::thread_context_index()?;
-        let current_frame = &mut compute_queue_context.frames[device_context.current_frame_index]
+        let mut current_frame = &mut compute_queue_context.frames
+            [device_context.current_frame_index]
             .base
             .thread_contexts[thread_context_index];
+
+        current_frame.base.debug_label |=
+            Self::begin_labels(self.debugger.as_deref(), current_frame.base.command_buffer)?;
 
         unsafe {
             if current_frame.bound_pipeline != Some(pipeline.pipeline) {
@@ -1737,6 +1749,16 @@ impl Renderer for VulkanRenderer {
                 );
                 current_frame.bound_pipeline = Some(pipeline.pipeline);
             }
+            let mapped_range = Self::create_compute_resource_sets(
+                &device_context.logical_device,
+                compute_queue_context,
+                device_context.current_frame_index,
+                pipeline,
+                binding_sets,
+            )?;
+            current_frame = &mut compute_queue_context.frames[device_context.current_frame_index]
+                .base
+                .thread_contexts[thread_context_index];
             if !mapped_range.is_empty() {
                 device_context.logical_device.cmd_bind_descriptor_sets(
                     current_frame.base.command_buffer,
@@ -1862,6 +1884,13 @@ impl Renderer for VulkanRenderer {
                 "Canvas dimensions cannot exceed {max_width}x{max_height}."
             )));
         }
+
+        let current_frame = &mut device_context.graphics_queue_context.frames
+            [device_context.current_frame_index]
+            .base
+            .thread_contexts[thread_context_index];
+        current_frame.base.debug_label |=
+            Self::begin_labels(self.debugger.as_deref(), current_frame.base.command_buffer)?;
 
         let layer_count = self.settings.array_layer_count();
         let mut canvas: Box<dyn VulkanCanvas> = match options.depth_only {
@@ -2138,6 +2167,7 @@ impl Renderer for VulkanRenderer {
 
     fn end_frame(&mut self) -> Result<()> {
         let is_in_main_thread = self.is_in_main_thread();
+        let debugger = self.debugger.as_deref();
         let device_context = self
             .device_context
             .as_mut()
@@ -2168,6 +2198,7 @@ impl Renderer for VulkanRenderer {
             frame_index: usize,
             thread_context_index: usize,
             present: &mut bool,
+            debugger: Option<&Debugger>,
         ) -> Result<()> {
             let current_frame = &mut queue_context.frames[frame_index].base_mut().thread_contexts
                 [thread_context_index];
@@ -2177,6 +2208,11 @@ impl Renderer for VulkanRenderer {
                 ));
             }
             unsafe {
+                let base = current_frame.base_mut();
+                if base.debug_label {
+                    let _ = VulkanRenderer::end_labels(debugger, base.command_buffer)?;
+                    base.debug_label = false;
+                }
                 if let Some(current_frame) =
                     <dyn Any>::downcast_mut::<GraphicsThreadContext>(current_frame)
                 {
@@ -2226,6 +2262,7 @@ impl Renderer for VulkanRenderer {
             device_context.current_frame_index,
             thread_context_index,
             &mut present,
+            debugger,
         )?;
         end_queue(
             &device_context.logical_device,
@@ -2240,6 +2277,7 @@ impl Renderer for VulkanRenderer {
             device_context.current_frame_index,
             thread_context_index,
             &mut present,
+            debugger,
         )?;
         if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
             end_queue(
@@ -2255,8 +2293,10 @@ impl Renderer for VulkanRenderer {
                 device_context.current_frame_index,
                 thread_context_index,
                 &mut present,
+                debugger,
             )?;
         }
+        Self::validate_labels(debugger)?;
 
         if is_in_main_thread {
             let image_available_semaphores = [device_context.swapchain_context.semaphores

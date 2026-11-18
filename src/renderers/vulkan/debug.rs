@@ -1,7 +1,10 @@
-use std::ffi::{CStr, CString, c_void};
+use std::{
+    ffi::{CStr, CString, c_void},
+    hash::{DefaultHasher, Hash, Hasher},
+};
 
 use ash::vk::{
-    Bool32, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
+    Bool32, DebugUtilsLabelEXT, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
     DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerCreateInfoEXT,
 };
 
@@ -68,6 +71,81 @@ impl VulkanRenderer {
         Ok(())
     }
 
+    /// Ends the popped labels that have begun in the command buffer, then begins the labels pushed
+    /// since the last command in it, if a debugger is attached. Returns whether any label has
+    /// begun.
+    pub(super) fn begin_labels(
+        debugger: Option<&Debugger>,
+        command_buffer: ash::vk::CommandBuffer,
+    ) -> Result<bool> {
+        let _ = Self::end_labels(debugger, command_buffer)?;
+        let Some(debugger) = debugger else {
+            return Ok(false);
+        };
+        let mut hasher = DefaultHasher::new();
+        command_buffer.hash(&mut hasher);
+        let labels = debugger.begin_labels(hasher.finish());
+        if labels.is_empty() {
+            return Ok(false);
+        }
+        let writer = debugger.writer()?;
+        let Some(writer) = writer.as_ref() else {
+            // Writer's lifetime is tied to the device context.
+            return Err(Error::invalid_operation("Device is not set."));
+        };
+        let writer = downcast_ref::<VulkanDebugWriter>(writer.as_ref())?;
+        for label in labels {
+            let label = CString::new(label)?;
+            let label = DebugUtilsLabelEXT::default().label_name(label.as_c_str());
+            unsafe {
+                writer
+                    .device
+                    .cmd_begin_debug_utils_label(command_buffer, &label)
+            };
+        }
+        Ok(true)
+    }
+
+    /// Ends the popped labels that have begun in the command buffer if a debugger is attached.
+    /// Returns whether any label has ended.
+    pub(super) fn end_labels(
+        debugger: Option<&Debugger>,
+        command_buffer: ash::vk::CommandBuffer,
+    ) -> Result<bool> {
+        let Some(debugger) = debugger else {
+            return Ok(false);
+        };
+        let mut hasher = DefaultHasher::new();
+        command_buffer.hash(&mut hasher);
+        let count = debugger.end_labels(hasher.finish());
+        if count == 0 {
+            return Ok(false);
+        }
+        let writer = debugger.writer()?;
+        let Some(writer) = writer.as_ref() else {
+            // Writer's lifetime is tied to the device context.
+            return Err(Error::invalid_operation("Device is not set."));
+        };
+        let writer = downcast_ref::<VulkanDebugWriter>(writer.as_ref())?;
+        for _ in 0..count {
+            unsafe { writer.device.cmd_end_debug_utils_label(command_buffer) };
+        }
+        Ok(true)
+    }
+
+    /// Validates whether all labels have been popped.
+    pub(super) fn validate_labels(debugger: Option<&Debugger>) -> Result<()> {
+        if let Some(debugger) = debugger
+            && debugger.has_labels()
+        {
+            Err(Error::fail(
+                "All labels should be popped before ending the frame.",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
     /// Creates the messenger that forwards the validation messages to the attached debugger.
     pub(super) fn create_debug_messenger(&self) -> Result<()> {
         let debug_utils_loader =
@@ -76,8 +154,8 @@ impl VulkanRenderer {
                 .ok_or(Error::invalid_operation(
                     "The debug utils extension is not loaded.",
                 ))?;
-        let debugger = self.debugger.borrow();
-        let debugger = debugger
+        let debugger = self
+            .debugger
             .as_deref()
             .ok_or(Error::invalid_operation("No attached debugger found."))?;
 
