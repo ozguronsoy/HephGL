@@ -385,6 +385,22 @@ where
         }
 
         {
+            let mut renderer = self.create_renderer_with_any_device(&[]);
+            heph_expect_err!(
+                renderer.create_texture(
+                    &TextureOptions {
+                        width: rgba_image.width(),
+                        height: rgba_image.height(),
+                        format: TextureFormat::Rgba8Srgb,
+                        mip_level_count: 1,
+                    },
+                    &rgba_image
+                ),
+                Error::InvalidOperation(_)
+            );
+        }
+
+        {
             let mut renderer =
                 self.create_renderer_with_any_device(&[FeatureRequest::new(BcTextures, false)]);
             if renderer
