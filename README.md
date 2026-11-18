@@ -125,9 +125,9 @@ drop(vert_shader);
 drop(frag_shader);
 
 renderer.begin_frame().unwrap();
-renderer.clear(RGB::default()).unwrap();
+renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
 // No index buffer, vertex bindings or binding sets. Three vertices, one instance.
-renderer.record_graphics_command(pipeline.as_mut(), None, &[], &[], 3, 1).unwrap();
+renderer.record_graphics_command(DISPLAY_CANVAS, pipeline.as_mut(), None, &[], &[], 3, 1).unwrap();
 renderer.end_frame().unwrap();
 
 renderer.wait_idle().unwrap();
