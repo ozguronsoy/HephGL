@@ -1,3 +1,4 @@
+pub mod canvas;
 pub mod compute;
 pub mod concurrency;
 pub mod frame;

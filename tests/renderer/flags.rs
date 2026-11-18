@@ -38,6 +38,7 @@ define_renderer_test_flags!(
     test_impossible_buffer_size,
     test_texture,
     test_sampler,
+    test_canvas,
     test_compute_pipeline,
     test_graphics_pipeline,
     test_reject_foreign_resources,
