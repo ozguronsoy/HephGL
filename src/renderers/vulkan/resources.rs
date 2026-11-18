@@ -18,7 +18,9 @@ use crate::{
         settings::TextureOptions,
         vulkan::{
             VulkanRenderer,
+            frame::{ComputeFrame, GraphicsFrame},
             pipeline::{VulkanComputePipeline, VulkanGraphicsPipeline},
+            queue::QueueContext,
         },
     },
     shader::{ShaderBindingType, ShaderStage},
@@ -119,24 +121,14 @@ impl DescriptorSetCache {
 
 impl VulkanRenderer {
     pub(super) fn create_compute_resource_sets(
-        &mut self,
+        device: &ash::Device,
+        queue_context: &mut QueueContext<ComputeFrame>,
+        frame_index: usize,
         pipeline: &mut VulkanComputePipeline,
         binding_sets: &[&[ResourceBinding<'_>]],
     ) -> Result<Range<usize>> {
-        let device_context = self
-            .device_context
-            .as_mut()
-            .ok_or(Error::invalid_operation("Device is not set."))?;
-        let compute_queue_context =
-            device_context
-                .compute_queue_context
-                .as_mut()
-                .ok_or(Error::invalid_operation(
-                    "Device is not initialized with `ComputeShaders` feature.",
-                ))?;
         let thread_context_index = Self::thread_context_index()?;
-        let pool_generation = compute_queue_context.frames[0].base.thread_contexts
-            [thread_context_index]
+        let pool_generation = queue_context.frames[0].base.thread_contexts[thread_context_index]
             .descriptor_pool_manager
             .generation();
 
@@ -182,39 +174,30 @@ impl VulkanRenderer {
             return Ok(range);
         }
 
-        let descriptor_sets = compute_queue_context.frames[device_context.current_frame_index]
-            .base
-            .thread_contexts[thread_context_index]
+        let descriptor_sets = queue_context.frames[frame_index].base.thread_contexts
+            [thread_context_index]
             .descriptor_pool_manager
-            .allocate(&device_context.logical_device, &pipeline.descriptor_layouts)?;
+            .allocate(device, &pipeline.descriptor_layouts)?;
         let range = Self::extend_cached_descriptor_sets(
             pipeline.descriptor_layouts.len(),
             &mut pipeline.descriptor_set_cache,
             hash,
             &descriptor_sets,
         )?;
-        Self::write_descriptor_sets(
-            &device_context.logical_device,
-            &descriptor_sets,
-            binding_sets,
-        )?;
+        Self::write_descriptor_sets(device, &descriptor_sets, binding_sets)?;
 
         Ok(range)
     }
 
     pub(super) fn create_graphics_resource_sets(
-        &mut self,
+        device: &ash::Device,
+        queue_context: &mut QueueContext<GraphicsFrame>,
+        frame_index: usize,
         pipeline: &mut VulkanGraphicsPipeline,
         binding_sets: &[&[ResourceBinding<'_>]],
     ) -> Result<Range<usize>> {
-        let device_context = self
-            .device_context
-            .as_mut()
-            .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
-        let pool_generation = device_context.graphics_queue_context.frames[0]
-            .base
-            .thread_contexts[thread_context_index]
+        let pool_generation = queue_context.frames[0].base.thread_contexts[thread_context_index]
             .descriptor_pool_manager
             .generation();
 
@@ -260,23 +243,17 @@ impl VulkanRenderer {
             return Ok(range);
         }
 
-        let descriptor_sets = device_context.graphics_queue_context.frames
-            [device_context.current_frame_index]
-            .base
-            .thread_contexts[thread_context_index]
+        let descriptor_sets = queue_context.frames[frame_index].base.thread_contexts
+            [thread_context_index]
             .descriptor_pool_manager
-            .allocate(&device_context.logical_device, &pipeline.descriptor_layouts)?;
+            .allocate(device, &pipeline.descriptor_layouts)?;
         let range = Self::extend_cached_descriptor_sets(
             pipeline.descriptor_layouts.len(),
             &mut pipeline.descriptor_set_cache,
             hash,
             &descriptor_sets,
         )?;
-        Self::write_descriptor_sets(
-            &device_context.logical_device,
-            &descriptor_sets,
-            binding_sets,
-        )?;
+        Self::write_descriptor_sets(device, &descriptor_sets, binding_sets)?;
 
         Ok(range)
     }

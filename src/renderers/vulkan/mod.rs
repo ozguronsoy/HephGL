@@ -1143,6 +1143,9 @@ impl Renderer for VulkanRenderer {
             ));
         }
 
+        current_frame.base.debug_label |=
+            Self::begin_label(&self.debugger.borrow(), current_frame.base.command_buffer)?;
+
         let mut copy_regions = Vec::with_capacity(mip_level_sizes.len());
         let mut staging_size = 0;
         for (mip_level, size) in mip_level_sizes.iter().enumerate() {
@@ -1267,9 +1270,6 @@ impl Renderer for VulkanRenderer {
                     .destroy_image_view(image_view, None);
             },
         );
-
-        current_frame.base.debug_label |=
-            Self::begin_label(&self.debugger.borrow(), current_frame.base.command_buffer)?;
 
         Self::transition_image_layout(
             &device_context.logical_device,
@@ -1713,9 +1713,6 @@ impl Renderer for VulkanRenderer {
         binding_sets: &[&[ResourceBinding<'_>]],
         group_count: (u32, u32, u32),
     ) -> Result<()> {
-        let pipeline = downcast_mut::<VulkanComputePipeline>(pipeline)?;
-        let mapped_range = self.create_compute_resource_sets(pipeline, binding_sets)?;
-
         let device_context = self
             .device_context
             .as_mut()
@@ -1728,13 +1725,15 @@ impl Renderer for VulkanRenderer {
                     "Device is not initialized with the `ComputeShaders` feature.",
                 ))?;
         let thread_context_index = Self::thread_context_index()?;
-        let current_frame = &mut compute_queue_context.frames[device_context.current_frame_index]
+        let mut current_frame = &mut compute_queue_context.frames
+            [device_context.current_frame_index]
             .base
             .thread_contexts[thread_context_index];
 
         current_frame.base.debug_label |=
             Self::begin_label(&self.debugger.borrow(), current_frame.base.command_buffer)?;
 
+        let pipeline = downcast_mut::<VulkanComputePipeline>(pipeline)?;
         unsafe {
             if current_frame.bound_pipeline != Some(pipeline.pipeline) {
                 device_context.logical_device.cmd_bind_pipeline(
@@ -1744,6 +1743,16 @@ impl Renderer for VulkanRenderer {
                 );
                 current_frame.bound_pipeline = Some(pipeline.pipeline);
             }
+            let mapped_range = Self::create_compute_resource_sets(
+                &device_context.logical_device,
+                compute_queue_context,
+                device_context.current_frame_index,
+                pipeline,
+                binding_sets,
+            )?;
+            current_frame = &mut compute_queue_context.frames[device_context.current_frame_index]
+                .base
+                .thread_contexts[thread_context_index];
             if !mapped_range.is_empty() {
                 device_context.logical_device.cmd_bind_descriptor_sets(
                     current_frame.base.command_buffer,
