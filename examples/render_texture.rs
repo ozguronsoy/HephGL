@@ -3,9 +3,9 @@ use heph_gl::{
     Lighting, MaterialProperties, Shader,
     math::Vec3,
     renderers::{
-        BufferUsage, CullingMode, FeatureRequest, GraphicsPipelineOptions, PrimitiveTopology,
-        Renderer, ResourceBinding, SamplerAddressMode, SamplerOptions, TextureFormat,
-        TextureOptions,
+        BufferUsage, CullingMode, DISPLAY_CANVAS, FeatureRequest, GraphicsPipelineOptions,
+        PrimitiveTopology, Renderer, ResourceBinding, SamplerAddressMode, SamplerOptions,
+        TextureFormat, TextureOptions,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -180,7 +180,7 @@ fn example(
     // Creating a texture creates a GPU command to transfer the raw pixel data from CPU to GPU, thus
     // we must begin a frame first. Once a texture is loaded, we can use it until we destroy it.
     renderer.begin_frame().unwrap();
-    renderer.clear(RGB::default()).unwrap();
+    renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
     let mut texture = renderer
         .create_texture(
             &TextureOptions {
@@ -230,7 +230,7 @@ fn example(
 
     // Render the displaced spheres with the color, ARM, and normal maps applied.
     renderer.begin_frame().unwrap();
-    renderer.clear(RGB::default()).unwrap();
+    renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
     let vertex_bindings = [ResourceBinding::buffer(
         0,
         vertex_buffer.as_ref(),
@@ -247,6 +247,7 @@ fn example(
     ];
     renderer
         .record_graphics_command(
+            DISPLAY_CANVAS,
             pipeline.as_mut(),
             None,
             &vertex_bindings,

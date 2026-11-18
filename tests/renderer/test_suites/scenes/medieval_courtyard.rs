@@ -12,8 +12,8 @@ use heph_gl::{
     Lighting, Mesh, MeshAlphaMode, MeshVertexAttribute, Projection, Shader,
     math::{Mat4, Quat, Vec3},
     renderers::{
-        BufferUsage, CanvasOptions, ColorBlending, CompareOp, CullingMode, DepthBias,
-        FeatureRequest, FrontFace, GraphicsPipelineOptions, Renderer, RendererBuffer,
+        BufferUsage, CanvasOptions, ColorBlending, CompareOp, CullingMode, DISPLAY_CANVAS,
+        DepthBias, FeatureRequest, FrontFace, GraphicsPipelineOptions, Renderer, RendererBuffer,
         RendererHandle, RendererWorkerFactory, ResourceBinding, SamplerAddressMode, SamplerOptions,
         Settings, TextureFormat, TextureOptions,
     },
@@ -323,7 +323,7 @@ where
         let mut textures = HashMap::new();
         let mut draws = Vec::new();
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(RGB::default()));
+        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
         let mut shadow_canvas = heph_expect_success!(renderer.create_canvas(&CanvasOptions {
             width: SHADOW_MAP_SIZE,
             height: SHADOW_MAP_SIZE,
@@ -587,9 +587,9 @@ where
                 bytemuck::cast_slice(&scene_data)
             ));
 
-            heph_expect_success!(renderer.clear(sky_color));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, sky_color));
 
-            heph_expect_success!(renderer.clear_canvas(shadow_canvas.as_mut(), RGB::default()));
+            heph_expect_success!(renderer.clear(Some(shadow_canvas.as_mut()), RGB::default()));
             for (draw, [texture, _, _]) in draws
                 .iter()
                 .zip(&draw_textures)
@@ -612,8 +612,8 @@ where
                     ),
                     ResourceBinding::buffer(5, sun_buffer.as_ref(), 0, sun_buffer.size()),
                 ];
-                heph_expect_success!(renderer.record_canvas_command(
-                    shadow_canvas.as_mut(),
+                heph_expect_success!(renderer.record_graphics_command(
+                    Some(shadow_canvas.as_mut()),
                     match draw.double_sided {
                         true => double_sided_shadow_pipeline.as_mut(),
                         false => shadow_pipeline.as_mut(),
@@ -650,6 +650,7 @@ where
                     ResourceBinding::sampler(8, shadow_sampler.as_ref()),
                 ];
                 heph_expect_success!(renderer.record_graphics_command(
+                    DISPLAY_CANVAS,
                     match (draw.blended, draw.double_sided) {
                         (true, _) => blended_pipeline.as_mut(),
                         (false, true) => double_sided_pipeline.as_mut(),

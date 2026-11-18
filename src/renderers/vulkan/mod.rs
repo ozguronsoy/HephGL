@@ -44,7 +44,7 @@ use crate::{
         RendererComputePipeline, RendererGraphicsPipeline, ResourceBinding, Settings,
         debug::Debugger,
         downcast_mut, downcast_ref,
-        resources::{RendererBuffer, RendererSampler, RendererTexture},
+        resources::{RendererBuffer, RendererSampler, RendererTexture, ResourceBindingType},
         settings::{
             CanvasOptions, GraphicsPipelineOptions, HdrMode, Msaa, SamplerOptions, TextureOptions,
         },
@@ -1834,6 +1834,7 @@ impl Renderer for VulkanRenderer {
 
     fn record_graphics_command(
         &mut self,
+        target_canvas: Option<&mut dyn RendererCanvas>,
         pipeline: &mut dyn RendererGraphicsPipeline,
         index_buffer: Option<&dyn RendererBuffer>,
         vertex_bindings: &[ResourceBinding<'_>],
@@ -1841,15 +1842,145 @@ impl Renderer for VulkanRenderer {
         draw_count: u32,
         instance_count: u32,
     ) -> Result<()> {
-        self.record_draw(
-            None,
-            pipeline,
-            index_buffer,
-            vertex_bindings,
-            binding_sets,
-            draw_count,
-            instance_count,
-        )
+        let pipeline = downcast_mut::<VulkanGraphicsPipeline>(pipeline)?;
+
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(Error::invalid_operation("Device is not set."))?;
+        let rendering = device_context
+            .rendering
+            .as_mut()
+            .ok_or(Error::invalid_operation("Device is not set."))?;
+        let graphics_queue_context = &mut device_context.graphics_queue_context;
+        let thread_context_index = Self::thread_context_index()?;
+        let mut current_frame = &mut graphics_queue_context.frames
+            [device_context.current_frame_index]
+            .base
+            .thread_contexts[thread_context_index];
+        let canvas: &mut dyn VulkanCanvas = match target_canvas {
+            Some(canvas) => vulkan_canvas_mut(canvas)?,
+            None => device_context
+                .display_canvas
+                .as_mut()
+                .ok_or(Error::invalid_operation("Device is not set."))?,
+        };
+        if pipeline.depth_only != canvas.options().depth_only {
+            return Err(Error::invalid_argument(
+                "Depth-only pipelines can only render into depth-only canvases, and other pipelines cannot render into them.",
+            ));
+        }
+
+        current_frame.base.debug_label |=
+            Self::begin_labels(self.debugger.as_deref(), current_frame.base.command_buffer)?;
+
+        Self::begin_canvas_rendering(
+            &device_context.logical_device,
+            rendering.as_mut(),
+            device_context.swapchain_context.format,
+            &self.settings,
+            current_frame,
+            canvas,
+            device_context.sampling_stages,
+        )?;
+        unsafe {
+            if current_frame.bound_pipeline != Some(pipeline.pipeline) {
+                device_context.logical_device.cmd_bind_pipeline(
+                    current_frame.base.command_buffer,
+                    PipelineBindPoint::GRAPHICS,
+                    pipeline.pipeline,
+                );
+                current_frame.bound_pipeline = Some(pipeline.pipeline);
+            }
+            let mapped_range = Self::create_graphics_resource_sets(
+                &device_context.logical_device,
+                graphics_queue_context,
+                device_context.current_frame_index,
+                pipeline,
+                binding_sets,
+            )?;
+            current_frame = &mut graphics_queue_context.frames[device_context.current_frame_index]
+                .base
+                .thread_contexts[thread_context_index];
+            if !mapped_range.is_empty() {
+                device_context.logical_device.cmd_bind_descriptor_sets(
+                    current_frame.base.command_buffer,
+                    PipelineBindPoint::GRAPHICS,
+                    pipeline.layout,
+                    0,
+                    &pipeline.descriptor_set_cache.descriptor_sets[mapped_range],
+                    &[],
+                );
+            }
+            for vertex_binding in vertex_bindings {
+                let ResourceBindingType::Buffer {
+                    buffer,
+                    offset,
+                    size,
+                } = vertex_binding.resource
+                else {
+                    return Err(Error::invalid_argument(
+                        "Vertex binding type must be a buffer",
+                    ));
+                };
+                if buffer.usage() != BufferUsage::Vertex {
+                    return Err(Error::invalid_argument(
+                        "Vertex buffer's usage must be `BufferUsage::Vertex`.",
+                    ));
+                }
+
+                let vertex_buffer = downcast_ref::<VulkanBuffer>(buffer)?;
+                if offset
+                    .checked_add(size)
+                    .is_none_or(|x| x > vertex_buffer.size)
+                {
+                    return Err(Error::invalid_argument(
+                        "Buffer overflow while binding the vertex buffer.",
+                    ));
+                }
+                device_context.logical_device.cmd_bind_vertex_buffers(
+                    current_frame.base.command_buffer,
+                    vertex_binding.binding,
+                    std::slice::from_ref(&vertex_buffer.buffer),
+                    std::slice::from_ref(&(offset as u64)),
+                );
+            }
+
+            if let Some(index_buffer) = index_buffer {
+                if index_buffer.usage() != BufferUsage::Index {
+                    return Err(Error::invalid_argument(
+                        "Index buffer's usage must be `BufferUsage::Index`.",
+                    ));
+                }
+
+                let index_buffer = downcast_ref::<VulkanBuffer>(index_buffer)?;
+                device_context.logical_device.cmd_bind_index_buffer(
+                    current_frame.base.command_buffer,
+                    index_buffer.buffer,
+                    0,
+                    ash::vk::IndexType::UINT32,
+                );
+                device_context.logical_device.cmd_draw_indexed(
+                    current_frame.base.command_buffer,
+                    draw_count,
+                    instance_count,
+                    0,
+                    0,
+                    0,
+                );
+            } else {
+                device_context.logical_device.cmd_draw(
+                    current_frame.base.command_buffer,
+                    draw_count,
+                    instance_count,
+                    0,
+                    0,
+                );
+            }
+        }
+
+        current_frame.base.recorded = true;
+        Ok(())
     }
 
     fn create_canvas(&mut self, options: &CanvasOptions) -> Result<Box<dyn RendererCanvas>> {
@@ -1953,27 +2084,6 @@ impl Renderer for VulkanRenderer {
             canvas.destroy(device_context);
         }
         Ok(())
-    }
-
-    fn record_canvas_command(
-        &mut self,
-        canvas: &mut dyn RendererCanvas,
-        pipeline: &mut dyn RendererGraphicsPipeline,
-        index_buffer: Option<&dyn RendererBuffer>,
-        vertex_bindings: &[ResourceBinding<'_>],
-        binding_sets: &[&[ResourceBinding<'_>]],
-        draw_count: u32,
-        instance_count: u32,
-    ) -> Result<()> {
-        self.record_draw(
-            Some(vulkan_canvas_mut(canvas)?),
-            pipeline,
-            index_buffer,
-            vertex_bindings,
-            binding_sets,
-            draw_count,
-            instance_count,
-        )
     }
 
     fn begin_frame(&mut self) -> Result<()> {
@@ -2516,12 +2626,93 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn clear(&mut self, color: RGB<f32>) -> Result<()> {
-        self.record_clear(None, color)
-    }
+    fn clear(
+        &mut self,
+        target_canvas: Option<&mut dyn RendererCanvas>,
+        color: RGB<f32>,
+    ) -> Result<()> {
+        let device_context = self
+            .device_context
+            .as_mut()
+            .ok_or(Error::invalid_operation("Device is not set."))?;
+        let rendering = device_context
+            .rendering
+            .as_mut()
+            .ok_or(Error::invalid_operation("Device is not set."))?;
+        let thread_context_index = Self::thread_context_index()?;
+        let current_frame = &mut device_context.graphics_queue_context.frames
+            [device_context.current_frame_index]
+            .base
+            .thread_contexts[thread_context_index];
 
-    fn clear_canvas(&mut self, canvas: &mut dyn RendererCanvas, color: RGB<f32>) -> Result<()> {
-        self.record_clear(Some(vulkan_canvas_mut(canvas)?), color)
+        {
+            let state = current_frame.base.sync_state.0.lock()?;
+            if *state != FrameState::Started {
+                return Err(Error::invalid_operation("Cannot clear outside of a frame."));
+            }
+        }
+
+        current_frame.base.debug_label |=
+            Self::begin_labels(self.debugger.as_deref(), current_frame.base.command_buffer)?;
+
+        let canvas: &mut dyn VulkanCanvas = match target_canvas {
+            Some(canvas) => vulkan_canvas_mut(canvas)?,
+            None => device_context
+                .display_canvas
+                .as_mut()
+                .ok_or(Error::invalid_operation("Device is not set."))?,
+        };
+        Self::begin_canvas_rendering(
+            &device_context.logical_device,
+            rendering.as_mut(),
+            device_context.swapchain_context.format,
+            &self.settings,
+            current_frame,
+            canvas,
+            device_context.sampling_stages,
+        )?;
+
+        let clear_attachments = [
+            ash::vk::ClearAttachment::default()
+                .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+                .color_attachment(0)
+                .clear_value(ash::vk::ClearValue {
+                    color: ash::vk::ClearColorValue {
+                        float32: [color.r, color.g, color.b, 1.0],
+                    },
+                }),
+            ash::vk::ClearAttachment::default()
+                .aspect_mask(ash::vk::ImageAspectFlags::DEPTH)
+                .clear_value(ash::vk::ClearValue {
+                    depth_stencil: ash::vk::ClearDepthStencilValue {
+                        depth: 1.0,
+                        stencil: 0,
+                    },
+                }),
+        ];
+        let clear_rect = ash::vk::ClearRect::default()
+            .rect(ash::vk::Rect2D {
+                offset: ash::vk::Offset2D { x: 0, y: 0 },
+                extent: ash::vk::Extent2D {
+                    width: canvas.width(),
+                    height: canvas.height(),
+                },
+            })
+            .base_array_layer(0)
+            .layer_count(canvas.layer_count());
+        unsafe {
+            device_context.logical_device.cmd_clear_attachments(
+                current_frame.base.command_buffer,
+                match canvas.options().depth_only {
+                    true => &clear_attachments[1..],
+                    false => &clear_attachments,
+                },
+                std::slice::from_ref(&clear_rect),
+            );
+        }
+
+        current_frame.base.recorded = true;
+        Ok(())
     }
 }
 

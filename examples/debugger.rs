@@ -1,5 +1,6 @@
 use heph_gl::renderers::{
-    DEFAULT_DEVICE, InitializeOptions, LATEST_API_VERSION, Renderer, SamplerOptions,
+    DEFAULT_DEVICE, DISPLAY_CANVAS, InitializeOptions, LATEST_API_VERSION, Renderer,
+    SamplerOptions,
     debug::{Debugger, Severity},
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -42,7 +43,9 @@ fn example(
     renderer.begin_frame().unwrap();
     renderer.debugger().unwrap().push_label("Frame").unwrap();
     renderer.debugger().unwrap().push_label("Clear").unwrap();
-    renderer.clear(RGB::new(0.1, 0.1, 0.1)).unwrap();
+    renderer
+        .clear(DISPLAY_CANVAS, RGB::new(0.1, 0.1, 0.1))
+        .unwrap();
     renderer.debugger().unwrap().pop_label().unwrap();
     renderer.debugger().unwrap().pop_label().unwrap();
     renderer.end_frame().unwrap();

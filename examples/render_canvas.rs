@@ -3,8 +3,8 @@ use std::time::{Duration, Instant};
 use heph_gl::{
     Shader,
     renderers::{
-        BufferUsage, CanvasOptions, GraphicsPipelineOptions, Renderer, RendererGraphicsPipeline,
-        ResourceBinding, SamplerOptions,
+        BufferUsage, CanvasOptions, DISPLAY_CANVAS, GraphicsPipelineOptions, Renderer,
+        RendererGraphicsPipeline, ResourceBinding, SamplerOptions,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -97,19 +97,19 @@ fn example(
     let start = Instant::now();
     while start.elapsed() < Duration::from_secs(5) {
         renderer.begin_frame().unwrap();
-        renderer.clear(RGB::default()).unwrap();
+        renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
 
         // Render into the canvas before sampling it.
         let time = start.elapsed().as_secs_f32();
         renderer
-            .clear_canvas(
-                canvas.as_mut(),
+            .clear(
+                Some(canvas.as_mut()),
                 RGB::new(0.2 + 0.15 * time.sin(), 0.1, 0.2 + 0.15 * time.cos()),
             )
             .unwrap();
         renderer
-            .record_canvas_command(
-                canvas.as_mut(),
+            .record_graphics_command(
+                Some(canvas.as_mut()),
                 triangle_pipeline.as_mut(),
                 None,
                 &[],
@@ -132,6 +132,7 @@ fn example(
         ];
         renderer
             .record_graphics_command(
+                DISPLAY_CANVAS,
                 canvas_pipeline.as_mut(),
                 None,
                 &vertex_bindings,

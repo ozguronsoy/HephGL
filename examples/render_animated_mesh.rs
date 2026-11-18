@@ -6,8 +6,9 @@ use heph_gl::{
     Lighting, Projection, Shader,
     math::{Mat4, Vec3},
     renderers::{
-        BufferUsage, CullingMode, FeatureRequest, FrontFace, GraphicsPipelineOptions, Renderer,
-        ResourceBinding, SamplerOptions, TextureFormat, TextureOptions,
+        BufferUsage, CullingMode, DISPLAY_CANVAS, FeatureRequest, FrontFace,
+        GraphicsPipelineOptions, Renderer, ResourceBinding, SamplerOptions, TextureFormat,
+        TextureOptions,
     },
     {Mesh, MeshVertexAttribute},
 };
@@ -116,7 +117,7 @@ fn example(
     camera.look_at(&Vec3::ZERO, &Vec3::Y).unwrap();
 
     renderer.begin_frame().unwrap();
-    renderer.clear(RGB::default()).unwrap();
+    renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
     let vertex_count = vertices.len() / component_count;
     let mut vertex_buffer = renderer
         .create_buffer(
@@ -260,7 +261,7 @@ fn example(
     let start = Instant::now();
     loop {
         renderer.begin_frame().unwrap();
-        renderer.clear(RGB::default()).unwrap();
+        renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
 
         // Play each clip for five seconds, looping its keyframes at their original speed.
         let elapsed = start.elapsed().as_secs_f32();
@@ -309,6 +310,7 @@ fn example(
         ];
         renderer
             .record_graphics_command(
+                DISPLAY_CANVAS,
                 pipeline.as_mut(),
                 Some(index_buffer.as_ref()),
                 &vertex_bindings,

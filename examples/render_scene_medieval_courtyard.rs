@@ -12,8 +12,8 @@ use heph_gl::{
     Lighting, Mesh, MeshAlphaMode, MeshVertexAttribute, Projection, Shader,
     math::{Mat4, Quat, Vec3},
     renderers::{
-        BufferUsage, CanvasOptions, ColorBlending, CompareOp, CullingMode, DepthBias,
-        FeatureRequest, FrontFace, GraphicsPipelineOptions, Renderer, RendererBuffer,
+        BufferUsage, CanvasOptions, ColorBlending, CompareOp, CullingMode, DISPLAY_CANVAS,
+        DepthBias, FeatureRequest, FrontFace, GraphicsPipelineOptions, Renderer, RendererBuffer,
         RendererTexture, ResourceBinding, SamplerAddressMode, SamplerOptions, TextureFormat,
         TextureOptions,
     },
@@ -340,7 +340,7 @@ fn example(
     let mut textures = HashMap::new();
     let mut draws = Vec::new();
     renderer.begin_frame().unwrap();
-    renderer.clear(RGB::default()).unwrap();
+    renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
     let mut shadow_canvas = renderer
         .create_canvas(&CanvasOptions {
             width: SHADOW_MAP_SIZE,
@@ -597,12 +597,12 @@ fn example(
             .write_buffer(scene_buffer.as_mut(), 0, bytemuck::cast_slice(&scene_data))
             .unwrap();
 
-        renderer.clear(sky_color).unwrap();
+        renderer.clear(DISPLAY_CANVAS, sky_color).unwrap();
 
         // Render the depths seen from the sun into the shadow map. Blended parts let the light
         // through, so they don't cast shadows.
         renderer
-            .clear_canvas(shadow_canvas.as_mut(), RGB::default())
+            .clear(Some(shadow_canvas.as_mut()), RGB::default())
             .unwrap();
         for (draw, [texture, _, _]) in draws
             .iter()
@@ -627,8 +627,8 @@ fn example(
                 ResourceBinding::buffer(5, sun_buffer.as_ref(), 0, sun_buffer.size()),
             ];
             renderer
-                .record_canvas_command(
-                    shadow_canvas.as_mut(),
+                .record_graphics_command(
+                    Some(shadow_canvas.as_mut()),
                     match draw.double_sided {
                         true => double_sided_shadow_pipeline.as_mut(),
                         false => shadow_pipeline.as_mut(),
@@ -668,6 +668,7 @@ fn example(
             ];
             renderer
                 .record_graphics_command(
+                    DISPLAY_CANVAS,
                     match (draw.blended, draw.double_sided) {
                         (true, _) => blended_pipeline.as_mut(),
                         (false, true) => double_sided_pipeline.as_mut(),
