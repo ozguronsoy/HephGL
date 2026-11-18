@@ -1,7 +1,14 @@
-use crate::renderers::{
-    thread_context::ThreadContextArray,
-    vulkan::thread::{
-        ComputeThreadContext, GraphicsThreadContext, TransferThreadContext, VulkanThreadContext,
+use crate::{
+    Error, Result,
+    renderers::{
+        thread_context::ThreadContextArray,
+        vulkan::{
+            VulkanRenderer,
+            thread::{
+                ComputeThreadContext, GraphicsThreadContext, TransferThreadContext,
+                VulkanThreadContext,
+            },
+        },
     },
 };
 
@@ -100,5 +107,32 @@ impl VulkanFrame for ComputeFrame {
 
     fn base_mut(&mut self) -> &mut FrameBase<ComputeThreadContext> {
         &mut self.base
+    }
+}
+
+impl VulkanRenderer {
+    /// Checks whether the call is being made inside a frame. If not, returns an error.
+    pub(super) fn frame_only(&self, fn_name: &str) -> Result<()> {
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(Error::invalid_operation("Device is not set."))?;
+        let thread_context_index = Self::thread_context_index()?;
+        // All queues start at the same time, so we can use any queue context here to check the
+        // state.
+        let state = device_context.graphics_queue_context.frames
+            [device_context.current_frame_index]
+            .base
+            .thread_contexts[thread_context_index]
+            .base
+            .sync_state
+            .0
+            .lock()?;
+        match *state != FrameState::Started {
+            true => Err(Error::InvalidOperation(format!(
+                "Cannot call `Renderer::{fn_name}` outside of a frame."
+            ))),
+            false => Ok(()),
+        }
     }
 }

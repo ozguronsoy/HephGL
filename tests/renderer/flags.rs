@@ -45,6 +45,7 @@ define_renderer_test_flags!(
     test_reject_foreign_pipelines,
     test_begin_twice,
     test_end_without_begin,
+    test_calling_frame_only_fn_outside_of_frame,
     test_resize_window,
     test_calling_main_thread_only_fn_from_worker_thread,
     test_multiple_workers_per_thread,
