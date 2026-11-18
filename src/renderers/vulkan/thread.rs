@@ -292,6 +292,10 @@ impl VulkanRenderer {
             &mut *device_context.thread_context_masks.lock()?,
         );
 
+        if let Some(debugger) = self.debugger.borrow().as_ref() {
+            debugger.clear_labels();
+        }
+
         Ok(())
     }
 

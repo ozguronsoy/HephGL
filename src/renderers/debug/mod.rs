@@ -138,8 +138,17 @@ impl Debugger {
         }
     }
 
-    /// Removes the labels of all threads.
+    /// Removes the labels of the current thread.
     pub(super) fn clear_labels(&self) {
+        let _ = self
+            .labels
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&std::thread::current().id());
+    }
+
+    /// Removes the labels of all threads.
+    pub(super) fn clear_all_labels(&self) {
         self.labels
             .lock()
             .unwrap_or_else(PoisonError::into_inner)

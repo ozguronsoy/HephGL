@@ -189,7 +189,7 @@ impl Renderer for VulkanRenderer {
             .take()
             .map(|debugger| {
                 let _ = debugger.set_writer(None);
-                debugger.clear_labels();
+                debugger.clear_all_labels();
                 *debugger
             })
             .ok_or(Error::invalid_operation("No attached debugger found."))
