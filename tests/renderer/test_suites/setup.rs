@@ -8,11 +8,12 @@ use heph_gl::{
     Shader, Version,
     renderers::{
         BufferUsage, CanvasOptions, FeatureRequest, GraphicsPipelineOptions, HdrMode,
-        InitializeOptions, Renderer, RendererHandle, RendererWorkerFactory, SamplerOptions,
-        Settings, TextureFormat, TextureOptions,
+        InitializeOptions, Renderer, RendererHandle, RendererWorkerFactory, ResourceBinding,
+        SamplerOptions, Settings, TextureFormat, TextureOptions,
         debug::{Debugger, RendererDebugObject, Severity},
     },
 };
+use renkrs::RGB;
 
 use crate::{
     dummy_display_handle, dummy_window_handle, heph_expect_err, heph_expect_success,
@@ -320,6 +321,115 @@ where
                     .set_object_name(buffer.as_ref(), "Buffer")
             );
             heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
+        }
+
+        {
+            let debugger = Debugger::default();
+            heph_expect_err!(debugger.pop_label(), Error::InvalidOperation(_));
+            heph_expect_err!(debugger.push_label("La\0bel"), Error::InvalidArgument(_));
+            heph_expect_success!(debugger.push_label("Label"));
+            heph_expect_success!(debugger.push_label("Nested Label"));
+            heph_expect_success!(debugger.pop_label());
+            heph_expect_success!(debugger.pop_label());
+            heph_expect_err!(debugger.pop_label(), Error::InvalidOperation(_));
+        }
+
+        {
+            let push_label = |renderer: &TestRenderer, label: &str| {
+                heph_expect_success!(
+                    heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."))
+                        .push_label(label)
+                );
+            };
+            let pop_label = |renderer: &TestRenderer| {
+                heph_expect_success!(
+                    heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."))
+                        .pop_label()
+                );
+            };
+
+            let mut renderer = self.create_renderer_with_any_device(&[
+                FeatureRequest::new(AsyncTransfer, false),
+                FeatureRequest::new(ComputeShaders, false),
+            ]);
+            let compute_supported = renderer
+                .get_device()
+                .unwrap()
+                .supported_features()
+                .contains(&ComputeShaders);
+            let mut compute_pipeline = if compute_supported {
+                let compute_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/addition.spv",
+                    SHADERS_DIR
+                )));
+                Some(heph_expect_success!(
+                    renderer.create_compute_pipeline(&compute_shader)
+                ))
+            } else {
+                None
+            };
+            let mut buffers = (0..3)
+                .map(|_| heph_expect_success!(renderer.create_buffer(1024, BufferUsage::Storage)))
+                .collect::<Vec<_>>();
+
+            heph_expect_success!(renderer.begin_frame());
+            push_label(&renderer.renderer, "Frame");
+            push_label(&renderer.renderer, "Resources");
+            let mut texture = heph_expect_success!(renderer.create_texture(
+                &TextureOptions {
+                    width: 4,
+                    height: 4,
+                    format: TextureFormat::Rgba8Unorm,
+                    mip_level_count: 3,
+                },
+                &[0; 64]
+            ));
+            let mut canvas = heph_expect_success!(renderer.create_canvas(&CanvasOptions {
+                width: 64,
+                height: 64,
+                ..Default::default()
+            }));
+            pop_label(&renderer.renderer);
+            push_label(&renderer.renderer, "Clear Canvas");
+            heph_expect_success!(renderer.clear_canvas(canvas.as_mut(), RGB::default()));
+            pop_label(&renderer.renderer);
+            if let Some(compute_pipeline) = &mut compute_pipeline {
+                push_label(&renderer.renderer, "Compute");
+                let bindings = [
+                    ResourceBinding::buffer(0, buffers[0].as_ref(), 0, buffers[0].size()),
+                    ResourceBinding::buffer(1, buffers[1].as_ref(), 0, buffers[1].size()),
+                    ResourceBinding::buffer(2, buffers[2].as_ref(), 0, buffers[2].size()),
+                ];
+                heph_expect_success!(renderer.record_compute_command(
+                    compute_pipeline.as_mut(),
+                    &[&bindings],
+                    (1, 1, 1)
+                ));
+                pop_label(&renderer.renderer);
+            }
+            push_label(&renderer.renderer, "Clear");
+            heph_expect_success!(renderer.clear(RGB::default()));
+            pop_label(&renderer.renderer);
+            pop_label(&renderer.renderer);
+            heph_expect_success!(renderer.end_frame());
+
+            heph_expect_success!(renderer.begin_frame());
+            push_label(&renderer.renderer, "Empty");
+            pop_label(&renderer.renderer);
+            push_label(&renderer.renderer, "Clear");
+            heph_expect_success!(renderer.clear(RGB::default()));
+            pop_label(&renderer.renderer);
+            heph_expect_success!(renderer.end_frame());
+            heph_expect_success!(renderer.wait_idle());
+
+            heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
+            heph_expect_success!(renderer.destroy_canvas(canvas.as_mut()));
+            for buffer in &mut buffers {
+                heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
+            }
+            if let Some(compute_pipeline) = &mut compute_pipeline {
+                heph_expect_success!(renderer.destroy_compute_pipeline(compute_pipeline.as_mut()));
+            }
         }
     }
 
