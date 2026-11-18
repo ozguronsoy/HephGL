@@ -1719,6 +1719,7 @@ impl Renderer for VulkanRenderer {
         binding_sets: &[&[ResourceBinding<'_>]],
         group_count: (u32, u32, u32),
     ) -> Result<()> {
+        let pipeline = downcast_mut::<VulkanComputePipeline>(pipeline)?;
         let device_context = self
             .device_context
             .as_mut()
@@ -1739,7 +1740,6 @@ impl Renderer for VulkanRenderer {
         current_frame.base.debug_label |=
             Self::begin_label(self.debugger.as_deref(), current_frame.base.command_buffer)?;
 
-        let pipeline = downcast_mut::<VulkanComputePipeline>(pipeline)?;
         unsafe {
             if current_frame.bound_pipeline != Some(pipeline.pipeline) {
                 device_context.logical_device.cmd_bind_pipeline(

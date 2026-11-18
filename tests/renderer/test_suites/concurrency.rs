@@ -31,6 +31,7 @@ where
                 api_version: self.api_version,
                 debug: true,
             }));
+            heph_expect_success!(renderer.set_device(None, &[]));
             let renderer_handle = RendererHandle::from(&mut renderer);
             std::thread::scope(|s| {
                 let _ = s.spawn(move || {
