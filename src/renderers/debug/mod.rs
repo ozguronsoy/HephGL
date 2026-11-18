@@ -138,6 +138,14 @@ impl Debugger {
         }
     }
 
+    /// Removes the labels of all threads.
+    pub(super) fn clear_labels(&self) {
+        self.labels
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
+    }
+
     /// Clones the debugger with only its logs.
     pub(super) fn clone(&self) -> Self {
         let clone = Self::default();
