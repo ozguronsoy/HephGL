@@ -65,7 +65,7 @@ runs:
         install_lavapipe: true
 
     - name: Install Linux Dependencies
-      if: inputs.nextest == 'true' && runner.os == 'Linux'
+      if: runner.os == 'Linux'
       shell: bash
       run: |
         sudo apt-get update
@@ -73,14 +73,14 @@ runs:
         echo "HEPHGL_GUI_PREFIX=xvfb-run -a" >> "$GITHUB_ENV"
 
     - name: Install Windows Dependencies
-      if: inputs.nextest == 'true' && runner.os == 'Windows'
+      if: runner.os == 'Windows'
       shell: bash
       run: |
         echo "VK_ADD_LAYER_PATH=$VULKAN_SDK/Bin" >> "$GITHUB_ENV"
         echo "HEPHGL_GUI_PREFIX=" >> "$GITHUB_ENV"
 
     - name: Install macOS Dependencies
-      if: inputs.nextest == 'true' && runner.os == 'macOS'
+      if: runner.os == 'macOS'
       shell: bash
       run: |
         echo "VK_ICD_FILENAMES=$VULKAN_SDK/share/vulkan/icd.d/MoltenVK_icd.json" >> "$GITHUB_ENV"
