@@ -41,6 +41,11 @@ impl Debugger {
 
     /// Pushes a label to the debugger, which will begin while recording the next command.
     pub fn push_label(&self, label: &str) -> Result<()> {
+        if label.contains('\0') {
+            return Err(Error::invalid_argument(
+                "Label cannot contain a null character.",
+            ));
+        }
         let mut labels = self.labels.lock()?;
         let labels = labels.entry(std::thread::current().id()).or_default();
         if let Some(label) = labels.last()
@@ -65,10 +70,14 @@ impl Debugger {
         let Some(label) = labels.last_mut() else {
             return Err(Error::invalid_operation("No label found to pop."));
         };
-        if label.state == DebugLabelState::Idle {
-            let _ = labels.pop();
-        } else if label.state == DebugLabelState::Begun {
-            label.state = DebugLabelState::Ended;
+        match label.state {
+            DebugLabelState::Idle => {
+                let _ = labels.pop();
+            }
+            DebugLabelState::Begun => label.state = DebugLabelState::Ended,
+            DebugLabelState::Ended => {
+                return Err(Error::invalid_operation("No label found to pop."));
+            }
         }
         Ok(())
     }
