@@ -1,4 +1,7 @@
-use std::ffi::{CStr, CString, c_void};
+use std::{
+    ffi::{CStr, CString, c_void},
+    hash::{DefaultHasher, Hash, Hasher},
+};
 
 use ash::vk::{
     Bool32, DebugUtilsLabelEXT, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
@@ -68,8 +71,9 @@ impl VulkanRenderer {
         Ok(())
     }
 
-    /// Ends the popped labels, then begins the labels pushed since the last command, if a debugger
-    /// is attached. Returns whether any label has begun.
+    /// Ends the popped labels that have begun in the command buffer, then begins the labels pushed
+    /// since the last command in it, if a debugger is attached. Returns whether any label has
+    /// begun.
     pub(super) fn begin_labels(
         debugger: Option<&Debugger>,
         command_buffer: ash::vk::CommandBuffer,
@@ -78,7 +82,9 @@ impl VulkanRenderer {
         let Some(debugger) = debugger else {
             return Ok(false);
         };
-        let labels = debugger.begin_labels();
+        let mut hasher = DefaultHasher::new();
+        command_buffer.hash(&mut hasher);
+        let labels = debugger.begin_labels(hasher.finish());
         if labels.is_empty() {
             return Ok(false);
         }
@@ -100,7 +106,8 @@ impl VulkanRenderer {
         Ok(true)
     }
 
-    /// Ends the popped labels if a debugger is attached. Returns whether any label has ended.
+    /// Ends the popped labels that have begun in the command buffer if a debugger is attached.
+    /// Returns whether any label has ended.
     pub(super) fn end_labels(
         debugger: Option<&Debugger>,
         command_buffer: ash::vk::CommandBuffer,
@@ -108,7 +115,9 @@ impl VulkanRenderer {
         let Some(debugger) = debugger else {
             return Ok(false);
         };
-        let count = debugger.end_labels();
+        let mut hasher = DefaultHasher::new();
+        command_buffer.hash(&mut hasher);
+        let count = debugger.end_labels(hasher.finish());
         if count == 0 {
             return Ok(false);
         }

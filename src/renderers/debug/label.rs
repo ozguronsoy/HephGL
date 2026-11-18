@@ -13,6 +13,7 @@ pub(in super::super) enum DebugLabelState {
 pub(in super::super) struct DebugLabel {
     pub(super) state: DebugLabelState,
     pub(super) label: String,
+    pub(super) target_hash: u64,
 }
 
 impl DebugLabel {
@@ -20,6 +21,7 @@ impl DebugLabel {
         Self {
             state: DebugLabelState::Idle,
             label: label.into(),
+            target_hash: 0,
         }
     }
 }

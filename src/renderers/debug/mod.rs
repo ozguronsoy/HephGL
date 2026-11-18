@@ -112,9 +112,9 @@ impl Debugger {
         }
     }
 
-    /// Sets the state of the current thread's `Idle` labels to `Begun`, and returns their names
-    /// from the outermost to the innermost.
-    pub(super) fn begin_labels(&self) -> Vec<String> {
+    /// Sets the state of the current thread's `Idle` labels to `Begun` and stores the hash of the
+    /// target they begin in. Returns their names from the outermost to the innermost.
+    pub(super) fn begin_labels(&self, target_hash: u64) -> Vec<String> {
         if let Ok(mut labels) = self.labels.lock()
             && let Some(labels) = labels.get_mut(&std::thread::current().id())
         {
@@ -123,6 +123,7 @@ impl Debugger {
                 .filter(|label| label.state == DebugLabelState::Idle)
                 .map(|label| {
                     label.state = DebugLabelState::Begun;
+                    label.target_hash = target_hash;
                     label.label.clone()
                 })
                 .collect::<Vec<_>>()
@@ -131,13 +132,16 @@ impl Debugger {
         }
     }
 
-    /// Removes the current thread's `Ended` labels, and returns how many were removed.
-    pub(super) fn end_labels(&self) -> usize {
+    /// Removes the current thread's `Ended` labels that have begun in the target with the provided
+    /// hash, and returns how many were removed.
+    pub(super) fn end_labels(&self, target_hash: u64) -> usize {
         if let Ok(mut labels) = self.labels.lock()
             && let Some(labels) = labels.get_mut(&std::thread::current().id())
         {
             let count = labels.len();
-            labels.retain(|label| label.state != DebugLabelState::Ended);
+            labels.retain(|label| {
+                label.state != DebugLabelState::Ended || label.target_hash != target_hash
+            });
             count - labels.len()
         } else {
             0
@@ -230,6 +234,9 @@ mod tests {
 
     #[test]
     fn test_labels() {
+        const GRAPHICS: u64 = 1;
+        const COMPUTE: u64 = 2;
+
         let debugger = Debugger::default();
         assert!(matches!(
             debugger.pop_label(),
@@ -243,18 +250,18 @@ mod tests {
 
         assert!(debugger.push_label("Ship").is_ok());
         assert!(debugger.push_label("Deck").is_ok());
-        assert_eq!(debugger.end_labels(), 0);
-        assert_eq!(debugger.begin_labels(), ["Ship", "Deck"]);
-        assert!(debugger.begin_labels().is_empty());
+        assert_eq!(debugger.end_labels(GRAPHICS), 0);
+        assert_eq!(debugger.begin_labels(GRAPHICS), ["Ship", "Deck"]);
+        assert!(debugger.begin_labels(GRAPHICS).is_empty());
 
         assert!(debugger.pop_label().is_ok());
         assert!(debugger.push_label("Sails").is_ok());
-        assert_eq!(debugger.end_labels(), 1);
-        assert_eq!(debugger.begin_labels(), ["Sails"]);
+        assert_eq!(debugger.end_labels(GRAPHICS), 1);
+        assert_eq!(debugger.begin_labels(GRAPHICS), ["Sails"]);
 
         assert!(debugger.push_label("Mast").is_ok());
         assert!(debugger.pop_label().is_ok());
-        assert!(debugger.begin_labels().is_empty());
+        assert!(debugger.begin_labels(GRAPHICS).is_empty());
 
         assert!(debugger.pop_label().is_ok());
         assert!(debugger.pop_label().is_ok());
@@ -263,14 +270,26 @@ mod tests {
             debugger.pop_label(),
             Err(Error::InvalidOperation(_))
         ));
-        assert_eq!(debugger.end_labels(), 2);
+        assert_eq!(debugger.end_labels(COMPUTE), 0);
+        assert_eq!(debugger.end_labels(GRAPHICS), 2);
+        assert!(!debugger.has_labels());
+
+        assert!(debugger.push_label("Ship").is_ok());
+        assert_eq!(debugger.begin_labels(GRAPHICS), ["Ship"]);
+        assert!(debugger.push_label("Cannon").is_ok());
+        assert_eq!(debugger.begin_labels(COMPUTE), ["Cannon"]);
+        assert!(debugger.pop_label().is_ok());
+        assert!(debugger.pop_label().is_ok());
+        assert_eq!(debugger.end_labels(GRAPHICS), 1);
+        assert!(debugger.has_labels());
+        assert_eq!(debugger.end_labels(COMPUTE), 1);
         assert!(!debugger.has_labels());
 
         assert!(debugger.push_label("Ship").is_ok());
         assert!(debugger.has_labels());
         debugger.clear_labels();
         assert!(!debugger.has_labels());
-        assert!(debugger.begin_labels().is_empty());
+        assert!(debugger.begin_labels(GRAPHICS).is_empty());
     }
 
     #[test]
