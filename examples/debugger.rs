@@ -3,6 +3,7 @@ use heph_gl::renderers::{
     debug::{Debugger, Severity},
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
+use renkrs::RGB;
 
 mod utils;
 
@@ -35,6 +36,16 @@ fn example(
         .unwrap()
         .set_object_name(sampler.as_ref(), "Example Sampler")
         .unwrap();
+
+    // Group the commands of a frame under labels so they can be identified in graphics debuggers.
+    // Labels can be nested, and every pushed label must be popped before the frame ends.
+    renderer.begin_frame().unwrap();
+    renderer.debugger().unwrap().push_label("Frame").unwrap();
+    renderer.debugger().unwrap().push_label("Clear").unwrap();
+    renderer.clear(RGB::new(0.1, 0.1, 0.1)).unwrap();
+    renderer.debugger().unwrap().pop_label().unwrap();
+    renderer.debugger().unwrap().pop_label().unwrap();
+    renderer.end_frame().unwrap();
 
     // Leak the object so the debugger logs it.
     renderer.uninitialize().unwrap();
