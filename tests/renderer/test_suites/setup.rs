@@ -131,7 +131,7 @@ where
         }
     }
 
-    pub(crate) fn test_debug(&self) {
+    pub(crate) fn test_debugger(&self) {
         const THREAD_COUNT: usize = 4;
 
         struct ForeignDebugObject;
