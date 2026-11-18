@@ -216,7 +216,7 @@ impl VulkanRenderer {
         }
 
         current_frame.base.debug_label |=
-            Self::begin_label(self.debugger.as_deref(), current_frame.base.command_buffer)?;
+            Self::begin_labels(self.debugger.as_deref(), current_frame.base.command_buffer)?;
 
         Self::begin_canvas_rendering(
             &device_context.logical_device,
@@ -356,7 +356,7 @@ impl VulkanRenderer {
         }
 
         current_frame.base.debug_label |=
-            Self::begin_label(self.debugger.as_deref(), current_frame.base.command_buffer)?;
+            Self::begin_labels(self.debugger.as_deref(), current_frame.base.command_buffer)?;
 
         let canvas: &mut dyn VulkanCanvas = match canvas {
             Some(canvas) => canvas,

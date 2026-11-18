@@ -46,38 +46,31 @@ impl Debugger {
                 "Label cannot contain a null character.",
             ));
         }
-        let mut labels = self.labels.lock()?;
-        let labels = labels.entry(std::thread::current().id()).or_default();
-        if let Some(label) = labels.last()
-            && label.state != DebugLabelState::Ended
-        {
-            return Err(Error::invalid_operation(
-                "You must pop the current label before pushing a new one.",
-            ));
-        }
-        labels.push(DebugLabel::new(label));
+        self.labels
+            .lock()?
+            .entry(std::thread::current().id())
+            .or_default()
+            .push(DebugLabel::new(label));
         Ok(())
     }
 
-    /// Pops the label from the debugger, which will either end while recording the next command, or
-    /// at the end of the current frame.
+    /// Pops the most recently pushed label. The label either ends while recording the next command,
+    /// or at the end of the current frame.
     pub fn pop_label(&self) -> Result<()> {
         let mut labels = self.labels.lock()?;
-        let thread_id = std::thread::current().id();
-        let Some(labels) = labels.get_mut(&thread_id) else {
+        let Some(labels) = labels.get_mut(&std::thread::current().id()) else {
             return Err(Error::invalid_operation("No label found to pop."));
         };
-        let Some(label) = labels.last_mut() else {
+        let Some(index) = labels
+            .iter()
+            .rposition(|label| label.state != DebugLabelState::Ended)
+        else {
             return Err(Error::invalid_operation("No label found to pop."));
         };
-        match label.state {
-            DebugLabelState::Idle => {
-                let _ = labels.pop();
-            }
-            DebugLabelState::Begun => label.state = DebugLabelState::Ended,
-            DebugLabelState::Ended => {
-                return Err(Error::invalid_operation("No label found to pop."));
-            }
+        if labels[index].state == DebugLabelState::Idle {
+            let _ = labels.remove(index);
+        } else {
+            labels[index].state = DebugLabelState::Ended;
         }
         Ok(())
     }
@@ -108,33 +101,46 @@ impl Debugger {
         )
     }
 
-    /// Gets a clone of the pushed debug label.
-    pub(super) fn label(&self) -> Option<DebugLabel> {
+    /// Indicates whether the current thread has any labels that haven't ended yet.
+    pub(super) fn has_labels(&self) -> bool {
         if let Ok(labels) = self.labels.lock()
             && let Some(labels) = labels.get(&std::thread::current().id())
         {
-            labels.first().cloned()
+            !labels.is_empty()
         } else {
-            None
+            false
         }
     }
 
-    /// Sets the label's state to `Begun`.
-    pub(super) fn begin_label(&self) {
+    /// Sets the state of the current thread's `Idle` labels to `Begun`, and returns their names
+    /// from the outermost to the innermost.
+    pub(super) fn begin_labels(&self) -> Vec<String> {
         if let Ok(mut labels) = self.labels.lock()
             && let Some(labels) = labels.get_mut(&std::thread::current().id())
-            && let Some(label) = labels.last_mut()
         {
-            label.state = DebugLabelState::Begun;
+            labels
+                .iter_mut()
+                .filter(|label| label.state == DebugLabelState::Idle)
+                .map(|label| {
+                    label.state = DebugLabelState::Begun;
+                    label.label.clone()
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
         }
     }
 
-    /// Removes the label.
-    pub(super) fn end_label(&self) {
+    /// Removes the current thread's `Ended` labels, and returns how many were removed.
+    pub(super) fn end_labels(&self) -> usize {
         if let Ok(mut labels) = self.labels.lock()
             && let Some(labels) = labels.get_mut(&std::thread::current().id())
         {
-            let _ = labels.remove(0);
+            let count = labels.len();
+            labels.retain(|label| label.state != DebugLabelState::Ended);
+            count - labels.len()
+        } else {
+            0
         }
     }
 
@@ -220,6 +226,51 @@ mod tests {
             Err(Error::InvalidOperation(_))
         ));
         assert_eq!(names.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_labels() {
+        let debugger = Debugger::default();
+        assert!(matches!(
+            debugger.pop_label(),
+            Err(Error::InvalidOperation(_))
+        ));
+        assert!(matches!(
+            debugger.push_label("Sh\0ip"),
+            Err(Error::InvalidArgument(_))
+        ));
+        assert!(!debugger.has_labels());
+
+        assert!(debugger.push_label("Ship").is_ok());
+        assert!(debugger.push_label("Deck").is_ok());
+        assert_eq!(debugger.end_labels(), 0);
+        assert_eq!(debugger.begin_labels(), ["Ship", "Deck"]);
+        assert!(debugger.begin_labels().is_empty());
+
+        assert!(debugger.pop_label().is_ok());
+        assert!(debugger.push_label("Sails").is_ok());
+        assert_eq!(debugger.end_labels(), 1);
+        assert_eq!(debugger.begin_labels(), ["Sails"]);
+
+        assert!(debugger.push_label("Mast").is_ok());
+        assert!(debugger.pop_label().is_ok());
+        assert!(debugger.begin_labels().is_empty());
+
+        assert!(debugger.pop_label().is_ok());
+        assert!(debugger.pop_label().is_ok());
+        assert!(debugger.has_labels());
+        assert!(matches!(
+            debugger.pop_label(),
+            Err(Error::InvalidOperation(_))
+        ));
+        assert_eq!(debugger.end_labels(), 2);
+        assert!(!debugger.has_labels());
+
+        assert!(debugger.push_label("Ship").is_ok());
+        assert!(debugger.has_labels());
+        debugger.clear_labels();
+        assert!(!debugger.has_labels());
+        assert!(debugger.begin_labels().is_empty());
     }
 
     #[test]

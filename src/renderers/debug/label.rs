@@ -16,14 +16,6 @@ pub(in super::super) struct DebugLabel {
 }
 
 impl DebugLabel {
-    pub(in super::super) fn state(&self) -> DebugLabelState {
-        self.state
-    }
-
-    pub(in super::super) fn label(&self) -> &str {
-        &self.label
-    }
-
     pub(super) fn new(label: impl Into<String>) -> Self {
         Self {
             state: DebugLabelState::Idle,

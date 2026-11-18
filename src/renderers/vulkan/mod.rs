@@ -1150,7 +1150,7 @@ impl Renderer for VulkanRenderer {
         }
 
         current_frame.base.debug_label |=
-            Self::begin_label(self.debugger.as_deref(), current_frame.base.command_buffer)?;
+            Self::begin_labels(self.debugger.as_deref(), current_frame.base.command_buffer)?;
 
         let mut copy_regions = Vec::with_capacity(mip_level_sizes.len());
         let mut staging_size = 0;
@@ -1738,7 +1738,7 @@ impl Renderer for VulkanRenderer {
             .thread_contexts[thread_context_index];
 
         current_frame.base.debug_label |=
-            Self::begin_label(self.debugger.as_deref(), current_frame.base.command_buffer)?;
+            Self::begin_labels(self.debugger.as_deref(), current_frame.base.command_buffer)?;
 
         unsafe {
             if current_frame.bound_pipeline != Some(pipeline.pipeline) {
@@ -1890,7 +1890,7 @@ impl Renderer for VulkanRenderer {
             .base
             .thread_contexts[thread_context_index];
         current_frame.base.debug_label |=
-            Self::begin_label(self.debugger.as_deref(), current_frame.base.command_buffer)?;
+            Self::begin_labels(self.debugger.as_deref(), current_frame.base.command_buffer)?;
 
         let layer_count = self.settings.array_layer_count();
         let mut canvas: Box<dyn VulkanCanvas> = match options.depth_only {
@@ -2210,7 +2210,7 @@ impl Renderer for VulkanRenderer {
             unsafe {
                 let base = current_frame.base_mut();
                 if base.debug_label {
-                    let _ = VulkanRenderer::end_label(debugger, base.command_buffer)?;
+                    let _ = VulkanRenderer::end_labels(debugger, base.command_buffer)?;
                     base.debug_label = false;
                 }
                 if let Some(current_frame) =
