@@ -1,7 +1,4 @@
-use std::{
-    cell::Ref,
-    ffi::{CStr, CString, c_void},
-};
+use std::ffi::{CStr, CString, c_void};
 
 use ash::vk::{
     Bool32, DebugUtilsLabelEXT, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
@@ -73,13 +70,13 @@ impl VulkanRenderer {
 
     /// Begins a label if a debugger is attached and a label is pushed. Otherwise, does nothing.
     pub(super) fn begin_label(
-        debugger: &Ref<Option<Box<Debugger>>>,
+        debugger: Option<&Debugger>,
         command_buffer: ash::vk::CommandBuffer,
     ) -> Result<bool> {
         // Remove the popped label first if there is one.
         let _ = Self::end_label(debugger, command_buffer)?;
         let mut begun = false;
-        if let Some(debugger) = debugger.as_ref()
+        if let Some(debugger) = debugger
             && let Some(label) = debugger.label()
             && label.state() == DebugLabelState::Idle
         {
@@ -104,11 +101,11 @@ impl VulkanRenderer {
 
     /// Ends a label if a debugger is attached and a label has begun. Otherwise, does nothing.
     pub(super) fn end_label(
-        debugger: &Ref<Option<Box<Debugger>>>,
+        debugger: Option<&Debugger>,
         command_buffer: ash::vk::CommandBuffer,
     ) -> Result<bool> {
         let mut ended = false;
-        if let Some(debugger) = debugger.as_ref()
+        if let Some(debugger) = debugger
             && let Some(label) = debugger.label()
             && label.state() == DebugLabelState::Ended
         {
@@ -126,8 +123,8 @@ impl VulkanRenderer {
     }
 
     /// Validates whether all labels have been popped.
-    pub(super) fn validate_labels(debugger: Ref<Option<Box<Debugger>>>) -> Result<()> {
-        if let Some(debugger) = debugger.as_ref()
+    pub(super) fn validate_labels(debugger: Option<&Debugger>) -> Result<()> {
+        if let Some(debugger) = debugger
             && debugger.label().is_some()
         {
             Err(Error::fail(
@@ -146,8 +143,8 @@ impl VulkanRenderer {
                 .ok_or(Error::invalid_operation(
                     "The debug utils extension is not loaded.",
                 ))?;
-        let debugger = self.debugger.borrow();
-        let debugger = debugger
+        let debugger = self
+            .debugger
             .as_deref()
             .ok_or(Error::invalid_operation("No attached debugger found."))?;
 

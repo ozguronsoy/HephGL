@@ -99,18 +99,17 @@ impl VulkanRenderer {
         let surface_format = match self.select_surface_format(self.settings.hdr_mode)? {
             Some(surface_format) => surface_format,
             None => {
-                if self.debug_enabled {
-                    let debugger = self.debugger.borrow();
-                    if let Some(debugger) = debugger.as_ref() {
-                        debugger.log(
-                            format!(
-                                "`{:?}` is not supported, using `{:?}` instead.",
-                                self.settings.hdr_mode,
-                                HdrMode::Disabled
-                            ),
-                            Severity::Warning,
-                        );
-                    }
+                if self.debug_enabled
+                    && let Some(debugger) = self.debugger.as_deref()
+                {
+                    debugger.log(
+                        format!(
+                            "`{:?}` is not supported, using `{:?}` instead.",
+                            self.settings.hdr_mode,
+                            HdrMode::Disabled
+                        ),
+                        Severity::Warning,
+                    );
                 }
                 self.settings.hdr_mode = HdrMode::Disabled;
                 SDR_SURFACE_FORMAT
