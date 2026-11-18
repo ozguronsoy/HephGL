@@ -132,8 +132,51 @@ where
     }
 
     pub(crate) fn test_debug(&self) {
+        const THREAD_COUNT: usize = 4;
+
         struct ForeignDebugObject;
         impl RendererDebugObject for ForeignDebugObject {}
+
+        let push_label = |renderer: &TestRenderer, label: &str| {
+            heph_expect_success!(
+                heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."))
+                    .push_label(label)
+            );
+        };
+        let pop_label = |renderer: &TestRenderer| {
+            heph_expect_success!(
+                heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."))
+                    .pop_label()
+            );
+        };
+        let create_renderer = |requested_features: &[FeatureRequest]| {
+            let test_env = test_env!();
+            let mut renderer = TestRenderer::new();
+            heph_expect_success!(renderer.initialize(&InitializeOptions {
+                app_name: "",
+                window_handle: test_env.raw_window_handle(),
+                display_handle: test_env.raw_display_handle(),
+                api_version: self.api_version,
+                debug: true,
+            }));
+            heph_expect_success!(
+                renderer
+                    .attach_debugger(Debugger::default())
+                    .map_err(|(e, _)| e)
+            );
+            heph_expect_success!(renderer.set_device(None, requested_features));
+            renderer
+        };
+        let expect_no_warnings = |renderer: &mut TestRenderer| {
+            let debugger = heph_expect_success!(renderer.detach_debugger());
+            for log in debugger.logs().iter() {
+                assert!(
+                    !matches!(log.severity(), Severity::Warning | Severity::Error),
+                    "{}",
+                    log
+                );
+            }
+        };
 
         {
             let test_env = test_env!();
@@ -196,7 +239,7 @@ where
         }
 
         {
-            let mut renderer = self.create_renderer_with_any_device(&[]);
+            let mut renderer = create_renderer(&[]);
             let mut buffer =
                 heph_expect_success!(renderer.create_buffer(1024, BufferUsage::Storage));
             heph_expect_success!(renderer.begin_frame());
@@ -321,6 +364,7 @@ where
                     .set_object_name(buffer.as_ref(), "Buffer")
             );
             heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
+            expect_no_warnings(&mut renderer);
         }
 
         {
@@ -335,20 +379,7 @@ where
         }
 
         {
-            let push_label = |renderer: &TestRenderer, label: &str| {
-                heph_expect_success!(
-                    heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."))
-                        .push_label(label)
-                );
-            };
-            let pop_label = |renderer: &TestRenderer| {
-                heph_expect_success!(
-                    heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."))
-                        .pop_label()
-                );
-            };
-
-            let mut renderer = self.create_renderer_with_any_device(&[
+            let mut renderer = create_renderer(&[
                 FeatureRequest::new(AsyncTransfer, false),
                 FeatureRequest::new(ComputeShaders, false),
             ]);
@@ -373,8 +404,8 @@ where
                 .collect::<Vec<_>>();
 
             heph_expect_success!(renderer.begin_frame());
-            push_label(&renderer.renderer, "Frame");
-            push_label(&renderer.renderer, "Resources");
+            push_label(&renderer, "Frame");
+            push_label(&renderer, "Resources");
             let mut texture = heph_expect_success!(renderer.create_texture(
                 &TextureOptions {
                     width: 4,
@@ -389,12 +420,12 @@ where
                 height: 64,
                 ..Default::default()
             }));
-            pop_label(&renderer.renderer);
-            push_label(&renderer.renderer, "Clear Canvas");
+            pop_label(&renderer);
+            push_label(&renderer, "Clear Canvas");
             heph_expect_success!(renderer.clear_canvas(canvas.as_mut(), RGB::default()));
-            pop_label(&renderer.renderer);
+            pop_label(&renderer);
             if let Some(compute_pipeline) = &mut compute_pipeline {
-                push_label(&renderer.renderer, "Compute");
+                push_label(&renderer, "Compute");
                 let bindings = [
                     ResourceBinding::buffer(0, buffers[0].as_ref(), 0, buffers[0].size()),
                     ResourceBinding::buffer(1, buffers[1].as_ref(), 0, buffers[1].size()),
@@ -405,20 +436,20 @@ where
                     &[&bindings],
                     (1, 1, 1)
                 ));
-                pop_label(&renderer.renderer);
+                pop_label(&renderer);
             }
-            push_label(&renderer.renderer, "Clear");
+            push_label(&renderer, "Clear");
             heph_expect_success!(renderer.clear(RGB::default()));
-            pop_label(&renderer.renderer);
-            pop_label(&renderer.renderer);
+            pop_label(&renderer);
+            pop_label(&renderer);
             heph_expect_success!(renderer.end_frame());
 
             heph_expect_success!(renderer.begin_frame());
-            push_label(&renderer.renderer, "Empty");
-            pop_label(&renderer.renderer);
-            push_label(&renderer.renderer, "Clear");
+            push_label(&renderer, "Empty");
+            pop_label(&renderer);
+            push_label(&renderer, "Clear");
             heph_expect_success!(renderer.clear(RGB::default()));
-            pop_label(&renderer.renderer);
+            pop_label(&renderer);
             heph_expect_success!(renderer.end_frame());
             heph_expect_success!(renderer.wait_idle());
 
@@ -430,6 +461,129 @@ where
             if let Some(compute_pipeline) = &mut compute_pipeline {
                 heph_expect_success!(renderer.destroy_compute_pipeline(compute_pipeline.as_mut()));
             }
+            expect_no_warnings(&mut renderer);
+        }
+
+        {
+            let mut renderer = create_renderer(&[]);
+            std::thread::scope(|s| {
+                let (tx, rx) = std::sync::mpsc::channel();
+                let barrier = std::sync::Arc::new(std::sync::Barrier::new(THREAD_COUNT + 1));
+                let renderer_handle = RendererHandle::from(&mut renderer);
+
+                for _ in 0..THREAD_COUNT {
+                    let tx = tx.clone();
+                    let barrier = barrier.clone();
+                    let _ = s.spawn(move || {
+                        let mut renderer_worker =
+                            heph_expect_success!(renderer_handle.spawn_worker());
+                        heph_expect_success!(renderer_worker.begin_frame());
+                        push_label(&renderer_worker, "Worker");
+                        let mut canvas =
+                            heph_expect_success!(renderer_worker.create_canvas(&CanvasOptions {
+                                width: 64,
+                                height: 64,
+                                ..Default::default()
+                            }));
+                        push_label(&renderer_worker, "Clear Canvas");
+                        heph_expect_success!(
+                            renderer_worker.clear_canvas(canvas.as_mut(), RGB::default())
+                        );
+                        pop_label(&renderer_worker);
+                        pop_label(&renderer_worker);
+                        heph_expect_success!(renderer_worker.end_frame());
+                        heph_expect_success!(tx.send(canvas));
+                        let _ = barrier.wait();
+                    });
+                }
+
+                heph_expect_success!(renderer.begin_frame());
+                push_label(&renderer, "Main");
+                heph_expect_success!(renderer.clear(RGB::default()));
+                pop_label(&renderer);
+                let mut canvases = (0..THREAD_COUNT)
+                    .map(|_| heph_expect_success!(rx.recv()))
+                    .collect::<Vec<_>>();
+                heph_expect_success!(renderer.end_frame());
+                heph_expect_success!(renderer.wait_idle());
+                for canvas in &mut canvases {
+                    heph_expect_success!(renderer.destroy_canvas(canvas.as_mut()));
+                }
+                let _ = barrier.wait();
+            });
+            expect_no_warnings(&mut renderer);
+        }
+
+        {
+            let mut renderer = create_renderer(&[]);
+            std::thread::scope(|s| {
+                let renderer_handle = RendererHandle::from(&mut renderer);
+
+                for i in 0..THREAD_COUNT {
+                    let _ = s.spawn(move || {
+                        let renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
+                        let mut buffer = heph_expect_success!(
+                            renderer_worker.create_buffer(1024, BufferUsage::Storage)
+                        );
+                        heph_expect_success!(
+                            heph_expect_success!(
+                                renderer_worker.debugger().ok_or("No debugger is attached.")
+                            )
+                            .set_object_name(buffer.as_ref(), &format!("Worker Buffer {i}"))
+                        );
+                        heph_expect_success!(renderer_worker.destroy_buffer(buffer.as_mut()));
+                    });
+                }
+
+                let mut buffer =
+                    heph_expect_success!(renderer.create_buffer(1024, BufferUsage::Storage));
+                heph_expect_success!(
+                    heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."))
+                        .set_object_name(buffer.as_ref(), "Main Buffer")
+                );
+                heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
+            });
+            expect_no_warnings(&mut renderer);
+        }
+
+        {
+            let mut renderer = create_renderer(&[]);
+            let _ = heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
+            std::thread::scope(|s| {
+                let renderer_handle = RendererHandle::from(&mut renderer);
+
+                for _ in 0..THREAD_COUNT {
+                    let _ = s.spawn(move || {
+                        let renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
+                        let debugger = heph_expect_success!(
+                            renderer_worker.debugger().ok_or("No debugger is attached.")
+                        );
+                        assert!(
+                            !debugger
+                                .logs()
+                                .iter()
+                                .any(|log| matches!(log.severity(), Severity::Error))
+                        );
+                    });
+                }
+
+                let debugger =
+                    heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."));
+                assert!(
+                    !debugger
+                        .logs()
+                        .iter()
+                        .any(|log| matches!(log.severity(), Severity::Error))
+                );
+            });
+            heph_expect_success!(renderer.uninitialize());
+            let debugger = heph_expect_success!(renderer.detach_debugger());
+            assert!(
+                debugger
+                    .logs()
+                    .iter()
+                    .any(|log| matches!(log.severity(), Severity::Error))
+            );
         }
     }
 
