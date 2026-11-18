@@ -112,7 +112,7 @@ impl VulkanFrame for ComputeFrame {
 
 impl VulkanRenderer {
     /// Checks whether the call is being made inside a frame. If not, returns an error.
-    pub(super) fn frame_only(&self) -> Result<()> {
+    pub(super) fn frame_only(&self, fn_name: &str) -> Result<()> {
         let device_context = self
             .device_context
             .as_ref()
@@ -129,9 +129,9 @@ impl VulkanRenderer {
             .0
             .lock()?;
         match *state != FrameState::Started {
-            true => Err(Error::invalid_operation(
-                "Cannot create a canvas outside of a frame.",
-            )),
+            true => Err(Error::InvalidOperation(format!(
+                "Cannot call `Renderer::{fn_name}` outside of a frame."
+            ))),
             false => Ok(()),
         }
     }

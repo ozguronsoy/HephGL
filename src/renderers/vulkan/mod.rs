@@ -72,6 +72,22 @@ use crate::{
     shader::Shader,
 };
 
+/// Gets the name of the function that's currently calling this macro.
+macro_rules! function {
+    () => {{
+        fn f() {}
+        fn type_name_of<T>(_: T) -> &'static str {
+            std::any::type_name::<T>()
+        }
+        let name = type_name_of(f);
+        let full_path = &name[..name.len() - 3];
+        match full_path.rsplit_once("::") {
+            Some((_, short_name)) => short_name,
+            None => full_path,
+        }
+    }};
+}
+
 const MIN_API_VERSION: Version = Version::new(1, 1, 0);
 
 thread_local! {
@@ -1050,7 +1066,7 @@ impl Renderer for VulkanRenderer {
         options: &TextureOptions,
         data: &[u8],
     ) -> Result<Box<dyn RendererTexture>> {
-        self.frame_only()?;
+        self.frame_only(function!())?;
 
         let instance = self
             .instance
@@ -1721,7 +1737,7 @@ impl Renderer for VulkanRenderer {
         binding_sets: &[&[ResourceBinding<'_>]],
         group_count: (u32, u32, u32),
     ) -> Result<()> {
-        self.frame_only()?;
+        self.frame_only(function!())?;
 
         let pipeline = downcast_mut::<VulkanComputePipeline>(pipeline)?;
         let device_context = self
@@ -1830,7 +1846,7 @@ impl Renderer for VulkanRenderer {
         draw_count: u32,
         instance_count: u32,
     ) -> Result<()> {
-        self.frame_only()?;
+        self.frame_only(function!())?;
 
         let pipeline = downcast_mut::<VulkanGraphicsPipeline>(pipeline)?;
 
@@ -1974,7 +1990,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn create_canvas(&mut self, options: &CanvasOptions) -> Result<Box<dyn RendererCanvas>> {
-        self.frame_only()?;
+        self.frame_only(function!())?;
 
         let instance = self
             .instance
@@ -2607,7 +2623,7 @@ impl Renderer for VulkanRenderer {
         target_canvas: Option<&mut dyn RendererCanvas>,
         color: RGB<f32>,
     ) -> Result<()> {
-        self.frame_only()?;
+        self.frame_only(function!())?;
 
         let device_context = self
             .device_context
