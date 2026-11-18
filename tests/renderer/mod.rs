@@ -180,6 +180,10 @@ where
                 create_trial!(versioned_test_suite, test_reject_foreign_pipelines),
                 create_trial!(versioned_test_suite, test_begin_twice),
                 create_trial!(versioned_test_suite, test_end_without_begin),
+                create_trial!(
+                    versioned_test_suite,
+                    test_calling_frame_only_fn_outside_of_frame
+                ),
                 create_trial!(versioned_test_suite, test_resize_window),
                 create_trial!(
                     versioned_test_suite,

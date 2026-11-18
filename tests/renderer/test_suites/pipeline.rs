@@ -603,6 +603,7 @@ where
         let mut graphics_pipeline: Box<dyn RendererGraphicsPipeline> =
             Box::new(ForeignGraphicsPipeline);
 
+        heph_expect_success!(renderer.begin_frame());
         heph_expect_err!(
             renderer.record_compute_command(compute_pipeline.as_mut(), &[], (1, 1, 1)),
             Error::InvalidArgument(_)
@@ -627,5 +628,6 @@ where
             renderer.destroy_graphics_pipeline(graphics_pipeline.as_mut()),
             Error::InvalidArgument(_)
         );
+        heph_expect_success!(renderer.end_frame());
     }
 }

@@ -20,6 +20,90 @@ where
         heph_expect_err!(renderer.end_frame(), Error::InvalidOperation(_));
     }
 
+    pub(crate) fn test_calling_frame_only_fn_outside_of_frame(&self) {
+        use heph_gl::{
+            GraphicsDeviceFeature::ComputeShaders,
+            Shader,
+            renderers::{
+                CanvasOptions, FeatureRequest, GraphicsPipelineOptions, TextureFormat,
+                TextureOptions,
+            },
+        };
+        use renkrs::RGB;
+
+        use crate::utils::SHADERS_DIR;
+
+        let mut renderer =
+            self.create_renderer_with_any_device(&[FeatureRequest::new(ComputeShaders, true)]);
+        let compute_shader =
+            heph_expect_success!(Shader::from_file(format!("{}/addition.spv", SHADERS_DIR)));
+        let vertex_shader = heph_expect_success!(Shader::from_file(format!(
+            "{}/shapes/basic_triangle_vert.spv",
+            SHADERS_DIR
+        )));
+        let fragment_shader = heph_expect_success!(Shader::from_file(format!(
+            "{}/shapes/basic_triangle_frag.spv",
+            SHADERS_DIR
+        )));
+        let mut compute_pipeline =
+            heph_expect_success!(renderer.create_compute_pipeline(&compute_shader));
+        let mut graphics_pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+            &[&vertex_shader, &fragment_shader],
+            &GraphicsPipelineOptions::default()
+        ));
+
+        for frame in 0..2 {
+            if frame == 1 {
+                heph_expect_success!(renderer.begin_frame());
+                heph_expect_success!(renderer.end_frame());
+            }
+            heph_expect_err!(
+                renderer.create_texture(
+                    &TextureOptions {
+                        width: 1,
+                        height: 1,
+                        format: TextureFormat::Rgba8Srgb,
+                        mip_level_count: 1,
+                    },
+                    &[0; 4]
+                ),
+                Error::InvalidOperation(_)
+            );
+            heph_expect_err!(
+                renderer.create_canvas(&CanvasOptions {
+                    width: 1,
+                    height: 1,
+                    depth_only: false,
+                }),
+                Error::InvalidOperation(_)
+            );
+            heph_expect_err!(
+                renderer.clear(DISPLAY_CANVAS, RGB::default()),
+                Error::InvalidOperation(_)
+            );
+            heph_expect_err!(
+                renderer.record_compute_command(compute_pipeline.as_mut(), &[], (1, 1, 1)),
+                Error::InvalidOperation(_)
+            );
+            heph_expect_err!(
+                renderer.record_graphics_command(
+                    DISPLAY_CANVAS,
+                    graphics_pipeline.as_mut(),
+                    None,
+                    &[],
+                    &[],
+                    3,
+                    1
+                ),
+                Error::InvalidOperation(_)
+            );
+        }
+
+        heph_expect_success!(renderer.wait_idle());
+        heph_expect_success!(renderer.destroy_compute_pipeline(compute_pipeline.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(graphics_pipeline.as_mut()));
+    }
+
     pub(crate) fn test_resize_window(&self) {
         use heph_gl::{
             Shader,
