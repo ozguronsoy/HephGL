@@ -173,6 +173,7 @@ where
                 create_trial!(versioned_test_suite, test_impossible_buffer_size),
                 create_trial!(versioned_test_suite, test_texture),
                 create_trial!(versioned_test_suite, test_sampler),
+                create_trial!(versioned_test_suite, test_canvas),
                 create_trial!(versioned_test_suite, test_compute_pipeline),
                 create_trial!(versioned_test_suite, test_graphics_pipeline),
                 create_trial!(versioned_test_suite, test_reject_foreign_resources),

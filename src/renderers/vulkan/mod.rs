@@ -1058,6 +1058,23 @@ impl Renderer for VulkanRenderer {
             .device_context
             .as_mut()
             .ok_or(Error::invalid_operation("Device is not set."))?;
+        let thread_context_index = Self::thread_context_index()?;
+
+        {
+            let state = device_context.transfer_queue_context.frames
+                [device_context.current_frame_index]
+                .base
+                .thread_contexts[thread_context_index]
+                .base
+                .sync_state
+                .0
+                .lock()?;
+            if *state != FrameState::Started {
+                return Err(Error::invalid_operation(
+                    "Cannot create a texture outside of a frame.",
+                ));
+            }
+        }
 
         if options.width == 0 || options.height == 0 {
             return Err(Error::invalid_argument(
@@ -1131,7 +1148,6 @@ impl Renderer for VulkanRenderer {
             ));
         };
 
-        let thread_context_index = Self::thread_context_index()?;
         let current_frame = &mut device_context.transfer_queue_context.frames
             [device_context.current_frame_index]
             .base
@@ -1837,12 +1853,6 @@ impl Renderer for VulkanRenderer {
     }
 
     fn create_canvas(&mut self, options: &CanvasOptions) -> Result<Box<dyn RendererCanvas>> {
-        if options.width == 0 || options.height == 0 {
-            return Err(Error::invalid_argument(
-                "Canvas dimensions must be greater than zero.",
-            ));
-        }
-
         let instance = self
             .instance
             .as_ref()
@@ -1852,6 +1862,7 @@ impl Renderer for VulkanRenderer {
             .as_mut()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let thread_context_index = Self::thread_context_index()?;
+
         {
             let state = device_context.graphics_queue_context.frames
                 [device_context.current_frame_index]
@@ -1866,6 +1877,12 @@ impl Renderer for VulkanRenderer {
                     "Cannot create a canvas outside of a frame.",
                 ));
             }
+        }
+
+        if options.width == 0 || options.height == 0 {
+            return Err(Error::invalid_argument(
+                "Canvas dimensions must be greater than zero.",
+            ));
         }
 
         let limits = unsafe {
