@@ -61,7 +61,7 @@ runs:
       uses: jakoch/install-vulkan-sdk-action@v1.6.0
       with:
         github_token: ${{ github.token }}
-        cache: true
+        cache: false
         install_lavapipe: true
 
     - name: Install Linux Dependencies
@@ -76,7 +76,6 @@ runs:
       if: runner.os == 'Windows'
       shell: bash
       run: |
-        echo "VK_ADD_LAYER_PATH=$VULKAN_SDK/Bin" >> "$GITHUB_ENV"
         echo "HEPHGL_GUI_PREFIX=" >> "$GITHUB_ENV"
 
     - name: Install macOS Dependencies
