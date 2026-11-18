@@ -215,7 +215,7 @@ impl VulkanRenderer {
             ));
         }
 
-        current_frame.debug_label |=
+        current_frame.base.debug_label |=
             Self::begin_label(&self.debugger.borrow(), current_frame.base.command_buffer)?;
 
         Self::begin_canvas_rendering(
@@ -345,7 +345,7 @@ impl VulkanRenderer {
             }
         }
 
-        current_frame.debug_label |=
+        current_frame.base.debug_label |=
             Self::begin_label(&self.debugger.borrow(), current_frame.base.command_buffer)?;
 
         let canvas: &mut dyn VulkanCanvas = match canvas {

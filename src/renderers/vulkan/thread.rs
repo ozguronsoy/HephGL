@@ -27,6 +27,8 @@ pub(super) struct ThreadContextBase {
     pub(super) recorded: bool,
     /// Indicates whether the current thread began the current frame.
     pub(super) sync_state: (std::sync::Mutex<FrameState>, std::sync::Condvar),
+    /// Indicates whether any debug label had begun in the current frame.
+    pub(super) debug_label: bool,
 }
 
 /// Represents the per-thread resources used for recording commands to the compute queue.
@@ -39,8 +41,6 @@ pub(super) struct ComputeThreadContext {
     pub(super) descriptor_pool_manager: DescriptorPoolManager,
     /// The pipeline currently bound to the command buffer.
     pub(super) bound_pipeline: Option<ash::vk::Pipeline>,
-    /// Indicates whether any debug label had begun in the current frame.
-    pub(super) debug_label: bool,
 }
 
 /// Represents the per-thread resources used for recording commands to the graphics queue.
@@ -56,8 +56,6 @@ pub(super) struct GraphicsThreadContext {
     /// The texture image of the canvas that the command buffer is rendering into and the aspect of
     /// that image, or `None` if it is not rendering.
     pub(super) render_target: Option<(ash::vk::Image, ash::vk::ImageAspectFlags)>,
-    /// Indicates whether any debug label had begun in the current frame.
-    pub(super) debug_label: bool,
 }
 
 /// Represents the per-thread resources used for recording commands to the transfer queue.

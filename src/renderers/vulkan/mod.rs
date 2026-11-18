@@ -1268,6 +1268,9 @@ impl Renderer for VulkanRenderer {
             },
         );
 
+        current_frame.base.debug_label |=
+            Self::begin_label(&self.debugger.borrow(), current_frame.base.command_buffer)?;
+
         Self::transition_image_layout(
             &device_context.logical_device,
             current_frame.base.command_buffer,
@@ -1729,7 +1732,7 @@ impl Renderer for VulkanRenderer {
             .base
             .thread_contexts[thread_context_index];
 
-        current_frame.debug_label |=
+        current_frame.base.debug_label |=
             Self::begin_label(&self.debugger.borrow(), current_frame.base.command_buffer)?;
 
         unsafe {
@@ -1866,6 +1869,13 @@ impl Renderer for VulkanRenderer {
                 "Canvas dimensions cannot exceed {max_width}x{max_height}."
             )));
         }
+
+        let current_frame = &mut device_context.graphics_queue_context.frames
+            [device_context.current_frame_index]
+            .base
+            .thread_contexts[thread_context_index];
+        current_frame.base.debug_label |=
+            Self::begin_label(&self.debugger.borrow(), current_frame.base.command_buffer)?;
 
         let layer_count = self.settings.array_layer_count();
         let mut canvas: Box<dyn VulkanCanvas> = match options.depth_only {
@@ -2182,16 +2192,14 @@ impl Renderer for VulkanRenderer {
                 ));
             }
             unsafe {
+                let base = current_frame.base_mut();
+                if base.debug_label {
+                    let _ = VulkanRenderer::end_label(&debugger, base.command_buffer)?;
+                    base.debug_label = false;
+                }
                 if let Some(current_frame) =
                     <dyn Any>::downcast_mut::<GraphicsThreadContext>(current_frame)
                 {
-                    if current_frame.debug_label {
-                        let _ = VulkanRenderer::end_label(
-                            &debugger,
-                            current_frame.base().command_buffer,
-                        )?;
-                        current_frame.debug_label = false;
-                    }
                     if let Some((image, aspect_mask)) = current_frame.render_target.take() {
                         VulkanRenderer::end_rendering(
                             logical_device,
@@ -2217,13 +2225,6 @@ impl Renderer for VulkanRenderer {
                         current_frame.base.recorded = true;
                         *present = true;
                     }
-                } else if let Some(current_frame) =
-                    <dyn Any>::downcast_mut::<ComputeThreadContext>(current_frame)
-                    && current_frame.debug_label
-                {
-                    let _ =
-                        VulkanRenderer::end_label(&debugger, current_frame.base().command_buffer)?;
-                    current_frame.debug_label = false;
                 }
                 logical_device.end_command_buffer(current_frame.base().command_buffer)?;
             }
