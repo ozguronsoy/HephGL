@@ -10,13 +10,13 @@ use crate::{
     Error, Result,
     graphics_device::GraphicsDeviceFeature,
     renderers::{
-        BufferUsage, Renderer, ResourceBinding, downcast_mut, downcast_ref,
+        BufferUsage, Renderer, RendererCanvas, ResourceBinding, downcast_mut, downcast_ref,
         pipeline::RendererGraphicsPipeline,
         resources::{RendererBuffer, ResourceBindingType},
         settings::{GraphicsPipelineOptions, Settings},
         vulkan::{
             VulkanRenderer,
-            canvas::{VulkanCanvas, VulkanColorCanvas, VulkanDepthCanvas},
+            canvas::{VulkanCanvas, VulkanColorCanvas, VulkanDepthCanvas, vulkan_canvas_mut},
             frame::FrameState,
             pipeline::VulkanGraphicsPipeline,
             rendering::{
@@ -174,11 +174,11 @@ impl VulkanRenderer {
         Ok(())
     }
 
-    /// Records a draw command that renders into the canvas, or into the display canvas if there is
-    /// no canvas.
+    /// Records a draw command that renders into the target canvas, or into the display canvas if
+    /// there is no target canvas.
     pub(super) fn record_draw(
         &mut self,
-        canvas: Option<&mut dyn VulkanCanvas>,
+        target_canvas: Option<&mut dyn RendererCanvas>,
         pipeline: &mut dyn RendererGraphicsPipeline,
         index_buffer: Option<&dyn RendererBuffer>,
         vertex_bindings: &[ResourceBinding<'_>],
@@ -202,8 +202,8 @@ impl VulkanRenderer {
             [device_context.current_frame_index]
             .base
             .thread_contexts[thread_context_index];
-        let canvas: &mut dyn VulkanCanvas = match canvas {
-            Some(canvas) => canvas,
+        let canvas: &mut dyn VulkanCanvas = match target_canvas {
+            Some(canvas) => vulkan_canvas_mut(canvas)?,
             None => device_context
                 .display_canvas
                 .as_mut()
@@ -327,11 +327,11 @@ impl VulkanRenderer {
         Ok(())
     }
 
-    /// Records a command that clears the color and depth of the canvas, or of the display canvas if
-    /// there is no canvas. Only the depth is cleared if the canvas is depth-only.
+    /// Records a command that clears the color and depth of the target canvas, or of the display
+    /// canvas if there is no target canvas. Only the depth is cleared if the canvas is depth-only.
     pub(super) fn record_clear(
         &mut self,
-        canvas: Option<&mut dyn VulkanCanvas>,
+        target_canvas: Option<&mut dyn RendererCanvas>,
         color: RGB<f32>,
     ) -> Result<()> {
         let device_context = self
@@ -358,8 +358,8 @@ impl VulkanRenderer {
         current_frame.base.debug_label |=
             Self::begin_labels(self.debugger.as_deref(), current_frame.base.command_buffer)?;
 
-        let canvas: &mut dyn VulkanCanvas = match canvas {
-            Some(canvas) => canvas,
+        let canvas: &mut dyn VulkanCanvas = match target_canvas {
+            Some(canvas) => vulkan_canvas_mut(canvas)?,
             None => device_context
                 .display_canvas
                 .as_mut()

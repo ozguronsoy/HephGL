@@ -1,6 +1,6 @@
 use heph_gl::{
     Error,
-    renderers::{Renderer, RendererHandle, RendererWorkerFactory},
+    renderers::{DISPLAY_CANVAS, Renderer, RendererHandle, RendererWorkerFactory},
 };
 
 use crate::{heph_expect_err, heph_expect_success, renderer::RendererTests};
@@ -61,8 +61,9 @@ where
                     if frame == 0 {
                         test_env!().resize_window(width + 32, height + 32);
                     }
-                    heph_expect_success!(renderer.clear(RGB::default()));
+                    heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
                     heph_expect_success!(renderer.record_graphics_command(
+                        DISPLAY_CANVAS,
                         pipeline.as_mut(),
                         None,
                         &[],

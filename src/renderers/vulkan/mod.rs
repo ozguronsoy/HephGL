@@ -1834,6 +1834,7 @@ impl Renderer for VulkanRenderer {
 
     fn record_graphics_command(
         &mut self,
+        target_canvas: Option<&mut dyn RendererCanvas>,
         pipeline: &mut dyn RendererGraphicsPipeline,
         index_buffer: Option<&dyn RendererBuffer>,
         vertex_bindings: &[ResourceBinding<'_>],
@@ -1842,7 +1843,7 @@ impl Renderer for VulkanRenderer {
         instance_count: u32,
     ) -> Result<()> {
         self.record_draw(
-            None,
+            target_canvas,
             pipeline,
             index_buffer,
             vertex_bindings,
@@ -1953,27 +1954,6 @@ impl Renderer for VulkanRenderer {
             canvas.destroy(device_context);
         }
         Ok(())
-    }
-
-    fn record_canvas_command(
-        &mut self,
-        canvas: &mut dyn RendererCanvas,
-        pipeline: &mut dyn RendererGraphicsPipeline,
-        index_buffer: Option<&dyn RendererBuffer>,
-        vertex_bindings: &[ResourceBinding<'_>],
-        binding_sets: &[&[ResourceBinding<'_>]],
-        draw_count: u32,
-        instance_count: u32,
-    ) -> Result<()> {
-        self.record_draw(
-            Some(vulkan_canvas_mut(canvas)?),
-            pipeline,
-            index_buffer,
-            vertex_bindings,
-            binding_sets,
-            draw_count,
-            instance_count,
-        )
     }
 
     fn begin_frame(&mut self) -> Result<()> {
@@ -2516,12 +2496,12 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn clear(&mut self, color: RGB<f32>) -> Result<()> {
-        self.record_clear(None, color)
-    }
-
-    fn clear_canvas(&mut self, canvas: &mut dyn RendererCanvas, color: RGB<f32>) -> Result<()> {
-        self.record_clear(Some(vulkan_canvas_mut(canvas)?), color)
+    fn clear(
+        &mut self,
+        target_canvas: Option<&mut dyn RendererCanvas>,
+        color: RGB<f32>,
+    ) -> Result<()> {
+        self.record_clear(target_canvas, color)
     }
 }
 

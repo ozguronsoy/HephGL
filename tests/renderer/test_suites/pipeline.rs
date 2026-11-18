@@ -6,9 +6,9 @@ use heph_gl::{
     },
     Shader,
     renderers::{
-        DepthBias, FeatureRequest, GraphicsPipelineOptions, PolygonMode, PrimitiveTopology,
-        Renderer, RendererComputePipeline, RendererGraphicsPipeline, RendererHandle,
-        RendererPipeline, RendererWorkerFactory, debug::RendererDebugObject,
+        DISPLAY_CANVAS, DepthBias, FeatureRequest, GraphicsPipelineOptions, PolygonMode,
+        PrimitiveTopology, Renderer, RendererComputePipeline, RendererGraphicsPipeline,
+        RendererHandle, RendererPipeline, RendererWorkerFactory, debug::RendererDebugObject,
     },
 };
 
@@ -612,7 +612,15 @@ where
             Error::InvalidArgument(_)
         );
         heph_expect_err!(
-            renderer.record_graphics_command(graphics_pipeline.as_mut(), None, &[], &[], 3, 1),
+            renderer.record_graphics_command(
+                DISPLAY_CANVAS,
+                graphics_pipeline.as_mut(),
+                None,
+                &[],
+                &[],
+                3,
+                1
+            ),
             Error::InvalidArgument(_)
         );
         heph_expect_err!(

@@ -25,6 +25,8 @@ pub const LATEST_API_VERSION: Option<crate::Version> = None;
 /// Represents an automatic device selection. When used, the renderer will set the default graphics
 /// device used in the current system.
 pub const DEFAULT_DEVICE: Option<&GraphicsDevice> = None;
+/// Represents the display as the render target.
+pub const DISPLAY_CANVAS: Option<&mut dyn RendererCanvas> = None;
 
 /// The core interface for a graphics renderer.
 pub trait Renderer {
@@ -149,9 +151,10 @@ pub trait Renderer {
     ) -> Result<Box<dyn RendererGraphicsPipeline>>;
     /// Destroys the graphics pipeline.
     fn destroy_graphics_pipeline(&self, pipeline: &mut dyn RendererGraphicsPipeline) -> Result<()>;
-    /// Creates a graphics workload for the GPU that renders into the display.
+    /// Creates a graphics workload for the GPU that renders into the target canvas.
     fn record_graphics_command(
         &mut self,
+        target_canvas: Option<&mut dyn RendererCanvas>,
         pipeline: &mut dyn RendererGraphicsPipeline,
         index_buffer: Option<&dyn RendererBuffer>,
         vertex_bindings: &[ResourceBinding<'_>],
@@ -164,17 +167,6 @@ pub trait Renderer {
     fn create_canvas(&mut self, options: &CanvasOptions) -> Result<Box<dyn RendererCanvas>>;
     /// Frees the resources allocated for the provided canvas.
     fn destroy_canvas(&self, canvas: &mut dyn RendererCanvas) -> Result<()>;
-    /// Creates a graphics workload for the GPU that renders into the canvas.
-    fn record_canvas_command(
-        &mut self,
-        canvas: &mut dyn RendererCanvas,
-        pipeline: &mut dyn RendererGraphicsPipeline,
-        index_buffer: Option<&dyn RendererBuffer>,
-        vertex_bindings: &[ResourceBinding<'_>],
-        binding_sets: &[&[ResourceBinding<'_>]],
-        draw_count: u32,
-        instance_count: u32,
-    ) -> Result<()>;
 
     /// Begins a new frame. `end_frame` must be called when the frame is done.
     fn begin_frame(&mut self) -> Result<()>;
@@ -188,10 +180,12 @@ pub trait Renderer {
     /// This function can only be called from the main thread.
     fn wait_idle(&self) -> Result<()>;
 
-    /// Clears the current render target with the specified color.
-    fn clear(&mut self, color: RGB<f32>) -> Result<()>;
-    /// Clears the canvas with the specified color.
-    fn clear_canvas(&mut self, canvas: &mut dyn RendererCanvas, color: RGB<f32>) -> Result<()>;
+    /// Clears the provided render target with the specified color.
+    fn clear(
+        &mut self,
+        target_canvas: Option<&mut dyn RendererCanvas>,
+        color: RGB<f32>,
+    ) -> Result<()>;
 }
 
 /// Gets the maximum number of threads that can execute concurrently.

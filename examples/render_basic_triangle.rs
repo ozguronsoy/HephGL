@@ -1,6 +1,6 @@
 use heph_gl::{
     Shader,
-    renderers::{GraphicsPipelineOptions, Renderer},
+    renderers::{DISPLAY_CANVAS, GraphicsPipelineOptions, Renderer},
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
@@ -39,12 +39,13 @@ fn example(
     drop(frag_shader);
 
     renderer.begin_frame().unwrap();
-    renderer.clear(RGB::default()).unwrap();
+    renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
 
     const VERTEX_COUNT: u32 = 3;
     const INSTANCE_COUNT: u32 = 1;
     renderer
         .record_graphics_command(
+            DISPLAY_CANVAS,
             pipeline.as_mut(),
             None,
             &[],

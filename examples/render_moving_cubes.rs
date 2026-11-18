@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use heph_gl::{
     GraphicsDeviceFeature, Shader,
     renderers::{
-        BufferUsage, ColorBlending, CullingMode, FeatureRequest, FrontFace,
+        BufferUsage, ColorBlending, CullingMode, DISPLAY_CANVAS, FeatureRequest, FrontFace,
         GraphicsPipelineOptions, Renderer, ResourceBinding,
     },
 };
@@ -107,7 +107,7 @@ fn example(
     let start = Instant::now();
     while start.elapsed() < Duration::from_secs(5) {
         renderer.begin_frame().unwrap();
-        renderer.clear(RGB::default()).unwrap();
+        renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
 
         let time = start.elapsed().as_secs_f32();
         let movement = (time * 2.0).sin() * 0.2;
@@ -143,6 +143,7 @@ fn example(
         )];
         renderer
             .record_graphics_command(
+                DISPLAY_CANVAS,
                 pipeline.as_mut(),
                 Some(index_buffer.as_ref()),
                 &cube_a_vertex_bindings,
@@ -153,6 +154,7 @@ fn example(
             .unwrap();
         renderer
             .record_graphics_command(
+                DISPLAY_CANVAS,
                 pipeline.as_mut(),
                 Some(index_buffer.as_ref()),
                 &cube_b_vertex_bindings,

@@ -1,6 +1,6 @@
 use heph_gl::{
     Shader,
-    renderers::{GraphicsPipelineOptions, PrimitiveTopology, Renderer},
+    renderers::{DISPLAY_CANVAS, GraphicsPipelineOptions, PrimitiveTopology, Renderer},
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use renkrs::RGB;
@@ -54,12 +54,13 @@ fn example(
     }
 
     renderer.begin_frame().unwrap();
-    renderer.clear(RGB::default()).unwrap();
+    renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
 
     for (pipeline, draw_count) in pipelines.iter_mut() {
         const INSTANCE_COUNT: u32 = 1;
         renderer
             .record_graphics_command(
+                DISPLAY_CANVAS,
                 pipeline.as_mut(),
                 None,
                 &[],

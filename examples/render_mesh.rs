@@ -10,8 +10,9 @@ use heph_gl::{
     Lighting, Mesh, MeshVertexAttribute, Projection, Shader, Transform,
     math::{Mat4, Quat, Vec3},
     renderers::{
-        BufferUsage, CullingMode, FeatureRequest, FrontFace, GraphicsPipelineOptions, Renderer,
-        ResourceBinding, SamplerAddressMode, SamplerOptions, TextureFormat, TextureOptions,
+        BufferUsage, CullingMode, DISPLAY_CANVAS, FeatureRequest, FrontFace,
+        GraphicsPipelineOptions, Renderer, ResourceBinding, SamplerAddressMode, SamplerOptions,
+        TextureFormat, TextureOptions,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -108,7 +109,7 @@ fn example(
     let mut textures = HashMap::new();
     let mut part_buffers = Vec::with_capacity(mesh.part_count());
     renderer.begin_frame().unwrap();
-    renderer.clear(RGB::default()).unwrap();
+    renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
     for part in mesh.parts() {
         // All textures in this ship use the same UV set; the shader expects [px, py, pz, nx, ny,
         // nz, u, v].
@@ -263,7 +264,7 @@ fn example(
     let start = Instant::now();
     loop {
         renderer.begin_frame().unwrap();
-        renderer.clear(RGB::default()).unwrap();
+        renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
 
         let progress = (start.elapsed().as_secs_f32() / ANIMATION_DURATION.as_secs_f32()).min(1.0);
         transform.rotation = Quat::from_rotation_y(progress * std::f32::consts::TAU);
@@ -299,6 +300,7 @@ fn example(
             ];
             renderer
                 .record_graphics_command(
+                    DISPLAY_CANVAS,
                     match double_sided {
                         true => double_sided_pipeline.as_mut(),
                         false => pipeline.as_mut(),

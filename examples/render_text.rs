@@ -6,9 +6,9 @@ use heph_gl::{
     Projection, Shader, TextType, TextVertex, Transform,
     math::{Mat4, Quat, Vec3},
     renderers::{
-        BufferUsage, ColorBlending, FeatureRequest, GraphicsPipelineOptions, Renderer,
-        RendererBuffer, RendererGraphicsPipeline, ResourceBinding, SamplerOptions, TextureFormat,
-        TextureOptions,
+        BufferUsage, ColorBlending, DISPLAY_CANVAS, FeatureRequest, GraphicsPipelineOptions,
+        Renderer, RendererBuffer, RendererGraphicsPipeline, ResourceBinding, SamplerOptions,
+        TextureFormat, TextureOptions,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -178,7 +178,7 @@ fn example(
     // Upload the font atlas texture to the GPU. We only need to do this once since we aren't
     // changing the text or font during the animation.
     renderer.begin_frame().unwrap();
-    renderer.clear(RGB::default()).unwrap();
+    renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
     let mut texture = renderer
         .create_texture(
             &TextureOptions {
@@ -207,7 +207,7 @@ fn example(
     let start = Instant::now();
     while start.elapsed() < ANIMATION_DURATION {
         renderer.begin_frame().unwrap();
-        renderer.clear(RGB::default()).unwrap();
+        renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
 
         // Rotate the world-space text meshes around the Y axis based on the elapsed time. We also
         // update the uniform buffers for each frame in flight with the new matrices.
@@ -269,6 +269,7 @@ fn example(
         )];
         renderer
             .record_graphics_command(
+                DISPLAY_CANVAS,
                 screen_pipeline.as_mut(),
                 None,
                 &screen_vertex_bindings,
@@ -279,6 +280,7 @@ fn example(
             .unwrap();
         renderer
             .record_graphics_command(
+                DISPLAY_CANVAS,
                 world_pipeline.as_mut(),
                 None,
                 &world_vertex_bindings,
@@ -289,6 +291,7 @@ fn example(
             .unwrap();
         renderer
             .record_graphics_command(
+                DISPLAY_CANVAS,
                 extruded_pipeline.as_mut(),
                 None,
                 &extruded_vertex_bindings,

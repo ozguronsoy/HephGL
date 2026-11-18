@@ -7,9 +7,9 @@ use heph_gl::{
     },
     Shader, Version,
     renderers::{
-        BufferUsage, CanvasOptions, FeatureRequest, GraphicsPipelineOptions, HdrMode,
-        InitializeOptions, Renderer, RendererHandle, RendererWorkerFactory, ResourceBinding,
-        SamplerOptions, Settings, TextureFormat, TextureOptions,
+        BufferUsage, CanvasOptions, DISPLAY_CANVAS, FeatureRequest, GraphicsPipelineOptions,
+        HdrMode, InitializeOptions, Renderer, RendererHandle, RendererWorkerFactory,
+        ResourceBinding, SamplerOptions, Settings, TextureFormat, TextureOptions,
         debug::{Debugger, RendererDebugObject, Severity},
     },
 };
@@ -422,7 +422,7 @@ where
             }));
             pop_label(&renderer);
             push_label(&renderer, "Clear Canvas");
-            heph_expect_success!(renderer.clear_canvas(canvas.as_mut(), RGB::default()));
+            heph_expect_success!(renderer.clear(Some(canvas.as_mut()), RGB::default()));
             pop_label(&renderer);
             if let Some(compute_pipeline) = &mut compute_pipeline {
                 push_label(&renderer, "Compute");
@@ -439,7 +439,7 @@ where
                 pop_label(&renderer);
             }
             push_label(&renderer, "Clear");
-            heph_expect_success!(renderer.clear(RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
             pop_label(&renderer);
             pop_label(&renderer);
             heph_expect_success!(renderer.end_frame());
@@ -448,7 +448,7 @@ where
             push_label(&renderer, "Empty");
             pop_label(&renderer);
             push_label(&renderer, "Clear");
-            heph_expect_success!(renderer.clear(RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
             pop_label(&renderer);
             heph_expect_success!(renderer.end_frame());
             heph_expect_success!(renderer.wait_idle());
@@ -487,7 +487,7 @@ where
                             }));
                         push_label(&renderer_worker, "Clear Canvas");
                         heph_expect_success!(
-                            renderer_worker.clear_canvas(canvas.as_mut(), RGB::default())
+                            renderer_worker.clear(Some(canvas.as_mut()), RGB::default())
                         );
                         pop_label(&renderer_worker);
                         pop_label(&renderer_worker);
@@ -499,7 +499,7 @@ where
 
                 heph_expect_success!(renderer.begin_frame());
                 push_label(&renderer, "Main");
-                heph_expect_success!(renderer.clear(RGB::default()));
+                heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
                 pop_label(&renderer);
                 let mut canvases = (0..THREAD_COUNT)
                     .map(|_| heph_expect_success!(rx.recv()))

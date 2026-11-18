@@ -15,8 +15,8 @@ use heph_gl::{
     TextVertex, Transform,
     math::{Mat4, Quat, Vec3},
     renderers::{
-        BufferUsage, CanvasOptions, ColorBlending, CullingMode, FeatureRequest, FrontFace,
-        GraphicsPipelineOptions, PrimitiveTopology, Renderer, RendererHandle,
+        BufferUsage, CanvasOptions, ColorBlending, CullingMode, DISPLAY_CANVAS, FeatureRequest,
+        FrontFace, GraphicsPipelineOptions, PrimitiveTopology, Renderer, RendererHandle,
         RendererWorkerFactory, ResourceBinding, SamplerAddressMode, SamplerOptions, Settings,
         TextureFormat, TextureOptions,
     },
@@ -96,9 +96,10 @@ where
         }
 
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(RGB::default()));
+        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
         for (pipeline, draw_count) in pipelines.iter_mut() {
             heph_expect_success!(renderer.record_graphics_command(
+                DISPLAY_CANVAS,
                 pipeline.as_mut(),
                 None,
                 &[],
@@ -207,7 +208,7 @@ where
         let start = Instant::now();
         while start.elapsed() < ANIMATION_DURATION {
             heph_expect_success!(renderer.begin_frame());
-            heph_expect_success!(renderer.clear(RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
 
             let time = start.elapsed().as_secs_f32();
             let movement = (time * 2.0).sin() * 0.2;
@@ -238,6 +239,7 @@ where
                 cube_b_buffer.size(),
             )];
             heph_expect_success!(renderer.record_graphics_command(
+                DISPLAY_CANVAS,
                 pipeline.as_mut(),
                 Some(index_buffer.as_ref()),
                 &cube_a_vertex_bindings,
@@ -246,6 +248,7 @@ where
                 1
             ));
             heph_expect_success!(renderer.record_graphics_command(
+                DISPLAY_CANVAS,
                 pipeline.as_mut(),
                 Some(index_buffer.as_ref()),
                 &cube_b_vertex_bindings,
@@ -398,7 +401,7 @@ where
         }));
 
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(RGB::default()));
+        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
         let mut texture = heph_expect_success!(renderer.create_texture(
             &TextureOptions {
                 width: image.width(),
@@ -429,7 +432,7 @@ where
         heph_expect_success!(renderer.end_frame());
 
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(RGB::default()));
+        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
         let vertex_bindings = [ResourceBinding::buffer(
             0,
             vertex_buffer.as_ref(),
@@ -444,6 +447,7 @@ where
             ResourceBinding::buffer(4, uniform_buffer.as_ref(), 0, uniform_buffer.size()),
         ];
         heph_expect_success!(renderer.record_graphics_command(
+            DISPLAY_CANVAS,
             pipeline.as_mut(),
             None,
             &vertex_bindings,
@@ -547,15 +551,15 @@ where
         let start = Instant::now();
         while start.elapsed() < ANIMATION_DURATION {
             heph_expect_success!(renderer.begin_frame());
-            heph_expect_success!(renderer.clear(RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
 
             let time = start.elapsed().as_secs_f32();
-            heph_expect_success!(renderer.clear_canvas(
-                canvas.as_mut(),
+            heph_expect_success!(renderer.clear(
+                Some(canvas.as_mut()),
                 RGB::new(0.2 + 0.15 * time.sin(), 0.1, 0.2 + 0.15 * time.cos()),
             ));
-            heph_expect_success!(renderer.record_canvas_command(
-                canvas.as_mut(),
+            heph_expect_success!(renderer.record_graphics_command(
+                Some(canvas.as_mut()),
                 triangle_pipeline.as_mut(),
                 None,
                 &[],
@@ -575,6 +579,7 @@ where
                 ResourceBinding::sampler(1, sampler.as_ref()),
             ];
             heph_expect_success!(renderer.record_graphics_command(
+                DISPLAY_CANVAS,
                 canvas_pipeline.as_mut(),
                 None,
                 &vertex_bindings,
@@ -744,7 +749,7 @@ where
         let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
 
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(RGB::default()));
+        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
         let mut texture = heph_expect_success!(renderer.create_texture(
             &TextureOptions {
                 width: font.atlas_width(),
@@ -771,7 +776,7 @@ where
         let start = Instant::now();
         while start.elapsed() < ANIMATION_DURATION {
             heph_expect_success!(renderer.begin_frame());
-            heph_expect_success!(renderer.clear(RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
 
             let progress =
                 (start.elapsed().as_secs_f32() / ANIMATION_DURATION.as_secs_f32()).min(1.0);
@@ -831,6 +836,7 @@ where
             )];
 
             heph_expect_success!(renderer.record_graphics_command(
+                DISPLAY_CANVAS,
                 screen_pipeline.as_mut(),
                 None,
                 &screen_vertex_bindings,
@@ -839,6 +845,7 @@ where
                 1,
             ));
             heph_expect_success!(renderer.record_graphics_command(
+                DISPLAY_CANVAS,
                 world_pipeline.as_mut(),
                 None,
                 &world_vertex_bindings,
@@ -847,6 +854,7 @@ where
                 1,
             ));
             heph_expect_success!(renderer.record_graphics_command(
+                DISPLAY_CANVAS,
                 extruded_pipeline.as_mut(),
                 None,
                 &extruded_vertex_bindings,
@@ -972,7 +980,7 @@ where
         let mut textures = HashMap::new();
         let mut part_buffers = Vec::with_capacity(mesh.part_count());
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(RGB::default()));
+        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
         for part in mesh.parts() {
             let vertex_attributes = [
                 MeshVertexAttribute::Position,
@@ -1129,7 +1137,7 @@ where
         let start = Instant::now();
         loop {
             heph_expect_success!(renderer.begin_frame());
-            heph_expect_success!(renderer.clear(RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
 
             let progress =
                 (start.elapsed().as_secs_f32() / ANIMATION_DURATION.as_secs_f32()).min(1.0);
@@ -1167,6 +1175,7 @@ where
                     ResourceBinding::buffer(5, uniform_buffer.as_ref(), 0, uniform_buffer.size()),
                 ];
                 heph_expect_success!(renderer.record_graphics_command(
+                    DISPLAY_CANVAS,
                     match double_sided {
                         true => double_sided_pipeline.as_mut(),
                         false => pipeline.as_mut(),
@@ -1311,7 +1320,7 @@ where
         heph_expect_success!(camera.look_at(&Vec3::ZERO, &Vec3::Y));
 
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(RGB::default()));
+        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
         let vertex_count = vertices.len() / component_count;
         let mut vertex_buffer = heph_expect_success!(renderer.create_buffer(
             vertex_count * part.vertex_size_bytes(&vertex_attributes),
@@ -1453,7 +1462,7 @@ where
         let start = Instant::now();
         loop {
             heph_expect_success!(renderer.begin_frame());
-            heph_expect_success!(renderer.clear(RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
 
             let elapsed = start.elapsed().as_secs_f32();
             let clip_index = (elapsed / ANIMATION_DURATION.as_secs_f32()) as usize;
@@ -1500,6 +1509,7 @@ where
                 ResourceBinding::buffer(6, joint_buffer.as_ref(), 0, joint_buffer.size()),
             ];
             heph_expect_success!(renderer.record_graphics_command(
+                DISPLAY_CANVAS,
                 pipeline.as_mut(),
                 Some(index_buffer.as_ref()),
                 &vertex_bindings,
@@ -1643,7 +1653,7 @@ where
         let mut textures = HashMap::new();
         let mut part_buffers = Vec::with_capacity(mesh.part_count());
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(RGB::default()));
+        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
         for part in mesh.parts() {
             let vertex_attributes = [
                 MeshVertexAttribute::Position,
@@ -1817,7 +1827,7 @@ where
         let start = Instant::now();
         loop {
             heph_expect_success!(renderer.begin_frame());
-            heph_expect_success!(renderer.clear(RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
 
             let elapsed = start.elapsed();
             let time = elapsed.as_secs_f32() - IMPACT_TIME.as_secs_f32();
@@ -1864,6 +1874,7 @@ where
                     ),
                 ];
                 heph_expect_success!(renderer.record_graphics_command(
+                    DISPLAY_CANVAS,
                     match double_sided {
                         true => double_sided_pipeline.as_mut(),
                         false => pipeline.as_mut(),
@@ -2063,7 +2074,7 @@ where
         let mut textures = HashMap::new();
         let mut part_buffers = Vec::new();
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(RGB::default()));
+        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
         let mut sky_texture = create_texture(&mut renderer, Path::new(SKY_PATH), false);
         for (mesh_index, mesh_name) in MESH_NAMES.iter().enumerate() {
             let mesh_directory = Path::new(SCENE_DIRECTORY).join(mesh_name);
@@ -2235,7 +2246,7 @@ where
         let start = Instant::now();
         loop {
             heph_expect_success!(renderer.begin_frame());
-            heph_expect_success!(renderer.clear(RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
 
             let sky_vertex_bindings = [ResourceBinding::buffer(
                 0,
@@ -2248,6 +2259,7 @@ where
                 ResourceBinding::sampler(1, sampler.as_ref()),
             ];
             heph_expect_success!(renderer.record_graphics_command(
+                DISPLAY_CANVAS,
                 sky_pipeline.as_mut(),
                 None,
                 &sky_vertex_bindings,
@@ -2292,6 +2304,7 @@ where
                     ResourceBinding::buffer(5, uniform_buffer.as_ref(), 0, uniform_buffer.size()),
                 ];
                 heph_expect_success!(renderer.record_graphics_command(
+                    DISPLAY_CANVAS,
                     match double_sided {
                         true => double_sided_mesh_pipeline.as_mut(),
                         false => mesh_pipeline.as_mut(),
