@@ -81,6 +81,52 @@ where
         }
     }
 
+    pub(crate) fn test_calling_main_thread_only_fn_while_worker_active(&self) {
+        let mut renderer = self.create_renderer_with_any_device(&[]);
+        let renderer_handle = RendererHandle::from(&mut renderer.renderer);
+        std::thread::scope(|s| {
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+            let worker_barrier = barrier.clone();
+            let _ = s.spawn(move || {
+                let _renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
+                let _ = worker_barrier.wait();
+                let _ = worker_barrier.wait();
+            });
+
+            let _ = barrier.wait();
+            heph_expect_err!(renderer.detach_debugger(), Error::InvalidOperation(_));
+            heph_expect_err!(
+                renderer
+                    .attach_debugger(Debugger::default())
+                    .map_err(|(e, _)| e),
+                Error::InvalidOperation(_)
+            );
+            heph_expect_err!(
+                renderer.set_settings(Settings::default()),
+                Error::InvalidOperation(_)
+            );
+            heph_expect_err!(
+                renderer.initialize(&InitializeOptions {
+                    app_name: "",
+                    window_handle: dummy_window_handle!(),
+                    display_handle: dummy_display_handle!(),
+                    api_version: LATEST_API_VERSION,
+                    debug: false,
+                }),
+                Error::InvalidOperation(_)
+            );
+            heph_expect_err!(renderer.uninitialize(), Error::InvalidOperation(_));
+            heph_expect_err!(renderer.set_device(None, &[]), Error::InvalidOperation(_));
+            heph_expect_success!(renderer.wait_idle());
+            let _ = barrier.wait();
+        });
+
+        let debugger = heph_expect_success!(renderer.detach_debugger());
+        heph_expect_success!(renderer.attach_debugger(debugger).map_err(|(e, _)| e));
+        heph_expect_success!(renderer.set_settings(Settings::default()));
+        heph_expect_success!(renderer.wait_idle());
+    }
+
     pub(crate) fn test_multiple_workers_per_thread(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[]);
         let renderer_handle = RendererHandle::from(&mut renderer.renderer);

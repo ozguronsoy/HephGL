@@ -189,6 +189,10 @@ where
                     versioned_test_suite,
                     test_calling_main_thread_only_fn_from_worker_thread
                 ),
+                create_trial!(
+                    versioned_test_suite,
+                    test_calling_main_thread_only_fn_while_worker_active
+                ),
                 create_trial!(versioned_test_suite, test_multiple_workers_per_thread),
                 create_trial!(versioned_test_suite, test_workers_begin_before_main),
                 create_trial!(versioned_test_suite, test_excess_threads),
