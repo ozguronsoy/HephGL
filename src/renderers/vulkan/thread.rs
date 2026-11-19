@@ -7,12 +7,15 @@ use ash::vk::{
 
 use crate::{
     Error, Result,
-    renderers::vulkan::{
-        THREAD_CONTEXT_INDEX, VulkanRenderer,
-        descriptor_pool::DescriptorPoolManager,
-        frame::{FrameState, VulkanFrame},
-        queue::QueueContext,
-        resources::VulkanBuffer,
+    renderers::{
+        thread_context::any_worker_thread_context_active,
+        vulkan::{
+            THREAD_CONTEXT_INDEX, VulkanRenderer,
+            descriptor_pool::DescriptorPoolManager,
+            frame::{FrameState, VulkanFrame},
+            queue::QueueContext,
+            resources::VulkanBuffer,
+        },
     },
 };
 
@@ -111,16 +114,22 @@ impl VulkanRenderer {
         self.main_thread_id == std::thread::current().id()
     }
 
-    /// Checks whether the call is being made from the main thread. If not,
-    /// returns an error.
-    pub(super) fn main_thread_only(&self) -> Result<()> {
-        if self.is_in_main_thread() {
-            Ok(())
-        } else {
-            Err(Error::invalid_operation(
-                "This action can only be performed in the main thread.",
-            ))
+    /// Checks whether the call is being made from the main thread and no worker threads are active.
+    /// If not, returns an error.
+    pub(super) fn main_thread_only(&self, fn_name: &str) -> Result<()> {
+        if !self.is_in_main_thread() {
+            return Err(Error::InvalidOperation(format!(
+                "`Renderer::{fn_name}` can only be called in the main thread."
+            )));
         }
+        if let Some(device_context) = self.device_context.as_ref()
+            && any_worker_thread_context_active(&*device_context.thread_context_masks.lock()?)
+        {
+            return Err(Error::InvalidOperation(format!(
+                "All worker threads must be uninitialized before calling `Renderer::{fn_name}`."
+            )));
+        }
+        Ok(())
     }
 
     /// Gets the current thread's context index.
