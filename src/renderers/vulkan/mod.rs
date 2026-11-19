@@ -40,8 +40,9 @@ use crate::{
     Error, GraphicsDeviceId, GraphicsDeviceVendor, HEPHGL_VERSION, Result, Version,
     graphics_device::{GraphicsDevice, GraphicsDeviceFeature, GraphicsDeviceType},
     renderers::{
-        BufferUsage, FeatureRequest, InitializeOptions, Renderer, RendererCanvas,
-        RendererComputePipeline, RendererGraphicsPipeline, ResourceBinding, Settings,
+        BufferUsage, DISPLAY_TEXTURE_FORMAT, FeatureRequest, InitializeOptions, Renderer,
+        RendererCanvas, RendererComputePipeline, RendererGraphicsPipeline, ResourceBinding,
+        Settings,
         debug::Debugger,
         downcast_mut, downcast_ref,
         resources::{RendererBuffer, RendererSampler, RendererTexture, ResourceBindingType},
@@ -1330,21 +1331,17 @@ impl Renderer for VulkanRenderer {
                 [device_context.current_frame_index]
                 .base
                 .thread_contexts[thread_context_index];
-            if let Some((render_target, aspect_mask)) = current_frame.render_target.take() {
-                let rendering = device_context
-                    .rendering
-                    .as_mut()
-                    .ok_or(Error::invalid_operation("Device is not set."))?;
-                Self::end_rendering(
-                    &device_context.logical_device,
-                    rendering.as_mut(),
-                    current_frame.base.command_buffer,
-                    render_target,
-                    aspect_mask,
-                    self.settings.array_layer_count(),
-                    device_context.sampling_stages,
-                )?;
-            }
+            let rendering = device_context
+                .rendering
+                .as_mut()
+                .ok_or(Error::invalid_operation("Device is not set."))?;
+            Self::end_rendering(
+                &device_context.logical_device,
+                rendering.as_mut(),
+                current_frame,
+                self.settings.array_layer_count(),
+                device_context.sampling_stages,
+            )?;
             command_buffer = current_frame.base.command_buffer;
             unsafe {
                 device_context.logical_device.cmd_pipeline_barrier(
@@ -1776,6 +1773,10 @@ impl Renderer for VulkanRenderer {
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
     ) -> Result<Box<dyn RendererGraphicsPipeline>> {
+        let instance = self
+            .instance
+            .as_ref()
+            .ok_or(Error::invalid_operation("Renderer is not initialized."))?;
         let device_context = self
             .device_context
             .as_ref()
@@ -1785,11 +1786,10 @@ impl Renderer for VulkanRenderer {
             .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         Ok(Box::new(rendering.create_graphics_pipeline(
-            &device_context.logical_device,
+            instance,
+            device_context,
             shaders,
             options,
-            &device_context.enabled_features,
-            device_context.max_tessellation_patch_size,
         )?))
     }
 
@@ -1841,9 +1841,16 @@ impl Renderer for VulkanRenderer {
                 .as_mut()
                 .ok_or(Error::invalid_operation("Device is not set."))?,
         };
-        if pipeline.depth_only != canvas.options().depth_only {
+        if pipeline.depth_only != canvas.depth_only()
+            || (!pipeline.depth_only
+                && !pipeline.color_formats.iter().eq(canvas
+                    .render_target()
+                    .0
+                    .iter()
+                    .map(|texture| &texture.texture_options.format)))
+        {
             return Err(Error::invalid_argument(
-                "Depth-only pipelines can only render into depth-only canvases, and other pipelines cannot render into them.",
+                "The pipeline is incompatible with the target canvas.",
             ));
         }
 
@@ -2012,6 +2019,14 @@ impl Renderer for VulkanRenderer {
             false => Box::new(VulkanColorCanvas::new(
                 device_context,
                 options,
+                &Self::resolve_texture_formats(
+                    instance,
+                    device_context,
+                    &options.texture_formats,
+                    ash::vk::FormatFeatureFlags::COLOR_ATTACHMENT
+                        | ash::vk::FormatFeatureFlags::SAMPLED_IMAGE
+                        | ash::vk::FormatFeatureFlags::TRANSFER_DST,
+                )?,
                 self.settings.msaa,
                 layer_count,
             )?),
@@ -2038,13 +2053,11 @@ impl Renderer for VulkanRenderer {
 
     fn destroy_canvas(&self, canvas: &mut dyn RendererCanvas) -> Result<()> {
         let canvas = vulkan_canvas_mut(canvas)?;
-        if canvas.texture().is_allocated() {
-            let device_context = self
-                .device_context
-                .as_ref()
-                .ok_or(Error::invalid_operation("Device is not set."))?;
-            canvas.destroy(device_context);
-        }
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(Error::invalid_operation("Device is not set."))?;
+        canvas.destroy(device_context);
         Ok(())
     }
 
@@ -2199,7 +2212,7 @@ impl Renderer for VulkanRenderer {
                     <dyn Any>::downcast_mut::<GraphicsThreadContext>(current_frame)
                 {
                     current_frame.bound_pipeline = None;
-                    current_frame.render_target = None;
+                    current_frame.render_target_images.clear();
                 } else if let Some(current_frame) =
                     <dyn Any>::downcast_mut::<ComputeThreadContext>(current_frame)
                 {
@@ -2241,6 +2254,7 @@ impl Renderer for VulkanRenderer {
                 width: extent.width,
                 height: extent.height,
                 depth_only: false,
+                texture_formats: vec![DISPLAY_TEXTURE_FORMAT],
             })?;
             let Ok(display_canvas) = display_canvas.downcast::<VulkanColorCanvas>() else {
                 unreachable!();
@@ -2305,17 +2319,13 @@ impl Renderer for VulkanRenderer {
                 if let Some(current_frame) =
                     <dyn Any>::downcast_mut::<GraphicsThreadContext>(current_frame)
                 {
-                    if let Some((image, aspect_mask)) = current_frame.render_target.take() {
-                        VulkanRenderer::end_rendering(
-                            logical_device,
-                            rendering,
-                            current_frame.base.command_buffer,
-                            image,
-                            aspect_mask,
-                            layer_count,
-                            sampling_stages,
-                        )?;
-                    }
+                    VulkanRenderer::end_rendering(
+                        logical_device,
+                        rendering,
+                        current_frame,
+                        layer_count,
+                        sampling_stages,
+                    )?;
                     if is_in_main_thread {
                         let display_canvas =
                             display_canvas.ok_or(Error::invalid_operation("Device is not set."))?;
@@ -2629,24 +2639,14 @@ impl Renderer for VulkanRenderer {
             device_context.sampling_stages,
         )?;
 
-        let clear_attachments = [
-            ash::vk::ClearAttachment::default()
-                .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
-                .color_attachment(0)
-                .clear_value(ash::vk::ClearValue {
-                    color: ash::vk::ClearColorValue {
-                        float32: [color.r, color.g, color.b, 1.0],
-                    },
-                }),
-            ash::vk::ClearAttachment::default()
-                .aspect_mask(ash::vk::ImageAspectFlags::DEPTH)
-                .clear_value(ash::vk::ClearValue {
-                    depth_stencil: ash::vk::ClearDepthStencilValue {
-                        depth: 1.0,
-                        stencil: 0,
-                    },
-                }),
-        ];
+        let depth_clear_attachment = ash::vk::ClearAttachment::default()
+            .aspect_mask(ash::vk::ImageAspectFlags::DEPTH)
+            .clear_value(ash::vk::ClearValue {
+                depth_stencil: ash::vk::ClearDepthStencilValue {
+                    depth: 1.0,
+                    stencil: 0,
+                },
+            });
         let clear_rect = ash::vk::ClearRect::default()
             .rect(ash::vk::Rect2D {
                 offset: ash::vk::Offset2D { x: 0, y: 0 },
@@ -2658,12 +2658,27 @@ impl Renderer for VulkanRenderer {
             .base_array_layer(0)
             .layer_count(canvas.layer_count());
         unsafe {
+            if !canvas.depth_only() {
+                for index in 0..canvas.render_target().0.len() as u32 {
+                    device_context.logical_device.cmd_clear_attachments(
+                        current_frame.base.command_buffer,
+                        std::slice::from_ref(
+                            &ash::vk::ClearAttachment::default()
+                                .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+                                .color_attachment(index)
+                                .clear_value(ash::vk::ClearValue {
+                                    color: ash::vk::ClearColorValue {
+                                        float32: [color.r, color.g, color.b, 1.0],
+                                    },
+                                }),
+                        ),
+                        std::slice::from_ref(&clear_rect),
+                    );
+                }
+            }
             device_context.logical_device.cmd_clear_attachments(
                 current_frame.base.command_buffer,
-                match canvas.options().depth_only {
-                    true => &clear_attachments[1..],
-                    false => &clear_attachments,
-                },
+                std::slice::from_ref(&depth_clear_attachment),
                 std::slice::from_ref(&clear_rect),
             );
         }

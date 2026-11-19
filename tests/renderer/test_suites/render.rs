@@ -575,7 +575,7 @@ where
                 vertex_buffer.size(),
             )];
             let resource_bindings = [
-                ResourceBinding::texture(0, canvas.texture()),
+                ResourceBinding::texture(0, canvas.textures().next().unwrap()),
                 ResourceBinding::sampler(1, sampler.as_ref()),
             ];
             heph_expect_success!(renderer.record_graphics_command(

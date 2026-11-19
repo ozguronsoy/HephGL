@@ -261,6 +261,7 @@ where
                 width: 64,
                 height: 64,
                 depth_only: true,
+                ..Default::default()
             }));
             heph_expect_success!(renderer.end_frame());
             heph_expect_success!(renderer.wait_idle());

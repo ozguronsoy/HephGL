@@ -56,9 +56,11 @@ pub(super) struct GraphicsThreadContext {
     pub(super) descriptor_pool_manager: DescriptorPoolManager,
     /// The pipeline currently bound to the command buffer.
     pub(super) bound_pipeline: Option<ash::vk::Pipeline>,
-    /// The texture image of the canvas that the command buffer is rendering into and the aspect of
-    /// that image, or `None` if it is not rendering.
-    pub(super) render_target: Option<(ash::vk::Image, ash::vk::ImageAspectFlags)>,
+    /// The texture images of the canvas that the command buffer is rendering into, or empty if it
+    /// is not rendering.
+    pub(super) render_target_images: Vec<ash::vk::Image>,
+    /// The aspect of the render target images.
+    pub(super) render_target_aspect_mask: ash::vk::ImageAspectFlags,
 }
 
 /// Represents the per-thread resources used for recording commands to the transfer queue.

@@ -1,7 +1,7 @@
 use ash::vk::{DescriptorSetLayout, Handle, Pipeline, PipelineLayout};
 
 use crate::renderers::{
-    RendererComputePipeline, RendererGraphicsPipeline, RendererPipeline,
+    RendererComputePipeline, RendererGraphicsPipeline, RendererPipeline, TextureFormat,
     debug::RendererDebugObject, vulkan::resources::DescriptorSetCache,
 };
 
@@ -24,6 +24,7 @@ pub(super) struct VulkanGraphicsPipeline {
     pub(super) descriptor_binding_counts: Vec<usize>,
     pub(super) descriptor_set_cache: DescriptorSetCache,
     pub(super) depth_only: bool,
+    pub(super) color_formats: Vec<TextureFormat>,
 }
 
 impl RendererDebugObject for VulkanGraphicsPipeline {}

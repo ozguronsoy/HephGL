@@ -16,6 +16,7 @@ where
                 width: 640,
                 height: 360,
                 depth_only,
+                ..Default::default()
             };
 
             heph_expect_success!(renderer.begin_frame());
@@ -23,18 +24,21 @@ where
             heph_expect_success!(renderer.end_frame());
             heph_expect_success!(renderer.wait_idle());
 
-            assert!(canvas.texture().is_allocated());
+            assert_eq!(canvas.textures().count(), 1);
+            assert!(canvas.textures().all(|texture| texture.is_allocated()));
             assert_eq!(canvas.width(), canvas_options.width);
             assert_eq!(canvas.height(), canvas_options.height);
             assert_eq!(canvas.options().width, canvas_options.width);
             assert_eq!(canvas.options().height, canvas_options.height);
             assert_eq!(canvas.options().depth_only, canvas_options.depth_only);
-            assert_eq!(canvas.texture().width(), canvas_options.width);
-            assert_eq!(canvas.texture().height(), canvas_options.height);
-            assert_eq!(canvas.texture().mip_level_count(), 1);
+            for texture in canvas.textures() {
+                assert_eq!(texture.width(), canvas_options.width);
+                assert_eq!(texture.height(), canvas_options.height);
+                assert_eq!(texture.mip_level_count(), 1);
+            }
 
             heph_expect_success!(renderer.destroy_canvas(canvas.as_mut()));
-            assert!(!canvas.texture().is_allocated());
+            assert!(canvas.textures().all(|texture| !texture.is_allocated()));
         }
 
         {

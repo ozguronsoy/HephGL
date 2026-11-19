@@ -285,7 +285,7 @@ fn example(
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
                 culling: CullingMode::Disabled,
-                ..pipeline_options
+                ..pipeline_options.clone()
             },
         )
         .unwrap();
@@ -346,6 +346,7 @@ fn example(
             width: SHADOW_MAP_SIZE,
             height: SHADOW_MAP_SIZE,
             depth_only: true,
+            ..Default::default()
         })
         .unwrap();
 
@@ -663,7 +664,7 @@ fn example(
                 ),
                 ResourceBinding::buffer(5, camera_buffer.as_ref(), 0, camera_buffer.size()),
                 ResourceBinding::buffer(6, scene_buffer.as_ref(), 0, scene_buffer.size()),
-                ResourceBinding::texture(7, shadow_canvas.texture()),
+                ResourceBinding::texture(7, shadow_canvas.textures().next().unwrap()),
                 ResourceBinding::sampler(8, shadow_sampler.as_ref()),
             ];
             renderer
