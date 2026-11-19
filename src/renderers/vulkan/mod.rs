@@ -49,8 +49,8 @@ use crate::{
             CanvasOptions, GraphicsPipelineOptions, HdrMode, Msaa, SamplerOptions, TextureOptions,
         },
         thread_context::{
-            MAIN_THREAD_CONTEXT_INDEX, ThreadContextIndex, ThreadContextMask,
-            ThreadContextMaskArray, is_thread_context_active,
+            ThreadContextIndex, ThreadContextMask, is_thread_context_active,
+            main_thread_context_index,
         },
         version::DriverVersion,
         vulkan::{
@@ -182,7 +182,7 @@ impl Renderer for VulkanRenderer {
         &mut self,
         debugger: Debugger,
     ) -> std::result::Result<(), (Error, Debugger)> {
-        if let Err(error) = self.main_thread_only() {
+        if let Err(error) = self.main_thread_only(false, function!()) {
             return Err((error, debugger));
         }
         if !self.debug_enabled {
@@ -206,7 +206,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn detach_debugger(&mut self) -> Result<Debugger> {
-        self.main_thread_only()?;
+        self.main_thread_only(false, function!())?;
         self.destroy_debug_messenger();
         self.debugger
             .take()
@@ -223,14 +223,12 @@ impl Renderer for VulkanRenderer {
     }
 
     fn set_settings(&mut self, settings: Settings) -> Result<()> {
-        self.main_thread_only()?;
+        self.main_thread_only(false, function!())?;
         if settings.max_fps == Some(0) {
             return Err(Error::invalid_argument("`max_fps` must be greater than 0."));
         }
 
         if self.device_context.is_some() {
-            let temp_settings = self.settings;
-
             self.destroy_frame_sync()?;
             self.destroy_rendering()?;
             self.destroy_swapchain()?;
@@ -240,46 +238,18 @@ impl Renderer for VulkanRenderer {
 
             let device_context = self.device_context.as_mut().unwrap();
 
-            fn resize_frames<Frame: VulkanFrame>(
-                thread_context_masks: &Mutex<ThreadContextMaskArray>,
-                settings: &mut Settings,
-                temp_settings: Settings,
-                queue_context: &mut QueueContext<Frame>,
-            ) -> Result<()> {
-                let masks = thread_context_masks.lock()?;
-
-                for mask in masks.iter() {
-                    if *mask != 0 {
-                        *settings = temp_settings;
-                        return Err(Error::invalid_operation(
-                            "All worker threads must be uninitialized before changing the settings.",
-                        ));
-                    }
-                }
-                queue_context
-                    .frames
-                    .resize_with(settings.frames_in_flight, Frame::default);
-                Ok(())
-            }
-            resize_frames(
-                &device_context.thread_context_masks,
-                &mut self.settings,
-                temp_settings,
-                &mut device_context.graphics_queue_context,
-            )?;
-            resize_frames(
-                &device_context.thread_context_masks,
-                &mut self.settings,
-                temp_settings,
-                &mut device_context.transfer_queue_context,
-            )?;
+            device_context
+                .graphics_queue_context
+                .frames
+                .resize_with(self.settings.frames_in_flight, GraphicsFrame::default);
+            device_context
+                .transfer_queue_context
+                .frames
+                .resize_with(self.settings.frames_in_flight, TransferFrame::default);
             if let Some(compute_queue_context) = &mut device_context.compute_queue_context {
-                resize_frames(
-                    &device_context.thread_context_masks,
-                    &mut self.settings,
-                    temp_settings,
-                    compute_queue_context,
-                )?;
+                compute_queue_context
+                    .frames
+                    .resize_with(self.settings.frames_in_flight, ComputeFrame::default);
             }
 
             device_context.current_frame_index = 0;
@@ -297,7 +267,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn initialize(&mut self, options: &InitializeOptions) -> Result<()> {
-        self.main_thread_only()?;
+        self.main_thread_only(false, function!())?;
         if self.entry.is_some() || self.instance.is_some() {
             return Err(Error::invalid_operation(
                 "The renderer is already initialized.",
@@ -441,7 +411,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn uninitialize(&mut self) -> Result<()> {
-        self.main_thread_only()?;
+        self.main_thread_only(false, function!())?;
         self.uninitialize_device()?;
 
         if let (Some(surface), Some(surface_loader)) =
@@ -627,7 +597,7 @@ impl Renderer for VulkanRenderer {
         device: Option<&GraphicsDevice>,
         requested_features: &[FeatureRequest],
     ) -> Result<()> {
-        self.main_thread_only()?;
+        self.main_thread_only(false, function!())?;
         if let Some(device) = device {
             // Check whether the `device` is a Vulkan device.
             let _ = downcast_ref::<VulkanGraphicsDeviceId>(device.device_id.as_ref())?;
@@ -2166,7 +2136,7 @@ impl Renderer for VulkanRenderer {
                 frame_index: usize,
             ) -> Result<()> {
                 let main_frame = &queue_context.frames[frame_index].base().thread_contexts
-                    [MAIN_THREAD_CONTEXT_INDEX];
+                    [main_thread_context_index()];
                 let (state_mutex, cv) = &main_frame.base().sync_state;
                 let mut state = state_mutex.lock()?;
                 while *state != FrameState::Started {
@@ -2606,7 +2576,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn wait_idle(&self) -> Result<()> {
-        self.main_thread_only()?;
+        self.main_thread_only(true, function!())?;
         let device_context = self
             .device_context
             .as_ref()

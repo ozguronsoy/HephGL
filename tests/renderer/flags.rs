@@ -48,6 +48,7 @@ define_renderer_test_flags!(
     test_calling_frame_only_fn_outside_of_frame,
     test_resize_window,
     test_calling_main_thread_only_fn_from_worker_thread,
+    test_calling_main_thread_only_fn_while_worker_active,
     test_multiple_workers_per_thread,
     test_workers_begin_before_main,
     test_excess_threads,

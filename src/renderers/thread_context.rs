@@ -73,9 +73,9 @@ const THREAD_CONTEXT_COUNT: usize = {
 const THREAD_CONTEXT_MASK_COUNT: usize =
     THREAD_CONTEXT_COUNT.div_ceil(THREAD_CONTEXT_MASK_BIT_SIZE);
 /// The index reserved for the main thread.
-pub(super) const MAIN_THREAD_CONTEXT_INDEX: usize = THREAD_CONTEXT_COUNT - 1;
+const MAIN_THREAD_CONTEXT_INDEX: usize = THREAD_CONTEXT_COUNT - 1;
 /// The index of the mask that contains the index reserved for the main thread.
-pub(super) const MAIN_THREAD_CONTEXT_MASK_INDEX: usize =
+const MAIN_THREAD_CONTEXT_MASK_INDEX: usize =
     MAIN_THREAD_CONTEXT_INDEX / THREAD_CONTEXT_MASK_BIT_SIZE;
 // static asserts
 #[cfg(not(test))]
@@ -181,6 +181,22 @@ pub(super) fn is_thread_context_active(index: usize, masks: &ThreadContextMaskAr
     (mask & flag) == flag
 }
 
+/// Checks whether any thread context is active excluding the main thread context.
+pub(super) fn any_worker_thread_context_active(masks: &ThreadContextMaskArray) -> bool {
+    masks.iter().enumerate().any(|(i, &mask)| {
+        if i == MAIN_THREAD_CONTEXT_MASK_INDEX {
+            (mask & !(1 << (MAIN_THREAD_CONTEXT_INDEX % THREAD_CONTEXT_MASK_BIT_SIZE))) > 0
+        } else {
+            mask > 0
+        }
+    })
+}
+
+/// Gets the index of the main thread context.
+pub(super) fn main_thread_context_index() -> usize {
+    MAIN_THREAD_CONTEXT_INDEX
+}
+
 /// Gets the maximum number of threads that can execute concurrently.
 pub(super) const fn thread_context_count() -> usize {
     THREAD_CONTEXT_COUNT
@@ -284,5 +300,45 @@ mod tests {
                 assert_eq!(mask, 0);
             }
         });
+    }
+
+    #[test]
+    fn test_any_worker_thread_context_active() {
+        thread_local! {
+          static MAIN_INDEX: ThreadContextIndex = const { ThreadContextIndex::new() };
+          static WORKER_INDEX: ThreadContextIndex = const { ThreadContextIndex::new() };
+        }
+
+        let mut masks: ThreadContextMaskArray =
+            std::array::from_fn(|_| ThreadContextMask::default());
+        assert!(!any_worker_thread_context_active(&masks));
+
+        assert!(register(&MAIN_INDEX, &mut masks, true).is_ok());
+        assert!(!any_worker_thread_context_active(&masks));
+
+        assert!(register(&WORKER_INDEX, &mut masks, false).is_ok());
+        assert!(any_worker_thread_context_active(&masks));
+
+        unregister(&MAIN_INDEX, &mut masks);
+        assert!(any_worker_thread_context_active(&masks));
+
+        unregister(&WORKER_INDEX, &mut masks);
+        assert!(!any_worker_thread_context_active(&masks));
+
+        masks[MAIN_THREAD_CONTEXT_MASK_INDEX] |=
+            1 << ((MAIN_THREAD_CONTEXT_INDEX - 1) % THREAD_CONTEXT_MASK_BIT_SIZE);
+        assert!(any_worker_thread_context_active(&masks));
+    }
+
+    #[test]
+    fn test_main_thread_context_index() {
+        assert_eq!(main_thread_context_index(), thread_context_count() - 1);
+    }
+
+    #[test]
+    fn test_thread_context_count() {
+        let expected = option_env!("HEPHGL_RENDERER_MAX_CONCURRENT_THREADS")
+            .map_or(128, |val| val.parse::<usize>().unwrap());
+        assert_eq!(thread_context_count(), expected);
     }
 }
