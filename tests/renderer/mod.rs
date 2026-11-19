@@ -250,6 +250,7 @@ where
                 create_trial!(versioned_test_suite, test_render_dynamic_cubes),
                 create_trial!(versioned_test_suite, test_render_texture),
                 create_trial!(versioned_test_suite, test_render_canvas),
+                create_trial!(versioned_test_suite, test_render_mrt),
                 create_trial!(versioned_test_suite, test_render_text),
                 create_trial!(versioned_test_suite, test_render_mesh),
                 create_trial!(versioned_test_suite, test_render_animated_mesh),

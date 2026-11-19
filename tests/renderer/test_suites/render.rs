@@ -15,10 +15,10 @@ use heph_gl::{
     TextVertex, Transform,
     math::{Mat4, Quat, Vec3},
     renderers::{
-        BufferUsage, CanvasOptions, ColorBlending, CullingMode, DISPLAY_CANVAS, FeatureRequest,
-        FrontFace, GraphicsPipelineOptions, PrimitiveTopology, Renderer, RendererHandle,
-        RendererWorkerFactory, ResourceBinding, SamplerAddressMode, SamplerOptions, Settings,
-        TextureFormat, TextureOptions,
+        BufferUsage, CanvasOptions, ColorBlending, CullingMode, DISPLAY_CANVAS,
+        DISPLAY_TEXTURE_FORMAT, FeatureRequest, FrontFace, GraphicsPipelineOptions,
+        PrimitiveTopology, Renderer, RendererHandle, RendererWorkerFactory, ResourceBinding,
+        SamplerAddressMode, SamplerOptions, Settings, TextureFormat, TextureOptions,
     },
 };
 use renkrs::RGB;
@@ -587,6 +587,156 @@ where
                 vertices.len() as u32,
                 1,
             ));
+
+            heph_expect_success!(renderer.end_frame());
+        }
+
+        heph_expect_success!(renderer.wait_idle());
+        heph_expect_success!(renderer.destroy_buffer(vertex_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
+        heph_expect_success!(renderer.destroy_canvas(canvas.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(canvas_pipeline.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(triangle_pipeline.as_mut()));
+    }
+
+    pub(crate) fn test_render_mrt(&self) {
+        type Vertex = [f32; 4];
+
+        let create_pipeline =
+            |renderer: &mut TestRenderer,
+             vertex_shader: &str,
+             fragment_shader: &str,
+             texture_formats: &[Option<TextureFormat>]| {
+                let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/{}",
+                    SHADERS_DIR, vertex_shader
+                )));
+                let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{}/{}",
+                    SHADERS_DIR, fragment_shader
+                )));
+                heph_expect_success!(renderer.create_graphics_pipeline(
+                    &[&vert_shader, &frag_shader],
+                    &GraphicsPipelineOptions {
+                        texture_formats: texture_formats.to_vec(),
+                        ..Default::default()
+                    },
+                ))
+            };
+        let quad_vertices = |min: [f32; 2], max: [f32; 2]| -> [Vertex; 6] {
+            let top_left = [min[0], min[1], 0.0, 0.0];
+            let top_right = [max[0], min[1], 1.0, 0.0];
+            let bottom_right = [max[0], max[1], 1.0, 1.0];
+            let bottom_left = [min[0], max[1], 0.0, 1.0];
+            [
+                top_left,
+                top_right,
+                bottom_right,
+                top_left,
+                bottom_right,
+                bottom_left,
+            ]
+        };
+
+        let mut renderer = self.create_renderer_with_any_device(&[]);
+        let Some(&msaa) = renderer
+            .get_device()
+            .and_then(|device| device.supported_msaa_levels().last())
+        else {
+            panic!("Failed to get a supported MSAA sample count.");
+        };
+        heph_expect_success!(renderer.set_settings(Settings {
+            msaa,
+            max_fps: Some(60),
+            ..Default::default()
+        }));
+
+        let texture_formats = [
+            DISPLAY_TEXTURE_FORMAT,
+            Some(TextureFormat::Rgba8Unorm),
+            Some(TextureFormat::Rgba16Sfloat),
+            Some(TextureFormat::R8Unorm),
+        ];
+        let mut triangle_pipeline = create_pipeline(
+            &mut renderer,
+            "shapes/basic_triangle_vert.spv",
+            "mrt_frag.spv",
+            &texture_formats,
+        );
+        let mut canvas_pipeline = create_pipeline(
+            &mut renderer,
+            "canvas_vert.spv",
+            "canvas_frag.spv",
+            &[DISPLAY_TEXTURE_FORMAT],
+        );
+
+        heph_expect_success!(renderer.begin_frame());
+        let mut canvas = heph_expect_success!(renderer.create_canvas(&CanvasOptions {
+            width: 640,
+            height: 360,
+            texture_formats: texture_formats.to_vec(),
+            ..Default::default()
+        }));
+        heph_expect_success!(renderer.end_frame());
+        let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
+
+        let mut vertices = Vec::with_capacity(4 * 6);
+        vertices.extend(quad_vertices([-0.95, -0.95], [-0.05, -0.05]));
+        vertices.extend(quad_vertices([0.05, -0.95], [0.95, -0.05]));
+        vertices.extend(quad_vertices([-0.95, 0.05], [-0.05, 0.95]));
+        vertices.extend(quad_vertices([0.05, 0.05], [0.95, 0.95]));
+        let mut vertex_buffer = heph_expect_success!(renderer.create_buffer(
+            std::mem::size_of_val(vertices.as_slice()),
+            BufferUsage::Vertex,
+        ));
+        heph_expect_success!(renderer.write_buffer(
+            vertex_buffer.as_mut(),
+            0,
+            bytemuck::cast_slice(&vertices)
+        ));
+
+        let start = Instant::now();
+        while start.elapsed() < ANIMATION_DURATION {
+            heph_expect_success!(renderer.begin_frame());
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+
+            let time = start.elapsed().as_secs_f32();
+            heph_expect_success!(renderer.clear(
+                Some(canvas.as_mut()),
+                RGB::new(0.2 + 0.15 * time.sin(), 0.1, 0.2 + 0.15 * time.cos()),
+            ));
+            heph_expect_success!(renderer.record_graphics_command(
+                Some(canvas.as_mut()),
+                triangle_pipeline.as_mut(),
+                None,
+                &[],
+                &[],
+                3,
+                1,
+            ));
+
+            let quad_size = 6 * std::mem::size_of::<Vertex>();
+            for (index, texture) in canvas.textures().enumerate() {
+                let vertex_bindings = [ResourceBinding::buffer(
+                    0,
+                    vertex_buffer.as_ref(),
+                    index * quad_size,
+                    quad_size,
+                )];
+                let resource_bindings = [
+                    ResourceBinding::texture(0, texture),
+                    ResourceBinding::sampler(1, sampler.as_ref()),
+                ];
+                heph_expect_success!(renderer.record_graphics_command(
+                    DISPLAY_CANVAS,
+                    canvas_pipeline.as_mut(),
+                    None,
+                    &vertex_bindings,
+                    &[&resource_bindings],
+                    6,
+                    1,
+                ));
+            }
 
             heph_expect_success!(renderer.end_frame());
         }
