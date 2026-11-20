@@ -1,4 +1,7 @@
-use crate::{graphics_device::GraphicsDeviceFeature, renderers::resources::TextureFormat};
+use crate::{
+    graphics_device::GraphicsDeviceFeature,
+    renderers::{DISPLAY_TEXTURE_FORMAT, resources::TextureFormat},
+};
 
 /// Defines the multisample anti-aliasing sample count used when rendering.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -204,7 +207,7 @@ pub struct DepthBias {
 }
 
 /// Provides the capabilities of a graphics pipeline.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct GraphicsPipelineOptions {
     /// The color blending mode.
     pub blending: ColorBlending,
@@ -230,6 +233,8 @@ pub struct GraphicsPipelineOptions {
     /// The minimum fraction of samples in each pixel that are shaded individually. The value must
     /// be between `0.0` and `1.0`.
     pub min_sample_shading: Option<f32>,
+    /// The formats of the textures the pipeline renders into.
+    pub texture_formats: Vec<Option<TextureFormat>>,
 }
 
 /// Defines the properties of a texture.
@@ -268,7 +273,7 @@ pub struct SamplerOptions {
 }
 
 /// Defines the properties of a canvas.
-#[derive(Default, Clone, Copy)]
+#[derive(Clone)]
 pub struct CanvasOptions {
     /// The width of the canvas in pixels.
     pub width: u32,
@@ -277,6 +282,19 @@ pub struct CanvasOptions {
     /// Indicates whether the canvas has only a depth buffer. The texture of a depth-only canvas
     /// contains the depth values, and only depth-only pipelines can render into it.
     pub depth_only: bool,
+    /// The formats of the textures the canvas renders into. Ignored for depth-only canvases.
+    pub texture_formats: Vec<Option<TextureFormat>>,
+}
+
+impl Default for CanvasOptions {
+    fn default() -> Self {
+        Self {
+            width: 0,
+            height: 0,
+            depth_only: false,
+            texture_formats: vec![DISPLAY_TEXTURE_FORMAT],
+        }
+    }
 }
 
 impl Default for TextureOptions {
@@ -311,6 +329,7 @@ impl Default for GraphicsPipelineOptions {
             depth_only: false,
             depth_bias: None,
             min_sample_shading: None,
+            texture_formats: vec![DISPLAY_TEXTURE_FORMAT],
         }
     }
 }

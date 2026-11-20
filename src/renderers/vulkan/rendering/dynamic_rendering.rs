@@ -1,9 +1,9 @@
-use std::{collections::HashSet, ffi::CString, mem::DropGuard};
+use std::{ffi::CString, mem::DropGuard};
 
 use ash::vk::{
     AttachmentLoadOp, AttachmentStoreOp, CommandBuffer, DescriptorSetLayoutBinding,
-    DescriptorSetLayoutCreateInfo, DescriptorType, DynamicState, GraphicsPipelineCreateInfo,
-    ImageLayout, PipelineCache, PipelineColorBlendStateCreateInfo,
+    DescriptorSetLayoutCreateInfo, DescriptorType, DynamicState, FormatFeatureFlags,
+    GraphicsPipelineCreateInfo, ImageLayout, PipelineCache, PipelineColorBlendStateCreateInfo,
     PipelineDepthStencilStateCreateInfo, PipelineDynamicStateCreateInfo,
     PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
     PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
@@ -19,13 +19,14 @@ use crate::{
     graphics_device::GraphicsDeviceFeature,
     renderers::{
         RendererCanvas,
-        settings::{GraphicsPipelineOptions, Msaa, PolygonMode, Settings},
+        settings::{ColorBlending, GraphicsPipelineOptions, Msaa, PolygonMode, Settings},
         vulkan::{
+            VulkanRenderer,
             canvas::{VulkanColorCanvas, VulkanDepthCanvas},
+            device::DeviceContext,
             pipeline::VulkanGraphicsPipeline,
             rendering::VulkanRendering,
             resources::DescriptorSetCache,
-            swapchain::SwapchainContext,
         },
     },
     shader::{ScalarKind, Shader, ShaderPrimitive, ShaderStage},
@@ -33,23 +34,17 @@ use crate::{
 
 /// Implements dynamic rendering.
 pub(super) struct DynamicRendering {
-    color_format: ash::vk::Format,
     depth_format: ash::vk::Format,
     msaa: Msaa,
 }
 
 impl VulkanRendering for DynamicRendering {
-    fn new(
-        settings: &Settings,
-        _: &ash::Device,
-        swapchain_context: &SwapchainContext,
-    ) -> Result<Self>
+    fn new(settings: &Settings, _: &ash::Device) -> Result<Self>
     where
         Self: Sized,
     {
         // This is recreated when settings change, so we can store the settings we need here.
         Ok(Self {
-            color_format: swapchain_context.format,
             // TODO: Get this from swapchain context?
             depth_format: ash::vk::Format::D32_SFLOAT,
             msaa: settings.msaa,
@@ -57,12 +52,14 @@ impl VulkanRendering for DynamicRendering {
     }
     fn create_graphics_pipeline(
         &self,
-        device: &ash::Device,
+        instance: &ash::Instance,
+        device_context: &DeviceContext,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
-        enabled_features: &HashSet<GraphicsDeviceFeature>,
-        max_tessellation_patch_size: u32,
     ) -> Result<VulkanGraphicsPipeline> {
+        let device = &device_context.logical_device;
+        let enabled_features = &device_context.enabled_features;
+        let max_tessellation_patch_size = device_context.max_tessellation_patch_size;
         if options.polygon_mode != PolygonMode::Fill
             && !enabled_features.contains(&GraphicsDeviceFeature::WireframeMode)
         {
@@ -103,6 +100,21 @@ impl VulkanRendering for DynamicRendering {
                 "Depth bias clamping requires the `DepthBiasClamp` feature to be enabled.",
             ));
         }
+        let color_formats = match options.depth_only {
+            true => Vec::new(),
+            false => VulkanRenderer::resolve_texture_formats(
+                instance,
+                device_context,
+                &options.texture_formats,
+                match options.blending {
+                    ColorBlending::Disabled => FormatFeatureFlags::COLOR_ATTACHMENT,
+                    _ => {
+                        FormatFeatureFlags::COLOR_ATTACHMENT
+                            | FormatFeatureFlags::COLOR_ATTACHMENT_BLEND
+                    }
+                },
+            )?,
+        };
 
         // Create shader stage infos.
         let mut shader_modules =
@@ -361,20 +373,23 @@ impl VulkanRendering for DynamicRendering {
             .depth_compare_op(ash::vk::CompareOp::LESS)
             .depth_bounds_test_enable(false)
             .stencil_test_enable(false);
-        let color_blend_attachment = options.blending.into();
-        let mut color_blend = PipelineColorBlendStateCreateInfo::default();
-        if !options.depth_only {
-            color_blend = color_blend.attachments(std::slice::from_ref(&color_blend_attachment));
-        }
+        let color_blend_attachments =
+            vec![
+                ash::vk::PipelineColorBlendAttachmentState::from(options.blending);
+                color_formats.len()
+            ];
+        let color_blend =
+            PipelineColorBlendStateCreateInfo::default().attachments(&color_blend_attachments);
         let dynamic_states = [DynamicState::VIEWPORT, DynamicState::SCISSOR];
         let dynamic_state =
             PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
-        let color_formats = [self.color_format];
-        let mut rendering_info =
-            PipelineRenderingCreateInfo::default().depth_attachment_format(self.depth_format);
-        if !options.depth_only {
-            rendering_info = rendering_info.color_attachment_formats(&color_formats);
-        }
+        let vulkan_color_formats = color_formats
+            .iter()
+            .map(|color_format| ash::vk::Format::from(*color_format))
+            .collect::<Vec<_>>();
+        let mut rendering_info = PipelineRenderingCreateInfo::default()
+            .color_attachment_formats(&vulkan_color_formats)
+            .depth_attachment_format(self.depth_format);
         let tessellation_state = match options.topology {
             crate::renderers::PrimitiveTopology::PatchList { control_points } => Some(
                 PipelineTessellationStateCreateInfo::default().patch_control_points(control_points),
@@ -407,6 +422,7 @@ impl VulkanRendering for DynamicRendering {
             descriptor_binding_counts,
             descriptor_set_cache: DescriptorSetCache::new(),
             depth_only: options.depth_only,
+            color_formats,
         })
     }
     fn destroy_graphics_pipeline(
@@ -447,21 +463,28 @@ impl VulkanRendering for DynamicRendering {
         command_buffer: CommandBuffer,
         canvas: &VulkanColorCanvas,
     ) -> Result<()> {
-        let color_attachment_info = match &canvas.msaa_color_image {
-            None => RenderingAttachmentInfo::default()
-                .image_view(canvas.texture.image_view)
-                .image_layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .load_op(AttachmentLoadOp::LOAD)
-                .store_op(AttachmentStoreOp::STORE),
-            Some(msaa_color_image) => RenderingAttachmentInfo::default()
-                .image_view(msaa_color_image.view)
-                .image_layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .load_op(AttachmentLoadOp::LOAD)
-                .store_op(AttachmentStoreOp::STORE)
-                .resolve_mode(ash::vk::ResolveModeFlags::AVERAGE)
-                .resolve_image_view(canvas.texture.image_view)
-                .resolve_image_layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL),
-        };
+        let color_attachment_infos = canvas
+            .textures
+            .iter()
+            .enumerate()
+            .map(
+                |(index, texture)| match canvas.msaa_color_images.get(index) {
+                    None => RenderingAttachmentInfo::default()
+                        .image_view(texture.image_view)
+                        .image_layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                        .load_op(AttachmentLoadOp::LOAD)
+                        .store_op(AttachmentStoreOp::STORE),
+                    Some(msaa_color_image) => RenderingAttachmentInfo::default()
+                        .image_view(msaa_color_image.view)
+                        .image_layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                        .load_op(AttachmentLoadOp::LOAD)
+                        .store_op(AttachmentStoreOp::STORE)
+                        .resolve_mode(ash::vk::ResolveModeFlags::AVERAGE)
+                        .resolve_image_view(texture.image_view)
+                        .resolve_image_layout(ImageLayout::COLOR_ATTACHMENT_OPTIMAL),
+                },
+            )
+            .collect::<Vec<_>>();
         let depth_attachment_info = RenderingAttachmentInfo::default()
             .image_view(canvas.depth_image.view)
             .image_layout(ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
@@ -476,7 +499,7 @@ impl VulkanRendering for DynamicRendering {
                 },
             })
             .layer_count(canvas.layer_count)
-            .color_attachments(std::slice::from_ref(&color_attachment_info))
+            .color_attachments(&color_attachment_infos)
             .depth_attachment(&depth_attachment_info);
         unsafe {
             device.cmd_begin_rendering(command_buffer, &rendering_info);

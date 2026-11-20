@@ -1,8 +1,8 @@
 use ash::vk::{
     AccessFlags, ClearColorValue, ClearDepthStencilValue, CommandBuffer, Extent2D, Extent3D,
-    Format, ImageAspectFlags, ImageCreateInfo, ImageLayout, ImageSubresourceRange, ImageTiling,
-    ImageType, ImageUsageFlags, ImageViewCreateInfo, ImageViewType, PipelineStageFlags,
-    SampleCountFlags, SharingMode,
+    Format, Handle, ImageAspectFlags, ImageCreateInfo, ImageLayout, ImageSubresourceRange,
+    ImageTiling, ImageType, ImageUsageFlags, ImageViewCreateInfo, ImageViewType,
+    PipelineStageFlags, SampleCountFlags, SharingMode,
 };
 use vk_mem::Alloc;
 
@@ -171,12 +171,16 @@ impl VulkanRenderer {
         mut image: AttachmentImage,
     ) {
         unsafe {
-            device_context
-                .logical_device
-                .destroy_image_view(image.view, None);
-            device_context
-                .vma_allocator
-                .destroy_image(image.image, &mut image.allocation);
+            if !image.view.is_null() {
+                device_context
+                    .logical_device
+                    .destroy_image_view(image.view, None);
+            }
+            if !image.image.is_null() {
+                device_context
+                    .vma_allocator
+                    .destroy_image(image.image, &mut image.allocation);
+            }
         }
     }
 }

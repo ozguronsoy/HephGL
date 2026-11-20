@@ -358,7 +358,7 @@ impl VulkanRenderer {
         Self::transition_image_layout(
             device,
             command_buffer,
-            display_canvas.texture.image,
+            display_canvas.textures[0].image,
             ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             ImageLayout::TRANSFER_SRC_OPTIMAL,
             AccessFlags::empty(),
@@ -402,7 +402,7 @@ impl VulkanRenderer {
         unsafe {
             device.cmd_copy_image(
                 command_buffer,
-                display_canvas.texture.image,
+                display_canvas.textures[0].image,
                 ImageLayout::TRANSFER_SRC_OPTIMAL,
                 swapchain_image,
                 ImageLayout::TRANSFER_DST_OPTIMAL,
@@ -429,7 +429,7 @@ impl VulkanRenderer {
         Self::transition_image_layout(
             device,
             command_buffer,
-            display_canvas.texture.image,
+            display_canvas.textures[0].image,
             ImageLayout::TRANSFER_SRC_OPTIMAL,
             ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             AccessFlags::empty(),

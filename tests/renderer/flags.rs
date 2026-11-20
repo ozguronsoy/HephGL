@@ -66,6 +66,7 @@ define_renderer_test_flags!(
     test_render_dynamic_cubes,
     test_render_texture,
     test_render_canvas,
+    test_render_mrt,
     test_render_text,
     test_render_mesh,
     test_render_animated_mesh,

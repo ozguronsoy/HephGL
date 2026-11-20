@@ -74,6 +74,7 @@ where
                     width: 1,
                     height: 1,
                     depth_only: false,
+                    ..Default::default()
                 }),
                 Error::InvalidOperation(_)
             );

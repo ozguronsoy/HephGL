@@ -4,7 +4,9 @@ mod depth;
 
 use std::any::Any;
 
-use ash::vk::{CommandBuffer, Extent2D, Format, ImageAspectFlags, PipelineStageFlags};
+use ash::vk::{
+    CommandBuffer, Extent2D, Format, FormatFeatureFlags, ImageAspectFlags, PipelineStageFlags,
+};
 
 pub(super) use crate::renderers::vulkan::canvas::{
     color::VulkanColorCanvas, depth::VulkanDepthCanvas,
@@ -12,19 +14,20 @@ pub(super) use crate::renderers::vulkan::canvas::{
 use crate::{
     Error, Result,
     renderers::{
-        RendererCanvas, downcast_mut,
+        RendererCanvas, RendererResource, downcast_mut,
+        resources::TextureFormat,
         settings::Settings,
         vulkan::{
             VulkanRenderer, device::DeviceContext, rendering::VulkanRendering,
-            thread::GraphicsThreadContext,
+            resources::VulkanTexture, thread::GraphicsThreadContext,
         },
     },
 };
 
 /// Provides the operations that depend on the images of a canvas.
 pub(super) trait VulkanCanvas: RendererCanvas {
-    /// Returns the image of the canvas texture and the aspect of that image.
-    fn render_target(&self) -> (ash::vk::Image, ImageAspectFlags);
+    /// Returns the textures of the canvas and the aspect of their images.
+    fn render_target(&self) -> (&[VulkanTexture], ImageAspectFlags);
     /// Returns the number of array layers of the canvas images.
     fn layer_count(&self) -> u32;
     /// Checks whether the canvas can be rendered into with the current settings.
@@ -74,11 +77,15 @@ impl VulkanRenderer {
         canvas: &mut dyn VulkanCanvas,
         sampling_stages: PipelineStageFlags,
     ) -> Result<()> {
-        let render_target = canvas.render_target();
-        if thread_context.render_target == Some(render_target) {
+        let (textures, aspect_mask) = canvas.render_target();
+        if thread_context
+            .render_target_images
+            .iter()
+            .eq(textures.iter().map(|texture| &texture.image))
+        {
             return Ok(());
         }
-        if !canvas.texture().is_allocated() {
+        if textures.iter().any(|texture| !texture.is_allocated()) {
             return Err(Error::invalid_argument("Canvas is not allocated."));
         }
         if !canvas.is_compatible(settings, swapchain_format) {
@@ -86,17 +93,13 @@ impl VulkanRenderer {
                 "Canvas is incompatible with the current settings and must be recreated.",
             ));
         }
-        if let Some((previous_image, previous_aspect_mask)) = thread_context.render_target.take() {
-            Self::end_rendering(
-                device,
-                rendering,
-                thread_context.base.command_buffer,
-                previous_image,
-                previous_aspect_mask,
-                canvas.layer_count(),
-                sampling_stages,
-            )?;
-        }
+        Self::end_rendering(
+            device,
+            rendering,
+            thread_context,
+            canvas.layer_count(),
+            sampling_stages,
+        )?;
 
         let command_buffer = thread_context.base.command_buffer;
         canvas.begin_rendering(device, rendering, command_buffer, sampling_stages)?;
@@ -122,7 +125,10 @@ impl VulkanRenderer {
             device.cmd_set_scissor(command_buffer, 0, std::slice::from_ref(&scissor));
         }
 
-        thread_context.render_target = Some(render_target);
+        thread_context
+            .render_target_images
+            .extend(textures.iter().map(|texture| texture.image));
+        thread_context.render_target_aspect_mask = aspect_mask;
         thread_context.base.recorded = true;
         Ok(())
     }
@@ -136,19 +142,64 @@ impl VulkanRenderer {
         canvas: &dyn VulkanCanvas,
         sampling_stages: PipelineStageFlags,
     ) -> Result<()> {
-        if let Some((previous_image, previous_aspect_mask)) = thread_context.render_target.take() {
-            Self::end_rendering(
-                device,
-                rendering,
-                thread_context.base.command_buffer,
-                previous_image,
-                previous_aspect_mask,
-                canvas.layer_count(),
-                sampling_stages,
-            )?;
-        }
+        Self::end_rendering(
+            device,
+            rendering,
+            thread_context,
+            canvas.layer_count(),
+            sampling_stages,
+        )?;
         canvas.clear_new(device, thread_context.base.command_buffer, sampling_stages);
         thread_context.base.recorded = true;
         Ok(())
+    }
+
+    /// Replaces the display texture format in the texture formats of a canvas or a pipeline with
+    /// the swapchain format, and checks whether the current device supports them.
+    pub(super) fn resolve_texture_formats(
+        instance: &ash::Instance,
+        device_context: &DeviceContext,
+        texture_formats: &[Option<TextureFormat>],
+        required_features: FormatFeatureFlags,
+    ) -> Result<Vec<TextureFormat>> {
+        if texture_formats.is_empty() {
+            return Err(Error::invalid_argument(
+                "At least one texture format is required.",
+            ));
+        }
+        let max_color_attachments = unsafe {
+            instance
+                .get_physical_device_properties(device_context.physical_device)
+                .limits
+                .max_color_attachments
+        };
+        if texture_formats.len() > max_color_attachments as usize {
+            return Err(Error::InvalidArgument(format!(
+                "The number of texture formats cannot exceed {max_color_attachments}."
+            )));
+        }
+        texture_formats
+            .iter()
+            .map(|texture_format| {
+                let Some(texture_format) = *texture_format else {
+                    return TextureFormat::try_from(device_context.swapchain_context.format);
+                };
+                let format_properties = unsafe {
+                    instance.get_physical_device_format_properties(
+                        device_context.physical_device,
+                        texture_format.into(),
+                    )
+                };
+                if !format_properties
+                    .optimal_tiling_features
+                    .contains(required_features)
+                {
+                    return Err(Error::InvalidOperation(format!(
+                        "The device does not support rendering into `{texture_format:?}` textures."
+                    )));
+                }
+                Ok(texture_format)
+            })
+            .collect::<Result<Vec<_>>>()
     }
 }

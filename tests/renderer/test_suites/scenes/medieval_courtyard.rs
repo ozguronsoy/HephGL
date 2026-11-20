@@ -277,7 +277,7 @@ where
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions {
                 culling: CullingMode::Disabled,
-                ..pipeline_options
+                ..pipeline_options.clone()
             },
         ));
         let mut blended_pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
@@ -328,6 +328,7 @@ where
             width: SHADOW_MAP_SIZE,
             height: SHADOW_MAP_SIZE,
             depth_only: true,
+            ..Default::default()
         }));
 
         let floor_textures = ["diff", "rough", "nor_gl"].map(|map| {
@@ -646,7 +647,7 @@ where
                     ),
                     ResourceBinding::buffer(5, camera_buffer.as_ref(), 0, camera_buffer.size()),
                     ResourceBinding::buffer(6, scene_buffer.as_ref(), 0, scene_buffer.size()),
-                    ResourceBinding::texture(7, shadow_canvas.texture()),
+                    ResourceBinding::texture(7, shadow_canvas.textures().next().unwrap()),
                     ResourceBinding::sampler(8, shadow_sampler.as_ref()),
                 ];
                 heph_expect_success!(renderer.record_graphics_command(

@@ -1,24 +1,22 @@
 mod dynamic_rendering;
 mod render_pass_rendering;
 
-use std::collections::HashSet;
-
 use ash::vk::CommandBuffer;
 
 use crate::{
     Error, Result,
-    graphics_device::GraphicsDeviceFeature,
     renderers::{
         Renderer,
         settings::{GraphicsPipelineOptions, Settings},
         vulkan::{
             VulkanRenderer,
             canvas::{VulkanColorCanvas, VulkanDepthCanvas},
+            device::DeviceContext,
             pipeline::VulkanGraphicsPipeline,
             rendering::{
                 dynamic_rendering::DynamicRendering, render_pass_rendering::RenderPassRendering,
             },
-            swapchain::SwapchainContext,
+            thread::GraphicsThreadContext,
         },
     },
     shader::Shader,
@@ -27,21 +25,16 @@ use crate::{
 /// Provides rendering operations.
 pub(super) trait VulkanRendering {
     /// Creates the resources required for rendering.
-    fn new(
-        settings: &Settings,
-        device: &ash::Device,
-        swapchain_context: &SwapchainContext,
-    ) -> Result<Self>
+    fn new(settings: &Settings, device: &ash::Device) -> Result<Self>
     where
         Self: Sized;
     /// Creates a graphics pipeline using the provided shaders.
     fn create_graphics_pipeline(
         &self,
-        device: &ash::Device,
+        instance: &ash::Instance,
+        device_context: &DeviceContext,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
-        enabled_features: &HashSet<GraphicsDeviceFeature>,
-        max_tessellation_patch_size: u32,
     ) -> Result<VulkanGraphicsPipeline>;
     /// Destroys the graphics pipeline.
     fn destroy_graphics_pipeline(
@@ -97,13 +90,11 @@ impl VulkanRenderer {
             device_context.rendering = Some(Box::new(DynamicRendering::new(
                 &self.settings,
                 &device_context.logical_device,
-                &device_context.swapchain_context,
             )?));
         } else {
             device_context.rendering = Some(Box::new(RenderPassRendering::new(
                 &self.settings,
                 &device_context.logical_device,
-                &device_context.swapchain_context,
             )?));
         }
 
@@ -126,17 +117,20 @@ impl VulkanRenderer {
         Ok(())
     }
 
-    /// Ends rendering into the canvas that has the provided image as its texture, so the texture
-    /// can be sampled by shaders. The aspect of the image is depth if the canvas is depth-only.
+    /// Ends rendering into the canvas the thread context is rendering into, if there is one, so its
+    /// textures can be sampled by shaders.
     pub(super) fn end_rendering(
         device: &ash::Device,
         rendering: &mut dyn VulkanRendering,
-        command_buffer: CommandBuffer,
-        image: ash::vk::Image,
-        aspect_mask: ash::vk::ImageAspectFlags,
+        thread_context: &mut GraphicsThreadContext,
         layer_count: u32,
         sampling_stages: ash::vk::PipelineStageFlags,
     ) -> Result<()> {
+        if thread_context.render_target_images.is_empty() {
+            return Ok(());
+        }
+        let command_buffer = thread_context.base.command_buffer;
+        let aspect_mask = thread_context.render_target_aspect_mask;
         rendering.end(device, command_buffer)?;
         let (old_layout, src_access_mask, src_stage_mask) = match aspect_mask {
             ash::vk::ImageAspectFlags::DEPTH => (
@@ -151,21 +145,23 @@ impl VulkanRenderer {
                 ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
             ),
         };
-        Self::transition_image_layout(
-            device,
-            command_buffer,
-            image,
-            old_layout,
-            ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            src_access_mask,
-            ash::vk::AccessFlags::SHADER_READ,
-            src_stage_mask,
-            sampling_stages,
-            aspect_mask,
-            0,
-            1,
-            layer_count,
-        );
+        for image in thread_context.render_target_images.drain(..) {
+            Self::transition_image_layout(
+                device,
+                command_buffer,
+                image,
+                old_layout,
+                ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                src_access_mask,
+                ash::vk::AccessFlags::SHADER_READ,
+                src_stage_mask,
+                sampling_stages,
+                aspect_mask,
+                0,
+                1,
+                layer_count,
+            );
+        }
         Ok(())
     }
 }

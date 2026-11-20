@@ -39,7 +39,7 @@ impl DebugWriter for VulkanDebugWriter {
         } else if let Ok(pipeline) = downcast_ref::<VulkanGraphicsPipeline>(object) {
             name_info = name_info.object_handle(pipeline.pipeline);
         } else if let Ok(canvas) = downcast_ref::<VulkanColorCanvas>(object) {
-            name_info = name_info.object_handle(canvas.texture.image);
+            name_info = name_info.object_handle(canvas.textures[0].image);
         } else if let Ok(canvas) = downcast_ref::<VulkanDepthCanvas>(object) {
             name_info = name_info.object_handle(canvas.texture.image);
         } else {

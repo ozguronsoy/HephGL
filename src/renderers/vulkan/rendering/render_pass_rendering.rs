@@ -1,10 +1,10 @@
-use std::{collections::HashSet, ffi::CString, mem::DropGuard};
+use std::{ffi::CString, mem::DropGuard};
 
 use ash::vk::{
     AttachmentDescription, AttachmentLoadOp, AttachmentReference, AttachmentStoreOp, CommandBuffer,
     DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType, DynamicState,
-    FramebufferCreateInfo, GraphicsPipelineCreateInfo, PipelineBindPoint, PipelineCache,
-    PipelineColorBlendStateCreateInfo, PipelineDepthStencilStateCreateInfo,
+    FormatFeatureFlags, FramebufferCreateInfo, GraphicsPipelineCreateInfo, PipelineBindPoint,
+    PipelineCache, PipelineColorBlendStateCreateInfo, PipelineDepthStencilStateCreateInfo,
     PipelineDynamicStateCreateInfo, PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
     PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
     PipelineShaderStageCreateInfo, PipelineTessellationStateCreateInfo,
@@ -18,14 +18,15 @@ use crate::{
     Error, Result,
     graphics_device::GraphicsDeviceFeature,
     renderers::{
-        RendererCanvas,
-        settings::{GraphicsPipelineOptions, Msaa, PolygonMode, Settings},
+        RendererCanvas, TextureFormat,
+        settings::{ColorBlending, GraphicsPipelineOptions, Msaa, PolygonMode, Settings},
         vulkan::{
+            VulkanRenderer,
             canvas::{VulkanColorCanvas, VulkanDepthCanvas},
+            device::DeviceContext,
             pipeline::VulkanGraphicsPipeline,
             rendering::VulkanRendering,
             resources::DescriptorSetCache,
-            swapchain::SwapchainContext,
         },
     },
     shader::{ScalarKind, Shader, ShaderPrimitive, ShaderStage},
@@ -33,47 +34,28 @@ use crate::{
 
 /// Implements rendering via render pass.
 pub(super) struct RenderPassRendering {
-    /// Used for `VulkanColorCanvas`.
-    render_pass: RenderPass,
-    /// Used for `VulkanDepthCanvas`.
-    depth_render_pass: RenderPass,
     msaa: Msaa,
 }
 
 impl VulkanRendering for RenderPassRendering {
-    fn new(
-        settings: &Settings,
-        device: &ash::Device,
-        swapchain_context: &SwapchainContext,
-    ) -> Result<Self>
+    fn new(settings: &Settings, _: &ash::Device) -> Result<Self>
     where
         Self: Sized,
     {
-        let render_pass =
-            Self::create_render_pass(device, swapchain_context.format, settings.msaa.into())?;
-        let depth_render_pass = match Self::create_depth_render_pass(device) {
-            Ok(depth_render_pass) => depth_render_pass,
-            Err(error) => {
-                unsafe {
-                    device.destroy_render_pass(render_pass, None);
-                }
-                return Err(error);
-            }
-        };
         Ok(Self {
-            render_pass,
-            depth_render_pass,
             msaa: settings.msaa,
         })
     }
     fn create_graphics_pipeline(
         &self,
-        device: &ash::Device,
+        instance: &ash::Instance,
+        device_context: &DeviceContext,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
-        enabled_features: &HashSet<GraphicsDeviceFeature>,
-        max_tessellation_patch_size: u32,
     ) -> Result<VulkanGraphicsPipeline> {
+        let device = &device_context.logical_device;
+        let enabled_features = &device_context.enabled_features;
+        let max_tessellation_patch_size = device_context.max_tessellation_patch_size;
         if options.polygon_mode != PolygonMode::Fill
             && !enabled_features.contains(&GraphicsDeviceFeature::WireframeMode)
         {
@@ -114,6 +96,21 @@ impl VulkanRendering for RenderPassRendering {
                 "Depth bias clamping requires the `DepthBiasClamp` feature to be enabled.",
             ));
         }
+        let color_formats = match options.depth_only {
+            true => Vec::new(),
+            false => VulkanRenderer::resolve_texture_formats(
+                instance,
+                device_context,
+                &options.texture_formats,
+                match options.blending {
+                    ColorBlending::Disabled => FormatFeatureFlags::COLOR_ATTACHMENT,
+                    _ => {
+                        FormatFeatureFlags::COLOR_ATTACHMENT
+                            | FormatFeatureFlags::COLOR_ATTACHMENT_BLEND
+                    }
+                },
+            )?,
+        };
 
         // Create shader stage infos.
         let mut shader_modules =
@@ -374,11 +371,13 @@ impl VulkanRendering for RenderPassRendering {
             .depth_compare_op(ash::vk::CompareOp::LESS)
             .depth_bounds_test_enable(false)
             .stencil_test_enable(false);
-        let color_blend_attachment = options.blending.into();
-        let mut color_blend = PipelineColorBlendStateCreateInfo::default();
-        if !options.depth_only {
-            color_blend = color_blend.attachments(std::slice::from_ref(&color_blend_attachment));
-        }
+        let color_blend_attachments =
+            vec![
+                ash::vk::PipelineColorBlendAttachmentState::from(options.blending);
+                color_formats.len()
+            ];
+        let color_blend =
+            PipelineColorBlendStateCreateInfo::default().attachments(&color_blend_attachments);
         let dynamic_states = [DynamicState::VIEWPORT, DynamicState::SCISSOR];
         let dynamic_state =
             PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
@@ -388,6 +387,17 @@ impl VulkanRendering for RenderPassRendering {
             ),
             _ => None,
         };
+        // The render pass only describes the canvases the pipeline is compatible with, thus it can
+        // be destroyed once the pipeline is created.
+        let render_pass = DropGuard::new(
+            match options.depth_only {
+                true => Self::create_depth_render_pass(device)?,
+                false => Self::create_render_pass(device, &color_formats, self.msaa.into())?,
+            },
+            |render_pass| unsafe {
+                device.destroy_render_pass(render_pass, None);
+            },
+        );
         let mut pipeline_info = GraphicsPipelineCreateInfo::default()
             .stages(&stage_infos)
             .vertex_input_state(&vertex_input)
@@ -399,10 +409,7 @@ impl VulkanRendering for RenderPassRendering {
             .color_blend_state(&color_blend)
             .dynamic_state(&dynamic_state)
             .layout(*pipeline_layout)
-            .render_pass(match options.depth_only {
-                true => self.depth_render_pass,
-                false => self.render_pass,
-            })
+            .render_pass(*render_pass)
             .subpass(0);
         if let Some(tessellation_state) = &tessellation_state {
             pipeline_info = pipeline_info.tessellation_state(tessellation_state);
@@ -417,6 +424,7 @@ impl VulkanRendering for RenderPassRendering {
             descriptor_binding_counts,
             descriptor_set_cache: DescriptorSetCache::new(),
             depth_only: options.depth_only,
+            color_formats,
         })
     }
     fn destroy_graphics_pipeline(
@@ -442,24 +450,32 @@ impl VulkanRendering for RenderPassRendering {
         device: &ash::Device,
         canvas: &mut VulkanColorCanvas,
     ) -> Result<()> {
-        canvas.render_pass = Self::create_render_pass(
-            device,
-            canvas.texture.texture_options.format.into(),
-            canvas.msaa.into(),
-        )?;
-        let views: &[ash::vk::ImageView] = match &canvas.msaa_color_image {
-            None => &[canvas.texture.image_view, canvas.depth_image.view],
-            Some(msaa_color_image) => &[
-                msaa_color_image.view,
-                canvas.depth_image.view,
-                canvas.texture.image_view,
-            ],
+        let color_formats = canvas
+            .textures
+            .iter()
+            .map(|texture| texture.texture_options.format)
+            .collect::<Vec<_>>();
+        canvas.render_pass = Self::create_render_pass(device, &color_formats, canvas.msaa.into())?;
+        let views = match canvas.msaa_color_images.is_empty() {
+            true => canvas
+                .textures
+                .iter()
+                .map(|texture| texture.image_view)
+                .chain([canvas.depth_image.view])
+                .collect::<Vec<_>>(),
+            false => canvas
+                .msaa_color_images
+                .iter()
+                .map(|msaa_color_image| msaa_color_image.view)
+                .chain([canvas.depth_image.view])
+                .chain(canvas.textures.iter().map(|texture| texture.image_view))
+                .collect::<Vec<_>>(),
         };
         canvas.framebuffer = unsafe {
             device.create_framebuffer(
                 &FramebufferCreateInfo::default()
                     .render_pass(canvas.render_pass)
-                    .attachments(views)
+                    .attachments(&views)
                     .width(canvas.width())
                     .height(canvas.height())
                     .layers(canvas.layer_count),
@@ -535,33 +551,34 @@ impl VulkanRendering for RenderPassRendering {
         }
         Ok(())
     }
-    fn destroy(&mut self, device: &ash::Device) -> Result<()> {
-        unsafe {
-            device.destroy_render_pass(self.render_pass, None);
-            device.destroy_render_pass(self.depth_render_pass, None);
-        }
+    fn destroy(&mut self, _: &ash::Device) -> Result<()> {
         Ok(())
     }
 }
 
 impl RenderPassRendering {
-    /// Creates a render pass that renders into a canvas. The color and depth are loaded so the
+    /// Creates a render pass that renders into a canvas. The colors and depth are loaded so the
     /// canvas keeps its content between render passes. Render passes created with the same color
-    /// format and sample count are compatible with each other.
+    /// formats and sample count are compatible with each other.
     fn create_render_pass(
         device: &ash::Device,
-        color_format: ash::vk::Format,
+        color_formats: &[TextureFormat],
         sample_count: SampleCountFlags,
     ) -> Result<RenderPass> {
-        let color_attachment = AttachmentDescription::default()
-            .format(color_format)
-            .samples(sample_count)
-            .load_op(AttachmentLoadOp::LOAD)
-            .store_op(AttachmentStoreOp::STORE)
-            .stencil_load_op(AttachmentLoadOp::DONT_CARE)
-            .stencil_store_op(AttachmentStoreOp::DONT_CARE)
-            .initial_layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .final_layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
+        let color_attachments = color_formats
+            .iter()
+            .map(|color_format| {
+                AttachmentDescription::default()
+                    .format((*color_format).into())
+                    .samples(sample_count)
+                    .load_op(AttachmentLoadOp::LOAD)
+                    .store_op(AttachmentStoreOp::STORE)
+                    .stencil_load_op(AttachmentLoadOp::DONT_CARE)
+                    .stencil_store_op(AttachmentStoreOp::DONT_CARE)
+                    .initial_layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                    .final_layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            })
+            .collect::<Vec<_>>();
         let depth_attachment = AttachmentDescription::default()
             .format(ash::vk::Format::D32_SFLOAT)
             .samples(sample_count)
@@ -571,32 +588,42 @@ impl RenderPassRendering {
             .stencil_store_op(AttachmentStoreOp::DONT_CARE)
             .initial_layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
             .final_layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-        let resolve_attachment = color_attachment
-            .samples(SampleCountFlags::TYPE_1)
-            .load_op(AttachmentLoadOp::DONT_CARE);
-        let color_reference = [AttachmentReference::default()
-            .attachment(0)
-            .layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)];
+        let color_count = color_formats.len() as u32;
+        let color_references = (0..color_count)
+            .map(|index| {
+                AttachmentReference::default()
+                    .attachment(index)
+                    .layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            })
+            .collect::<Vec<_>>();
         let depth_reference = AttachmentReference::default()
-            .attachment(1)
+            .attachment(color_count)
             .layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-        let resolve_reference = [AttachmentReference::default()
-            .attachment(2)
-            .layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)];
+        let resolve_references = (0..color_count)
+            .map(|index| {
+                AttachmentReference::default()
+                    .attachment(color_count + 1 + index)
+                    .layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            })
+            .collect::<Vec<_>>();
         let mut subpass = SubpassDescription::default()
             .pipeline_bind_point(PipelineBindPoint::GRAPHICS)
-            .color_attachments(&color_reference)
+            .color_attachments(&color_references)
             .depth_stencil_attachment(&depth_reference);
-        let attachments: &[AttachmentDescription] = if sample_count == SampleCountFlags::TYPE_1 {
-            &[color_attachment, depth_attachment]
-        } else {
-            subpass = subpass.resolve_attachments(&resolve_reference);
-            &[color_attachment, depth_attachment, resolve_attachment]
-        };
+        let mut attachments = color_attachments.clone();
+        attachments.push(depth_attachment);
+        if sample_count != SampleCountFlags::TYPE_1 {
+            subpass = subpass.resolve_attachments(&resolve_references);
+            attachments.extend(color_attachments.iter().map(|color_attachment| {
+                color_attachment
+                    .samples(SampleCountFlags::TYPE_1)
+                    .load_op(AttachmentLoadOp::DONT_CARE)
+            }));
+        }
         unsafe {
             Ok(device.create_render_pass(
                 &RenderPassCreateInfo::default()
-                    .attachments(attachments)
+                    .attachments(&attachments)
                     .subpasses(std::slice::from_ref(&subpass)),
                 None,
             )?)

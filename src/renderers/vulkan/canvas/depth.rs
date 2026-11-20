@@ -37,26 +37,18 @@ pub struct VulkanDepthCanvas {
 impl RendererDebugObject for VulkanDepthCanvas {}
 
 impl RendererCanvas for VulkanDepthCanvas {
-    fn width(&self) -> u32 {
-        self.texture.width()
-    }
-
-    fn height(&self) -> u32 {
-        self.texture.height()
-    }
-
     fn options(&self) -> &CanvasOptions {
         &self.options
     }
 
-    fn texture(&self) -> &dyn RendererTexture {
-        &self.texture
+    fn textures(&self) -> Box<dyn Iterator<Item = &dyn RendererTexture> + '_> {
+        Box::new(std::iter::once(&self.texture as &dyn RendererTexture))
     }
 }
 
 impl VulkanCanvas for VulkanDepthCanvas {
-    fn render_target(&self) -> (ash::vk::Image, ImageAspectFlags) {
-        (self.texture.image, ImageAspectFlags::DEPTH)
+    fn render_target(&self) -> (&[VulkanTexture], ImageAspectFlags) {
+        (std::slice::from_ref(&self.texture), ImageAspectFlags::DEPTH)
     }
 
     fn layer_count(&self) -> u32 {
@@ -164,7 +156,7 @@ impl VulkanDepthCanvas {
         )?;
 
         let mut canvas = Self {
-            options: *options,
+            options: options.clone(),
             texture: VulkanTexture {
                 image: depth_image.image,
                 image_view: depth_image.view,

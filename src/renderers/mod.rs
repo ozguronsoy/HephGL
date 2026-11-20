@@ -27,6 +27,8 @@ pub const LATEST_API_VERSION: Option<crate::Version> = None;
 pub const DEFAULT_DEVICE: Option<&GraphicsDevice> = None;
 /// Represents the display as the render target.
 pub const DISPLAY_CANVAS: Option<&mut dyn RendererCanvas> = None;
+/// Represents the texture format of the display target.
+pub const DISPLAY_TEXTURE_FORMAT: Option<TextureFormat> = None;
 
 /// The core interface for a graphics renderer.
 pub trait Renderer {
