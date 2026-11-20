@@ -22,35 +22,72 @@ use crate::{
 
 pub(super) struct VulkanDebugWriter {
     pub(super) device: ash::ext::debug_utils::Device,
+    pub(super) render_pass_rendering: bool,
 }
 
 impl DebugWriter for VulkanDebugWriter {
     fn set_object_name(&self, object: &dyn RendererDebugObject, name: &str) -> Result<()> {
         let name = CString::new(name)?;
-        let mut name_info = ash::vk::DebugUtilsObjectNameInfoEXT::default().object_name(&name);
+        fn set<T: ash::vk::Handle + Copy>(
+            device: &ash::ext::debug_utils::Device,
+            name: &CStr,
+            handle: T,
+        ) -> Result<()> {
+            if handle.is_null() {
+                return Err(Error::invalid_argument("Provided object is destroyed."));
+            }
+            let name_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
+                .object_name(name)
+                .object_handle(handle);
+            unsafe { device.set_debug_utils_object_name(&name_info)? };
+            Ok(())
+        }
         if let Ok(buffer) = downcast_ref::<VulkanBuffer>(object) {
-            name_info = name_info.object_handle(buffer.buffer);
+            set(&self.device, &name, buffer.buffer)?;
         } else if let Ok(texture) = downcast_ref::<VulkanTexture>(object) {
-            name_info = name_info.object_handle(texture.image);
+            set(&self.device, &name, texture.image)?;
+            set(&self.device, &name, texture.image_view)?;
         } else if let Ok(sampler) = downcast_ref::<VulkanSampler>(object) {
-            name_info = name_info.object_handle(sampler.sampler);
+            set(&self.device, &name, sampler.sampler)?;
         } else if let Ok(pipeline) = downcast_ref::<VulkanComputePipeline>(object) {
-            name_info = name_info.object_handle(pipeline.pipeline);
+            set(&self.device, &name, pipeline.pipeline)?;
+            set(&self.device, &name, pipeline.layout)?;
+            for descriptor_set_layout in &pipeline.descriptor_layouts {
+                set(&self.device, &name, *descriptor_set_layout)?;
+            }
         } else if let Ok(pipeline) = downcast_ref::<VulkanGraphicsPipeline>(object) {
-            name_info = name_info.object_handle(pipeline.pipeline);
+            set(&self.device, &name, pipeline.pipeline)?;
+            set(&self.device, &name, pipeline.layout)?;
+            for descriptor_set_layout in &pipeline.descriptor_layouts {
+                set(&self.device, &name, *descriptor_set_layout)?;
+            }
         } else if let Ok(canvas) = downcast_ref::<VulkanColorCanvas>(object) {
-            name_info = name_info.object_handle(canvas.textures[0].image);
+            if self.render_pass_rendering {
+                set(&self.device, &name, canvas.render_pass)?;
+                set(&self.device, &name, canvas.framebuffer)?;
+            }
+            for texture in &canvas.textures {
+                set(&self.device, &name, texture.image)?;
+                set(&self.device, &name, texture.image_view)?;
+            }
+            set(&self.device, &name, canvas.depth_image.image)?;
+            set(&self.device, &name, canvas.depth_image.view)?;
+            for msaa_image in &canvas.msaa_color_images {
+                set(&self.device, &name, msaa_image.image)?;
+                set(&self.device, &name, msaa_image.view)?;
+            }
         } else if let Ok(canvas) = downcast_ref::<VulkanDepthCanvas>(object) {
-            name_info = name_info.object_handle(canvas.texture.image);
+            if self.render_pass_rendering {
+                set(&self.device, &name, canvas.render_pass)?;
+                set(&self.device, &name, canvas.framebuffer)?;
+            }
+            set(&self.device, &name, canvas.texture.image)?;
+            set(&self.device, &name, canvas.texture.image_view)?;
         } else {
             return Err(Error::invalid_argument(
                 "Provided object is not a Vulkan debug object.",
             ));
         }
-        if name_info.object_handle == 0 {
-            return Err(Error::invalid_argument("Provided object is destroyed."));
-        }
-        unsafe { self.device.set_debug_utils_object_name(&name_info)? };
         Ok(())
     }
 }
@@ -67,6 +104,7 @@ impl VulkanRenderer {
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let _ = debugger.set_writer(Some(Box::new(VulkanDebugWriter {
             device: ash::ext::debug_utils::Device::new(instance, &device_context.logical_device),
+            render_pass_rendering: !device_context.supports_dynamic_rendering,
         })));
         Ok(())
     }
