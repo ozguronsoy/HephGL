@@ -27,7 +27,7 @@ pub(super) struct VulkanDebugWriter {
 
 impl DebugWriter for VulkanDebugWriter {
     fn set_object_name(&self, object: &dyn RendererDebugObject, name: &str) -> Result<()> {
-        let name = CString::new(name)?;
+        let c_name = CString::new(name)?;
         fn set<T: ash::vk::Handle + Copy>(
             device: &ash::ext::debug_utils::Device,
             name: &CStr,
@@ -43,46 +43,51 @@ impl DebugWriter for VulkanDebugWriter {
             Ok(())
         }
         if let Ok(buffer) = downcast_ref::<VulkanBuffer>(object) {
-            set(&self.device, &name, buffer.buffer)?;
+            set(&self.device, &c_name, buffer.buffer)?;
         } else if let Ok(texture) = downcast_ref::<VulkanTexture>(object) {
-            set(&self.device, &name, texture.image)?;
-            set(&self.device, &name, texture.image_view)?;
+            set(&self.device, &c_name, texture.image)?;
+            set(&self.device, &c_name, texture.image_view)?;
         } else if let Ok(sampler) = downcast_ref::<VulkanSampler>(object) {
-            set(&self.device, &name, sampler.sampler)?;
+            set(&self.device, &c_name, sampler.sampler)?;
         } else if let Ok(pipeline) = downcast_ref::<VulkanComputePipeline>(object) {
-            set(&self.device, &name, pipeline.pipeline)?;
-            set(&self.device, &name, pipeline.layout)?;
-            for descriptor_set_layout in &pipeline.descriptor_layouts {
-                set(&self.device, &name, *descriptor_set_layout)?;
+            set(&self.device, &c_name, pipeline.pipeline)?;
+            set(&self.device, &c_name, pipeline.layout)?;
+            for (index, descriptor_set_layout) in pipeline.descriptor_layouts.iter().enumerate() {
+                let group_name = CString::new(format!("{} [group {}]", name, index))?;
+                set(&self.device, &group_name, *descriptor_set_layout)?;
             }
         } else if let Ok(pipeline) = downcast_ref::<VulkanGraphicsPipeline>(object) {
-            set(&self.device, &name, pipeline.pipeline)?;
-            set(&self.device, &name, pipeline.layout)?;
-            for descriptor_set_layout in &pipeline.descriptor_layouts {
-                set(&self.device, &name, *descriptor_set_layout)?;
+            set(&self.device, &c_name, pipeline.pipeline)?;
+            set(&self.device, &c_name, pipeline.layout)?;
+            for (index, descriptor_set_layout) in pipeline.descriptor_layouts.iter().enumerate() {
+                let group_name = CString::new(format!("{} [group {}]", name, index))?;
+                set(&self.device, &group_name, *descriptor_set_layout)?;
             }
         } else if let Ok(canvas) = downcast_ref::<VulkanColorCanvas>(object) {
             if self.render_pass_rendering {
-                set(&self.device, &name, canvas.render_pass)?;
-                set(&self.device, &name, canvas.framebuffer)?;
+                set(&self.device, &c_name, canvas.render_pass)?;
+                set(&self.device, &c_name, canvas.framebuffer)?;
             }
-            for texture in &canvas.textures {
-                set(&self.device, &name, texture.image)?;
-                set(&self.device, &name, texture.image_view)?;
+            for (index, texture) in canvas.textures.iter().enumerate() {
+                let texture_name = CString::new(format!("{} [texture {}]", name, index))?;
+                set(&self.device, &texture_name, texture.image)?;
+                set(&self.device, &texture_name, texture.image_view)?;
             }
-            set(&self.device, &name, canvas.depth_image.image)?;
-            set(&self.device, &name, canvas.depth_image.view)?;
-            for msaa_image in &canvas.msaa_color_images {
-                set(&self.device, &name, msaa_image.image)?;
-                set(&self.device, &name, msaa_image.view)?;
+            let depth_name = CString::new(format!("{} [depth]", name))?;
+            set(&self.device, &depth_name, canvas.depth_image.image)?;
+            set(&self.device, &depth_name, canvas.depth_image.view)?;
+            for (index, msaa_image) in canvas.msaa_color_images.iter().enumerate() {
+                let msaa_name = CString::new(format!("{} [msaa {}]", name, index))?;
+                set(&self.device, &msaa_name, msaa_image.image)?;
+                set(&self.device, &msaa_name, msaa_image.view)?;
             }
         } else if let Ok(canvas) = downcast_ref::<VulkanDepthCanvas>(object) {
             if self.render_pass_rendering {
-                set(&self.device, &name, canvas.render_pass)?;
-                set(&self.device, &name, canvas.framebuffer)?;
+                set(&self.device, &c_name, canvas.render_pass)?;
+                set(&self.device, &c_name, canvas.framebuffer)?;
             }
-            set(&self.device, &name, canvas.texture.image)?;
-            set(&self.device, &name, canvas.texture.image_view)?;
+            set(&self.device, &c_name, canvas.texture.image)?;
+            set(&self.device, &c_name, canvas.texture.image_view)?;
         } else {
             return Err(Error::invalid_argument(
                 "Provided object is not a Vulkan debug object.",
