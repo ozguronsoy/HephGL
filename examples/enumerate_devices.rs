@@ -10,7 +10,7 @@ fn example(
 ) {
     let devices = renderer.enumerate_devices().unwrap();
     for device in &devices {
-        println!("{}", device);
+        println!("{device}");
     }
 
     std::process::exit(0);

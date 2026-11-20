@@ -148,8 +148,7 @@ impl VulkanRenderer {
     pub(super) fn initialize_thread(&mut self) -> Result<()> {
         if let Ok(current_thread_index) = Self::thread_context_index() {
             return Err(Error::InvalidOperation(format!(
-                "Current thread ({}) already has a worker.",
-                current_thread_index
+                "Current thread ({current_thread_index}) already has a worker."
             )));
         }
 

@@ -154,8 +154,7 @@ impl VulkanRenderer {
         };
         if requested_image_count < frames_in_flight {
             return Err(Error::Fail(format!(
-                "Failed to create `{}` amount of frames.",
-                frames_in_flight
+                "Failed to create `{frames_in_flight}` amount of frames."
             )));
         }
         if !device_context

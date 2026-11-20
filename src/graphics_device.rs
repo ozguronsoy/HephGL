@@ -203,13 +203,13 @@ impl Display for GraphicsDevice {
         if !self.supported_msaa_levels.is_empty() {
             writeln!(f, "    Supported MSAA Levels:")?;
             for msaa in &self.supported_msaa_levels {
-                writeln!(f, "     - {:?}", msaa)?;
+                writeln!(f, "     - {msaa:?}")?;
             }
         }
         if !self.supported_features.is_empty() {
             writeln!(f, "    Supported Features:")?;
             for feature in &self.supported_features {
-                writeln!(f, "     - {:?}", feature)?;
+                writeln!(f, "     - {feature:?}")?;
             }
         }
         Ok(())

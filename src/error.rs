@@ -26,7 +26,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -82,7 +82,7 @@ mod tests {
     #[test]
     fn test_error_display() {
         let err = Error::invalid_argument("hello");
-        assert_eq!(err.to_string(), format!("{:?}", err));
+        assert_eq!(err.to_string(), format!("{err:?}"));
     }
 
     #[test]

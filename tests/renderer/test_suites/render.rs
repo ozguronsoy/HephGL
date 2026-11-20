@@ -75,12 +75,10 @@ where
         {
             for (vertex_shader_name, frag_shader_name, topology, draw_count) in shader_infos {
                 let vertex_shader = heph_expect_success!(Shader::from_file(format!(
-                    "{}/shapes/{}_vert.spv",
-                    SHADERS_DIR, vertex_shader_name
+                    "{SHADERS_DIR}/shapes/{vertex_shader_name}_vert.spv"
                 )));
                 let frag_shader = heph_expect_success!(Shader::from_file(format!(
-                    "{}/shapes/{}_frag.spv",
-                    SHADERS_DIR, frag_shader_name
+                    "{SHADERS_DIR}/shapes/{frag_shader_name}_frag.spv"
                 )));
                 pipelines.push((
                     heph_expect_success!(renderer.create_graphics_pipeline(
@@ -470,21 +468,19 @@ where
     pub(crate) fn test_render_canvas(&self) {
         type Vertex = [f32; 4];
 
-        let create_pipeline =
-            |renderer: &mut TestRenderer, vertex_shader: &str, fragment_shader: &str| {
-                let vert_shader = heph_expect_success!(Shader::from_file(format!(
-                    "{}/{}",
-                    SHADERS_DIR, vertex_shader
-                )));
-                let frag_shader = heph_expect_success!(Shader::from_file(format!(
-                    "{}/{}",
-                    SHADERS_DIR, fragment_shader
-                )));
-                heph_expect_success!(renderer.create_graphics_pipeline(
-                    &[&vert_shader, &frag_shader],
-                    &GraphicsPipelineOptions::default(),
-                ))
-            };
+        let create_pipeline = |renderer: &mut TestRenderer,
+                               vertex_shader: &str,
+                               fragment_shader: &str| {
+            let vert_shader =
+                heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/{vertex_shader}")));
+            let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                "{SHADERS_DIR}/{fragment_shader}"
+            )));
+            heph_expect_success!(renderer.create_graphics_pipeline(
+                &[&vert_shader, &frag_shader],
+                &GraphicsPipelineOptions::default(),
+            ))
+        };
         let quad_vertices =
             |min: [f32; 2], max: [f32; 2], mirror_x: bool, mirror_y: bool| -> [Vertex; 6] {
                 let (left_u, right_u) = if mirror_x { (1.0, 0.0) } else { (0.0, 1.0) };
@@ -608,12 +604,10 @@ where
              fragment_shader: &str,
              texture_formats: &[Option<TextureFormat>]| {
                 let vert_shader = heph_expect_success!(Shader::from_file(format!(
-                    "{}/{}",
-                    SHADERS_DIR, vertex_shader
+                    "{SHADERS_DIR}/{vertex_shader}"
                 )));
                 let frag_shader = heph_expect_success!(Shader::from_file(format!(
-                    "{}/{}",
-                    SHADERS_DIR, fragment_shader
+                    "{SHADERS_DIR}/{fragment_shader}"
                 )));
                 heph_expect_success!(renderer.create_graphics_pipeline(
                     &[&vert_shader, &frag_shader],
@@ -757,13 +751,10 @@ where
                                vertex_shader: &str,
                                fragment_shader: &str,
                                options: &GraphicsPipelineOptions| {
-            let vert_shader = heph_expect_success!(Shader::from_file(format!(
-                "{}/{}",
-                SHADERS_DIR, vertex_shader
-            )));
+            let vert_shader =
+                heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/{vertex_shader}")));
             let frag_shader = heph_expect_success!(Shader::from_file(format!(
-                "{}/{}",
-                SHADERS_DIR, fragment_shader
+                "{SHADERS_DIR}/{fragment_shader}"
             )));
             heph_expect_success!(
                 renderer.create_graphics_pipeline(&[&vert_shader, &frag_shader], options)
@@ -2083,13 +2074,10 @@ where
                                vertex_shader: &str,
                                fragment_shader: &str,
                                options: &GraphicsPipelineOptions| {
-            let vert_shader = heph_expect_success!(Shader::from_file(format!(
-                "{}/{}",
-                SHADERS_DIR, vertex_shader
-            )));
+            let vert_shader =
+                heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/{vertex_shader}")));
             let frag_shader = heph_expect_success!(Shader::from_file(format!(
-                "{}/{}",
-                SHADERS_DIR, fragment_shader
+                "{SHADERS_DIR}/{fragment_shader}"
             )));
             heph_expect_success!(
                 renderer.create_graphics_pipeline(&[&vert_shader, &frag_shader], options)

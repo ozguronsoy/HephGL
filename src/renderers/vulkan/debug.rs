@@ -53,14 +53,14 @@ impl DebugWriter for VulkanDebugWriter {
             set(&self.device, &c_name, pipeline.pipeline)?;
             set(&self.device, &c_name, pipeline.layout)?;
             for (index, descriptor_set_layout) in pipeline.descriptor_layouts.iter().enumerate() {
-                let group_name = CString::new(format!("{} [group {}]", name, index))?;
+                let group_name = CString::new(format!("{name} [group {index}]"))?;
                 set(&self.device, &group_name, *descriptor_set_layout)?;
             }
         } else if let Ok(pipeline) = downcast_ref::<VulkanGraphicsPipeline>(object) {
             set(&self.device, &c_name, pipeline.pipeline)?;
             set(&self.device, &c_name, pipeline.layout)?;
             for (index, descriptor_set_layout) in pipeline.descriptor_layouts.iter().enumerate() {
-                let group_name = CString::new(format!("{} [group {}]", name, index))?;
+                let group_name = CString::new(format!("{name} [group {index}]"))?;
                 set(&self.device, &group_name, *descriptor_set_layout)?;
             }
         } else if let Ok(canvas) = downcast_ref::<VulkanColorCanvas>(object) {
@@ -69,15 +69,15 @@ impl DebugWriter for VulkanDebugWriter {
                 set(&self.device, &c_name, canvas.framebuffer)?;
             }
             for (index, texture) in canvas.textures.iter().enumerate() {
-                let texture_name = CString::new(format!("{} [texture {}]", name, index))?;
+                let texture_name = CString::new(format!("{name} [texture {index}]"))?;
                 set(&self.device, &texture_name, texture.image)?;
                 set(&self.device, &texture_name, texture.image_view)?;
             }
-            let depth_name = CString::new(format!("{} [depth]", name))?;
+            let depth_name = CString::new(format!("{name} [depth]"))?;
             set(&self.device, &depth_name, canvas.depth_image.image)?;
             set(&self.device, &depth_name, canvas.depth_image.view)?;
             for (index, msaa_image) in canvas.msaa_color_images.iter().enumerate() {
-                let msaa_name = CString::new(format!("{} [msaa {}]", name, index))?;
+                let msaa_name = CString::new(format!("{name} [msaa {index}]"))?;
                 set(&self.device, &msaa_name, msaa_image.image)?;
                 set(&self.device, &msaa_name, msaa_image.view)?;
             }

@@ -55,7 +55,7 @@ impl<T: Renderer> Drop for RendererWorker<T> {
     fn drop(&mut self) {
         let result = (self.uninitialize)(unsafe { &mut *(self.p_renderer as *mut T) });
         if let Err(e) = result {
-            eprintln!("Failed to uninitialze worker on drop: {}", e);
+            eprintln!("Failed to uninitialze worker on drop: {e}");
         }
     }
 }

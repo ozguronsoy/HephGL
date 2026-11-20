@@ -63,7 +63,7 @@ fn example(
         .iter()
         .filter(|l| matches!(l.severity(), Severity::Warning | Severity::Error))
     {
-        println!("{}", log);
+        println!("{log}");
     }
 
     std::process::exit(0);
