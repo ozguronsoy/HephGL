@@ -108,7 +108,7 @@ where
             .find(|d| d.device_type() == target_device_type);
         if target_device.is_none() {
             if target_device_type_required {
-                panic!("Invalid Test Env: No {:?} found.", target_device_type);
+                panic!("Invalid Test Env: No {target_device_type:?} found.");
             } else {
                 return None;
             }

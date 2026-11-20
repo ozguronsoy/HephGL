@@ -268,15 +268,13 @@ where
             let mut sampler =
                 heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
             let compute_shader =
-                heph_expect_success!(Shader::from_file(format!("{}/addition.spv", SHADERS_DIR)));
+                heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/addition.spv")));
             let mut compute_pipeline =
                 heph_expect_success!(renderer.create_compute_pipeline(&compute_shader));
             let frag_shader =
-                heph_expect_success!(Shader::from_file(format!("{}/mesh_frag.spv", SHADERS_DIR)));
-            let vert_shader = heph_expect_success!(Shader::from_file(format!(
-                "{}/camera_vert.spv",
-                SHADERS_DIR
-            )));
+                heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/mesh_frag.spv")));
+            let vert_shader =
+                heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/camera_vert.spv")));
             let mut graphics_pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
                 &[&frag_shader, &vert_shader],
                 &GraphicsPipelineOptions::default()
@@ -390,10 +388,8 @@ where
                 .supported_features()
                 .contains(&ComputeShaders);
             let mut compute_pipeline = if compute_supported {
-                let compute_shader = heph_expect_success!(Shader::from_file(format!(
-                    "{}/addition.spv",
-                    SHADERS_DIR
-                )));
+                let compute_shader =
+                    heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/addition.spv")));
                 Some(heph_expect_success!(
                     renderer.create_compute_pipeline(&compute_shader)
                 ))
@@ -599,7 +595,7 @@ where
 
         // For debugging in CI.
         for device in &devices {
-            println!("{}", device);
+            println!("{device}");
         }
     }
 

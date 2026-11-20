@@ -30,7 +30,7 @@ impl std::fmt::Display for VulkanGraphicsDeviceId {
                 if i == 4 || i == 6 || i == 8 || i == 10 {
                     write!(f, "-")?;
                 }
-                write!(f, "{:02x}", byte)?;
+                write!(f, "{byte:02x}")?;
             }
             Ok(())
         };

@@ -36,14 +36,12 @@ where
         let mut renderer =
             self.create_renderer_with_any_device(&[FeatureRequest::new(ComputeShaders, true)]);
         let compute_shader =
-            heph_expect_success!(Shader::from_file(format!("{}/addition.spv", SHADERS_DIR)));
+            heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/addition.spv")));
         let vertex_shader = heph_expect_success!(Shader::from_file(format!(
-            "{}/shapes/basic_triangle_vert.spv",
-            SHADERS_DIR
+            "{SHADERS_DIR}/shapes/basic_triangle_vert.spv"
         )));
         let fragment_shader = heph_expect_success!(Shader::from_file(format!(
-            "{}/shapes/basic_triangle_frag.spv",
-            SHADERS_DIR
+            "{SHADERS_DIR}/shapes/basic_triangle_frag.spv"
         )));
         let mut compute_pipeline =
             heph_expect_success!(renderer.create_compute_pipeline(&compute_shader));
@@ -128,12 +126,10 @@ where
                 ..Default::default()
             }));
             let vertex_shader = heph_expect_success!(Shader::from_file(format!(
-                "{}/shapes/basic_triangle_vert.spv",
-                SHADERS_DIR
+                "{SHADERS_DIR}/shapes/basic_triangle_vert.spv"
             )));
             let fragment_shader = heph_expect_success!(Shader::from_file(format!(
-                "{}/shapes/basic_triangle_frag.spv",
-                SHADERS_DIR
+                "{SHADERS_DIR}/shapes/basic_triangle_frag.spv"
             )));
             let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
                 &[&vertex_shader, &fragment_shader],
