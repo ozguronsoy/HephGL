@@ -64,7 +64,7 @@ unused_macros = "deny"
 unused_imports = "deny"
 unconditional_recursion = "deny"
 overflowing_literals = "deny"
-dead_code = "warn"
+dead_code = "deny"
 
 while_true = "deny"
 
