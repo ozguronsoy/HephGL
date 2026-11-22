@@ -9,11 +9,14 @@ mod mesh;
 pub mod renderers;
 mod shader;
 mod skeleton;
+#[cfg(feature = "text")]
 mod text;
 mod transform;
 mod version;
 
+#[cfg(feature = "text")]
+pub use crate::text::*;
 pub use crate::{
     animation::*, camera::*, error::*, graphics_device::*, light::*, material::*, mesh::*,
-    shader::*, skeleton::*, text::*, transform::*, version::*,
+    shader::*, skeleton::*, transform::*, version::*,
 };

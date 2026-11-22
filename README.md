@@ -74,8 +74,9 @@ during build.
 
 ### Environment Variables
 
-HephGL supports compile-time configuration through optional environment variables:
+HephGL supports configuration through optional environment variables:
 - `HEPHGL_RENDERER_MAX_CONCURRENT_THREADS=<usize>`: The maximum number of threads a renderer can concurrently run.
+- `HEPHGL_EXAMPLE_RENDERER=<backend_name>`: The renderer backend the examples use. Defaults to `vulkan`.
 
 ### Renderer
 
