@@ -1,4 +1,5 @@
 mod error;
+#[cfg(feature = "gltf")]
 mod gltf;
 mod part;
 mod primitive;
@@ -21,6 +22,7 @@ use crate::{
 
 /// Defines the supported file types for loading meshes.
 enum MeshFileType {
+    #[cfg(feature = "gltf")]
     Gltf,
 }
 
@@ -105,11 +107,13 @@ impl Mesh {
         }
 
         match Self::get_file_type(path)? {
+            #[cfg(feature = "gltf")]
             MeshFileType::Gltf => gltf::from_file(path),
         }
     }
 
     fn get_file_type(path: &Path) -> Result<MeshFileType> {
+        #[cfg(feature = "gltf")]
         if gltf::is_gltf_file(path)? {
             return Ok(MeshFileType::Gltf);
         }

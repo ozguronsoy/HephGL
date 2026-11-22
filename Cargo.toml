@@ -30,7 +30,7 @@ fontdue = { version = "0.9.4", optional = true }
 fontdb = { version = "0.24", optional = true }
 ttf-parser = { version = "0.25.1", optional = true }
 lyon_tessellation = { version = "1.0", optional = true }
-gltf = { version = "1.4.1", default-features = false, features = ["utils"] }
+gltf = { version = "1.4.1", default-features = false, features = ["utils"], optional = true }
 
 [dev-dependencies]
 bytemuck = "1.25.0"
@@ -51,10 +51,20 @@ directx = []
 metal = []
 opengl = []
 text = ["dep:fontdue", "dep:fontdb", "dep:ttf-parser", "dep:lyon_tessellation"]
+gltf = ["dep:gltf"]
 
 [[example]]
 name = "render_text"
 required-features = ["text"]
+[[example]]
+name = "render_mesh"
+required-features = ["gltf"]
+[[example]]
+name = "render_animated_mesh"
+required-features = ["gltf"]
+[[example]]
+name = "render_scene_medieval_courtyard"
+required-features = ["gltf"]
 
 [[test]]
 name = "vulkan"
