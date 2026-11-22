@@ -1,3 +1,5 @@
+#![cfg(feature = "vulkan")]
+
 use std::process::ExitCode;
 
 use heph_gl::{Version, renderers::vulkan::VulkanRenderer};

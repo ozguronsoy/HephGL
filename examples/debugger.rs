@@ -1,6 +1,5 @@
 use heph_gl::renderers::{
-    DEFAULT_DEVICE, DISPLAY_CANVAS, InitializeOptions, LATEST_API_VERSION, Renderer,
-    SamplerOptions,
+    DEFAULT_DEVICE, DISPLAY_CANVAS, InitializeOptions, LATEST_API_VERSION, SamplerOptions,
     debug::{Debugger, Severity},
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};

@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use heph_gl::{
     Shader,
     renderers::{
-        BufferUsage, CanvasOptions, DISPLAY_CANVAS, GraphicsPipelineOptions, Renderer,
+        BufferUsage, CanvasOptions, DISPLAY_CANVAS, GraphicsPipelineOptions,
         RendererGraphicsPipeline, ResourceBinding, SamplerOptions,
     },
 };

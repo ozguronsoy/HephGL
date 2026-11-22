@@ -6,6 +6,7 @@ mod resources;
 mod settings;
 mod thread_context;
 mod version;
+#[cfg(feature = "vulkan")]
 pub mod vulkan;
 
 use std::any::{Any, type_name};

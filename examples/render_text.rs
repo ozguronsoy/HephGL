@@ -7,8 +7,8 @@ use heph_gl::{
     math::{Mat4, Quat, Vec3},
     renderers::{
         BufferUsage, ColorBlending, DISPLAY_CANVAS, FeatureRequest, GraphicsPipelineOptions,
-        Renderer, RendererBuffer, RendererGraphicsPipeline, ResourceBinding, SamplerOptions,
-        TextureFormat, TextureOptions,
+        RendererBuffer, RendererGraphicsPipeline, ResourceBinding, SamplerOptions, TextureFormat,
+        TextureOptions,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
