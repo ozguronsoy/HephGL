@@ -1,3 +1,5 @@
+use std::sync::{Arc, Barrier};
+
 use heph_gl::{
     Error,
     GraphicsDeviceFeature::ComputeShaders,
@@ -212,6 +214,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         struct WorkerIndex {
             pipeline: Box<dyn RendererComputePipeline>,
             index: usize,
+            frame_barrier: Arc<Barrier>,
         }
         impl RendererTaskParam for WorkerIndex {}
 
@@ -227,9 +230,14 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
 
         fn begin_task(
             renderer: &mut dyn Renderer,
-            _: Option<&mut dyn RendererTaskParam>,
+            param: Option<&mut dyn RendererTaskParam>,
         ) -> Result<Option<Box<dyn RendererTaskParam>>> {
+            let param = param
+                .ok_or(Error::invalid_argument("Missing the worker index."))?
+                .downcast_ref::<WorkerIndex>()?;
+
             renderer.begin_frame()?;
+            let _ = param.frame_barrier.wait();
             Ok(None)
         }
 
@@ -296,6 +304,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let mut pipeline = heph_expect_success!(renderer.create_compute_pipeline(&shader));
         drop(shader);
 
+        let frame_barrier = Arc::new(Barrier::new(n_threads + 1));
         let mut workers = Vec::with_capacity(n_threads);
         for index in 0..n_threads {
             let mut worker = renderer.spawn_worker();
@@ -306,6 +315,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                         Some(Box::new(WorkerIndex {
                             pipeline: pipeline.clone(),
                             index,
+                            frame_barrier: frame_barrier.clone(),
                         })),
                         true,
                     )
@@ -315,7 +325,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         }
 
         heph_expect_success!(renderer.begin_frame());
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        let _ = frame_barrier.wait();
         heph_expect_success!(renderer.end_frame());
         heph_expect_success!(renderer.wait_idle());
 

@@ -91,14 +91,14 @@ impl RendererWorker for VulkanWorker {
             param
         }));
 
-        while !self.is_working() && thread_handle.as_ref().is_some_and(|th| !th.is_finished()) {
+        while !self.is_working() {
+            if let Some(error) = error.lock().unwrap_or_else(PoisonError::into_inner).take() {
+                return Err((
+                    error,
+                    thread_handle.and_then(|thread_handle| thread_handle.join().ok().flatten()),
+                ));
+            }
             std::thread::park();
-        }
-        if let Some(error) = error.lock().unwrap_or_else(PoisonError::into_inner).take() {
-            return Err((
-                error,
-                thread_handle.and_then(|thread_handle| thread_handle.join().ok().flatten()),
-            ));
         }
         self.thread_handle = thread_handle;
 

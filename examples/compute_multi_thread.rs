@@ -1,3 +1,5 @@
+use std::sync::{Arc, Barrier};
+
 use heph_gl::{
     Error,
     GraphicsDeviceFeature::ComputeShaders,
@@ -26,10 +28,12 @@ fn create_data(thread_index: usize) -> (Vec<f32>, Vec<f32>) {
 }
 
 // The initial param of each worker. Every worker gets its own clone of the pipeline, and its index
-// is used to create distinct data per worker.
+// is used to create distinct data per worker. The frame barrier makes sure every worker has begun
+// its frame before the main thread ends its own.
 struct WorkerIndex {
     pipeline: Box<dyn RendererComputePipeline>,
     index: usize,
+    frame_barrier: Arc<Barrier>,
 }
 impl RendererTaskParam for WorkerIndex {}
 
@@ -48,9 +52,14 @@ impl RendererTaskParam for AdditionResources {}
 // thread when it ends its frame. Returning `None` passes the current param to the next task.
 fn begin_task(
     renderer: &mut dyn Renderer,
-    _: Option<&mut dyn RendererTaskParam>,
+    param: Option<&mut dyn RendererTaskParam>,
 ) -> Result<Option<Box<dyn RendererTaskParam>>> {
+    let param = param
+        .ok_or(Error::invalid_argument("Missing the worker index."))?
+        .downcast_ref::<WorkerIndex>()?;
+
     renderer.begin_frame()?;
+    let _ = param.frame_barrier.wait();
     Ok(None)
 }
 
@@ -128,6 +137,7 @@ fn example(
     // its own clone of the pipeline and index as the initial param. Since we only need a single
     // addition per worker, the tasks are executed once. The workers keep their thread resources
     // alive until they are finished, so the main thread can still submit their commands.
+    let frame_barrier = Arc::new(Barrier::new(N_THREADS + 1));
     let mut workers = Vec::with_capacity(N_THREADS);
     for i in 0..N_THREADS {
         const WORK_ONCE: bool = true;
@@ -137,6 +147,7 @@ fn example(
             Some(Box::new(WorkerIndex {
                 pipeline: pipeline.clone(),
                 index: i,
+                frame_barrier: frame_barrier.clone(),
             })),
             WORK_ONCE,
         ) {
@@ -145,7 +156,10 @@ fn example(
         workers.push(worker);
     }
 
+    // Workers wait for the main thread to begin its frame before they begin their own. Wait until
+    // all of them have begun, so their commands are submitted when the main thread ends its frame.
     renderer.begin_frame().unwrap();
+    let _ = frame_barrier.wait();
     renderer.end_frame().unwrap();
 
     // Wait until the graphics device finishes processing.

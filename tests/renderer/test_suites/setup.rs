@@ -1,3 +1,5 @@
+use std::sync::{Arc, Barrier};
+
 use heph_gl::{
     Error,
     GraphicsDeviceFeature::{
@@ -137,6 +139,9 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         struct WorkerIndex(usize);
         impl RendererTaskParam for WorkerIndex {}
 
+        struct FrameBarrier(Arc<Barrier>);
+        impl RendererTaskParam for FrameBarrier {}
+
         struct WorkerCanvas {
             canvas: Box<dyn RendererCanvas>,
         }
@@ -158,9 +163,14 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
 
         fn canvas_task(
             renderer: &mut dyn Renderer,
-            _: Option<&mut dyn RendererTaskParam>,
+            param: Option<&mut dyn RendererTaskParam>,
         ) -> Result<Option<Box<dyn RendererTaskParam>>> {
+            let frame_barrier = heph_expect_success!(
+                heph_expect_success!(param.ok_or("Missing the frame barrier."))
+                    .downcast_ref::<FrameBarrier>()
+            );
             heph_expect_success!(renderer.begin_frame());
+            let _ = frame_barrier.0.wait();
             push_label(renderer, "Worker");
             let mut canvas = heph_expect_success!(renderer.create_canvas(&CanvasOptions {
                 width: 64,
@@ -522,18 +532,25 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
 
         {
             let mut renderer = create_renderer(&[]);
+            let frame_barrier = Arc::new(Barrier::new(THREAD_COUNT + 1));
             let mut workers = (0..THREAD_COUNT)
                 .map(|_| {
                     let mut worker = renderer.spawn_worker();
                     heph_expect_success!(
-                        worker.work(&[canvas_task], None, true).map_err(|(e, _)| e)
+                        worker
+                            .work(
+                                &[canvas_task],
+                                Some(Box::new(FrameBarrier(frame_barrier.clone()))),
+                                true,
+                            )
+                            .map_err(|(e, _)| e)
                     );
                     worker
                 })
                 .collect::<Vec<_>>();
 
             heph_expect_success!(renderer.begin_frame());
-            std::thread::sleep(std::time::Duration::from_millis(100));
+            let _ = frame_barrier.wait();
             push_label(&renderer, "Main");
             heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
             pop_label(&renderer);
