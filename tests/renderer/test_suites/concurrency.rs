@@ -1,13 +1,10 @@
-use std::{
-    sync::atomic::{AtomicUsize, Ordering},
-    time::Duration,
-};
+use std::{sync::mpsc::Sender, time::Duration};
 
 use heph_gl::{
-    Error,
+    Error, Result,
     renderers::{
-        InitializeOptions, LATEST_API_VERSION, Renderer, RendererHandle, RendererWorkerFactory,
-        Settings, debug::Debugger,
+        InitializeOptions, LATEST_API_VERSION, Renderer, RendererTaskParam, Settings,
+        debug::Debugger,
     },
 };
 
@@ -16,91 +13,33 @@ use crate::{
     renderer::RendererTests, renderer::test_suites::TEST_ENV, test_env,
 };
 
-impl<TestRenderer: Renderer> RendererTests<TestRenderer>
-where
-    RendererHandle<TestRenderer>: RendererWorkerFactory<TestRenderer>,
-{
+fn idle_task(
+    _: &mut dyn Renderer,
+    _: Option<&mut dyn RendererTaskParam>,
+) -> Result<Option<Box<dyn RendererTaskParam>>> {
+    Ok(None)
+}
+
+impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     pub(crate) fn test_calling_main_thread_only_fn_from_worker_thread(&self) {
-        {
-            let test_env = test_env!();
-            let mut renderer = TestRenderer::new();
-            heph_expect_success!(renderer.initialize(&InitializeOptions {
-                app_name: "",
-                window_handle: test_env.raw_window_handle(),
-                display_handle: test_env.raw_display_handle(),
-                api_version: self.api_version,
-                debug: true,
-            }));
-            heph_expect_success!(renderer.set_device(None, &[]));
-            let renderer_handle = RendererHandle::from(&mut renderer);
-            std::thread::scope(|s| {
-                let _ = s.spawn(move || {
-                    let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
-                    heph_expect_err!(
-                        renderer_worker
-                            .attach_debugger(Debugger::default())
-                            .map_err(|(e, _)| e),
-                        Error::InvalidOperation(_)
-                    );
-                    heph_expect_err!(
-                        renderer_worker.detach_debugger(),
-                        Error::InvalidOperation(_)
-                    );
-                });
-            });
-        }
-
-        {
-            let mut renderer = self.create_renderer_with_any_device(&[]);
-            let renderer_handle = RendererHandle::from(&mut renderer.renderer);
-            std::thread::scope(|s| {
-                let _ = s.spawn(move || {
-                    let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
-                    heph_expect_err!(
-                        renderer_worker.set_settings(Settings::default()),
-                        Error::InvalidOperation(_)
-                    );
-                    heph_expect_err!(
-                        renderer_worker.initialize(&InitializeOptions {
-                            app_name: "",
-                            window_handle: dummy_window_handle!(),
-                            display_handle: dummy_display_handle!(),
-                            api_version: LATEST_API_VERSION,
-                            debug: false,
-                        }),
-                        Error::InvalidOperation(_)
-                    );
-                    heph_expect_err!(renderer_worker.uninitialize(), Error::InvalidOperation(_));
-                    heph_expect_err!(
-                        renderer_worker.set_device(None, &[]),
-                        Error::InvalidOperation(_)
-                    );
-                    heph_expect_err!(renderer_worker.wait_idle(), Error::InvalidOperation(_));
-                });
-            });
-        }
-    }
-
-    pub(crate) fn test_calling_main_thread_only_fn_while_worker_active(&self) {
-        let mut renderer = self.create_renderer_with_any_device(&[]);
-        let renderer_handle = RendererHandle::from(&mut renderer.renderer);
-        std::thread::scope(|s| {
-            let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
-            let worker_barrier = barrier.clone();
-            let _ = s.spawn(move || {
-                let _renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
-                let _ = worker_barrier.wait();
-                let _ = worker_barrier.wait();
-            });
-
-            let _ = barrier.wait();
-            heph_expect_err!(renderer.detach_debugger(), Error::InvalidOperation(_));
+        fn debugger_task(
+            renderer: &mut dyn Renderer,
+            _: Option<&mut dyn RendererTaskParam>,
+        ) -> Result<Option<Box<dyn RendererTaskParam>>> {
             heph_expect_err!(
                 renderer
                     .attach_debugger(Debugger::default())
                     .map_err(|(e, _)| e),
                 Error::InvalidOperation(_)
             );
+            heph_expect_err!(renderer.detach_debugger(), Error::InvalidOperation(_));
+            Ok(None)
+        }
+
+        fn setup_task(
+            renderer: &mut dyn Renderer,
+            _: Option<&mut dyn RendererTaskParam>,
+        ) -> Result<Option<Box<dyn RendererTaskParam>>> {
             heph_expect_err!(
                 renderer.set_settings(Settings::default()),
                 Error::InvalidOperation(_)
@@ -117,9 +56,68 @@ where
             );
             heph_expect_err!(renderer.uninitialize(), Error::InvalidOperation(_));
             heph_expect_err!(renderer.set_device(None, &[]), Error::InvalidOperation(_));
-            heph_expect_success!(renderer.wait_idle());
-            let _ = barrier.wait();
-        });
+            heph_expect_err!(renderer.wait_idle(), Error::InvalidOperation(_));
+            Ok(None)
+        }
+
+        {
+            let test_env = test_env!();
+            let mut renderer = TestRenderer::new();
+            heph_expect_success!(renderer.initialize(&InitializeOptions {
+                app_name: "",
+                window_handle: test_env.raw_window_handle(),
+                display_handle: test_env.raw_display_handle(),
+                api_version: self.api_version,
+                debug: true,
+            }));
+            heph_expect_success!(renderer.set_device(None, &[]));
+            let mut worker = renderer.spawn_worker();
+            heph_expect_success!(
+                worker
+                    .work(&[debugger_task], None, true)
+                    .map_err(|(e, _)| e)
+            );
+            let _ = heph_expect_success!(worker.finish());
+        }
+
+        {
+            let mut renderer = self.create_renderer_with_any_device(&[]);
+            let mut worker = renderer.spawn_worker();
+            heph_expect_success!(worker.work(&[setup_task], None, true).map_err(|(e, _)| e));
+            let _ = heph_expect_success!(worker.finish());
+        }
+    }
+
+    pub(crate) fn test_calling_main_thread_only_fn_while_worker_active(&self) {
+        let mut renderer = self.create_renderer_with_any_device(&[]);
+        let mut worker = renderer.spawn_worker();
+        heph_expect_success!(worker.work(&[idle_task], None, true).map_err(|(e, _)| e));
+
+        heph_expect_err!(renderer.detach_debugger(), Error::InvalidOperation(_));
+        heph_expect_err!(
+            renderer
+                .attach_debugger(Debugger::default())
+                .map_err(|(e, _)| e),
+            Error::InvalidOperation(_)
+        );
+        heph_expect_err!(
+            renderer.set_settings(Settings::default()),
+            Error::InvalidOperation(_)
+        );
+        heph_expect_err!(
+            renderer.initialize(&InitializeOptions {
+                app_name: "",
+                window_handle: dummy_window_handle!(),
+                display_handle: dummy_display_handle!(),
+                api_version: LATEST_API_VERSION,
+                debug: false,
+            }),
+            Error::InvalidOperation(_)
+        );
+        heph_expect_err!(renderer.uninitialize(), Error::InvalidOperation(_));
+        heph_expect_err!(renderer.set_device(None, &[]), Error::InvalidOperation(_));
+        heph_expect_success!(renderer.wait_idle());
+        let _ = heph_expect_success!(worker.finish());
 
         let debugger = heph_expect_success!(renderer.detach_debugger());
         heph_expect_success!(renderer.attach_debugger(debugger).map_err(|(e, _)| e));
@@ -127,24 +125,30 @@ where
         heph_expect_success!(renderer.wait_idle());
     }
 
-    pub(crate) fn test_multiple_workers_per_thread(&self) {
+    pub(crate) fn test_reusing_worker(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[]);
-        let renderer_handle = RendererHandle::from(&mut renderer.renderer);
+        let mut worker = renderer.spawn_worker();
+        assert!(!worker.is_working());
+        heph_expect_err!(worker.finish(), Error::InvalidOperation(_));
+        heph_expect_err!(
+            worker.work(&[], None, true).map_err(|(e, _)| e),
+            Error::InvalidArgument(_)
+        );
 
-        std::thread::scope(|s| {
-            let _ = s.spawn(move || {
-                // We can spawn another worker after the first one is dropped.
-                let _ = heph_expect_success!(renderer_handle.spawn_worker());
-                let _ = heph_expect_success!(renderer_handle.spawn_worker());
-            });
-        });
+        heph_expect_success!(worker.work(&[idle_task], None, true).map_err(|(e, _)| e));
+        assert!(worker.is_working());
+        heph_expect_err!(
+            worker.work(&[idle_task], None, true).map_err(|(e, _)| e),
+            Error::InvalidOperation(_)
+        );
+        let _ = heph_expect_success!(worker.finish());
+        assert!(!worker.is_working());
 
-        std::thread::scope(|s| {
-            let _ = s.spawn(move || {
-                let _w1 = heph_expect_success!(renderer_handle.spawn_worker());
-                heph_expect_err!(renderer_handle.spawn_worker(), Error::InvalidOperation(_));
-            });
-        });
+        heph_expect_success!(worker.work(&[idle_task], None, false).map_err(|(e, _)| e));
+        assert!(worker.is_working());
+        let _ = heph_expect_success!(worker.finish());
+        assert!(!worker.is_working());
+        heph_expect_err!(worker.finish(), Error::InvalidOperation(_));
     }
 
     pub(crate) fn test_workers_begin_before_main(&self) {
@@ -152,52 +156,72 @@ where
         const N_FRAMES: usize = 25;
         const FRAMES_IN_FLIGHT: usize = 3;
 
-        let mut renderer = self.create_renderer_with_any_device(&[]);
-        let renderer_handle = RendererHandle::from(&mut renderer.renderer);
+        struct FrameSignal {
+            begin_tx: Sender<()>,
+        }
+        impl RendererTaskParam for FrameSignal {}
 
+        fn frames_task(
+            renderer: &mut dyn Renderer,
+            param: Option<&mut dyn RendererTaskParam>,
+        ) -> Result<Option<Box<dyn RendererTaskParam>>> {
+            let param = heph_expect_success!(
+                heph_expect_success!(param.ok_or("Missing the frame signal."))
+                    .downcast_ref::<FrameSignal>()
+            );
+            for _ in 0..N_FRAMES {
+                heph_expect_success!(renderer.begin_frame());
+                heph_expect_success!(param.begin_tx.send(()));
+                heph_expect_success!(renderer.end_frame());
+            }
+            Ok(None)
+        }
+
+        let mut renderer = self.create_renderer_with_any_device(&[]);
         heph_expect_success!(renderer.set_settings(Settings {
             frames_in_flight: FRAMES_IN_FLIGHT,
             ..Default::default()
         }));
 
-        std::thread::scope(|s| {
-            let (ready_tx, ready_rx) = std::sync::mpsc::channel();
-            let (begin_tx, begin_rx) = std::sync::mpsc::channel();
+        let (begin_tx, begin_rx) = std::sync::mpsc::channel();
+        let mut workers = (0..THREAD_COUNT)
+            .map(|_| {
+                let mut worker = renderer.spawn_worker();
+                heph_expect_success!(
+                    worker
+                        .work(
+                            &[frames_task],
+                            Some(Box::new(FrameSignal {
+                                begin_tx: begin_tx.clone(),
+                            })),
+                            true,
+                        )
+                        .map_err(|(e, _)| e)
+                );
+                worker
+            })
+            .collect::<Vec<_>>();
 
-            for _ in 0..THREAD_COUNT {
-                let ready_tx = ready_tx.clone();
-                let begin_tx = begin_tx.clone();
-                let _ = s.spawn(move || {
-                    let mut renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
-                    heph_expect_success!(ready_tx.send(()));
-                    for _ in 0..N_FRAMES {
-                        heph_expect_success!(renderer_worker.begin_frame());
-                        heph_expect_success!(begin_tx.send(()));
-                        heph_expect_success!(renderer_worker.end_frame());
-                    }
-                });
+        let mut early_begin_result = None;
+        for frame in 0..N_FRAMES {
+            if frame == 0 {
+                early_begin_result = begin_rx.recv_timeout(Duration::from_secs(1)).ok();
             }
+            heph_expect_success!(renderer.begin_frame());
+            for _ in usize::from(frame == 0 && early_begin_result.is_some())..THREAD_COUNT {
+                heph_expect_success!(begin_rx.recv_timeout(Duration::from_secs(1)));
+            }
+            heph_expect_success!(renderer.end_frame());
+        }
 
-            for _ in 0..THREAD_COUNT {
-                heph_expect_success!(ready_rx.recv_timeout(Duration::from_secs(1)));
-            }
-            let mut early_begin_result = None;
-            for frame in 0..N_FRAMES {
-                if frame == 0 {
-                    early_begin_result = begin_rx.recv_timeout(Duration::from_secs(1)).ok();
-                }
-                heph_expect_success!(renderer.begin_frame());
-                for _ in usize::from(frame == 0 && early_begin_result.is_some())..THREAD_COUNT {
-                    heph_expect_success!(begin_rx.recv_timeout(Duration::from_secs(1)));
-                }
-                heph_expect_success!(renderer.end_frame());
-            }
+        for worker in &mut workers {
+            let _ = heph_expect_success!(worker.finish());
+        }
 
-            assert!(
-                early_begin_result.is_none(),
-                "worker begin_frame returned before the main thread began its frame"
-            );
-        });
+        assert!(
+            early_begin_result.is_none(),
+            "worker begin_frame returned before the main thread began its frame"
+        );
     }
 
     pub(crate) fn test_excess_threads(&self) {
@@ -205,28 +229,23 @@ where
         let thread_count = heph_gl::renderers::max_concurrent_threads() + 1;
 
         let mut renderer = self.create_renderer_with_any_device(&[]);
-        let renderer_handle = RendererHandle::from(&mut renderer.renderer);
-        let fail_count = AtomicUsize::new(0);
-        std::thread::scope(|s| {
-            let barrier = std::sync::Arc::new(std::sync::Barrier::new(thread_count));
-            for _ in 1..thread_count {
-                let barrier = barrier.clone();
-                let fail_count_ref = &fail_count;
-                let _ = s.spawn(move || {
-                    let result = renderer_handle.spawn_worker();
-                    if let Err(e) = result {
-                        if matches!(e, Error::Fail(_)) {
-                            let _ = fail_count_ref.fetch_add(1, Ordering::Relaxed);
-                        }
-                        let _ = barrier.wait();
-                    } else {
-                        let _worker = heph_expect_success!(result);
-                        let _ = barrier.wait();
+        let mut workers = Vec::with_capacity(thread_count);
+        let mut fail_count = 0;
+        for _ in 1..thread_count {
+            let mut worker = renderer.spawn_worker();
+            match worker.work(&[idle_task], None, true) {
+                Ok(()) => workers.push(worker),
+                Err((e, _)) => {
+                    if matches!(e, Error::Fail(_)) {
+                        fail_count += 1;
                     }
-                });
+                }
             }
-            let _ = barrier.wait();
-            assert_ne!(fail_count.load(Ordering::Relaxed), 0);
-        });
+        }
+        assert_ne!(fail_count, 0);
+
+        for worker in &mut workers {
+            let _ = heph_expect_success!(worker.finish());
+        }
     }
 }

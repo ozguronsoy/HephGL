@@ -110,24 +110,22 @@ flowchart TD
 
 ### [compute_multi_thread](compute_multi_thread.rs)
 
-Records GPU computations concurrently using renderer workers. Shares a renderer handle, prepares
-resources on worker threads, and coordinates frame completion and resource lifetimes with the main
-thread before consuming results.
+Records GPU computations concurrently using renderer workers. Each worker runs a list of tasks once
+on its own thread, passing its resources from task to task as a param. The main thread submits the
+recorded commands with its own frame, then finishes the workers to collect their resources.
 
 ```mermaid
 flowchart TD
-    A[Configure renderer and create compute pipeline] --> B[Share renderer handle and spawn workers]
+    A[Configure renderer and create compute pipeline] --> B[Spawn workers with a pipeline clone and index]
     B --> C[Each worker begins a frame]
-    C --> D[Prepare resources and record compute commands]
-    D --> E[End worker frame and hand off resource handles]
-    E --> F[Keep worker resources alive until GPU completion]
-    B --> G[Main thread begins a frame]
-    E --> H[Synchronize with workers]
-    G --> H
-    H --> I[End main frame and wait for GPU]
-    I --> J[Allow workers to finish]
-    F --> J
-    J --> K[Read results and release resources]
+    C --> D[Create buffers and upload inputs]
+    D --> E[Record compute commands]
+    E --> F[End worker frame]
+    B --> G[Main thread begins and ends a frame]
+    F --> G
+    G --> H[Wait for GPU completion]
+    H --> I[Finish workers and collect their resources]
+    I --> J[Read results and release resources]
 ```
 
 ## Rendering

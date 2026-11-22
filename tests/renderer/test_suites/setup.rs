@@ -1,3 +1,5 @@
+use std::sync::{Arc, Barrier};
+
 use heph_gl::{
     Error,
     GraphicsDeviceFeature::{
@@ -5,11 +7,11 @@ use heph_gl::{
         DepthClamp, GeometryShaders, RayTracing, SampleRateShading, TessellationShaders,
         VideoDecoding, VideoEncoding, WireframeMode,
     },
-    Shader, Version,
+    Result, Shader, Version,
     renderers::{
         BufferUsage, CanvasOptions, DISPLAY_CANVAS, FeatureRequest, GraphicsPipelineOptions,
-        HdrMode, InitializeOptions, Renderer, RendererHandle, RendererWorkerFactory,
-        ResourceBinding, SamplerOptions, Settings, TextureFormat, TextureOptions,
+        HdrMode, InitializeOptions, Renderer, RendererCanvas, RendererTaskParam, ResourceBinding,
+        SamplerOptions, Settings, TextureFormat, TextureOptions,
         debug::{Debugger, RendererDebugObject, Severity},
     },
 };
@@ -22,10 +24,7 @@ use crate::{
     utils::SHADERS_DIR,
 };
 
-impl<TestRenderer: Renderer> RendererTests<TestRenderer>
-where
-    RendererHandle<TestRenderer>: RendererWorkerFactory<TestRenderer>,
-{
+impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     pub(crate) fn test_initialize_renderer(&self) {
         {
             let test_env = test_env!();
@@ -137,18 +136,88 @@ where
         struct ForeignDebugObject;
         impl RendererDebugObject for ForeignDebugObject {}
 
-        let push_label = |renderer: &TestRenderer, label: &str| {
+        struct WorkerIndex(usize);
+        impl RendererTaskParam for WorkerIndex {}
+
+        struct FrameBarrier(Arc<Barrier>);
+        impl RendererTaskParam for FrameBarrier {}
+
+        struct WorkerCanvas {
+            canvas: Box<dyn RendererCanvas>,
+        }
+        impl RendererTaskParam for WorkerCanvas {}
+
+        fn push_label(renderer: &dyn Renderer, label: &str) {
             heph_expect_success!(
                 heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."))
                     .push_label(label)
             );
-        };
-        let pop_label = |renderer: &TestRenderer| {
+        }
+
+        fn pop_label(renderer: &dyn Renderer) {
             heph_expect_success!(
                 heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."))
                     .pop_label()
             );
-        };
+        }
+
+        fn canvas_task(
+            renderer: &mut dyn Renderer,
+            param: Option<&mut dyn RendererTaskParam>,
+        ) -> Result<Option<Box<dyn RendererTaskParam>>> {
+            let frame_barrier = heph_expect_success!(
+                heph_expect_success!(param.ok_or("Missing the frame barrier."))
+                    .downcast_ref::<FrameBarrier>()
+            );
+            heph_expect_success!(renderer.begin_frame());
+            let _ = frame_barrier.0.wait();
+            push_label(renderer, "Worker");
+            let mut canvas = heph_expect_success!(renderer.create_canvas(&CanvasOptions {
+                width: 64,
+                height: 64,
+                ..Default::default()
+            }));
+            push_label(renderer, "Clear Canvas");
+            heph_expect_success!(renderer.clear(Some(canvas.as_mut()), RGB::default()));
+            pop_label(renderer);
+            pop_label(renderer);
+            heph_expect_success!(renderer.end_frame());
+            Ok(Some(Box::new(WorkerCanvas { canvas })))
+        }
+
+        fn buffer_name_task(
+            renderer: &mut dyn Renderer,
+            param: Option<&mut dyn RendererTaskParam>,
+        ) -> Result<Option<Box<dyn RendererTaskParam>>> {
+            let index = heph_expect_success!(
+                heph_expect_success!(param.ok_or("Missing the worker index."))
+                    .downcast_ref::<WorkerIndex>()
+            )
+            .0;
+            let mut buffer =
+                heph_expect_success!(renderer.create_buffer(1024, BufferUsage::Storage));
+            heph_expect_success!(
+                heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."))
+                    .set_object_name(buffer.as_ref(), &format!("Worker Buffer {index}"))
+            );
+            heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
+            Ok(None)
+        }
+
+        fn no_error_logs_task(
+            renderer: &mut dyn Renderer,
+            _: Option<&mut dyn RendererTaskParam>,
+        ) -> Result<Option<Box<dyn RendererTaskParam>>> {
+            let debugger =
+                heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."));
+            assert!(
+                !debugger
+                    .logs()
+                    .iter()
+                    .any(|log| matches!(log.severity(), Severity::Error))
+            );
+            Ok(None)
+        }
         let create_renderer = |requested_features: &[FeatureRequest]| {
             let test_env = test_env!();
             let mut renderer = TestRenderer::new();
@@ -463,116 +532,103 @@ where
 
         {
             let mut renderer = create_renderer(&[]);
-            std::thread::scope(|s| {
-                let (tx, rx) = std::sync::mpsc::channel();
-                let barrier = std::sync::Arc::new(std::sync::Barrier::new(THREAD_COUNT + 1));
-                let renderer_handle = RendererHandle::from(&mut renderer);
+            let frame_barrier = Arc::new(Barrier::new(THREAD_COUNT + 1));
+            let mut workers = (0..THREAD_COUNT)
+                .map(|_| {
+                    let mut worker = renderer.spawn_worker();
+                    heph_expect_success!(
+                        worker
+                            .work(
+                                &[canvas_task],
+                                Some(Box::new(FrameBarrier(frame_barrier.clone()))),
+                                true,
+                            )
+                            .map_err(|(e, _)| e)
+                    );
+                    worker
+                })
+                .collect::<Vec<_>>();
 
-                for _ in 0..THREAD_COUNT {
-                    let tx = tx.clone();
-                    let barrier = barrier.clone();
-                    let _ = s.spawn(move || {
-                        let mut renderer_worker =
-                            heph_expect_success!(renderer_handle.spawn_worker());
-                        heph_expect_success!(renderer_worker.begin_frame());
-                        push_label(&renderer_worker, "Worker");
-                        let mut canvas =
-                            heph_expect_success!(renderer_worker.create_canvas(&CanvasOptions {
-                                width: 64,
-                                height: 64,
-                                ..Default::default()
-                            }));
-                        push_label(&renderer_worker, "Clear Canvas");
-                        heph_expect_success!(
-                            renderer_worker.clear(Some(canvas.as_mut()), RGB::default())
-                        );
-                        pop_label(&renderer_worker);
-                        pop_label(&renderer_worker);
-                        heph_expect_success!(renderer_worker.end_frame());
-                        heph_expect_success!(tx.send(canvas));
-                        let _ = barrier.wait();
-                    });
-                }
+            heph_expect_success!(renderer.begin_frame());
+            let _ = frame_barrier.wait();
+            push_label(&renderer, "Main");
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+            pop_label(&renderer);
+            heph_expect_success!(renderer.end_frame());
+            heph_expect_success!(renderer.wait_idle());
 
-                heph_expect_success!(renderer.begin_frame());
-                push_label(&renderer, "Main");
-                heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
-                pop_label(&renderer);
-                let mut canvases = (0..THREAD_COUNT)
-                    .map(|_| heph_expect_success!(rx.recv()))
-                    .collect::<Vec<_>>();
-                heph_expect_success!(renderer.end_frame());
-                heph_expect_success!(renderer.wait_idle());
-                for canvas in &mut canvases {
-                    heph_expect_success!(renderer.destroy_canvas(canvas.as_mut()));
-                }
-                let _ = barrier.wait();
-            });
+            let mut results = workers
+                .iter_mut()
+                .map(|worker| {
+                    heph_expect_success!(
+                        heph_expect_success!(worker.finish())
+                            .ok_or("The worker returned no param.")
+                    )
+                })
+                .collect::<Vec<_>>();
+            drop(workers);
+            for result in &mut results {
+                let worker_canvas = heph_expect_success!(result.downcast_mut::<WorkerCanvas>());
+                heph_expect_success!(renderer.destroy_canvas(worker_canvas.canvas.as_mut()));
+            }
             expect_no_warnings(&mut renderer);
         }
 
         {
             let mut renderer = create_renderer(&[]);
-            std::thread::scope(|s| {
-                let renderer_handle = RendererHandle::from(&mut renderer);
+            let mut workers = (0..THREAD_COUNT)
+                .map(|i| {
+                    let mut worker = renderer.spawn_worker();
+                    heph_expect_success!(
+                        worker
+                            .work(&[buffer_name_task], Some(Box::new(WorkerIndex(i))), true)
+                            .map_err(|(e, _)| e)
+                    );
+                    worker
+                })
+                .collect::<Vec<_>>();
 
-                for i in 0..THREAD_COUNT {
-                    let _ = s.spawn(move || {
-                        let renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
-                        let mut buffer = heph_expect_success!(
-                            renderer_worker.create_buffer(1024, BufferUsage::Storage)
-                        );
-                        heph_expect_success!(
-                            heph_expect_success!(
-                                renderer_worker.debugger().ok_or("No debugger is attached.")
-                            )
-                            .set_object_name(buffer.as_ref(), &format!("Worker Buffer {i}"))
-                        );
-                        heph_expect_success!(renderer_worker.destroy_buffer(buffer.as_mut()));
-                    });
-                }
+            let mut buffer =
+                heph_expect_success!(renderer.create_buffer(1024, BufferUsage::Storage));
+            heph_expect_success!(
+                heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."))
+                    .set_object_name(buffer.as_ref(), "Main Buffer")
+            );
+            heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
 
-                let mut buffer =
-                    heph_expect_success!(renderer.create_buffer(1024, BufferUsage::Storage));
-                heph_expect_success!(
-                    heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."))
-                        .set_object_name(buffer.as_ref(), "Main Buffer")
-                );
-                heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
-            });
+            for worker in &mut workers {
+                let _ = heph_expect_success!(worker.finish());
+            }
             expect_no_warnings(&mut renderer);
         }
 
         {
             let mut renderer = create_renderer(&[]);
             let _ = heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
-            std::thread::scope(|s| {
-                let renderer_handle = RendererHandle::from(&mut renderer);
+            let mut workers = (0..THREAD_COUNT)
+                .map(|_| {
+                    let mut worker = renderer.spawn_worker();
+                    heph_expect_success!(
+                        worker
+                            .work(&[no_error_logs_task], None, true)
+                            .map_err(|(e, _)| e)
+                    );
+                    worker
+                })
+                .collect::<Vec<_>>();
 
-                for _ in 0..THREAD_COUNT {
-                    let _ = s.spawn(move || {
-                        let renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
-                        let debugger = heph_expect_success!(
-                            renderer_worker.debugger().ok_or("No debugger is attached.")
-                        );
-                        assert!(
-                            !debugger
-                                .logs()
-                                .iter()
-                                .any(|log| matches!(log.severity(), Severity::Error))
-                        );
-                    });
-                }
+            let debugger =
+                heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."));
+            assert!(
+                !debugger
+                    .logs()
+                    .iter()
+                    .any(|log| matches!(log.severity(), Severity::Error))
+            );
 
-                let debugger =
-                    heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."));
-                assert!(
-                    !debugger
-                        .logs()
-                        .iter()
-                        .any(|log| matches!(log.severity(), Severity::Error))
-                );
-            });
+            for worker in &mut workers {
+                let _ = heph_expect_success!(worker.finish());
+            }
             heph_expect_success!(renderer.uninitialize());
             let debugger = heph_expect_success!(renderer.detach_debugger());
             assert!(
@@ -655,20 +711,18 @@ where
         }
 
         {
+            fn idle_task(
+                _: &mut dyn Renderer,
+                _: Option<&mut dyn RendererTaskParam>,
+            ) -> Result<Option<Box<dyn RendererTaskParam>>> {
+                Ok(None)
+            }
+
             let mut renderer = self.create_renderer_with_any_device(&[]);
-            std::thread::scope(|s| {
-                let b1 = std::sync::Arc::new(std::sync::Barrier::new(2));
-                let b2 = b1.clone();
-                let renderer_handle = RendererHandle::from(&mut renderer.renderer);
-                let _ = s.spawn(move || {
-                    let _renderer_worker = heph_expect_success!(renderer_handle.spawn_worker());
-                    let _ = b2.wait();
-                    let _ = b2.wait();
-                });
-                let _ = b1.wait();
-                heph_expect_err!(renderer.set_settings(settings), Error::InvalidOperation(_));
-                let _ = b1.wait();
-            });
+            let mut worker = renderer.spawn_worker();
+            heph_expect_success!(worker.work(&[idle_task], None, true).map_err(|(e, _)| e));
+            heph_expect_err!(renderer.set_settings(settings), Error::InvalidOperation(_));
+            let _ = heph_expect_success!(worker.finish());
         }
 
         {

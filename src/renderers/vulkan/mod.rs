@@ -1,10 +1,10 @@
 mod canvas;
+mod concurrency;
 mod debug;
 mod descriptor_pool;
 mod device;
 mod error;
 mod frame;
-mod handle;
 mod pipeline;
 mod queue;
 mod rendering;
@@ -41,8 +41,8 @@ use crate::{
     graphics_device::{GraphicsDevice, GraphicsDeviceFeature, GraphicsDeviceType},
     renderers::{
         BufferUsage, DISPLAY_TEXTURE_FORMAT, FeatureRequest, InitializeOptions, Renderer,
-        RendererCanvas, RendererComputePipeline, RendererGraphicsPipeline, ResourceBinding,
-        Settings,
+        RendererCanvas, RendererComputePipeline, RendererGraphicsPipeline, RendererWorker,
+        ResourceBinding, Settings,
         debug::Debugger,
         downcast_mut, downcast_ref,
         resources::{RendererBuffer, RendererSampler, RendererTexture, ResourceBindingType},
@@ -56,6 +56,7 @@ use crate::{
         version::DriverVersion,
         vulkan::{
             canvas::{VulkanCanvas, VulkanColorCanvas, VulkanDepthCanvas, vulkan_canvas_mut},
+            concurrency::VulkanWorker,
             device::{DeviceContext, VulkanGraphicsDeviceId},
             frame::{ComputeFrame, FrameState, GraphicsFrame, TransferFrame, VulkanFrame},
             pipeline::{VulkanComputePipeline, VulkanGraphicsPipeline},
@@ -900,6 +901,10 @@ impl Renderer for VulkanRenderer {
         }
 
         Ok(())
+    }
+
+    fn spawn_worker(&mut self) -> Box<dyn RendererWorker> {
+        Box::new(VulkanWorker::new(self))
     }
 
     fn create_buffer(&self, size: usize, usage: BufferUsage) -> Result<Box<dyn RendererBuffer>> {
@@ -2692,6 +2697,7 @@ impl Drop for VulkanRenderer {
     fn drop(&mut self) {
         if let Err(e) = self.uninitialize() {
             eprintln!("Failed to uninitialize renderer on drop: {e}");
+            std::process::abort();
         }
     }
 }

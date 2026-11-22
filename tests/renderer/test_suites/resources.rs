@@ -5,9 +5,9 @@ use heph_gl::{
     Error,
     GraphicsDeviceFeature::{AnisotropicFiltering, BcTextures},
     renderers::{
-        BufferUsage, CompareOp, FeatureRequest, Renderer, RendererBuffer, RendererHandle,
-        RendererResource, RendererSampler, RendererTexture, RendererWorkerFactory, SamplerOptions,
-        TextureFormat, TextureOptions, debug::RendererDebugObject,
+        BufferUsage, CompareOp, FeatureRequest, Renderer, RendererBuffer, RendererResource,
+        RendererSampler, RendererTexture, SamplerOptions, TextureFormat, TextureOptions,
+        debug::RendererDebugObject,
     },
 };
 
@@ -62,10 +62,7 @@ impl RendererResource for ForeignSampler {
 }
 impl RendererSampler for ForeignSampler {}
 
-impl<TestRenderer: Renderer> RendererTests<TestRenderer>
-where
-    RendererHandle<TestRenderer>: RendererWorkerFactory<TestRenderer>,
-{
+impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     pub(crate) fn test_buffer_io(&self) {
         let renderer = self.create_renderer_with_any_device(&[]);
 

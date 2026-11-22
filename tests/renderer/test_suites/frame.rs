@@ -1,14 +1,11 @@
 use heph_gl::{
     Error,
-    renderers::{DISPLAY_CANVAS, Renderer, RendererHandle, RendererWorkerFactory},
+    renderers::{DISPLAY_CANVAS, Renderer},
 };
 
 use crate::{heph_expect_err, heph_expect_success, renderer::RendererTests};
 
-impl<TestRenderer: Renderer> RendererTests<TestRenderer>
-where
-    RendererHandle<TestRenderer>: RendererWorkerFactory<TestRenderer>,
-{
+impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     pub(crate) fn test_begin_twice(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[]);
         heph_expect_success!(renderer.begin_frame());

@@ -1,61 +1,82 @@
-use crate::{Result, renderers::Renderer};
+use std::any::Any;
 
-/// An opaque handle used for sharing the [`Renderer`] instance safely across threads.
-pub struct RendererHandle<T: Renderer> {
-    /// Raw pointer to the renderer instance.
-    pub(super) p_renderer: usize,
-    pub(super) _marker: std::marker::PhantomData<T>,
+use crate::{Error, Result, renderers::Renderer};
+
+/// Represents a piece of work done by the [`RendererWorker`].
+///
+/// Each task receives the worker's current param, or `None` if it has none. Returning `Some`
+/// replaces the param for the following tasks, and returning `None` keeps the current one.
+pub type RendererTask = fn(
+    &mut dyn Renderer,
+    Option<&mut dyn RendererTaskParam>,
+) -> Result<Option<Box<dyn RendererTaskParam>>>;
+
+/// Represents the data passed to the tasks of a [`RendererWorker`].
+pub trait RendererTaskParam: Any + Send + Sync {}
+
+/// Executes its tasks on a dedicated thread, using its own thread-local resources of the
+/// [`Renderer`].
+pub trait RendererWorker {
+    /// Checks whether the worker is currently working.
+    fn is_working(&self) -> bool;
+    /// The worker starts executing `tasks` on its own thread, with `param` as the initial task
+    /// param. If `once` is `true`, the tasks are executed a single time, otherwise they are
+    /// repeated until [`finish`](RendererWorker::finish) is called. `tasks` cannot be empty. On
+    /// failure, the error is returned along with `param`.
+    fn work(
+        &mut self,
+        tasks: &[RendererTask],
+        param: Option<Box<dyn RendererTaskParam>>,
+        once: bool,
+    ) -> std::result::Result<(), (Error, Option<Box<dyn RendererTaskParam>>)>;
+    /// The worker completes its remaining tasks and then ends the shift.
+    fn finish(&mut self) -> Result<Option<Box<dyn RendererTaskParam>>>;
 }
 
-/// A scoped wrapper that manages the thread-local resources of a [`Renderer`].
-pub struct RendererWorker<T: Renderer> {
-    /// Raw pointer to the renderer instance.
-    pub(super) p_renderer: usize,
-    /// The function used to release the thread-local resources.
-    pub(super) uninitialize: fn(&mut T) -> Result<()>,
-    pub(super) _marker: std::marker::PhantomData<T>,
-}
+impl dyn RendererTaskParam + '_ {
+    /// Downcasts the param to `T`. Returns an error if the param is not a `T`.
+    pub fn downcast_ref<T: RendererTaskParam>(&self) -> Result<&T> {
+        crate::renderers::downcast_ref::<T>(self)
+    }
 
-/// A factory for generating thread-specific rendering workers.
-pub trait RendererWorkerFactory<T: Renderer> {
-    /// Creates a [`RendererWorker`] for the current thread.
-    fn spawn_worker(&self) -> Result<RendererWorker<T>>;
-}
-
-impl<T: Renderer> Copy for RendererHandle<T> {}
-impl<T: Renderer> Clone for RendererHandle<T> {
-    fn clone(&self) -> Self {
-        *self
+    /// Downcasts the param to `T`. Returns an error if the param is not a `T`.
+    pub fn downcast_mut<T: RendererTaskParam>(&mut self) -> Result<&mut T> {
+        crate::renderers::downcast_mut::<T>(self)
     }
 }
-unsafe impl<T: Renderer> Send for RendererHandle<T> {}
-unsafe impl<T: Renderer> Sync for RendererHandle<T> {}
-impl<T: Renderer> From<&mut T> for RendererHandle<T> {
-    fn from(value: &mut T) -> Self {
-        Self {
-            p_renderer: (value as *mut T) as usize,
-            _marker: std::marker::PhantomData,
-        }
-    }
-}
 
-impl<T: Renderer> std::ops::Deref for RendererWorker<T> {
-    type Target = T;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    fn deref(&self) -> &T {
-        unsafe { &*(self.p_renderer as *const T) }
+    struct ParamA(usize);
+    impl RendererTaskParam for ParamA {}
+
+    struct ParamB;
+    impl RendererTaskParam for ParamB {}
+
+    #[test]
+    fn test_task_param_downcast_ref() {
+        let param: Box<dyn RendererTaskParam> = Box::new(ParamA(5));
+        assert_eq!(param.downcast_ref::<ParamA>().unwrap().0, 5);
+
+        let param: Box<dyn RendererTaskParam> = Box::new(ParamB);
+        assert!(matches!(
+            param.downcast_ref::<ParamA>(),
+            Err(Error::InvalidArgument(_))
+        ));
     }
-}
-impl<T: Renderer> std::ops::DerefMut for RendererWorker<T> {
-    fn deref_mut(&mut self) -> &mut T {
-        unsafe { &mut *(self.p_renderer as *mut T) }
-    }
-}
-impl<T: Renderer> Drop for RendererWorker<T> {
-    fn drop(&mut self) {
-        let result = (self.uninitialize)(unsafe { &mut *(self.p_renderer as *mut T) });
-        if let Err(e) = result {
-            eprintln!("Failed to uninitialze worker on drop: {e}");
-        }
+
+    #[test]
+    fn test_task_param_downcast_mut() {
+        let mut param: Box<dyn RendererTaskParam> = Box::new(ParamA(5));
+        param.downcast_mut::<ParamA>().unwrap().0 = 10;
+        assert_eq!(param.downcast_ref::<ParamA>().unwrap().0, 10);
+
+        let mut param: Box<dyn RendererTaskParam> = Box::new(ParamB);
+        assert!(matches!(
+            param.downcast_mut::<ParamA>(),
+            Err(Error::InvalidArgument(_))
+        ));
     }
 }

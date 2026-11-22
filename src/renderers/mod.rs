@@ -31,7 +31,7 @@ pub const DISPLAY_CANVAS: Option<&mut dyn RendererCanvas> = None;
 pub const DISPLAY_TEXTURE_FORMAT: Option<TextureFormat> = None;
 
 /// The core interface for a graphics renderer.
-pub trait Renderer {
+pub trait Renderer: Any {
     /// Creates an uninitialized instance of the renderer.
     fn new() -> Self
     where
@@ -99,6 +99,9 @@ pub trait Renderer {
         device: Option<&GraphicsDevice>,
         requested_features: &[FeatureRequest],
     ) -> Result<()>;
+
+    /// Creates a worker that executes tasks on a separate thread.
+    fn spawn_worker(&mut self) -> Box<dyn RendererWorker>;
 
     /// Allocates a new buffer on the GPU with the specified size and usage.
     fn create_buffer(&self, size: usize, usage: BufferUsage) -> Result<Box<dyn RendererBuffer>>;
