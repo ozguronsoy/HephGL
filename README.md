@@ -7,7 +7,6 @@
 - [Introduction](#introduction)
 - [Setup](#setup)
     - [Install](#install)
-    - [Dependencies](#dependencies)
 - [Usage](#usage)
     - [Environment Variables](#environment-variables)
     - [Renderer](#renderer)
@@ -15,6 +14,7 @@
 - [Examples](examples/)
 - [Documentation](https://docs.rs/heph-gl/0.1.0/heph_gl/)
 - [Contributing](#contributing)
+    - [Dependencies](#dependencies)
 - [License](LICENSE)
 
 
@@ -43,32 +43,6 @@ cargo add heph-gl
 or add `heph-gl = <version>` to your `Cargo.toml`.
 
 If you want to work on HephGL, simply clone this repository.
-
-### Dependencies
-
-clippy
-```bash
-rustup component add clippy
-```
-
-`nightly` is used for formatting
-```bash
-rustup toolchain install nightly --component rustfmt
-```
-
-`nextest` is used for integration tests since running them with standard `cargo test` results in
-failure due to window creation in worker threads.
-```bash
-cargo install cargo-nextest --locked
-```
-
-`llvm-cov` is used for generating code coverage reports
-```bash
-cargo install cargo-llvm-cov --locked
-```
-
-All other dependencies are stated in the `Cargo.toml` file, and will be fetched automatically
-during build.
 
 ## Usage
 
@@ -158,15 +132,35 @@ pipeline specifically for their use cases.
 
 All types of contributions are welcome. Feel free to open a PR, issue, or discussion.
 
-HephGL uses `prek` for code formatting and linting. Follow the steps below to setup `prek`.
+### Dependencies
 
-First install `prek`
+clippy
+```bash
+rustup component add clippy
+```
+
+`nightly` is used for formatting
+```bash
+rustup toolchain install nightly --component rustfmt
+```
+
+`nextest` is used for integration tests since running them with standard `cargo test` results in
+failure due to window creation in worker threads.
+```bash
+cargo install cargo-nextest --locked
+```
+
+`llvm-cov` is used for generating code coverage reports
+```bash
+cargo install cargo-llvm-cov --locked
+```
+
+`prek` is used for code formatting and linting.
 ```bash
 cargo install prek --locked
 ```
 
-To automatically run the required checks before every commit, install the pre-commit hook. Run this
-command at the root of the repository
+To automatically run the required checks before every commit, install the pre-commit hook.
 ```bash
 prek install
 ```
