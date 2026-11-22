@@ -9,6 +9,7 @@
     - [Install](#install)
 - [Usage](#usage)
     - [Environment Variables](#environment-variables)
+    - [Features](#features)
     - [Renderer](#renderer)
     - [Graphics](#graphics)
 - [Examples](examples/)
@@ -51,6 +52,17 @@ If you want to work on HephGL, simply clone this repository.
 HephGL supports configuration through optional environment variables:
 - `HEPHGL_RENDERER_MAX_CONCURRENT_THREADS=<usize>`: The maximum number of threads a renderer can concurrently run.
 - `HEPHGL_EXAMPLE_RENDERER=<backend_name>`: The renderer backend the examples use. Defaults to `vulkan`.
+
+### Features
+
+HephGL has no default features. Enable at least one renderer backend, along with any optional
+modules you need:
+- `vulkan`: The Vulkan renderer backend.
+- `text`: Font loading and text mesh generation.
+- `gltf`: Mesh loading from glTF files.
+
+The `directx`, `metal`, and `opengl` features are reserved for backends that will be implemented in
+the future.
 
 ### Renderer
 
