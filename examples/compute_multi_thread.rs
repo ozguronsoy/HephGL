@@ -1,11 +1,10 @@
-use std::sync::{Arc, Mutex};
-
 use heph_gl::{
+    Error,
     GraphicsDeviceFeature::ComputeShaders,
-    Shader,
+    Result, Shader,
     renderers::{
-        BufferUsage, FeatureRequest, Renderer, RendererHandle, RendererWorkerFactory,
-        ResourceBinding,
+        BufferUsage, FeatureRequest, Renderer, RendererBuffer, RendererComputePipeline,
+        RendererTaskParam, ResourceBinding,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -19,11 +18,96 @@ const BUFFER_SIZE: usize = BUFFER_LEN * std::mem::size_of::<f32>();
 fn create_data(thread_index: usize) -> (Vec<f32>, Vec<f32>) {
     let mut data_a = vec![0.0f32; BUFFER_LEN];
     let mut data_b = vec![0.0f32; BUFFER_LEN];
-    for j in 0..BUFFER_LEN {
-        data_a[j] = ((j + 10) * (thread_index + 1)) as f32;
-        data_b[j] = ((j + 20) * (thread_index + 1)) as f32;
+    for i in 0..BUFFER_LEN {
+        data_a[i] = ((i + 10) * (thread_index + 1)) as f32;
+        data_b[i] = ((i + 20) * (thread_index + 1)) as f32;
     }
     (data_a, data_b)
+}
+
+// The initial param of each worker. Every worker gets its own clone of the pipeline, and its index
+// is used to create distinct data per worker.
+struct WorkerIndex {
+    pipeline: Box<dyn RendererComputePipeline>,
+    index: usize,
+}
+impl RendererTaskParam for WorkerIndex {}
+
+// Replaces `WorkerIndex` once the resources are created. It carries the pipeline and buffers to the
+// following tasks, and is returned to the main thread when the worker finishes so the results can
+// be read and the buffers freed.
+struct AdditionResources {
+    pipeline: Box<dyn RendererComputePipeline>,
+    buffer_a: Box<dyn RendererBuffer>,
+    buffer_b: Box<dyn RendererBuffer>,
+    buffer_c: Box<dyn RendererBuffer>,
+}
+impl RendererTaskParam for AdditionResources {}
+
+// Every worker begins its own frame. The commands it records are submitted to the GPU by the main
+// thread when it ends its frame. Returning `None` passes the current param to the next task.
+fn begin_task(
+    renderer: &mut dyn Renderer,
+    _: Option<&mut dyn RendererTaskParam>,
+) -> Result<Option<Box<dyn RendererTaskParam>>> {
+    renderer.begin_frame()?;
+    Ok(None)
+}
+
+// Creates the buffers in the GPU and fills the inputs. Returns the resources as the new param, so
+// the following tasks can use them.
+fn create_resources_task(
+    renderer: &mut dyn Renderer,
+    param: Option<&mut dyn RendererTaskParam>,
+) -> Result<Option<Box<dyn RendererTaskParam>>> {
+    let param = param
+        .ok_or(Error::invalid_argument("Missing the worker index."))?
+        .downcast_ref::<WorkerIndex>()?;
+
+    let mut buffer_a = renderer.create_buffer(BUFFER_SIZE, BufferUsage::Storage)?;
+    let mut buffer_b = renderer.create_buffer(BUFFER_SIZE, BufferUsage::Storage)?;
+    let buffer_c = renderer.create_buffer(BUFFER_SIZE, BufferUsage::Storage)?;
+
+    let (a_data, b_data) = create_data(param.index);
+
+    renderer.write_buffer(buffer_a.as_mut(), 0, bytemuck::cast_slice(&a_data))?;
+    renderer.write_buffer(buffer_b.as_mut(), 0, bytemuck::cast_slice(&b_data))?;
+
+    Ok(Some(Box::new(AdditionResources {
+        pipeline: param.pipeline.clone(),
+        buffer_a,
+        buffer_b,
+        buffer_c,
+    })))
+}
+
+// Binds the buffers to the shader and records the addition. The shader takes one set of resources
+// with 3 bindings (2 input buffers, and an output buffer).
+fn addition_task(
+    renderer: &mut dyn Renderer,
+    param: Option<&mut dyn RendererTaskParam>,
+) -> Result<Option<Box<dyn RendererTaskParam>>> {
+    let param = param
+        .ok_or(Error::invalid_argument("Missing the addition resources."))?
+        .downcast_mut::<AdditionResources>()?;
+
+    let bindings = [
+        ResourceBinding::buffer(0, param.buffer_a.as_ref(), 0, param.buffer_a.size()),
+        ResourceBinding::buffer(1, param.buffer_b.as_ref(), 0, param.buffer_b.size()),
+        ResourceBinding::buffer(2, param.buffer_c.as_ref(), 0, param.buffer_c.size()),
+    ];
+    renderer.record_compute_command(param.pipeline.as_mut(), &[&bindings], (1, 1, 1))?;
+
+    Ok(None)
+}
+
+// Ends the worker's frame, so the main thread can submit its commands.
+fn end_task(
+    renderer: &mut dyn Renderer,
+    _: Option<&mut dyn RendererTaskParam>,
+) -> Result<Option<Box<dyn RendererTaskParam>>> {
+    renderer.end_frame()?;
+    Ok(None)
 }
 
 // This example processes multiple additions in a single frame.
@@ -36,126 +120,95 @@ fn example(
     let features = [FeatureRequest::new(ComputeShaders, true)];
     renderer.set_device(Some(&device), &features).unwrap();
 
-    // This shader takes one set of resources with 3 bindings (2 input buffers, and
-    // an output buffer).
     let shader = Shader::from_file(format!("{}/{}", utils::SHADERS_DIR, "/addition.spv")).unwrap();
-    let pipeline = Arc::new(Mutex::new(
-        renderer.create_compute_pipeline(&shader).unwrap(),
-    ));
+    let mut pipeline = renderer.create_compute_pipeline(&shader).unwrap();
     drop(shader);
 
-    std::thread::scope(|s| {
-        let (tx, rx) = std::sync::mpsc::channel();
-        let barrier = std::sync::Arc::new(std::sync::Barrier::new(N_THREADS + 1));
-
-        // Share the renderer across threads.
-        let renderer_handle = RendererHandle::from(&mut *renderer);
-        for thread_index in 0..N_THREADS {
-            let tx = tx.clone();
-            let barrier = barrier.clone();
-            let pipeline = pipeline.clone();
-
-            let _ = s.spawn(move || {
-                let mut renderer = renderer_handle.spawn_worker().unwrap();
-
-                // Every thread have its own internal data which must be initialized. This is
-                // done internally for the main thread so we don't have to explicitly call
-                // these in the main thread.
-
-                renderer.begin_frame().unwrap();
-
-                // Create buffers in GPU, and fill them.
-                let (data_a, data_b) = create_data(thread_index);
-                let mut buffer_a = renderer
-                    .create_buffer(BUFFER_SIZE, BufferUsage::Storage)
-                    .unwrap();
-                let mut buffer_b = renderer
-                    .create_buffer(BUFFER_SIZE, BufferUsage::Storage)
-                    .unwrap();
-                let buffer_c = renderer
-                    .create_buffer(BUFFER_SIZE, BufferUsage::Storage)
-                    .unwrap();
-                renderer
-                    .write_buffer(buffer_a.as_mut(), 0, bytemuck::cast_slice(&data_a))
-                    .unwrap();
-                renderer
-                    .write_buffer(buffer_b.as_mut(), 0, bytemuck::cast_slice(&data_b))
-                    .unwrap();
-
-                // Bind the GPU buffers to the shader.
-                let bindings = [
-                    ResourceBinding::buffer(0, buffer_a.as_ref(), 0, buffer_a.size()),
-                    ResourceBinding::buffer(1, buffer_b.as_ref(), 0, buffer_b.size()),
-                    ResourceBinding::buffer(2, buffer_c.as_ref(), 0, buffer_c.size()),
-                ];
-                // Record a command. We will submit it to the GPU in the main thread with the
-                // other commands.
-                renderer
-                    .record_compute_command(
-                        pipeline.lock().unwrap().as_mut(),
-                        &[&bindings],
-                        (1, 1, 1),
-                    )
-                    .unwrap();
-
-                renderer.end_frame().unwrap();
-
-                // Send resources we prepared to the main thread, so we can print the results and
-                // free the buffers.
-                tx.send((
-                    thread_index + 1,
-                    buffer_a,
-                    buffer_b,
-                    buffer_c,
-                    data_a,
-                    data_b,
-                ))
-                .unwrap();
-
-                // Wait until the main thread receives the resources from all threads, and GPU
-                // finishes processing them.
-                let _ = barrier.wait();
-            });
+    // Spawn the workers and start them. Each worker runs its tasks in order on its own thread, with
+    // its own clone of the pipeline and index as the initial param. Since we only need a single
+    // addition per worker, the tasks are executed once. The workers keep their thread resources
+    // alive until they are finished, so the main thread can still submit their commands.
+    let mut workers = Vec::with_capacity(N_THREADS);
+    for i in 0..N_THREADS {
+        const WORK_ONCE: bool = true;
+        let mut worker = renderer.spawn_worker();
+        if let Err((e, _)) = worker.work(
+            &[begin_task, create_resources_task, addition_task, end_task],
+            Some(Box::new(WorkerIndex {
+                pipeline: pipeline.clone(),
+                index: i,
+            })),
+            WORK_ONCE,
+        ) {
+            panic!("{e}");
         }
+        workers.push(worker);
+    }
 
-        renderer.begin_frame().unwrap();
+    renderer.begin_frame().unwrap();
+    renderer.end_frame().unwrap();
 
-        // Wait for threads to finish recording commands and receive the resources.
-        let mut cleanup_data = Vec::with_capacity(N_THREADS);
-        for _ in 0..N_THREADS {
-            let (thread, buffer_a, buffer_b, buffer_c, data_a, data_b) = rx.recv().unwrap();
-            cleanup_data.push((thread, buffer_a, buffer_b, buffer_c, data_a, data_b));
-        }
+    // Wait until the graphics device finishes processing.
+    renderer.wait_idle().unwrap();
 
-        renderer.end_frame().unwrap();
+    // Finish the workers now that their commands are processed. Finishing a worker releases its
+    // thread-local resources and returns its last param, which holds the resources it created in
+    // this case.
+    let mut results = Vec::with_capacity(N_THREADS);
+    for worker in &mut workers {
+        results.push(worker.finish().unwrap().unwrap());
+    }
+    drop(workers);
 
-        // Wait for GPU to finish processing.
-        renderer.wait_idle().unwrap();
-        let _ = barrier.wait();
+    // Print the results.
+    for (i, result) in results.iter().enumerate() {
+        let param = result.downcast_ref::<AdditionResources>().unwrap();
 
-        for (thread, buffer_a, buffer_b, buffer_c, data_a, data_b) in &mut cleanup_data {
-            // Read and print all computations.
-            let mut data_c = vec![0.0f32; BUFFER_LEN];
+        let mut a_data = vec![0.0f32; BUFFER_LEN];
+        let mut b_data = vec![0.0f32; BUFFER_LEN];
+        let mut c_data = vec![0.0f32; BUFFER_LEN];
+        renderer
+            .read_buffer(
+                param.buffer_a.as_ref(),
+                0,
+                bytemuck::cast_slice_mut(&mut a_data),
+            )
+            .unwrap();
+        renderer
+            .read_buffer(
+                param.buffer_b.as_ref(),
+                0,
+                bytemuck::cast_slice_mut(&mut b_data),
+            )
+            .unwrap();
+        renderer
+            .read_buffer(
+                param.buffer_c.as_ref(),
+                0,
+                bytemuck::cast_slice_mut(&mut c_data),
+            )
+            .unwrap();
 
-            renderer
-                .read_buffer(buffer_c.as_ref(), 0, bytemuck::cast_slice_mut(&mut data_c))
-                .unwrap();
-
-            let index = 0;
-            println!(
-                "(thread:{}) {} + {} = {}",
-                thread, data_a[index], data_b[index], data_c[index]
-            );
-
-            renderer.destroy_buffer(buffer_a.as_mut()).unwrap();
-            renderer.destroy_buffer(buffer_b.as_mut()).unwrap();
-            renderer.destroy_buffer(buffer_c.as_mut()).unwrap();
-        }
-    });
+        let index = 0;
+        println!(
+            "(thread:{}) {} + {} = {}",
+            i + 1,
+            a_data[index],
+            b_data[index],
+            c_data[index]
+        );
+    }
 
     // Cleanup
+    for result in &mut results {
+        let param = result.downcast_mut::<AdditionResources>().unwrap();
+
+        renderer.destroy_buffer(param.buffer_a.as_mut()).unwrap();
+        renderer.destroy_buffer(param.buffer_b.as_mut()).unwrap();
+        renderer.destroy_buffer(param.buffer_c.as_mut()).unwrap();
+    }
     renderer
-        .destroy_compute_pipeline(pipeline.lock().unwrap().as_mut())
+        .destroy_compute_pipeline(pipeline.as_mut())
         .unwrap();
 
     std::process::exit(0);

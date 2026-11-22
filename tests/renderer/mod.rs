@@ -8,7 +8,7 @@ use heph_gl::{
     GraphicsDeviceType::{self, Cpu, DiscreteGpu, IntegratedGpu, VirtualGpu},
     Version,
     renderers::{
-        LATEST_API_VERSION, Renderer, RendererHandle, RendererWorkerFactory,
+        LATEST_API_VERSION, Renderer,
         debug::{Debugger, Severity},
     },
 };
@@ -23,10 +23,7 @@ pub struct RendererTests<TestRenderer: Renderer> {
     _marker: PhantomData<TestRenderer>,
 }
 
-impl<TestRenderer: Renderer> RendererTests<TestRenderer>
-where
-    RendererHandle<TestRenderer>: RendererWorkerFactory<TestRenderer>,
-{
+impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     fn new(api_version: Option<Version>) -> Self {
         Self {
             api_version,
@@ -193,7 +190,7 @@ where
                     versioned_test_suite,
                     test_calling_main_thread_only_fn_while_worker_active
                 ),
-                create_trial!(versioned_test_suite, test_multiple_workers_per_thread),
+                create_trial!(versioned_test_suite, test_reusing_worker),
                 create_trial!(versioned_test_suite, test_workers_begin_before_main),
                 create_trial!(versioned_test_suite, test_excess_threads),
                 create_trial!(

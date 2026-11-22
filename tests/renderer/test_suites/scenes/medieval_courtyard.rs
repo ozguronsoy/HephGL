@@ -14,8 +14,8 @@ use heph_gl::{
     renderers::{
         BufferUsage, CanvasOptions, ColorBlending, CompareOp, CullingMode, DISPLAY_CANVAS,
         DepthBias, FeatureRequest, FrontFace, GraphicsPipelineOptions, Renderer, RendererBuffer,
-        RendererHandle, RendererWorkerFactory, ResourceBinding, SamplerAddressMode, SamplerOptions,
-        Settings, TextureFormat, TextureOptions,
+        ResourceBinding, SamplerAddressMode, SamplerOptions, Settings, TextureFormat,
+        TextureOptions,
     },
 };
 use renkrs::RGB;
@@ -114,10 +114,7 @@ struct Draw {
     center: Vec3,
 }
 
-impl<TestRenderer: Renderer> RendererTests<TestRenderer>
-where
-    RendererHandle<TestRenderer>: RendererWorkerFactory<TestRenderer>,
-{
+impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     pub(crate) fn test_render_scene_medieval_courtyard(&self) {
         let create_texture = |renderer: &mut TestRenderer, path: &Path, srgb: bool| {
             let dds = heph_expect_success!(Dds::read(heph_expect_success!(File::open(path))));

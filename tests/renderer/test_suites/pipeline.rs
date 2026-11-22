@@ -8,7 +8,7 @@ use heph_gl::{
     renderers::{
         DISPLAY_CANVAS, DepthBias, FeatureRequest, GraphicsPipelineOptions, PolygonMode,
         PrimitiveTopology, Renderer, RendererComputePipeline, RendererGraphicsPipeline,
-        RendererHandle, RendererPipeline, RendererWorkerFactory, debug::RendererDebugObject,
+        RendererPipeline, debug::RendererDebugObject,
     },
 };
 
@@ -21,7 +21,11 @@ impl RendererPipeline for ForeignComputePipeline {
         false
     }
 }
-impl RendererComputePipeline for ForeignComputePipeline {}
+impl RendererComputePipeline for ForeignComputePipeline {
+    fn clone_pipeline(&self) -> Box<dyn RendererComputePipeline> {
+        Box::new(ForeignComputePipeline)
+    }
+}
 
 struct ForeignGraphicsPipeline;
 impl RendererDebugObject for ForeignGraphicsPipeline {}
@@ -30,12 +34,13 @@ impl RendererPipeline for ForeignGraphicsPipeline {
         false
     }
 }
-impl RendererGraphicsPipeline for ForeignGraphicsPipeline {}
+impl RendererGraphicsPipeline for ForeignGraphicsPipeline {
+    fn clone_pipeline(&self) -> Box<dyn RendererGraphicsPipeline> {
+        Box::new(ForeignGraphicsPipeline)
+    }
+}
 
-impl<TestRenderer: Renderer> RendererTests<TestRenderer>
-where
-    RendererHandle<TestRenderer>: RendererWorkerFactory<TestRenderer>,
-{
+impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     pub(crate) fn test_compute_pipeline(&self) {
         let renderer = self.create_renderer_with_any_device(&[]);
         let shader = heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/addition.spv")));

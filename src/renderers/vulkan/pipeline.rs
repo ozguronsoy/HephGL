@@ -33,7 +33,11 @@ impl RendererPipeline for VulkanGraphicsPipeline {
         !(self.pipeline.is_null() || self.layout.is_null())
     }
 }
-impl RendererGraphicsPipeline for VulkanGraphicsPipeline {}
+impl RendererGraphicsPipeline for VulkanGraphicsPipeline {
+    fn clone_pipeline(&self) -> Box<dyn RendererGraphicsPipeline> {
+        Box::new(self.clone())
+    }
+}
 
 impl RendererDebugObject for VulkanComputePipeline {}
 impl RendererPipeline for VulkanComputePipeline {
@@ -41,4 +45,8 @@ impl RendererPipeline for VulkanComputePipeline {
         !(self.pipeline.is_null() || self.layout.is_null())
     }
 }
-impl RendererComputePipeline for VulkanComputePipeline {}
+impl RendererComputePipeline for VulkanComputePipeline {
+    fn clone_pipeline(&self) -> Box<dyn RendererComputePipeline> {
+        Box::new(self.clone())
+    }
+}

@@ -1,14 +1,11 @@
 use heph_gl::{
     Error,
-    renderers::{CanvasOptions, Renderer, RendererHandle, RendererWorkerFactory},
+    renderers::{CanvasOptions, Renderer},
 };
 
 use crate::{heph_expect_err, heph_expect_success, renderer::RendererTests};
 
-impl<TestRenderer: Renderer> RendererTests<TestRenderer>
-where
-    RendererHandle<TestRenderer>: RendererWorkerFactory<TestRenderer>,
-{
+impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     pub(crate) fn test_canvas(&self) {
         for depth_only in [false, true] {
             let mut renderer = self.create_renderer_with_any_device(&[]);

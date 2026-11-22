@@ -17,8 +17,8 @@ use heph_gl::{
     renderers::{
         BufferUsage, CanvasOptions, ColorBlending, CullingMode, DISPLAY_CANVAS,
         DISPLAY_TEXTURE_FORMAT, FeatureRequest, FrontFace, GraphicsPipelineOptions,
-        PrimitiveTopology, Renderer, RendererHandle, RendererWorkerFactory, ResourceBinding,
-        SamplerAddressMode, SamplerOptions, Settings, TextureFormat, TextureOptions,
+        PrimitiveTopology, Renderer, ResourceBinding, SamplerAddressMode, SamplerOptions, Settings,
+        TextureFormat, TextureOptions,
     },
 };
 use renkrs::RGB;
@@ -39,10 +39,7 @@ const BROKEN_BRICK_WALL_LATITUDE_SEGMENTS: usize = 512;
 const BROKEN_BRICK_WALL_LONGITUDE_SEGMENTS: usize = 1024;
 const BROKEN_BRICK_WALL_TEXTURE_REPEATS_U: f32 = 2.0;
 
-impl<TestRenderer: Renderer> RendererTests<TestRenderer>
-where
-    RendererHandle<TestRenderer>: RendererWorkerFactory<TestRenderer>,
-{
+impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     pub(crate) fn test_render_static_shapes(&self) {
         let mut renderer = self.create_renderer_with_any_device(&[]);
 

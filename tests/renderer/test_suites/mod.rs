@@ -12,9 +12,7 @@ use std::sync::{LazyLock, Mutex};
 
 use heph_gl::{
     GraphicsDeviceType,
-    renderers::{
-        FeatureRequest, InitializeOptions, Renderer, RendererHandle, RendererWorkerFactory,
-    },
+    renderers::{FeatureRequest, InitializeOptions, Renderer},
 };
 
 use crate::{heph_expect_success, renderer::RendererTests, utils::TestEnv};
@@ -68,10 +66,7 @@ impl<'a, TestRenderer: Renderer> Drop for TestRendererDropGuard<'a, TestRenderer
     }
 }
 
-impl<TestRenderer: Renderer> RendererTests<TestRenderer>
-where
-    RendererHandle<TestRenderer>: RendererWorkerFactory<TestRenderer>,
-{
+impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     pub(super) fn create_renderer(&self) -> TestRendererDropGuard<'_, TestRenderer> {
         let test_env = test_env!();
         let app_name = format!("{} Tests", std::any::type_name::<TestRenderer>());
