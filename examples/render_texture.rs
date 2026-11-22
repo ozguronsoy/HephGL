@@ -4,8 +4,8 @@ use heph_gl::{
     math::Vec3,
     renderers::{
         BufferUsage, CullingMode, DISPLAY_CANVAS, FeatureRequest, GraphicsPipelineOptions,
-        PrimitiveTopology, Renderer, ResourceBinding, SamplerAddressMode, SamplerOptions,
-        TextureFormat, TextureOptions,
+        PrimitiveTopology, ResourceBinding, SamplerAddressMode, SamplerOptions, TextureFormat,
+        TextureOptions,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};

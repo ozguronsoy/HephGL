@@ -2,7 +2,7 @@
 
 pub mod renderer;
 
-use heph_gl::renderers::{InitializeOptions, LATEST_API_VERSION, Renderer, Settings};
+use heph_gl::renderers::{InitializeOptions, LATEST_API_VERSION, Settings};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use winit::{
     application::ApplicationHandler,
@@ -12,7 +12,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use crate::utils::renderer::ExampleRenderer;
+use crate::utils::renderer::{ExampleRenderer, create_renderer};
 
 pub type ExampleFn = fn(&mut ExampleRenderer, RawWindowHandle, RawDisplayHandle) -> ();
 
@@ -67,7 +67,7 @@ impl ApplicationHandler for App {
         let window_handle = window.window_handle().unwrap().as_raw();
         let display_handle = window.display_handle().unwrap().as_raw();
 
-        let mut renderer = ExampleRenderer::new();
+        let mut renderer = create_renderer();
 
         if self.init_renderer {
             let init_options = InitializeOptions {

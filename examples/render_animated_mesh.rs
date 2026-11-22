@@ -7,8 +7,7 @@ use heph_gl::{
     math::{Mat4, Vec3},
     renderers::{
         BufferUsage, CullingMode, DISPLAY_CANVAS, FeatureRequest, FrontFace,
-        GraphicsPipelineOptions, Renderer, ResourceBinding, SamplerOptions, TextureFormat,
-        TextureOptions,
+        GraphicsPipelineOptions, ResourceBinding, SamplerOptions, TextureFormat, TextureOptions,
     },
     {Mesh, MeshVertexAttribute},
 };

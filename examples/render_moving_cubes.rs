@@ -4,7 +4,7 @@ use heph_gl::{
     GraphicsDeviceFeature, Shader,
     renderers::{
         BufferUsage, ColorBlending, CullingMode, DISPLAY_CANVAS, FeatureRequest, FrontFace,
-        GraphicsPipelineOptions, Renderer, ResourceBinding,
+        GraphicsPipelineOptions, ResourceBinding,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};

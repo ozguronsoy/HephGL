@@ -13,7 +13,7 @@ use heph_gl::{
     math::{Mat4, Quat, Vec3},
     renderers::{
         BufferUsage, CanvasOptions, ColorBlending, CompareOp, CullingMode, DISPLAY_CANVAS,
-        DepthBias, FeatureRequest, FrontFace, GraphicsPipelineOptions, Renderer, RendererBuffer,
+        DepthBias, FeatureRequest, FrontFace, GraphicsPipelineOptions, RendererBuffer,
         RendererTexture, ResourceBinding, SamplerAddressMode, SamplerOptions, TextureFormat,
         TextureOptions,
     },

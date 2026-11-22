@@ -1,4 +1,3 @@
-use heph_gl::renderers::Renderer;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
 mod utils;

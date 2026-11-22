@@ -11,7 +11,7 @@ use heph_gl::{
     math::{Mat4, Quat, Vec3},
     renderers::{
         BufferUsage, CullingMode, DISPLAY_CANVAS, FeatureRequest, FrontFace,
-        GraphicsPipelineOptions, Renderer, ResourceBinding, SamplerAddressMode, SamplerOptions,
+        GraphicsPipelineOptions, ResourceBinding, SamplerAddressMode, SamplerOptions,
         TextureFormat, TextureOptions,
     },
 };

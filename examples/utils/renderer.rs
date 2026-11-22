@@ -2,16 +2,19 @@
 
 use heph_gl::{GraphicsDevice, renderers::Renderer};
 
-#[cfg(feature = "vulkan")]
-pub type ExampleRenderer = heph_gl::renderers::vulkan::VulkanRenderer;
+pub type ExampleRenderer = Box<dyn Renderer>;
 
-#[cfg(not(any(
-    feature = "vulkan",
-    feature = "directx",
-    feature = "metal",
-    feature = "opengl"
-)))]
-pub type ExampleRenderer = heph_gl::renderers::vulkan::VulkanRenderer;
+// Selects the renderer of the examples. Vulkan is used if it is not set.
+const RENDERER_ENV_VAR: &str = "HEPHGL_EXAMPLE_RENDERER";
+
+pub fn create_renderer() -> ExampleRenderer {
+    let name = std::env::var(RENDERER_ENV_VAR).unwrap_or_else(|_| "vulkan".to_owned());
+    match name.as_str() {
+        #[cfg(feature = "vulkan")]
+        "vulkan" => Box::new(heph_gl::renderers::vulkan::VulkanRenderer::new()),
+        _ => panic!("The `{name}` renderer is unknown or its feature is not enabled."),
+    }
+}
 
 // [position.x, position.y, position.z, normal.x, normal.y, normal.z, tex_coord.u, tex_coord.v]
 pub type SphereVertex = [f32; 8];

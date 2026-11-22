@@ -9,12 +9,12 @@ advanced usage:
 
 Running an example using the default backend (Vulkan):
 ```bash
-cargo run --example <example_name>
+cargo run --example <example_name> --all-features
 ```
 
 Running an example using a specific backend:
 ```bash
-cargo run --example <example_name> --no-default-features --features <backend_name>
+HEPHGL_EXAMPLE_RENDERER=<backend_name> cargo run --example <example_name> --all-features
 ```
 
 Backends:

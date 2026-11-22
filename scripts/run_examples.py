@@ -1,7 +1,8 @@
+import os
 import subprocess
 from pathlib import Path
 
-FEATURES = ["vulkan"]
+RENDERERS = ["vulkan"]
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 EXAMPLES_DIR = ROOT_DIR / "examples"
@@ -9,18 +10,19 @@ EXAMPLES_DIR = ROOT_DIR / "examples"
 if __name__ == "__main__":
     examples = sorted(path.stem for path in EXAMPLES_DIR.glob("*.rs"))
 
-    for feature in FEATURES:
-        feature_args = ["--no-default-features", "--features", feature]
+    subprocess.run(
+        ["cargo", "build", "--examples", "--all-features"],
+        cwd=ROOT_DIR,
+        check=True,
+    )
 
-        subprocess.run(
-            ["cargo", "build", "--examples", *feature_args],
-            cwd=ROOT_DIR,
-            check=True,
-        )
+    for renderer in RENDERERS:
+        env = {**os.environ, "HEPHGL_EXAMPLE_RENDERER": renderer}
 
         for example in examples:
             subprocess.run(
-                ["cargo", "run", "--example", example, *feature_args],
+                ["cargo", "run", "--example", example, "--all-features"],
                 cwd=ROOT_DIR,
+                env=env,
                 check=True,
             )

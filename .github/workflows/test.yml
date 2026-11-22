@@ -33,9 +33,9 @@ jobs:
       - name: Build Project
         shell: bash
         run: |
-          cargo build ${{ matrix.build.flag }}
-          cargo test --no-run ${{ matrix.build.flag }}
-          $HEPHGL_GUI_PREFIX cargo nextest run --no-run ${{ matrix.build.flag }}
+          cargo build ${{ matrix.build.flag }} --all-features
+          cargo test --no-run ${{ matrix.build.flag }} --all-features
+          $HEPHGL_GUI_PREFIX cargo nextest run --no-run ${{ matrix.build.flag }} --all-features
 
   unit-tests:
     name: Run Unit Tests (${{ matrix.os }} - ${{ matrix.build.name }})
@@ -61,7 +61,7 @@ jobs:
           cache-key: tests-${{ matrix.os }}-${{ matrix.build.name }}
 
       - name: Run Tests
-        run: cargo test ${{ matrix.build.flag }}
+        run: cargo test ${{ matrix.build.flag }} --all-features
 
   integration-tests:
     name: Run Integration Tests (${{ matrix.os }} - ${{ matrix.build.name }})
@@ -89,7 +89,7 @@ jobs:
 
       - name: Run Tests
         shell: bash
-        run: $HEPHGL_GUI_PREFIX cargo nextest run ${{ matrix.build.flag }}
+        run: $HEPHGL_GUI_PREFIX cargo nextest run ${{ matrix.build.flag }} --all-features
 
   coverage:
     name: Code Coverage
@@ -109,7 +109,7 @@ jobs:
 
       - name: Run Code Coverage
         shell: bash
-        run: $HEPHGL_GUI_PREFIX cargo llvm-cov nextest
+        run: $HEPHGL_GUI_PREFIX cargo llvm-cov nextest --all-features
 
       - name: Generate Report
         run: cargo llvm-cov report --fail-under-functions 80 --fail-under-lines 80 --fail-under-regions 80
