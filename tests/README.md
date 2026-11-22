@@ -13,7 +13,7 @@ creating a window, such as the rendering backends.
 Normal `cargo test` execution runs tests in worker threads, which causes failures because window
 creation must occur on the main thread. HephGL uses `nextest` and `libtest-mimic` to execute each
 test on the main thread of its own isolated process. You can run the integration tests using the
-`cargo nextest run` command.
+`cargo nextest run --all-features` command.
 
 ### Helpers
 
@@ -28,5 +28,5 @@ test on the main thread of its own isolated process. You can run the integration
 HephGL uses `llvm-cov` for generating code coverage reports.
 
 ```bash
-cargo llvm-cov nextest
+cargo llvm-cov nextest --all-features
 ```

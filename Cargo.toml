@@ -26,10 +26,10 @@ ash-window = { version = "0.13.0", optional = true }
 vk-mem = { version = "0.5.0", optional = true }
 const-str = "1.1.0"
 spirq = "1.3.0"
-fontdue = "0.9.4"
-fontdb = "0.24"
-ttf-parser = "0.25.1"
-lyon_tessellation = "1.0"
+fontdue = { version = "0.9.4", optional = true }
+fontdb = { version = "0.24", optional = true }
+ttf-parser = { version = "0.25.1", optional = true }
+lyon_tessellation = { version = "1.0", optional = true }
 gltf = { version = "1.4.1", default-features = false, features = ["utils"] }
 
 [dev-dependencies]
@@ -50,6 +50,11 @@ vulkan = ["dep:ash", "dep:ash-window", "dep:vk-mem"]
 directx = []
 metal = []
 opengl = []
+text = ["dep:fontdue", "dep:fontdb", "dep:ttf-parser", "dep:lyon_tessellation"]
+
+[[example]]
+name = "render_text"
+required-features = ["text"]
 
 [[test]]
 name = "vulkan"
