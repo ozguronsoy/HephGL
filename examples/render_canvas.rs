@@ -8,7 +8,6 @@ use heph_gl::{
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
-use renkrs::RGB;
 
 mod utils;
 
@@ -97,14 +96,14 @@ fn example(
     let start = Instant::now();
     while start.elapsed() < Duration::from_secs(5) {
         renderer.begin_frame().unwrap();
-        renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
+        renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]).unwrap();
 
         // Render into the canvas before sampling it.
         let time = start.elapsed().as_secs_f32();
         renderer
             .clear(
                 Some(canvas.as_mut()),
-                RGB::new(0.2 + 0.15 * time.sin(), 0.1, 0.2 + 0.15 * time.cos()),
+                [0.2 + 0.15 * time.sin(), 0.1, 0.2 + 0.15 * time.cos()],
             )
             .unwrap();
         renderer

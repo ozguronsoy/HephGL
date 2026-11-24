@@ -8,7 +8,6 @@ use heph_gl::{
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
-use renkrs::RGB;
 
 mod utils;
 
@@ -107,7 +106,7 @@ fn example(
     let start = Instant::now();
     while start.elapsed() < Duration::from_secs(5) {
         renderer.begin_frame().unwrap();
-        renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
+        renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]).unwrap();
 
         let time = start.elapsed().as_secs_f32();
         let movement = (time * 2.0).sin() * 0.2;

@@ -19,7 +19,6 @@ use heph_gl::{
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
-use renkrs::RGB;
 
 mod utils;
 
@@ -309,9 +308,9 @@ fn example(
 
     let lighting = Lighting {
         direction: SUN_DIRECTION,
-        color: RGB::new(1.0, 0.92, 0.8),
+        color: [1.0, 0.92, 0.8],
         intensity: 6.0,
-        ambient: RGB::new(0.16, 0.18, 0.23),
+        ambient: [0.16, 0.18, 0.23],
     };
     let mut camera = Camera::new(Projection::Perspective {
         vertical_fov: std::f32::consts::FRAC_PI_3,
@@ -340,7 +339,7 @@ fn example(
     let mut textures = HashMap::new();
     let mut draws = Vec::new();
     renderer.begin_frame().unwrap();
-    renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
+    renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]).unwrap();
     let mut shadow_canvas = renderer
         .create_canvas(&CanvasOptions {
             width: SHADOW_MAP_SIZE,
@@ -459,10 +458,10 @@ fn example(
                 part_textures,
                 [
                     [
-                        material.base_color.r,
-                        material.base_color.g,
-                        material.base_color.b,
-                        material.base_color.a,
+                        material.base_color[0],
+                        material.base_color[1],
+                        material.base_color[2],
+                        material.base_color[3],
                     ],
                     [
                         material.roughness,
@@ -550,7 +549,7 @@ fn example(
         near: 0.0,
         far: 4.0 * SHADOW_EXTENT,
     });
-    let sky_color = RGB::new(0.55, 0.68, 0.85);
+    let sky_color = [0.55, 0.68, 0.85];
 
     let mut frame_index = 0;
     let start = Instant::now();
@@ -580,13 +579,13 @@ fn example(
                 sun_direction.y,
                 sun_direction.z,
                 0.0,
-                lighting.color.r,
-                lighting.color.g,
-                lighting.color.b,
+                lighting.color[0],
+                lighting.color[1],
+                lighting.color[2],
                 lighting.intensity,
-                lighting.ambient.r,
-                lighting.ambient.g,
-                lighting.ambient.b,
+                lighting.ambient[0],
+                lighting.ambient[1],
+                lighting.ambient[2],
                 0.0,
                 camera.position.x,
                 camera.position.y,
@@ -603,7 +602,7 @@ fn example(
         // Render the depths seen from the sun into the shadow map. Blended parts let the light
         // through, so they don't cast shadows.
         renderer
-            .clear(Some(shadow_canvas.as_mut()), RGB::default())
+            .clear(Some(shadow_canvas.as_mut()), [0.0, 0.0, 0.0])
             .unwrap();
         for (draw, [texture, _, _]) in draws
             .iter()

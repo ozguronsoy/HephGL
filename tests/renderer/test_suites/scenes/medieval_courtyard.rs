@@ -18,7 +18,6 @@ use heph_gl::{
         TextureOptions,
     },
 };
-use renkrs::RGB;
 
 use crate::{heph_expect_success, renderer::RendererTests, utils::SHADERS_DIR};
 
@@ -292,9 +291,9 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
 
         let lighting = Lighting {
             direction: SUN_DIRECTION,
-            color: RGB::new(1.0, 0.92, 0.8),
+            color: [1.0, 0.92, 0.8],
             intensity: 6.0,
-            ambient: RGB::new(0.16, 0.18, 0.23),
+            ambient: [0.16, 0.18, 0.23],
         };
         let mut camera = Camera::new(Projection::Perspective {
             vertical_fov: std::f32::consts::FRAC_PI_3,
@@ -320,7 +319,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let mut textures = HashMap::new();
         let mut draws = Vec::new();
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
         let mut shadow_canvas = heph_expect_success!(renderer.create_canvas(&CanvasOptions {
             width: SHADOW_MAP_SIZE,
             height: SHADOW_MAP_SIZE,
@@ -454,10 +453,10 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                     part_textures,
                     [
                         [
-                            material.base_color.r,
-                            material.base_color.g,
-                            material.base_color.b,
-                            material.base_color.a,
+                            material.base_color[0],
+                            material.base_color[1],
+                            material.base_color[2],
+                            material.base_color[3],
                         ],
                         [
                             material.roughness,
@@ -532,7 +531,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             near: 0.0,
             far: 4.0 * SHADOW_EXTENT,
         });
-        let sky_color = RGB::new(0.55, 0.68, 0.85);
+        let sky_color = [0.55, 0.68, 0.85];
 
         let mut frame_index = 0;
         let start = Instant::now();
@@ -565,13 +564,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                     sun_direction.y,
                     sun_direction.z,
                     0.0,
-                    lighting.color.r,
-                    lighting.color.g,
-                    lighting.color.b,
+                    lighting.color[0],
+                    lighting.color[1],
+                    lighting.color[2],
                     lighting.intensity,
-                    lighting.ambient.r,
-                    lighting.ambient.g,
-                    lighting.ambient.b,
+                    lighting.ambient[0],
+                    lighting.ambient[1],
+                    lighting.ambient[2],
                     0.0,
                     camera.position.x,
                     camera.position.y,
@@ -587,7 +586,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
 
             heph_expect_success!(renderer.clear(DISPLAY_CANVAS, sky_color));
 
-            heph_expect_success!(renderer.clear(Some(shadow_canvas.as_mut()), RGB::default()));
+            heph_expect_success!(renderer.clear(Some(shadow_canvas.as_mut()), [0.0, 0.0, 0.0]));
             for (draw, [texture, _, _]) in draws
                 .iter()
                 .zip(&draw_textures)

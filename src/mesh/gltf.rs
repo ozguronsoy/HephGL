@@ -5,7 +5,6 @@ use std::{
 };
 
 use gltf::texture::MinFilter;
-use renkrs::RGBA;
 
 use crate::{
     Error, Result,
@@ -84,9 +83,8 @@ pub(super) fn from_file(path: &Path) -> Result<Mesh> {
     });
     for ref material in gltf.materials() {
         let pbr = material.pbr_metallic_roughness();
-        let [r, g, b, a] = pbr.base_color_factor();
         mesh.materials.push(MaterialProperties {
-            base_color: RGBA::new(r, g, b, a),
+            base_color: pbr.base_color_factor(),
             roughness: pbr.roughness_factor(),
             metallicness: pbr.metallic_factor(),
             normal_scale: material

@@ -16,7 +16,6 @@ use heph_gl::{
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
-use renkrs::RGB;
 
 mod utils;
 
@@ -93,7 +92,7 @@ fn example(
     let lighting = Lighting {
         direction: Vec3::new(0.5, -0.8, 1.0),
         intensity: 3.0,
-        ambient: RGB::new(0.15, 0.15, 0.15),
+        ambient: [0.15, 0.15, 0.15],
         ..Default::default()
     };
     let mut camera = Camera::new(Projection::Perspective {
@@ -109,7 +108,7 @@ fn example(
     let mut textures = HashMap::new();
     let mut part_buffers = Vec::with_capacity(mesh.part_count());
     renderer.begin_frame().unwrap();
-    renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
+    renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]).unwrap();
     for part in mesh.parts() {
         // All textures in this ship use the same UV set; the shader expects [px, py, pz, nx, ny,
         // nz, u, v].
@@ -185,10 +184,10 @@ fn example(
         let material = part.material();
         let uniforms = [
             [
-                material.base_color.r,
-                material.base_color.g,
-                material.base_color.b,
-                material.base_color.a,
+                material.base_color[0],
+                material.base_color[1],
+                material.base_color[2],
+                material.base_color[3],
             ],
             [
                 material.roughness,
@@ -203,15 +202,15 @@ fn example(
                 0.0,
             ],
             [
-                lighting.color.r,
-                lighting.color.g,
-                lighting.color.b,
+                lighting.color[0],
+                lighting.color[1],
+                lighting.color[2],
                 lighting.intensity,
             ],
             [
-                lighting.ambient.r,
-                lighting.ambient.g,
-                lighting.ambient.b,
+                lighting.ambient[0],
+                lighting.ambient[1],
+                lighting.ambient[2],
                 0.0,
             ],
             [camera.position.x, camera.position.y, camera.position.z, 1.0],
@@ -264,7 +263,7 @@ fn example(
     let start = Instant::now();
     loop {
         renderer.begin_frame().unwrap();
-        renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
+        renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]).unwrap();
 
         let progress = (start.elapsed().as_secs_f32() / ANIMATION_DURATION.as_secs_f32()).min(1.0);
         transform.rotation = Quat::from_rotation_y(progress * std::f32::consts::TAU);

@@ -3,7 +3,6 @@ use heph_gl::{
     renderers::{DISPLAY_CANVAS, GraphicsPipelineOptions, PrimitiveTopology},
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
-use renkrs::RGB;
 
 mod utils;
 
@@ -54,7 +53,7 @@ fn example(
     }
 
     renderer.begin_frame().unwrap();
-    renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
+    renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]).unwrap();
 
     for (pipeline, draw_count) in pipelines.iter_mut() {
         const INSTANCE_COUNT: u32 = 1;

@@ -9,7 +9,6 @@ use heph_gl::{
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
-use renkrs::RGB;
 
 mod utils;
 
@@ -87,16 +86,16 @@ fn example(
     let lighting = Lighting {
         direction: Vec3::new(0.3, 0.4, 1.0),
         intensity: 2.0,
-        ambient: RGB::new(0.45, 0.15, 0.15),
+        ambient: [0.45, 0.15, 0.15],
         ..Default::default()
     };
 
     let uniforms = [
         [
-            material.base_color.r,
-            material.base_color.g,
-            material.base_color.b,
-            material.base_color.a,
+            material.base_color[0],
+            material.base_color[1],
+            material.base_color[2],
+            material.base_color[3],
         ],
         [
             material.roughness,
@@ -111,15 +110,15 @@ fn example(
             0.0,
         ],
         [
-            lighting.color.r,
-            lighting.color.g,
-            lighting.color.b,
+            lighting.color[0],
+            lighting.color[1],
+            lighting.color[2],
             lighting.intensity,
         ],
         [
-            lighting.ambient.r,
-            lighting.ambient.g,
-            lighting.ambient.b,
+            lighting.ambient[0],
+            lighting.ambient[1],
+            lighting.ambient[2],
             0.0,
         ],
         [0.0, 0.0, -1.0, 0.0],
@@ -180,7 +179,7 @@ fn example(
     // Creating a texture creates a GPU command to transfer the raw pixel data from CPU to GPU, thus
     // we must begin a frame first. Once a texture is loaded, we can use it until we destroy it.
     renderer.begin_frame().unwrap();
-    renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
+    renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]).unwrap();
     let mut texture = renderer
         .create_texture(
             &TextureOptions {
@@ -230,7 +229,7 @@ fn example(
 
     // Render the displaced spheres with the color, ARM, and normal maps applied.
     renderer.begin_frame().unwrap();
-    renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
+    renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]).unwrap();
     let vertex_bindings = [ResourceBinding::buffer(
         0,
         vertex_buffer.as_ref(),

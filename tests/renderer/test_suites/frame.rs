@@ -26,7 +26,6 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                 TextureOptions,
             },
         };
-        use renkrs::RGB;
 
         use crate::utils::SHADERS_DIR;
 
@@ -74,7 +73,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                 Error::InvalidOperation(_)
             );
             heph_expect_err!(
-                renderer.clear(DISPLAY_CANVAS, RGB::default()),
+                renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]),
                 Error::InvalidOperation(_)
             );
             heph_expect_err!(
@@ -105,7 +104,6 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             Shader,
             renderers::{GraphicsPipelineOptions, Msaa, Settings},
         };
-        use renkrs::RGB;
 
         use crate::{renderer::test_suites::TEST_ENV, test_env, utils::SHADERS_DIR};
 
@@ -139,7 +137,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                     if frame == 0 {
                         test_env!().resize_window(width + 32, height + 32);
                     }
-                    heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+                    heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
                     heph_expect_success!(renderer.record_graphics_command(
                         DISPLAY_CANVAS,
                         pipeline.as_mut(),

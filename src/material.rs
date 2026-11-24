@@ -1,10 +1,8 @@
-use renkrs::RGBA;
-
 /// Describes the surface properties used to shade a rendered object.
 #[derive(Clone, Copy)]
 pub struct MaterialProperties {
     /// The linear RGBA tint multiplied with the base-color texture.
-    pub base_color: RGBA<f32>,
+    pub base_color: [f32; 4],
     /// The roughness, between zero and one.
     pub roughness: f32,
     /// The metallicness, between zero and one. Higher values produce more metallic reflections.
@@ -20,7 +18,7 @@ pub struct MaterialProperties {
 impl Default for MaterialProperties {
     fn default() -> Self {
         Self {
-            base_color: RGBA::new(1.0, 1.0, 1.0, 1.0),
+            base_color: [1.0, 1.0, 1.0, 1.0],
             roughness: 1.0,
             metallicness: 0.0,
             normal_scale: 1.0,
