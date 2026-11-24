@@ -9,7 +9,7 @@ use crate::renderers::{
 
 pub(super) struct VulkanWorker {
     renderer: *const VulkanRenderer,
-    is_working: AtomicBool,
+    is_working: Arc<AtomicBool>,
     thread_handle: Option<std::thread::JoinHandle<Option<Box<dyn RendererTaskParam>>>>,
 }
 
@@ -37,11 +37,11 @@ impl RendererWorker for VulkanWorker {
         let tasks = tasks.to_vec();
         let error = Arc::new(Mutex::new(None));
         let error_worker = error.clone();
-        let worker = self as *mut VulkanWorker as usize;
+        let renderer = self.renderer as usize;
+        let is_working = self.is_working.clone();
         let owner = std::thread::current();
         let thread_handle = Some(std::thread::spawn(move || {
-            let worker = unsafe { &mut *(worker as *mut VulkanWorker) };
-            let renderer = unsafe { &*worker.renderer };
+            let renderer = unsafe { &*(renderer as *const VulkanRenderer) };
             if let Err(error) = renderer.initialize_thread() {
                 let _ = error_worker
                     .lock()
@@ -51,11 +51,11 @@ impl RendererWorker for VulkanWorker {
                 return param;
             }
 
-            worker.is_working.store(true, Ordering::Relaxed);
+            is_working.store(true, Ordering::Relaxed);
             drop(error_worker);
             owner.unpark();
             let mut abort = false;
-            while !abort && worker.is_working() {
+            while !abort && is_working.load(Ordering::Relaxed) {
                 for task in &tasks {
                     match task(
                         renderer,
@@ -79,7 +79,7 @@ impl RendererWorker for VulkanWorker {
                 }
             }
             // Keep the thread resources alive until the worker is finished.
-            while worker.is_working() {
+            while is_working.load(Ordering::Relaxed) {
                 std::thread::park();
             }
             owner.unpark();
@@ -135,7 +135,7 @@ impl VulkanWorker {
     pub(super) fn new(renderer: &VulkanRenderer) -> Self {
         Self {
             renderer,
-            is_working: AtomicBool::new(false),
+            is_working: Arc::new(AtomicBool::new(false)),
             thread_handle: None,
         }
     }
