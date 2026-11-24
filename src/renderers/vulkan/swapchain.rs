@@ -52,8 +52,6 @@ const SDR_SURFACE_FORMAT: SurfaceFormatKHR = SurfaceFormatKHR {
 impl VulkanRenderer {
     /// Creates the swapchain, images, and semaphores for the renderer.
     pub(super) fn create_swapchain(&self) -> Result<()> {
-        self.destroy_swapchain()?;
-
         let window_surface_loader = self
             .window_surface_loader
             .as_ref()
@@ -187,7 +185,8 @@ impl VulkanRenderer {
                         PresentModeKHR::FIFO
                     },
                 )
-                .clipped(true);
+                .clipped(true)
+                .old_swapchain(swapchain_context.swapchain);
             let swapchain = DropGuard::new(
                 swapchain_context
                     .loader
@@ -229,12 +228,27 @@ impl VulkanRenderer {
                 );
             }
 
-            swapchain_context.swapchain = DropGuard::dismiss(swapchain);
-            swapchain_context.images = swapchain_images;
-            swapchain_context.semaphores = DropGuard::dismiss(image_available_semaphores)
+            let swapchain = DropGuard::dismiss(swapchain);
+            let semaphores = DropGuard::dismiss(image_available_semaphores)
                 .into_iter()
                 .zip(DropGuard::dismiss(render_finished_semaphores))
-                .collect();
+                .collect::<Vec<_>>();
+
+            for (image_available, render_finished) in swapchain_context.semaphores.drain(..) {
+                device_context
+                    .logical_device
+                    .destroy_semaphore(image_available, None);
+                device_context
+                    .logical_device
+                    .destroy_semaphore(render_finished, None);
+            }
+            swapchain_context
+                .loader
+                .destroy_swapchain(swapchain_context.swapchain, None);
+
+            swapchain_context.swapchain = swapchain;
+            swapchain_context.images = swapchain_images;
+            swapchain_context.semaphores = semaphores;
         }
 
         swapchain_context.format = surface_format.format;
@@ -263,9 +277,12 @@ impl VulkanRenderer {
 
             if swapchain_context.invalidated {
                 self.wait_idle()?;
-                self.destroy_rendering()?;
+                if let Some(mut display_canvas) =
+                    unsafe { &mut *device_context.display_canvas.get() }.take()
+                {
+                    self.destroy_canvas(&mut display_canvas)?;
+                }
                 self.create_swapchain()?;
-                self.create_rendering()?;
                 swapchain_context = unsafe { &mut *device_context.swapchain_context.get() };
                 swapchain_context.invalidated = false;
             }
