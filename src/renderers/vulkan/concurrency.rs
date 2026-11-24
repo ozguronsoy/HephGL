@@ -8,7 +8,7 @@ use crate::renderers::{
 };
 
 pub(super) struct VulkanWorker {
-    renderer: *mut VulkanRenderer,
+    renderer: *const VulkanRenderer,
     is_working: AtomicBool,
     thread_handle: Option<std::thread::JoinHandle<Option<Box<dyn RendererTaskParam>>>>,
 }
@@ -41,7 +41,7 @@ impl RendererWorker for VulkanWorker {
         let owner = std::thread::current();
         let thread_handle = Some(std::thread::spawn(move || {
             let worker = unsafe { &mut *(worker as *mut VulkanWorker) };
-            let renderer = unsafe { &mut *worker.renderer };
+            let renderer = unsafe { &*worker.renderer };
             if let Err(error) = renderer.initialize_thread() {
                 let _ = error_worker
                     .lock()
@@ -132,7 +132,7 @@ impl Drop for VulkanWorker {
 }
 
 impl VulkanWorker {
-    pub(super) fn new(renderer: &mut VulkanRenderer) -> Self {
+    pub(super) fn new(renderer: &VulkanRenderer) -> Self {
         Self {
             renderer,
             is_working: AtomicBool::new(false),

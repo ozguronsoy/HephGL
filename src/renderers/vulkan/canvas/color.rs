@@ -81,7 +81,7 @@ impl VulkanCanvas for VulkanColorCanvas {
     fn begin_rendering(
         &self,
         device: &ash::Device,
-        rendering: &mut dyn VulkanRendering,
+        rendering: &dyn VulkanRendering,
         command_buffer: CommandBuffer,
         sampling_stages: PipelineStageFlags,
     ) -> Result<()> {
@@ -247,8 +247,7 @@ impl VulkanColorCanvas {
         msaa: Msaa,
         layer_count: u32,
     ) -> Result<Self> {
-        let rendering = device_context
-            .rendering
+        let rendering = unsafe { &*device_context.rendering.get() }
             .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let extent = Extent2D {

@@ -207,7 +207,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             create_renderer_result.is_some(),
             "The test should be skipped if device of the target type does not exist."
         );
-        let mut renderer = heph_expect_success!(
+        let renderer = heph_expect_success!(
             create_renderer_result.ok_or("No device of the target type found.")
         );
 
@@ -229,7 +229,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         impl RendererTaskParam for AdditionResources {}
 
         fn begin_task(
-            renderer: &mut dyn Renderer,
+            renderer: &dyn Renderer,
             param: Option<&mut dyn RendererTaskParam>,
         ) -> Result<Option<Box<dyn RendererTaskParam>>> {
             let param = param
@@ -242,7 +242,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         }
 
         fn create_resources_task(
-            renderer: &mut dyn Renderer,
+            renderer: &dyn Renderer,
             param: Option<&mut dyn RendererTaskParam>,
         ) -> Result<Option<Box<dyn RendererTaskParam>>> {
             let param = param
@@ -274,7 +274,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         }
 
         fn addition_task(
-            renderer: &mut dyn Renderer,
+            renderer: &dyn Renderer,
             param: Option<&mut dyn RendererTaskParam>,
         ) -> Result<Option<Box<dyn RendererTaskParam>>> {
             let param = param
@@ -292,7 +292,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         }
 
         fn end_task(
-            renderer: &mut dyn Renderer,
+            renderer: &dyn Renderer,
             _: Option<&mut dyn RendererTaskParam>,
         ) -> Result<Option<Box<dyn RendererTaskParam>>> {
             renderer.end_frame()?;

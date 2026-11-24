@@ -100,7 +100,7 @@ pub trait Renderer: Any {
     ) -> Result<()>;
 
     /// Creates a worker that executes tasks on a separate thread.
-    fn spawn_worker(&mut self) -> Box<dyn RendererWorker>;
+    fn spawn_worker(&self) -> Box<dyn RendererWorker>;
 
     /// Allocates a new buffer on the GPU with the specified size and usage.
     fn create_buffer(&self, size: usize, usage: BufferUsage) -> Result<Box<dyn RendererBuffer>>;
@@ -123,7 +123,7 @@ pub trait Renderer: Any {
 
     /// Creates a texture with the specified dimensions, format, and pixel data.
     fn create_texture(
-        &mut self,
+        &self,
         options: &TextureOptions,
         data: &[u8],
     ) -> Result<Box<dyn RendererTexture>>;
@@ -141,7 +141,7 @@ pub trait Renderer: Any {
     fn destroy_compute_pipeline(&self, pipeline: &mut dyn RendererComputePipeline) -> Result<()>;
     /// Creates a compute workload for the GPU.
     fn record_compute_command(
-        &mut self,
+        &self,
         pipeline: &mut dyn RendererComputePipeline,
         binding_sets: &[&[ResourceBinding<'_>]],
         group_count: (u32, u32, u32),
@@ -157,7 +157,7 @@ pub trait Renderer: Any {
     fn destroy_graphics_pipeline(&self, pipeline: &mut dyn RendererGraphicsPipeline) -> Result<()>;
     /// Creates a graphics workload for the GPU that renders into the target canvas.
     fn record_graphics_command(
-        &mut self,
+        &self,
         target_canvas: Option<&mut dyn RendererCanvas>,
         pipeline: &mut dyn RendererGraphicsPipeline,
         index_buffer: Option<&dyn RendererBuffer>,
@@ -168,14 +168,14 @@ pub trait Renderer: Any {
     ) -> Result<()>;
 
     /// Creates an off-screen canvas using the provided options, cleared to black.
-    fn create_canvas(&mut self, options: &CanvasOptions) -> Result<Box<dyn RendererCanvas>>;
+    fn create_canvas(&self, options: &CanvasOptions) -> Result<Box<dyn RendererCanvas>>;
     /// Frees the resources allocated for the provided canvas.
     fn destroy_canvas(&self, canvas: &mut dyn RendererCanvas) -> Result<()>;
 
     /// Begins a new frame. `end_frame` must be called when the frame is done.
-    fn begin_frame(&mut self) -> Result<()>;
+    fn begin_frame(&self) -> Result<()>;
     /// Ends the frame. `begin_frame` must be called before calling this method.
-    fn end_frame(&mut self) -> Result<()>;
+    fn end_frame(&self) -> Result<()>;
 
     /// Blocks the current CPU thread until the GPU has finished executing all
     /// pending commands.
@@ -185,11 +185,7 @@ pub trait Renderer: Any {
     fn wait_idle(&self) -> Result<()>;
 
     /// Clears the provided render target with the specified color.
-    fn clear(
-        &mut self,
-        target_canvas: Option<&mut dyn RendererCanvas>,
-        color: [f32; 3],
-    ) -> Result<()>;
+    fn clear(&self, target_canvas: Option<&mut dyn RendererCanvas>, color: [f32; 3]) -> Result<()>;
 }
 
 /// Gets the maximum number of threads that can execute concurrently.

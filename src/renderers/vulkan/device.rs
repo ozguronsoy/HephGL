@@ -1,4 +1,9 @@
-use std::{collections::HashSet, sync::Mutex, time::Instant};
+use std::{
+    cell::{Cell, UnsafeCell},
+    collections::HashSet,
+    sync::Mutex,
+    time::Instant,
+};
 
 use crate::{
     Error, GraphicsDeviceId, Result, Version,
@@ -57,9 +62,9 @@ pub(super) struct DeviceContext {
     pub(super) transfer_queue_context: QueueContext<TransferFrame>,
     pub(super) compute_queue_context: Option<QueueContext<ComputeFrame>>,
 
-    pub(super) swapchain_context: SwapchainContext,
-    pub(super) rendering: Option<Box<dyn VulkanRendering>>,
-    pub(super) display_canvas: Option<VulkanColorCanvas>,
+    pub(super) swapchain_context: UnsafeCell<SwapchainContext>,
+    pub(super) rendering: UnsafeCell<Option<Box<dyn VulkanRendering>>>,
+    pub(super) display_canvas: UnsafeCell<Option<VulkanColorCanvas>>,
 
     pub(super) physical_device: ash::vk::PhysicalDevice,
     pub(super) logical_device: ash::Device,
@@ -68,9 +73,9 @@ pub(super) struct DeviceContext {
     pub(super) sampling_stages: ash::vk::PipelineStageFlags,
     pub(super) max_tessellation_patch_size: u32,
 
-    pub(super) current_frame_index: usize,
+    pub(super) current_frame_index: Cell<usize>,
     pub(super) current_frame_index_sync: Mutex<()>,
-    pub(super) next_frame_deadline: Option<Instant>,
+    pub(super) next_frame_deadline: Cell<Option<Instant>>,
 
     /// The bitmasks indicating the availability of thread contexts.
     /// `0` means the context at that index is available, `1` means it is

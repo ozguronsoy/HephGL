@@ -556,7 +556,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     }
 
     pub(crate) fn test_reject_foreign_pipelines(&self) {
-        let mut renderer = self.create_renderer_with_any_device(&[]);
+        let renderer = self.create_renderer_with_any_device(&[]);
         let mut compute_pipeline: Box<dyn RendererComputePipeline> =
             Box::new(ForeignComputePipeline);
         let mut graphics_pipeline: Box<dyn RendererGraphicsPipeline> =

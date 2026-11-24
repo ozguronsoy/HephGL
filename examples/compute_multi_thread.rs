@@ -51,7 +51,7 @@ impl RendererTaskParam for AdditionResources {}
 // Every worker begins its own frame. The commands it records are submitted to the GPU by the main
 // thread when it ends its frame. Returning `None` passes the current param to the next task.
 fn begin_task(
-    renderer: &mut dyn Renderer,
+    renderer: &dyn Renderer,
     param: Option<&mut dyn RendererTaskParam>,
 ) -> Result<Option<Box<dyn RendererTaskParam>>> {
     let param = param
@@ -66,7 +66,7 @@ fn begin_task(
 // Creates the buffers in the GPU and fills the inputs. Returns the resources as the new param, so
 // the following tasks can use them.
 fn create_resources_task(
-    renderer: &mut dyn Renderer,
+    renderer: &dyn Renderer,
     param: Option<&mut dyn RendererTaskParam>,
 ) -> Result<Option<Box<dyn RendererTaskParam>>> {
     let param = param
@@ -93,7 +93,7 @@ fn create_resources_task(
 // Binds the buffers to the shader and records the addition. The shader takes one set of resources
 // with 3 bindings (2 input buffers, and an output buffer).
 fn addition_task(
-    renderer: &mut dyn Renderer,
+    renderer: &dyn Renderer,
     param: Option<&mut dyn RendererTaskParam>,
 ) -> Result<Option<Box<dyn RendererTaskParam>>> {
     let param = param
@@ -112,7 +112,7 @@ fn addition_task(
 
 // Ends the worker's frame, so the main thread can submit its commands.
 fn end_task(
-    renderer: &mut dyn Renderer,
+    renderer: &dyn Renderer,
     _: Option<&mut dyn RendererTaskParam>,
 ) -> Result<Option<Box<dyn RendererTaskParam>>> {
     renderer.end_frame()?;

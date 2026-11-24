@@ -262,7 +262,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     }
 
     pub(crate) fn test_render_texture(&self) {
-        let mut renderer = self.create_renderer_with_any_device(&[
+        let renderer = self.create_renderer_with_any_device(&[
             FeatureRequest::new(AnisotropicFiltering, false),
             FeatureRequest::new(AsyncTransfer, false),
         ]);

@@ -10,11 +10,11 @@ use heph_gl::{
 
 use crate::{
     dummy_display_handle, dummy_window_handle, heph_expect_err, heph_expect_success,
-    renderer::RendererTests, renderer::test_suites::TEST_ENV, test_env,
+    renderer::RendererTests,
 };
 
 fn idle_task(
-    _: &mut dyn Renderer,
+    _: &dyn Renderer,
     _: Option<&mut dyn RendererTaskParam>,
 ) -> Result<Option<Box<dyn RendererTaskParam>>> {
     Ok(None)
@@ -22,70 +22,18 @@ fn idle_task(
 
 impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     pub(crate) fn test_calling_main_thread_only_fn_from_worker_thread(&self) {
-        fn debugger_task(
-            renderer: &mut dyn Renderer,
-            _: Option<&mut dyn RendererTaskParam>,
-        ) -> Result<Option<Box<dyn RendererTaskParam>>> {
-            heph_expect_err!(
-                renderer
-                    .attach_debugger(Debugger::default())
-                    .map_err(|(e, _)| e),
-                Error::InvalidOperation(_)
-            );
-            heph_expect_err!(renderer.detach_debugger(), Error::InvalidOperation(_));
-            Ok(None)
-        }
-
         fn setup_task(
-            renderer: &mut dyn Renderer,
+            renderer: &dyn Renderer,
             _: Option<&mut dyn RendererTaskParam>,
         ) -> Result<Option<Box<dyn RendererTaskParam>>> {
-            heph_expect_err!(
-                renderer.set_settings(Settings::default()),
-                Error::InvalidOperation(_)
-            );
-            heph_expect_err!(
-                renderer.initialize(&InitializeOptions {
-                    app_name: "",
-                    window_handle: dummy_window_handle!(),
-                    display_handle: dummy_display_handle!(),
-                    api_version: LATEST_API_VERSION,
-                    debug: false,
-                }),
-                Error::InvalidOperation(_)
-            );
-            heph_expect_err!(renderer.uninitialize(), Error::InvalidOperation(_));
-            heph_expect_err!(renderer.set_device(None, &[]), Error::InvalidOperation(_));
             heph_expect_err!(renderer.wait_idle(), Error::InvalidOperation(_));
             Ok(None)
         }
 
-        {
-            let test_env = test_env!();
-            let mut renderer = TestRenderer::new();
-            heph_expect_success!(renderer.initialize(&InitializeOptions {
-                app_name: "",
-                window_handle: test_env.raw_window_handle(),
-                display_handle: test_env.raw_display_handle(),
-                api_version: self.api_version,
-                debug: true,
-            }));
-            heph_expect_success!(renderer.set_device(None, &[]));
-            let mut worker = renderer.spawn_worker();
-            heph_expect_success!(
-                worker
-                    .work(&[debugger_task], None, true)
-                    .map_err(|(e, _)| e)
-            );
-            let _ = heph_expect_success!(worker.finish());
-        }
-
-        {
-            let mut renderer = self.create_renderer_with_any_device(&[]);
-            let mut worker = renderer.spawn_worker();
-            heph_expect_success!(worker.work(&[setup_task], None, true).map_err(|(e, _)| e));
-            let _ = heph_expect_success!(worker.finish());
-        }
+        let renderer = self.create_renderer_with_any_device(&[]);
+        let mut worker = renderer.spawn_worker();
+        heph_expect_success!(worker.work(&[setup_task], None, true).map_err(|(e, _)| e));
+        let _ = heph_expect_success!(worker.finish());
     }
 
     pub(crate) fn test_calling_main_thread_only_fn_while_worker_active(&self) {
@@ -126,7 +74,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     }
 
     pub(crate) fn test_reusing_worker(&self) {
-        let mut renderer = self.create_renderer_with_any_device(&[]);
+        let renderer = self.create_renderer_with_any_device(&[]);
         let mut worker = renderer.spawn_worker();
         assert!(!worker.is_working());
         heph_expect_err!(worker.finish(), Error::InvalidOperation(_));
@@ -162,7 +110,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         impl RendererTaskParam for FrameSignal {}
 
         fn frames_task(
-            renderer: &mut dyn Renderer,
+            renderer: &dyn Renderer,
             param: Option<&mut dyn RendererTaskParam>,
         ) -> Result<Option<Box<dyn RendererTaskParam>>> {
             let param = heph_expect_success!(
@@ -228,7 +176,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         // This should exceed `RENDERER_MAX_CONCURRENT_THREADS`.
         let thread_count = heph_gl::renderers::max_concurrent_threads() + 1;
 
-        let mut renderer = self.create_renderer_with_any_device(&[]);
+        let renderer = self.create_renderer_with_any_device(&[]);
         let mut workers = Vec::with_capacity(thread_count);
         let mut fail_count = 0;
         for _ in 1..thread_count {

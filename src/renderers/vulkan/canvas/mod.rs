@@ -36,7 +36,7 @@ pub(super) trait VulkanCanvas: RendererCanvas {
     fn begin_rendering(
         &self,
         device: &ash::Device,
-        rendering: &mut dyn VulkanRendering,
+        rendering: &dyn VulkanRendering,
         command_buffer: CommandBuffer,
         sampling_stages: PipelineStageFlags,
     ) -> Result<()>;
@@ -70,11 +70,11 @@ impl VulkanRenderer {
     /// one.
     pub(super) fn begin_canvas_rendering(
         device: &ash::Device,
-        rendering: &mut dyn VulkanRendering,
+        rendering: &dyn VulkanRendering,
         swapchain_format: Format,
         settings: &Settings,
         thread_context: &mut GraphicsThreadContext,
-        canvas: &mut dyn VulkanCanvas,
+        canvas: &dyn VulkanCanvas,
         sampling_stages: PipelineStageFlags,
     ) -> Result<()> {
         let (textures, aspect_mask) = canvas.render_target();
@@ -137,7 +137,7 @@ impl VulkanRenderer {
     /// if there is one.
     pub(super) fn clear_new_canvas(
         device: &ash::Device,
-        rendering: &mut dyn VulkanRendering,
+        rendering: &dyn VulkanRendering,
         thread_context: &mut GraphicsThreadContext,
         canvas: &dyn VulkanCanvas,
         sampling_stages: PipelineStageFlags,
@@ -182,7 +182,9 @@ impl VulkanRenderer {
             .iter()
             .map(|texture_format| {
                 let Some(texture_format) = *texture_format else {
-                    return TextureFormat::try_from(device_context.swapchain_context.format);
+                    return TextureFormat::try_from(
+                        unsafe { &*device_context.swapchain_context.get() }.format,
+                    );
                 };
                 let format_properties = unsafe {
                     instance.get_physical_device_format_properties(

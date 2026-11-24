@@ -1,3 +1,5 @@
+use std::cell::UnsafeCell;
+
 use ash::vk::{Queue, QueueFlags};
 
 use crate::renderers::vulkan::{frame::VulkanFrame, sync::VulkanFrameSync};
@@ -25,5 +27,5 @@ pub(super) struct QueueContext<Frame: VulkanFrame> {
     /// Length of this must always be equal to `settings.frames_in_flight`.
     pub(super) frames: Vec<Frame>,
     /// Provides frame synchronization.
-    pub(super) frame_sync: Option<Box<dyn VulkanFrameSync>>,
+    pub(super) frame_sync: UnsafeCell<Option<Box<dyn VulkanFrameSync>>>,
 }
