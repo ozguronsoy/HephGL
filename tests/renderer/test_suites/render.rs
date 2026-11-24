@@ -21,7 +21,6 @@ use heph_gl::{
         TextureFormat, TextureOptions,
     },
 };
-use renkrs::RGB;
 
 use crate::{heph_expect_success, renderer::RendererTests, utils::SHADERS_DIR};
 
@@ -91,7 +90,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         }
 
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
         for (pipeline, draw_count) in pipelines.iter_mut() {
             heph_expect_success!(renderer.record_graphics_command(
                 DISPLAY_CANVAS,
@@ -203,7 +202,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let start = Instant::now();
         while start.elapsed() < ANIMATION_DURATION {
             heph_expect_success!(renderer.begin_frame());
-            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
 
             let time = start.elapsed().as_secs_f32();
             let movement = (time * 2.0).sin() * 0.2;
@@ -306,16 +305,16 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let lighting = Lighting {
             direction: Vec3::new(0.3, 0.4, 1.0),
             intensity: 2.0,
-            ambient: RGB::new(0.45, 0.15, 0.15),
+            ambient: [0.45, 0.15, 0.15],
             ..Default::default()
         };
 
         let uniforms = [
             [
-                material.base_color.r,
-                material.base_color.g,
-                material.base_color.b,
-                material.base_color.a,
+                material.base_color[0],
+                material.base_color[1],
+                material.base_color[2],
+                material.base_color[3],
             ],
             [
                 material.roughness,
@@ -330,15 +329,15 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                 0.0,
             ],
             [
-                lighting.color.r,
-                lighting.color.g,
-                lighting.color.b,
+                lighting.color[0],
+                lighting.color[1],
+                lighting.color[2],
                 lighting.intensity,
             ],
             [
-                lighting.ambient.r,
-                lighting.ambient.g,
-                lighting.ambient.b,
+                lighting.ambient[0],
+                lighting.ambient[1],
+                lighting.ambient[2],
                 0.0,
             ],
             [0.0, 0.0, -1.0, 0.0],
@@ -396,7 +395,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         }));
 
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
         let mut texture = heph_expect_success!(renderer.create_texture(
             &TextureOptions {
                 width: image.width(),
@@ -427,7 +426,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         heph_expect_success!(renderer.end_frame());
 
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
         let vertex_bindings = [ResourceBinding::buffer(
             0,
             vertex_buffer.as_ref(),
@@ -544,12 +543,12 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let start = Instant::now();
         while start.elapsed() < ANIMATION_DURATION {
             heph_expect_success!(renderer.begin_frame());
-            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
 
             let time = start.elapsed().as_secs_f32();
             heph_expect_success!(renderer.clear(
                 Some(canvas.as_mut()),
-                RGB::new(0.2 + 0.15 * time.sin(), 0.1, 0.2 + 0.15 * time.cos()),
+                [0.2 + 0.15 * time.sin(), 0.1, 0.2 + 0.15 * time.cos()],
             ));
             heph_expect_success!(renderer.record_graphics_command(
                 Some(canvas.as_mut()),
@@ -689,12 +688,12 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let start = Instant::now();
         while start.elapsed() < ANIMATION_DURATION {
             heph_expect_success!(renderer.begin_frame());
-            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
 
             let time = start.elapsed().as_secs_f32();
             heph_expect_success!(renderer.clear(
                 Some(canvas.as_mut()),
-                RGB::new(0.2 + 0.15 * time.sin(), 0.1, 0.2 + 0.15 * time.cos()),
+                [0.2 + 0.15 * time.sin(), 0.1, 0.2 + 0.15 * time.cos()],
             ));
             heph_expect_success!(renderer.record_graphics_command(
                 Some(canvas.as_mut()),
@@ -887,7 +886,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
 
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
         let mut texture = heph_expect_success!(renderer.create_texture(
             &TextureOptions {
                 width: font.atlas_width(),
@@ -914,7 +913,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let start = Instant::now();
         while start.elapsed() < ANIMATION_DURATION {
             heph_expect_success!(renderer.begin_frame());
-            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
 
             let progress =
                 (start.elapsed().as_secs_f32() / ANIMATION_DURATION.as_secs_f32()).min(1.0);
@@ -1098,7 +1097,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let lighting = Lighting {
             direction: Vec3::new(0.5, -0.8, 1.0),
             intensity: 3.0,
-            ambient: RGB::new(0.15, 0.15, 0.15),
+            ambient: [0.15, 0.15, 0.15],
             ..Default::default()
         };
         let mut camera = Camera::new(Projection::Perspective {
@@ -1118,7 +1117,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let mut textures = HashMap::new();
         let mut part_buffers = Vec::with_capacity(mesh.part_count());
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
         for part in mesh.parts() {
             let vertex_attributes = [
                 MeshVertexAttribute::Position,
@@ -1201,10 +1200,10 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             let material = part.material();
             let uniforms = [
                 [
-                    material.base_color.r,
-                    material.base_color.g,
-                    material.base_color.b,
-                    material.base_color.a,
+                    material.base_color[0],
+                    material.base_color[1],
+                    material.base_color[2],
+                    material.base_color[3],
                 ],
                 [
                     material.roughness,
@@ -1219,15 +1218,15 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                     0.0,
                 ],
                 [
-                    lighting.color.r,
-                    lighting.color.g,
-                    lighting.color.b,
+                    lighting.color[0],
+                    lighting.color[1],
+                    lighting.color[2],
                     lighting.intensity,
                 ],
                 [
-                    lighting.ambient.r,
-                    lighting.ambient.g,
-                    lighting.ambient.b,
+                    lighting.ambient[0],
+                    lighting.ambient[1],
+                    lighting.ambient[2],
                     0.0,
                 ],
                 [camera.position.x, camera.position.y, camera.position.z, 1.0],
@@ -1275,7 +1274,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let start = Instant::now();
         loop {
             heph_expect_success!(renderer.begin_frame());
-            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
 
             let progress =
                 (start.elapsed().as_secs_f32() / ANIMATION_DURATION.as_secs_f32()).min(1.0);
@@ -1445,7 +1444,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let lighting = Lighting {
             direction: Vec3::new(0.5, -0.8, 1.0),
             intensity: 3.0,
-            ambient: RGB::new(0.15, 0.15, 0.15),
+            ambient: [0.15, 0.15, 0.15],
             ..Default::default()
         };
         let mut camera = Camera::new(Projection::Perspective {
@@ -1458,7 +1457,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         heph_expect_success!(camera.look_at(&Vec3::ZERO, &Vec3::Y));
 
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
         let vertex_count = vertices.len() / component_count;
         let mut vertex_buffer = heph_expect_success!(renderer.create_buffer(
             vertex_count * part.vertex_size_bytes(&vertex_attributes),
@@ -1528,10 +1527,10 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let material = part.material();
         let uniforms = [
             [
-                material.base_color.r,
-                material.base_color.g,
-                material.base_color.b,
-                material.base_color.a,
+                material.base_color[0],
+                material.base_color[1],
+                material.base_color[2],
+                material.base_color[3],
             ],
             [material.roughness, material.metallicness, 0.0, 0.0],
             [
@@ -1541,15 +1540,15 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                 0.0,
             ],
             [
-                lighting.color.r,
-                lighting.color.g,
-                lighting.color.b,
+                lighting.color[0],
+                lighting.color[1],
+                lighting.color[2],
                 lighting.intensity,
             ],
             [
-                lighting.ambient.r,
-                lighting.ambient.g,
-                lighting.ambient.b,
+                lighting.ambient[0],
+                lighting.ambient[1],
+                lighting.ambient[2],
                 0.0,
             ],
             [camera.position.x, camera.position.y, camera.position.z, 1.0],
@@ -1600,7 +1599,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let start = Instant::now();
         loop {
             heph_expect_success!(renderer.begin_frame());
-            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
 
             let elapsed = start.elapsed().as_secs_f32();
             let clip_index = (elapsed / ANIMATION_DURATION.as_secs_f32()) as usize;
@@ -1771,7 +1770,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let lighting = Lighting {
             direction: Vec3::new(0.5, -0.8, 1.0),
             intensity: 3.0,
-            ambient: RGB::new(0.15, 0.15, 0.15),
+            ambient: [0.15, 0.15, 0.15],
             ..Default::default()
         };
         let mut camera = Camera::new(Projection::Perspective {
@@ -1791,7 +1790,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let mut textures = HashMap::new();
         let mut part_buffers = Vec::with_capacity(mesh.part_count());
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
         for part in mesh.parts() {
             let vertex_attributes = [
                 MeshVertexAttribute::Position,
@@ -1874,10 +1873,10 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             let material = part.material();
             let uniforms = [
                 [
-                    material.base_color.r,
-                    material.base_color.g,
-                    material.base_color.b,
-                    material.base_color.a,
+                    material.base_color[0],
+                    material.base_color[1],
+                    material.base_color[2],
+                    material.base_color[3],
                 ],
                 [
                     material.roughness,
@@ -1892,15 +1891,15 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                     0.0,
                 ],
                 [
-                    lighting.color.r,
-                    lighting.color.g,
-                    lighting.color.b,
+                    lighting.color[0],
+                    lighting.color[1],
+                    lighting.color[2],
                     lighting.intensity,
                 ],
                 [
-                    lighting.ambient.r,
-                    lighting.ambient.g,
-                    lighting.ambient.b,
+                    lighting.ambient[0],
+                    lighting.ambient[1],
+                    lighting.ambient[2],
                     0.0,
                 ],
                 [camera.position.x, camera.position.y, camera.position.z, 1.0],
@@ -1965,7 +1964,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let start = Instant::now();
         loop {
             heph_expect_success!(renderer.begin_frame());
-            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
 
             let elapsed = start.elapsed();
             let time = elapsed.as_secs_f32() - IMPACT_TIME.as_secs_f32();
@@ -2176,7 +2175,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let lighting = Lighting {
             direction: Vec3::new(0.5, -0.8, 1.0),
             intensity: 3.0,
-            ambient: RGB::new(0.15, 0.15, 0.15),
+            ambient: [0.15, 0.15, 0.15],
             ..Default::default()
         };
         let mut camera = Camera::new(Projection::Perspective {
@@ -2209,7 +2208,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let mut textures = HashMap::new();
         let mut part_buffers = Vec::new();
         heph_expect_success!(renderer.begin_frame());
-        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+        heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
         let mut sky_texture = create_texture(&mut renderer, Path::new(SKY_PATH), false);
         for (mesh_index, mesh_name) in MESH_NAMES.iter().enumerate() {
             let mesh_directory = Path::new(SCENE_DIRECTORY).join(mesh_name);
@@ -2306,10 +2305,10 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                 let material = part.material();
                 let uniforms = [
                     [
-                        material.base_color.r,
-                        material.base_color.g,
-                        material.base_color.b,
-                        material.base_color.a,
+                        material.base_color[0],
+                        material.base_color[1],
+                        material.base_color[2],
+                        material.base_color[3],
                     ],
                     [
                         material.roughness,
@@ -2324,15 +2323,15 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                         0.0,
                     ],
                     [
-                        lighting.color.r,
-                        lighting.color.g,
-                        lighting.color.b,
+                        lighting.color[0],
+                        lighting.color[1],
+                        lighting.color[2],
                         lighting.intensity,
                     ],
                     [
-                        lighting.ambient.r,
-                        lighting.ambient.g,
-                        lighting.ambient.b,
+                        lighting.ambient[0],
+                        lighting.ambient[1],
+                        lighting.ambient[2],
                         0.0,
                     ],
                     [camera.position.x, camera.position.y, camera.position.z, 1.0],
@@ -2381,7 +2380,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let start = Instant::now();
         loop {
             heph_expect_success!(renderer.begin_frame());
-            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
 
             let sky_vertex_bindings = [ResourceBinding::buffer(
                 0,

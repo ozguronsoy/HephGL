@@ -12,7 +12,6 @@ use heph_gl::{
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
-use renkrs::RGB;
 
 mod utils;
 
@@ -178,7 +177,7 @@ fn example(
     // Upload the font atlas texture to the GPU. We only need to do this once since we aren't
     // changing the text or font during the animation.
     renderer.begin_frame().unwrap();
-    renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
+    renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]).unwrap();
     let mut texture = renderer
         .create_texture(
             &TextureOptions {
@@ -207,7 +206,7 @@ fn example(
     let start = Instant::now();
     while start.elapsed() < ANIMATION_DURATION {
         renderer.begin_frame().unwrap();
-        renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
+        renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]).unwrap();
 
         // Rotate the world-space text meshes around the Y axis based on the elapsed time. We also
         // update the uniform buffers for each frame in flight with the new matrices.

@@ -33,7 +33,6 @@ use ash::vk::{
     PipelineLayoutCreateInfo, PipelineShaderStageCreateInfo, QueueFlags, ShaderModuleCreateInfo,
     StructureType, SubmitInfo, SurfaceKHR, SwapchainKHR,
 };
-use renkrs::RGB;
 use vk_mem::Alloc;
 
 use crate::{
@@ -2606,7 +2605,7 @@ impl Renderer for VulkanRenderer {
     fn clear(
         &mut self,
         target_canvas: Option<&mut dyn RendererCanvas>,
-        color: RGB<f32>,
+        color: [f32; 3],
     ) -> Result<()> {
         self.frame_only(function!())?;
 
@@ -2673,7 +2672,7 @@ impl Renderer for VulkanRenderer {
                                 .color_attachment(index)
                                 .clear_value(ash::vk::ClearValue {
                                     color: ash::vk::ClearColorValue {
-                                        float32: [color.r, color.g, color.b, 1.0],
+                                        float32: [color[0], color[1], color[2], 1.0],
                                     },
                                 }),
                         ),

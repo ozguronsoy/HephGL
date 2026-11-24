@@ -11,8 +11,6 @@ pub mod vulkan;
 
 use std::any::{Any, type_name};
 
-use renkrs::RGB;
-
 pub use crate::renderers::{
     canvas::*, concurrency::*, pipeline::*, resources::*, settings::*, version::*,
 };
@@ -190,7 +188,7 @@ pub trait Renderer: Any {
     fn clear(
         &mut self,
         target_canvas: Option<&mut dyn RendererCanvas>,
-        color: RGB<f32>,
+        color: [f32; 3],
     ) -> Result<()>;
 }
 

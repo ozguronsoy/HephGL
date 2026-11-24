@@ -15,7 +15,6 @@ use heph_gl::{
         debug::{Debugger, RendererDebugObject, Severity},
     },
 };
-use renkrs::RGB;
 
 use crate::{
     dummy_display_handle, dummy_window_handle, heph_expect_err, heph_expect_success,
@@ -178,7 +177,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                 ..Default::default()
             }));
             push_label(renderer, "Clear Canvas");
-            heph_expect_success!(renderer.clear(Some(canvas.as_mut()), RGB::default()));
+            heph_expect_success!(renderer.clear(Some(canvas.as_mut()), [0.0, 0.0, 0.0]));
             pop_label(renderer);
             pop_label(renderer);
             heph_expect_success!(renderer.end_frame());
@@ -488,7 +487,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             }));
             pop_label(&renderer);
             push_label(&renderer, "Clear Canvas");
-            heph_expect_success!(renderer.clear(Some(canvas.as_mut()), RGB::default()));
+            heph_expect_success!(renderer.clear(Some(canvas.as_mut()), [0.0, 0.0, 0.0]));
             pop_label(&renderer);
             if let Some(compute_pipeline) = &mut compute_pipeline {
                 push_label(&renderer, "Compute");
@@ -505,7 +504,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                 pop_label(&renderer);
             }
             push_label(&renderer, "Clear");
-            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
             pop_label(&renderer);
             pop_label(&renderer);
             heph_expect_success!(renderer.end_frame());
@@ -514,7 +513,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             push_label(&renderer, "Empty");
             pop_label(&renderer);
             push_label(&renderer, "Clear");
-            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
             pop_label(&renderer);
             heph_expect_success!(renderer.end_frame());
             heph_expect_success!(renderer.wait_idle());
@@ -552,7 +551,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             heph_expect_success!(renderer.begin_frame());
             let _ = frame_barrier.wait();
             push_label(&renderer, "Main");
-            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, RGB::default()));
+            heph_expect_success!(renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]));
             pop_label(&renderer);
             heph_expect_success!(renderer.end_frame());
             heph_expect_success!(renderer.wait_idle());

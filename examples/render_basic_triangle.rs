@@ -3,7 +3,6 @@ use heph_gl::{
     renderers::{DISPLAY_CANVAS, GraphicsPipelineOptions},
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
-use renkrs::RGB;
 
 mod utils;
 
@@ -39,7 +38,7 @@ fn example(
     drop(frag_shader);
 
     renderer.begin_frame().unwrap();
-    renderer.clear(DISPLAY_CANVAS, RGB::default()).unwrap();
+    renderer.clear(DISPLAY_CANVAS, [0.0, 0.0, 0.0]).unwrap();
 
     const VERTEX_COUNT: u32 = 3;
     const INSTANCE_COUNT: u32 = 1;
