@@ -1981,87 +1981,7 @@ impl Renderer for VulkanRenderer {
 
     fn create_canvas(&self, options: &CanvasOptions) -> Result<Box<dyn RendererCanvas>> {
         self.frame_only(function!())?;
-
-        let instance = self
-            .instance
-            .as_ref()
-            .ok_or(Error::invalid_operation("Renderer is not initialized."))?;
-        let device_context = self
-            .device_context
-            .as_ref()
-            .ok_or(Error::invalid_operation("Device is not set."))?;
-        let thread_context_index = Self::thread_context_index()?;
-
-        if options.width == 0 || options.height == 0 {
-            return Err(Error::invalid_argument(
-                "Canvas dimensions must be greater than zero.",
-            ));
-        }
-
-        let limits = unsafe {
-            instance
-                .get_physical_device_properties(device_context.physical_device)
-                .limits
-        };
-        let max_width = limits
-            .max_image_dimension2_d
-            .min(limits.max_framebuffer_width);
-        let max_height = limits
-            .max_image_dimension2_d
-            .min(limits.max_framebuffer_height);
-        if options.width > max_width || options.height > max_height {
-            return Err(Error::InvalidArgument(format!(
-                "Canvas dimensions cannot exceed {max_width}x{max_height}."
-            )));
-        }
-
-        let current_frame = unsafe {
-            &mut *device_context.graphics_queue_context.frames
-                [device_context.current_frame_index.get()]
-            .base
-            .thread_contexts[thread_context_index]
-                .get()
-        };
-        current_frame.base.debug_label |=
-            Self::begin_labels(self.debugger.as_deref(), current_frame.base.command_buffer)?;
-
-        let layer_count = self.settings.array_layer_count();
-        let mut canvas: Box<dyn VulkanCanvas> = match options.depth_only {
-            true => Box::new(VulkanDepthCanvas::new(
-                device_context,
-                options,
-                layer_count,
-            )?),
-            false => Box::new(VulkanColorCanvas::new(
-                device_context,
-                options,
-                &Self::resolve_texture_formats(
-                    instance,
-                    device_context,
-                    &options.texture_formats,
-                    ash::vk::FormatFeatureFlags::COLOR_ATTACHMENT
-                        | ash::vk::FormatFeatureFlags::SAMPLED_IMAGE
-                        | ash::vk::FormatFeatureFlags::TRANSFER_DST,
-                )?,
-                self.settings.msaa,
-                layer_count,
-            )?),
-        };
-        if let Err(error) = match unsafe { &*device_context.rendering.get() }.as_ref() {
-            Some(rendering) => Self::clear_new_canvas(
-                &device_context.logical_device,
-                rendering.as_ref(),
-                current_frame,
-                canvas.as_ref(),
-                device_context.sampling_stages,
-            ),
-            None => Err(Error::invalid_operation("Device is not set.")),
-        } {
-            canvas.destroy(device_context);
-            return Err(error);
-        }
-
-        Ok(canvas)
+        Ok(self.create_vulkan_canvas(options)?)
     }
 
     fn destroy_canvas(&self, canvas: &mut dyn RendererCanvas) -> Result<()> {
@@ -2185,6 +2105,7 @@ impl Renderer for VulkanRenderer {
             }
         }
 
+        // Begin commands and rendering.
         fn begin_queue<Frame: VulkanFrame>(
             logical_device: &ash::Device,
             vma_allocator: &vk_mem::Allocator,
@@ -2192,7 +2113,7 @@ impl Renderer for VulkanRenderer {
             frame_index: usize,
             thread_context_index: usize,
         ) -> Result<()> {
-            let (state_mutex, cv) =
+            let (state_mutex, _) =
                 &queue_context.frames[frame_index].base().sync_states[thread_context_index];
             if *state_mutex.lock()? != FrameState::Idle {
                 return Err(Error::invalid_operation(
@@ -2235,8 +2156,6 @@ impl Renderer for VulkanRenderer {
                     current_frame.bound_pipeline = None;
                 }
             }
-            *state_mutex.lock()? = FrameState::Started;
-            cv.notify_all();
             Ok(())
         }
         begin_queue(
@@ -2263,9 +2182,10 @@ impl Renderer for VulkanRenderer {
             )?;
         }
 
+        // Create the display canvas before signaling the workers to avoid race conditions.
         if is_in_main_thread && unsafe { &*device_context.display_canvas.get() }.is_none() {
             let extent = unsafe { &*device_context.swapchain_context.get() }.extent;
-            let display_canvas: Box<dyn Any> = self.create_canvas(&CanvasOptions {
+            let display_canvas: Box<dyn Any> = self.create_vulkan_canvas(&CanvasOptions {
                 width: extent.width,
                 height: extent.height,
                 depth_only: false,
@@ -2275,6 +2195,36 @@ impl Renderer for VulkanRenderer {
                 unreachable!();
             };
             unsafe { *device_context.display_canvas.get() = Some(*display_canvas) };
+        }
+
+        // Signal workers to start.
+        fn start_queue<Frame: VulkanFrame>(
+            queue_context: &QueueContext<Frame>,
+            frame_index: usize,
+            thread_context_index: usize,
+        ) -> Result<()> {
+            let (state_mutex, cv) =
+                &queue_context.frames[frame_index].base().sync_states[thread_context_index];
+            *state_mutex.lock()? = FrameState::Started;
+            cv.notify_all();
+            Ok(())
+        }
+        start_queue(
+            &device_context.graphics_queue_context,
+            device_context.current_frame_index.get(),
+            thread_context_index,
+        )?;
+        start_queue(
+            &device_context.transfer_queue_context,
+            device_context.current_frame_index.get(),
+            thread_context_index,
+        )?;
+        if let Some(compute_queue_context) = &device_context.compute_queue_context {
+            start_queue(
+                compute_queue_context,
+                device_context.current_frame_index.get(),
+                thread_context_index,
+            )?;
         }
 
         Ok(())
