@@ -24,13 +24,14 @@
 HephGL is an experimental cross-platform graphics library created for the sole purpose of me
 learning Rust and graphics programming.
 
-Goals:
+**Goals:**
 
-- Multiple graphics backends (e.g., Vulkan, DirectX) with runtime backend switching.
-- Clean, simple, low boilerplate, and easy to use API that is agnostic to the used backend.
+- Multiple graphics backends, switchable at runtime.
+- Simple, low-boilerplate, backend-agnostic API.
 - Thread-safe design.
-- High performance and low memory consumption.
+- High performance and low memory usage.
 - Seamless integration with any windowing library.
+- Highly customizable, with optional modules so you only build what you use.
 
 ## Setup
 
