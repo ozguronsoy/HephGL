@@ -466,6 +466,8 @@ impl From<TextureFormat> for ash::vk::Format {
             TextureFormat::Rgb10a2Unorm => Self::A2B10G10R10_UNORM_PACK32,
             TextureFormat::Bgr10a2Unorm => Self::A2R10G10B10_UNORM_PACK32,
             TextureFormat::Rgba16Sfloat => Self::R16G16B16A16_SFLOAT,
+            TextureFormat::Rg16Sfloat => Self::R16G16_SFLOAT,
+            TextureFormat::R32Sfloat => Self::R32_SFLOAT,
             TextureFormat::Bc1Unorm => Self::BC1_RGBA_UNORM_BLOCK,
             TextureFormat::Bc1Srgb => Self::BC1_RGBA_SRGB_BLOCK,
             TextureFormat::Bc2Unorm => Self::BC2_UNORM_BLOCK,
@@ -495,6 +497,8 @@ impl TryFrom<ash::vk::Format> for TextureFormat {
             ash::vk::Format::A2B10G10R10_UNORM_PACK32 => Ok(Self::Rgb10a2Unorm),
             ash::vk::Format::A2R10G10B10_UNORM_PACK32 => Ok(Self::Bgr10a2Unorm),
             ash::vk::Format::R16G16B16A16_SFLOAT => Ok(Self::Rgba16Sfloat),
+            ash::vk::Format::R16G16_SFLOAT => Ok(Self::Rg16Sfloat),
+            ash::vk::Format::R32_SFLOAT => Ok(Self::R32Sfloat),
             ash::vk::Format::BC1_RGBA_UNORM_BLOCK => Ok(Self::Bc1Unorm),
             ash::vk::Format::BC1_RGBA_SRGB_BLOCK => Ok(Self::Bc1Srgb),
             ash::vk::Format::BC2_UNORM_BLOCK => Ok(Self::Bc2Unorm),
@@ -601,6 +605,14 @@ mod tests {
             ash::vk::Format::R16G16B16A16_SFLOAT
         );
         assert_eq!(
+            ash::vk::Format::from(TextureFormat::Rg16Sfloat),
+            ash::vk::Format::R16G16_SFLOAT
+        );
+        assert_eq!(
+            ash::vk::Format::from(TextureFormat::R32Sfloat),
+            ash::vk::Format::R32_SFLOAT
+        );
+        assert_eq!(
             ash::vk::Format::from(TextureFormat::Bc1Unorm),
             ash::vk::Format::BC1_RGBA_UNORM_BLOCK
         );
@@ -683,6 +695,14 @@ mod tests {
         assert_eq!(
             TextureFormat::try_from(ash::vk::Format::R16G16B16A16_SFLOAT),
             Ok(TextureFormat::Rgba16Sfloat)
+        );
+        assert_eq!(
+            TextureFormat::try_from(ash::vk::Format::R16G16_SFLOAT),
+            Ok(TextureFormat::Rg16Sfloat)
+        );
+        assert_eq!(
+            TextureFormat::try_from(ash::vk::Format::R32_SFLOAT),
+            Ok(TextureFormat::R32Sfloat)
         );
         assert_eq!(
             TextureFormat::try_from(ash::vk::Format::BC1_RGBA_UNORM_BLOCK),
