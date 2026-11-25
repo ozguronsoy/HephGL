@@ -902,7 +902,7 @@ impl Renderer for VulkanRenderer {
         Ok(())
     }
 
-    fn spawn_worker(&self) -> Box<dyn RendererWorker> {
+    fn spawn_worker(&self) -> Box<dyn RendererWorker + '_> {
         Box::new(VulkanWorker::new(self))
     }
 

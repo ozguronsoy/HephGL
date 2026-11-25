@@ -598,6 +598,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             for worker in &mut workers {
                 let _ = heph_expect_success!(worker.finish());
             }
+            drop(workers);
             expect_no_warnings(&mut renderer);
         }
 
@@ -628,6 +629,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             for worker in &mut workers {
                 let _ = heph_expect_success!(worker.finish());
             }
+            drop(workers);
             heph_expect_success!(renderer.uninitialize());
             let debugger = heph_expect_success!(renderer.detach_debugger());
             assert!(
@@ -707,21 +709,6 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             heph_expect_success!(renderer.set_settings(settings));
             let result = renderer.get_settings();
             assert_eq!(settings.frames_in_flight, result.frames_in_flight);
-        }
-
-        {
-            fn idle_task(
-                _: &dyn Renderer,
-                _: Option<&mut dyn RendererTaskParam>,
-            ) -> Result<Option<Box<dyn RendererTaskParam>>> {
-                Ok(None)
-            }
-
-            let mut renderer = self.create_renderer_with_any_device(&[]);
-            let mut worker = renderer.spawn_worker();
-            heph_expect_success!(worker.work(&[idle_task], None, true).map_err(|(e, _)| e));
-            heph_expect_err!(renderer.set_settings(settings), Error::InvalidOperation(_));
-            let _ = heph_expect_success!(worker.finish());
         }
 
         {

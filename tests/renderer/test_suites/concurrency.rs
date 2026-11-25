@@ -2,16 +2,10 @@ use std::{sync::mpsc::Sender, time::Duration};
 
 use heph_gl::{
     Error, Result,
-    renderers::{
-        InitializeOptions, LATEST_API_VERSION, Renderer, RendererTaskParam, Settings,
-        debug::Debugger,
-    },
+    renderers::{Renderer, RendererTaskParam, Settings},
 };
 
-use crate::{
-    dummy_display_handle, dummy_window_handle, heph_expect_err, heph_expect_success,
-    renderer::RendererTests,
-};
+use crate::{heph_expect_err, heph_expect_success, renderer::RendererTests};
 
 fn idle_task(
     _: &dyn Renderer,
@@ -41,31 +35,9 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         let mut worker = renderer.spawn_worker();
         heph_expect_success!(worker.work(&[idle_task], None, true).map_err(|(e, _)| e));
 
-        heph_expect_err!(renderer.detach_debugger(), Error::InvalidOperation(_));
-        heph_expect_err!(
-            renderer
-                .attach_debugger(Debugger::default())
-                .map_err(|(e, _)| e),
-            Error::InvalidOperation(_)
-        );
-        heph_expect_err!(
-            renderer.set_settings(Settings::default()),
-            Error::InvalidOperation(_)
-        );
-        heph_expect_err!(
-            renderer.initialize(&InitializeOptions {
-                app_name: "",
-                window_handle: dummy_window_handle!(),
-                display_handle: dummy_display_handle!(),
-                api_version: LATEST_API_VERSION,
-                debug: false,
-            }),
-            Error::InvalidOperation(_)
-        );
-        heph_expect_err!(renderer.uninitialize(), Error::InvalidOperation(_));
-        heph_expect_err!(renderer.set_device(None, &[]), Error::InvalidOperation(_));
         heph_expect_success!(renderer.wait_idle());
         let _ = heph_expect_success!(worker.finish());
+        drop(worker);
 
         let debugger = heph_expect_success!(renderer.detach_debugger());
         heph_expect_success!(renderer.attach_debugger(debugger).map_err(|(e, _)| e));
