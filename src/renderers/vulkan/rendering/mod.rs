@@ -189,7 +189,7 @@ fn create_graphics_pipeline(
             }
         });
     let mut entry_names = Vec::with_capacity(shaders.len());
-    let mut shader_stages = Vec::with_capacity(shaders.len());
+    let mut stage_mask = ShaderStageFlags::empty();
     let mut pipeline_type = PipelineType::None;
     let mut vertex_bindings = &[][..];
     for shader in shaders {
@@ -229,9 +229,8 @@ fn create_graphics_pipeline(
                 "Task and mesh shaders require the `MeshShaders` feature to be enabled.",
             ));
         }
-        // TODO: Use a bitmask to avoid iterating through the stages.
         let shader_stage = ShaderStageFlags::from(shader.metadata.stage);
-        if shader_stages.contains(&shader_stage) {
+        if stage_mask.contains(shader_stage) {
             return Err(Error::invalid_argument(
                 "Graphics pipeline cannot contain multiple shaders of the same stage.",
             ));
@@ -272,7 +271,7 @@ fn create_graphics_pipeline(
         shader_modules.push(unsafe {
             device.create_shader_module(&ShaderModuleCreateInfo::default().code(code), None)?
         });
-        shader_stages.push(shader_stage);
+        stage_mask |= shader_stage;
         entry_names.push(CString::new(shader.metadata.entry_name.as_str())?);
     }
     if pipeline_type == PipelineType::None {
@@ -280,26 +279,24 @@ fn create_graphics_pipeline(
             "Graphics pipeline requires a vertex or mesh shader.",
         ));
     }
-    if shader_stages.contains(&ShaderStageFlags::TASK_EXT) && pipeline_type != PipelineType::Mesh {
+    if stage_mask.contains(ShaderStageFlags::TASK_EXT) && pipeline_type != PipelineType::Mesh {
         return Err(Error::invalid_argument(
             "Task shaders must be used with a mesh shader.",
         ));
     }
     if pipeline_type == PipelineType::Mesh
-        && shader_stages.iter().any(|stage| {
-            stage.intersects(
-                ShaderStageFlags::TESSELLATION_CONTROL
-                    | ShaderStageFlags::TESSELLATION_EVALUATION
-                    | ShaderStageFlags::GEOMETRY,
-            )
-        })
+        && stage_mask.intersects(
+            ShaderStageFlags::TESSELLATION_CONTROL
+                | ShaderStageFlags::TESSELLATION_EVALUATION
+                | ShaderStageFlags::GEOMETRY,
+        )
     {
         return Err(Error::invalid_argument(
             "Mesh shaders cannot be used with tessellation or geometry shaders.",
         ));
     }
-    let has_control_shader = shader_stages.contains(&ShaderStageFlags::TESSELLATION_CONTROL);
-    if has_control_shader != shader_stages.contains(&ShaderStageFlags::TESSELLATION_EVALUATION) {
+    let has_control_shader = stage_mask.contains(ShaderStageFlags::TESSELLATION_CONTROL);
+    if has_control_shader != stage_mask.contains(ShaderStageFlags::TESSELLATION_EVALUATION) {
         return Err(Error::invalid_argument(
             "Tessellation control and evaluation shaders must be used together.",
         ));
@@ -311,13 +308,13 @@ fn create_graphics_pipeline(
             "Tessellation shaders must be used with the `PatchList` topology.",
         ));
     }
-    let stage_infos = shader_stages
+    let stage_infos = shaders
         .iter()
         .zip(shader_modules.iter())
         .zip(&entry_names)
-        .map(|((stage, module), entry_name)| {
+        .map(|((shader, module), entry_name)| {
             PipelineShaderStageCreateInfo::default()
-                .stage(*stage)
+                .stage(shader.metadata.stage.into())
                 .module(*module)
                 .name(entry_name)
         })
@@ -332,7 +329,8 @@ fn create_graphics_pipeline(
     let mut binding_sets = Vec::with_capacity(group_count);
     binding_sets.resize_with(group_count, Vec::new);
 
-    for (shader, shader_stage) in shaders.iter().zip(&shader_stages) {
+    for shader in shaders {
+        let shader_stage = ShaderStageFlags::from(shader.metadata.stage);
         for binding in &shader.metadata.descriptor_bindings {
             let binding_set = &mut binding_sets[binding.group as usize];
             let descriptor_type: DescriptorType = binding.binding_type.into();
@@ -350,14 +348,14 @@ fn create_graphics_pipeline(
                     )));
                 }
 
-                existing_binding.stage_flags |= *shader_stage;
+                existing_binding.stage_flags |= shader_stage;
             } else {
                 binding_set.push(
                     DescriptorSetLayoutBinding::default()
                         .binding(binding.binding)
                         .descriptor_type(descriptor_type)
                         .descriptor_count(1)
-                        .stage_flags(*shader_stage),
+                        .stage_flags(shader_stage),
                 );
             }
         }
@@ -518,7 +516,7 @@ fn create_graphics_pipeline(
         depth_only: options.depth_only,
         color_formats,
         mesh_stage: match pipeline_type {
-            PipelineType::Mesh => match shader_stages.contains(&ShaderStageFlags::TASK_EXT) {
+            PipelineType::Mesh => match stage_mask.contains(ShaderStageFlags::TASK_EXT) {
                 true => Some(ShaderStage::Task),
                 false => Some(ShaderStage::Mesh),
             },
