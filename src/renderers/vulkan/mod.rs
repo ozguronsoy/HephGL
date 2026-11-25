@@ -183,7 +183,7 @@ impl Renderer for VulkanRenderer {
         &mut self,
         debugger: Debugger,
     ) -> std::result::Result<(), (Error, Debugger)> {
-        if let Err(error) = self.main_thread_only(false, function!()) {
+        if let Err(error) = self.main_thread_only(function!()) {
             return Err((error, debugger));
         }
         if !self.debug_enabled {
@@ -207,7 +207,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn detach_debugger(&mut self) -> Result<Debugger> {
-        self.main_thread_only(false, function!())?;
+        self.main_thread_only(function!())?;
         self.destroy_debug_messenger();
         self.debugger
             .take()
@@ -224,7 +224,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn set_settings(&mut self, settings: Settings) -> Result<()> {
-        self.main_thread_only(false, function!())?;
+        self.main_thread_only(function!())?;
         if settings.max_fps == Some(0) {
             return Err(Error::invalid_argument("`max_fps` must be greater than 0."));
         }
@@ -268,7 +268,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn initialize(&mut self, options: &InitializeOptions) -> Result<()> {
-        self.main_thread_only(false, function!())?;
+        self.main_thread_only(function!())?;
         if self.entry.is_some() || self.instance.is_some() {
             return Err(Error::invalid_operation(
                 "The renderer is already initialized.",
@@ -412,7 +412,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn uninitialize(&mut self) -> Result<()> {
-        self.main_thread_only(false, function!())?;
+        self.main_thread_only(function!())?;
         self.uninitialize_device()?;
 
         if let (Some(surface), Some(surface_loader)) =
@@ -598,7 +598,7 @@ impl Renderer for VulkanRenderer {
         device: Option<&GraphicsDevice>,
         requested_features: &[FeatureRequest],
     ) -> Result<()> {
-        self.main_thread_only(false, function!())?;
+        self.main_thread_only(function!())?;
         if let Some(device) = device {
             // Check whether the `device` is a Vulkan device.
             let _ = downcast_ref::<VulkanGraphicsDeviceId>(device.device_id.as_ref())?;
@@ -2549,7 +2549,7 @@ impl Renderer for VulkanRenderer {
     }
 
     fn wait_idle(&self) -> Result<()> {
-        self.main_thread_only(true, function!())?;
+        self.main_thread_only(function!())?;
         let device_context = self
             .device_context
             .as_ref()

@@ -181,17 +181,6 @@ pub(super) fn is_thread_context_active(index: usize, masks: &ThreadContextMaskAr
     (mask & flag) == flag
 }
 
-/// Checks whether any thread context is active excluding the main thread context.
-pub(super) fn any_worker_thread_context_active(masks: &ThreadContextMaskArray) -> bool {
-    masks.iter().enumerate().any(|(i, &mask)| {
-        if i == MAIN_THREAD_CONTEXT_MASK_INDEX {
-            (mask & !(1 << (MAIN_THREAD_CONTEXT_INDEX % THREAD_CONTEXT_MASK_BIT_SIZE))) > 0
-        } else {
-            mask > 0
-        }
-    })
-}
-
 /// Gets the index of the main thread context.
 pub(super) fn main_thread_context_index() -> usize {
     MAIN_THREAD_CONTEXT_INDEX
@@ -300,34 +289,6 @@ mod tests {
                 assert_eq!(mask, 0);
             }
         });
-    }
-
-    #[test]
-    fn test_any_worker_thread_context_active() {
-        thread_local! {
-          static MAIN_INDEX: ThreadContextIndex = const { ThreadContextIndex::new() };
-          static WORKER_INDEX: ThreadContextIndex = const { ThreadContextIndex::new() };
-        }
-
-        let mut masks: ThreadContextMaskArray =
-            std::array::from_fn(|_| ThreadContextMask::default());
-        assert!(!any_worker_thread_context_active(&masks));
-
-        assert!(register(&MAIN_INDEX, &mut masks, true).is_ok());
-        assert!(!any_worker_thread_context_active(&masks));
-
-        assert!(register(&WORKER_INDEX, &mut masks, false).is_ok());
-        assert!(any_worker_thread_context_active(&masks));
-
-        unregister(&MAIN_INDEX, &mut masks);
-        assert!(any_worker_thread_context_active(&masks));
-
-        unregister(&WORKER_INDEX, &mut masks);
-        assert!(!any_worker_thread_context_active(&masks));
-
-        masks[MAIN_THREAD_CONTEXT_MASK_INDEX] |=
-            1 << ((MAIN_THREAD_CONTEXT_INDEX - 1) % THREAD_CONTEXT_MASK_BIT_SIZE);
-        assert!(any_worker_thread_context_active(&masks));
     }
 
     #[test]
