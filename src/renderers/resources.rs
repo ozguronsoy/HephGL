@@ -34,6 +34,10 @@ pub enum TextureFormat {
     Bgr10a2Unorm,
     /// 16-bit RGBA using signed floating-point color values.
     Rgba16Sfloat,
+    /// 16-bit RG using signed floating-point values.
+    Rg16Sfloat,
+    /// 32-bit single channel signed floating-point value.
+    R32Sfloat,
     /// BC1 block-compressed RGB with 1-bit alpha using linear color values.
     Bc1Unorm,
     /// BC1 block-compressed RGB with 1-bit alpha using the sRGB color space.
@@ -160,6 +164,8 @@ impl TextureFormat {
             | Self::Bgra8Srgb
             | Self::Rgb10a2Unorm
             | Self::Bgr10a2Unorm
+            | Self::Rg16Sfloat
+            | Self::R32Sfloat
             | Self::D32Sfloat => 4,
             Self::Rgba16Sfloat | Self::Bc1Unorm | Self::Bc1Srgb | Self::Bc4Unorm => 8,
             Self::Bc2Unorm
@@ -224,6 +230,8 @@ mod tests {
         assert_eq!(TextureFormat::Rgb10a2Unorm.bytes_per_block(), 4);
         assert_eq!(TextureFormat::Bgr10a2Unorm.bytes_per_block(), 4);
         assert_eq!(TextureFormat::Rgba16Sfloat.bytes_per_block(), 8);
+        assert_eq!(TextureFormat::Rg16Sfloat.bytes_per_block(), 4);
+        assert_eq!(TextureFormat::R32Sfloat.bytes_per_block(), 4);
         assert_eq!(TextureFormat::Bc1Unorm.bytes_per_block(), 8);
         assert_eq!(TextureFormat::Bc1Srgb.bytes_per_block(), 8);
         assert_eq!(TextureFormat::Bc2Unorm.bytes_per_block(), 16);
@@ -248,6 +256,8 @@ mod tests {
         assert_eq!(TextureFormat::Rgb10a2Unorm.block_extent(), 1);
         assert_eq!(TextureFormat::Bgr10a2Unorm.block_extent(), 1);
         assert_eq!(TextureFormat::Rgba16Sfloat.block_extent(), 1);
+        assert_eq!(TextureFormat::Rg16Sfloat.block_extent(), 1);
+        assert_eq!(TextureFormat::R32Sfloat.block_extent(), 1);
         assert_eq!(TextureFormat::Bc1Unorm.block_extent(), 4);
         assert_eq!(TextureFormat::Bc1Srgb.block_extent(), 4);
         assert_eq!(TextureFormat::Bc2Unorm.block_extent(), 4);
@@ -272,6 +282,8 @@ mod tests {
         assert!(!TextureFormat::Rgb10a2Unorm.is_bc_compressed());
         assert!(!TextureFormat::Bgr10a2Unorm.is_bc_compressed());
         assert!(!TextureFormat::Rgba16Sfloat.is_bc_compressed());
+        assert!(!TextureFormat::Rg16Sfloat.is_bc_compressed());
+        assert!(!TextureFormat::R32Sfloat.is_bc_compressed());
         assert!(TextureFormat::Bc1Unorm.is_bc_compressed());
         assert!(TextureFormat::Bc1Srgb.is_bc_compressed());
         assert!(TextureFormat::Bc2Unorm.is_bc_compressed());
