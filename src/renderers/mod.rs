@@ -100,7 +100,7 @@ pub trait Renderer: Any {
     ) -> Result<()>;
 
     /// Creates a worker that executes tasks on a separate thread.
-    fn spawn_worker(&self) -> Box<dyn RendererWorker>;
+    fn spawn_worker(&self) -> Box<dyn RendererWorker + '_>;
 
     /// Allocates a new buffer on the GPU with the specified size and usage.
     fn create_buffer(&self, size: usize, usage: BufferUsage) -> Result<Box<dyn RendererBuffer>>;
