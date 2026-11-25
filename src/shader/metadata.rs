@@ -6,6 +6,8 @@ pub(crate) enum ShaderStage {
     TessellationControl,
     TessellationEvaluation,
     Geometry,
+    Task,
+    Mesh,
     Fragment,
     Compute,
 }

@@ -83,6 +83,8 @@ impl Shader {
             ExecutionModel::TessellationControl => ShaderStage::TessellationControl,
             ExecutionModel::TessellationEvaluation => ShaderStage::TessellationEvaluation,
             ExecutionModel::Geometry => ShaderStage::Geometry,
+            ExecutionModel::TaskEXT => ShaderStage::Task,
+            ExecutionModel::MeshEXT => ShaderStage::Mesh,
             ExecutionModel::Fragment => ShaderStage::Fragment,
             ExecutionModel::GLCompute => ShaderStage::Compute,
             _ => return Err(Error::fail("Unsupported shader stage.")),

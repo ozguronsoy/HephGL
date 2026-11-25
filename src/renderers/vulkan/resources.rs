@@ -449,6 +449,8 @@ impl From<ShaderStage> for ash::vk::ShaderStageFlags {
                 ash::vk::ShaderStageFlags::TESSELLATION_EVALUATION
             }
             ShaderStage::Geometry => ash::vk::ShaderStageFlags::GEOMETRY,
+            ShaderStage::Task => ash::vk::ShaderStageFlags::TASK_EXT,
+            ShaderStage::Mesh => ash::vk::ShaderStageFlags::MESH_EXT,
             ShaderStage::Fragment => ash::vk::ShaderStageFlags::FRAGMENT,
             ShaderStage::Compute => ash::vk::ShaderStageFlags::COMPUTE,
         }
@@ -559,6 +561,14 @@ mod tests {
         assert_eq!(
             ash::vk::ShaderStageFlags::from(ShaderStage::Geometry),
             ash::vk::ShaderStageFlags::GEOMETRY
+        );
+        assert_eq!(
+            ash::vk::ShaderStageFlags::from(ShaderStage::Task),
+            ash::vk::ShaderStageFlags::TASK_EXT
+        );
+        assert_eq!(
+            ash::vk::ShaderStageFlags::from(ShaderStage::Mesh),
+            ash::vk::ShaderStageFlags::MESH_EXT
         );
         assert_eq!(
             ash::vk::ShaderStageFlags::from(ShaderStage::Fragment),

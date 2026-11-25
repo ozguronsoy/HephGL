@@ -23,7 +23,7 @@ if __name__ == "__main__":
     
     output_path = shader_path.with_name(f"{shader_path.stem}_{shader_path.suffix[1:]}.spv")
     
-    subprocess.run(
-        ["glslc", str(shader_path), "-o", str(output_path)],
-        check=True,
-    )
+    command = ["glslc", str(shader_path), "-o", str(output_path)]
+    if shader_path.suffix in (".task", ".mesh"):
+        command.append("--target-env=vulkan1.2")
+    subprocess.run(command, check=True)
