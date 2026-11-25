@@ -57,9 +57,19 @@ impl VulkanRendering for DynamicRendering {
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
     ) -> Result<VulkanGraphicsPipeline> {
+        // TODO: Share pipeline creation and destruction with `RenderPassRendering`, since most of
+        // the code is same.
+        #[derive(PartialEq)]
+        enum PipelineType {
+            None,
+            Vertex,
+            Mesh,
+        }
+
         let device = &device_context.logical_device;
         let enabled_features = &device_context.enabled_features;
         let max_tessellation_patch_size = device_context.max_tessellation_patch_size;
+
         if options.polygon_mode != PolygonMode::Fill
             && !enabled_features.contains(&GraphicsDeviceFeature::WireframeMode)
         {
@@ -125,6 +135,8 @@ impl VulkanRendering for DynamicRendering {
             });
         let mut entry_names = Vec::with_capacity(shaders.len());
         let mut shader_stages = Vec::with_capacity(shaders.len());
+        let mut pipeline_type = PipelineType::None;
+        let mut vertex_bindings = &[][..];
         for shader in shaders {
             let (prefix, code, suffix) = unsafe { shader.data.align_to::<u32>() };
             if !prefix.is_empty() || !suffix.is_empty() {
@@ -155,11 +167,32 @@ impl VulkanRendering for DynamicRendering {
                     "Tessellation shaders require the `TessellationShaders` feature to be enabled.",
                 ));
             }
+            if matches!(shader.metadata.stage, ShaderStage::Task | ShaderStage::Mesh)
+                && !enabled_features.contains(&GraphicsDeviceFeature::MeshShaders)
+            {
+                return Err(Error::invalid_operation(
+                    "Task and mesh shaders require the `MeshShaders` feature to be enabled.",
+                ));
+            }
+            // TODO: Use a bitmask to avoid iterating through the stages.
             let shader_stage = ShaderStageFlags::from(shader.metadata.stage);
             if shader_stages.contains(&shader_stage) {
                 return Err(Error::invalid_argument(
                     "Graphics pipeline cannot contain multiple shaders of the same stage.",
                 ));
+            }
+            match shader.metadata.stage {
+                ShaderStage::Vertex | ShaderStage::Mesh if pipeline_type != PipelineType::None => {
+                    return Err(Error::invalid_argument(
+                        "Mesh and vertex shaders cannot be used in the same pipeline.",
+                    ));
+                }
+                ShaderStage::Vertex => {
+                    pipeline_type = PipelineType::Vertex;
+                    vertex_bindings = shader.metadata.vertex_bindings.as_slice();
+                }
+                ShaderStage::Mesh => pipeline_type = PipelineType::Mesh,
+                _ => {}
             }
             if shader.metadata.stage == ShaderStage::Geometry {
                 let primitive = shaders
@@ -186,6 +219,31 @@ impl VulkanRendering for DynamicRendering {
             });
             shader_stages.push(shader_stage);
             entry_names.push(CString::new(shader.metadata.entry_name.as_str())?);
+        }
+        if pipeline_type == PipelineType::None {
+            return Err(Error::invalid_argument(
+                "Graphics pipeline requires a vertex or mesh shader.",
+            ));
+        }
+        if shader_stages.contains(&ShaderStageFlags::TASK_EXT)
+            && pipeline_type != PipelineType::Mesh
+        {
+            return Err(Error::invalid_argument(
+                "Task shaders must be used with a mesh shader.",
+            ));
+        }
+        if pipeline_type == PipelineType::Mesh
+            && shader_stages.iter().any(|stage| {
+                stage.intersects(
+                    ShaderStageFlags::TESSELLATION_CONTROL
+                        | ShaderStageFlags::TESSELLATION_EVALUATION
+                        | ShaderStageFlags::GEOMETRY,
+                )
+            })
+        {
+            return Err(Error::invalid_argument(
+                "Mesh shaders cannot be used with tessellation or geometry shaders.",
+            ));
         }
         let has_control_shader = shader_stages.contains(&ShaderStageFlags::TESSELLATION_CONTROL);
         if has_control_shader != shader_stages.contains(&ShaderStageFlags::TESSELLATION_EVALUATION)
@@ -281,16 +339,9 @@ impl VulkanRendering for DynamicRendering {
             },
         );
 
-        let vertex_shader = shaders
-            .iter()
-            .find(|shader| shader.metadata.stage == ShaderStage::Vertex)
-            .ok_or(Error::invalid_argument(
-                "Graphics pipeline requires a vertex shader.",
-            ))?;
         let mut offset = 0;
-        let mut attribute_descriptions =
-            Vec::with_capacity(vertex_shader.metadata.vertex_bindings.len());
-        for binding in &vertex_shader.metadata.vertex_bindings {
+        let mut attribute_descriptions = Vec::with_capacity(vertex_bindings.len());
+        for binding in vertex_bindings {
             let format = match (
                 binding.scalar_kind,
                 binding.scalar_width,
@@ -398,8 +449,6 @@ impl VulkanRendering for DynamicRendering {
         };
         let mut pipeline_info = GraphicsPipelineCreateInfo::default()
             .stages(&stage_infos)
-            .vertex_input_state(&vertex_input)
-            .input_assembly_state(&input_assembly)
             .viewport_state(&viewport_state)
             .rasterization_state(&rasterization)
             .multisample_state(&multisampling)
@@ -409,6 +458,11 @@ impl VulkanRendering for DynamicRendering {
             .layout(*pipeline_layout)
             .render_pass(ash::vk::RenderPass::null())
             .push_next(&mut rendering_info);
+        if pipeline_type == PipelineType::Vertex {
+            pipeline_info = pipeline_info
+                .vertex_input_state(&vertex_input)
+                .input_assembly_state(&input_assembly);
+        }
         if let Some(tessellation_state) = &tessellation_state {
             pipeline_info = pipeline_info.tessellation_state(tessellation_state);
         }
