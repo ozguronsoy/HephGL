@@ -51,9 +51,7 @@ const SDR_SURFACE_FORMAT: SurfaceFormatKHR = SurfaceFormatKHR {
 
 impl VulkanRenderer {
     /// Creates the swapchain, images, and semaphores for the renderer.
-    pub(super) fn create_swapchain(&mut self) -> Result<()> {
-        self.destroy_swapchain()?;
-
+    pub(super) fn create_swapchain(&self) -> Result<()> {
         let window_surface_loader = self
             .window_surface_loader
             .as_ref()
@@ -63,9 +61,10 @@ impl VulkanRenderer {
             .ok_or(Error::invalid_operation("Renderer is not initialized."))?;
         let device_context = self
             .device_context
-            .as_mut()
+            .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let frames_in_flight = self.settings.frames_in_flight as u32;
+        let swapchain_context = unsafe { &mut *device_context.swapchain_context.get() };
 
         let surface_capabilities = unsafe {
             window_surface_loader.get_physical_device_surface_capabilities(
@@ -111,7 +110,6 @@ impl VulkanRenderer {
                         Severity::Warning,
                     );
                 }
-                self.settings.hdr_mode = HdrMode::Disabled;
                 SDR_SURFACE_FORMAT
             }
         };
@@ -137,7 +135,7 @@ impl VulkanRenderer {
 
         let device_context = self
             .device_context
-            .as_mut()
+            .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let array_layer_count = self
             .settings
@@ -187,23 +185,17 @@ impl VulkanRenderer {
                         PresentModeKHR::FIFO
                     },
                 )
-                .clipped(true);
+                .clipped(true)
+                .old_swapchain(swapchain_context.swapchain);
             let swapchain = DropGuard::new(
-                device_context
-                    .swapchain_context
+                swapchain_context
                     .loader
                     .create_swapchain(&swapchain_create_info, None)?,
                 |swapchain| {
-                    device_context
-                        .swapchain_context
-                        .loader
-                        .destroy_swapchain(swapchain, None);
+                    swapchain_context.loader.destroy_swapchain(swapchain, None);
                 },
             );
-            let swapchain_images = device_context
-                .swapchain_context
-                .loader
-                .get_swapchain_images(*swapchain)?;
+            let swapchain_images = swapchain_context.loader.get_swapchain_images(*swapchain)?;
 
             let image_count = swapchain_images.len();
             let mut image_available_semaphores =
@@ -236,40 +228,46 @@ impl VulkanRenderer {
                 );
             }
 
-            device_context.swapchain_context.swapchain = DropGuard::dismiss(swapchain);
-            device_context.swapchain_context.images = swapchain_images;
-            device_context.swapchain_context.semaphores =
-                DropGuard::dismiss(image_available_semaphores)
-                    .into_iter()
-                    .zip(DropGuard::dismiss(render_finished_semaphores))
-                    .collect();
+            let swapchain = DropGuard::dismiss(swapchain);
+            let semaphores = DropGuard::dismiss(image_available_semaphores)
+                .into_iter()
+                .zip(DropGuard::dismiss(render_finished_semaphores))
+                .collect::<Vec<_>>();
+
+            for (image_available, render_finished) in swapchain_context.semaphores.drain(..) {
+                device_context
+                    .logical_device
+                    .destroy_semaphore(image_available, None);
+                device_context
+                    .logical_device
+                    .destroy_semaphore(render_finished, None);
+            }
+            swapchain_context
+                .loader
+                .destroy_swapchain(swapchain_context.swapchain, None);
+
+            swapchain_context.swapchain = swapchain;
+            swapchain_context.images = swapchain_images;
+            swapchain_context.semaphores = semaphores;
         }
 
-        device_context.swapchain_context.format = surface_format.format;
-        device_context.swapchain_context.extent = extent;
-        device_context
-            .swapchain_context
-            .image_avaliable_semaphore_index = SwapchainContext::INVALID_INDEX;
+        swapchain_context.format = surface_format.format;
+        swapchain_context.extent = extent;
+        swapchain_context.image_avaliable_semaphore_index = SwapchainContext::INVALID_INDEX;
 
         Ok(())
     }
 
     /// Acquires a swapchain image, recreating invalidated presentation resources before recording
     /// begins.
-    pub(super) fn acquire_swapchain_image(p_self: *mut Self) -> Result<()> {
-        macro_rules! this {
-            () => {
-                unsafe { &mut *p_self }
-            };
-        }
-
+    pub(super) fn acquire_swapchain_image(&self) -> Result<()> {
         // Retry once so repeated surface changes return control to the application's event loop.
         for attempt in 0..2 {
-            let device_context = this!()
+            let device_context = self
                 .device_context
-                .as_mut()
+                .as_ref()
                 .ok_or(Error::invalid_operation("Device is not set."))?;
-            let swapchain_context = &mut device_context.swapchain_context;
+            let mut swapchain_context = unsafe { &mut *device_context.swapchain_context.get() };
 
             // The image is already acquired, `begin_frame` is called again without `end_frame`.
             if swapchain_context.image_avaliable_semaphore_index != SwapchainContext::INVALID_INDEX
@@ -278,10 +276,14 @@ impl VulkanRenderer {
             }
 
             if swapchain_context.invalidated {
-                this!().wait_idle()?;
-                this!().destroy_rendering()?;
-                this!().create_swapchain()?;
-                this!().create_rendering()?;
+                self.wait_idle()?;
+                if let Some(mut display_canvas) =
+                    unsafe { &mut *device_context.display_canvas.get() }.take()
+                {
+                    self.destroy_canvas(&mut display_canvas)?;
+                }
+                self.create_swapchain()?;
+                swapchain_context = unsafe { &mut *device_context.swapchain_context.get() };
                 swapchain_context.invalidated = false;
             }
 
@@ -289,7 +291,7 @@ impl VulkanRenderer {
                 swapchain_context.loader.acquire_next_image(
                     swapchain_context.swapchain,
                     1.0e9 as u64,
-                    swapchain_context.semaphores[device_context.current_frame_index].0,
+                    swapchain_context.semaphores[device_context.current_frame_index.get()].0,
                     ash::vk::Fence::null(),
                 )
             };
@@ -297,7 +299,7 @@ impl VulkanRenderer {
                 Ok((image_index, suboptimal)) => {
                     swapchain_context.current_image_index = image_index as usize;
                     swapchain_context.image_avaliable_semaphore_index =
-                        device_context.current_frame_index;
+                        device_context.current_frame_index.get();
                     swapchain_context.invalidated = suboptimal;
                     return Ok(());
                 }
@@ -315,13 +317,13 @@ impl VulkanRenderer {
     }
 
     /// Destroys the swapchain, images, and semaphores.
-    pub(super) fn destroy_swapchain(&mut self) -> Result<()> {
+    pub(super) fn destroy_swapchain(&self) -> Result<()> {
         let device_context = self
             .device_context
-            .as_mut()
+            .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
 
-        let swapchain = &mut device_context.swapchain_context;
+        let swapchain = unsafe { &mut *device_context.swapchain_context.get() };
         unsafe {
             for (image_available, render_finished) in swapchain.semaphores.drain(..) {
                 device_context

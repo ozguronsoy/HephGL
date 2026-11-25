@@ -288,7 +288,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         };
 
         {
-            let mut renderer = self.create_renderer_with_any_device(&[]);
+            let renderer = self.create_renderer_with_any_device(&[]);
 
             for mip_level_count in 1..=rgba_image_max_mip_level_count {
                 let texture_options = TextureOptions {
@@ -319,7 +319,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         }
 
         {
-            let mut renderer = self.create_renderer_with_any_device(&[]);
+            let renderer = self.create_renderer_with_any_device(&[]);
             heph_expect_success!(renderer.begin_frame());
             heph_expect_err!(
                 renderer.create_texture(
@@ -382,7 +382,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         }
 
         {
-            let mut renderer = self.create_renderer_with_any_device(&[]);
+            let renderer = self.create_renderer_with_any_device(&[]);
             heph_expect_err!(
                 renderer.create_texture(
                     &TextureOptions {
@@ -398,7 +398,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         }
 
         {
-            let mut renderer =
+            let renderer =
                 self.create_renderer_with_any_device(&[FeatureRequest::new(BcTextures, false)]);
             if renderer
                 .get_device()
@@ -432,7 +432,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         }
 
         {
-            let mut renderer = self.create_renderer_with_any_device(&[]);
+            let renderer = self.create_renderer_with_any_device(&[]);
             heph_expect_success!(renderer.begin_frame());
             heph_expect_err!(
                 renderer.create_texture(
@@ -450,7 +450,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         }
 
         {
-            let mut renderer =
+            let renderer =
                 self.create_renderer_with_any_device(&[FeatureRequest::new(BcTextures, false)]);
             if renderer
                 .get_device()

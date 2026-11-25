@@ -122,15 +122,16 @@ impl DescriptorSetCache {
 impl VulkanRenderer {
     pub(super) fn create_compute_resource_sets(
         device: &ash::Device,
-        queue_context: &mut QueueContext<ComputeFrame>,
+        queue_context: &QueueContext<ComputeFrame>,
         frame_index: usize,
         pipeline: &mut VulkanComputePipeline,
         binding_sets: &[&[ResourceBinding<'_>]],
     ) -> Result<Range<usize>> {
         let thread_context_index = Self::thread_context_index()?;
-        let pool_generation = queue_context.frames[0].base.thread_contexts[thread_context_index]
-            .descriptor_pool_manager
-            .generation();
+        let pool_generation =
+            unsafe { &*queue_context.frames[0].base.thread_contexts[thread_context_index].get() }
+                .descriptor_pool_manager
+                .generation();
 
         if pipeline.descriptor_layouts.is_empty()
             || pipeline.descriptor_binding_counts.iter().sum::<usize>() == 0
@@ -174,10 +175,11 @@ impl VulkanRenderer {
             return Ok(range);
         }
 
-        let descriptor_sets = queue_context.frames[frame_index].base.thread_contexts
-            [thread_context_index]
-            .descriptor_pool_manager
-            .allocate(device, &pipeline.descriptor_layouts)?;
+        let descriptor_sets = unsafe {
+            &mut *queue_context.frames[frame_index].base.thread_contexts[thread_context_index].get()
+        }
+        .descriptor_pool_manager
+        .allocate(device, &pipeline.descriptor_layouts)?;
         let range = Self::extend_cached_descriptor_sets(
             pipeline.descriptor_layouts.len(),
             &mut pipeline.descriptor_set_cache,
@@ -191,15 +193,16 @@ impl VulkanRenderer {
 
     pub(super) fn create_graphics_resource_sets(
         device: &ash::Device,
-        queue_context: &mut QueueContext<GraphicsFrame>,
+        queue_context: &QueueContext<GraphicsFrame>,
         frame_index: usize,
         pipeline: &mut VulkanGraphicsPipeline,
         binding_sets: &[&[ResourceBinding<'_>]],
     ) -> Result<Range<usize>> {
         let thread_context_index = Self::thread_context_index()?;
-        let pool_generation = queue_context.frames[0].base.thread_contexts[thread_context_index]
-            .descriptor_pool_manager
-            .generation();
+        let pool_generation =
+            unsafe { &*queue_context.frames[0].base.thread_contexts[thread_context_index].get() }
+                .descriptor_pool_manager
+                .generation();
 
         if pipeline.descriptor_layouts.is_empty()
             || pipeline.descriptor_binding_counts.iter().sum::<usize>() == 0
@@ -243,10 +246,11 @@ impl VulkanRenderer {
             return Ok(range);
         }
 
-        let descriptor_sets = queue_context.frames[frame_index].base.thread_contexts
-            [thread_context_index]
-            .descriptor_pool_manager
-            .allocate(device, &pipeline.descriptor_layouts)?;
+        let descriptor_sets = unsafe {
+            &mut *queue_context.frames[frame_index].base.thread_contexts[thread_context_index].get()
+        }
+        .descriptor_pool_manager
+        .allocate(device, &pipeline.descriptor_layouts)?;
         let range = Self::extend_cached_descriptor_sets(
             pipeline.descriptor_layouts.len(),
             &mut pipeline.descriptor_set_cache,

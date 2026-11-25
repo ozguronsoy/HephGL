@@ -50,12 +50,11 @@ impl VulkanRenderer {
             queue_context: &mut QueueContext<Frame>,
         ) -> Result<()> {
             if supports_timeline_semaphore {
-                queue_context.frame_sync = Some(Box::new(TimelineSemaphoreFrameSync::new(
-                    logical_device,
-                    frames_in_flight,
-                )?));
+                *queue_context.frame_sync.get_mut() = Some(Box::new(
+                    TimelineSemaphoreFrameSync::new(logical_device, frames_in_flight)?,
+                ));
             } else {
-                queue_context.frame_sync = Some(Box::new(FenceFrameSync::new(
+                *queue_context.frame_sync.get_mut() = Some(Box::new(FenceFrameSync::new(
                     logical_device,
                     frames_in_flight,
                 )?));
@@ -109,7 +108,7 @@ impl VulkanRenderer {
             logical_device: &ash::Device,
             queue_context: &mut QueueContext<Frame>,
         ) -> Result<()> {
-            if let Some(mut frame_sync) = queue_context.frame_sync.take() {
+            if let Some(mut frame_sync) = queue_context.frame_sync.get_mut().take() {
                 frame_sync.destroy(logical_device)?;
             }
             Ok(())

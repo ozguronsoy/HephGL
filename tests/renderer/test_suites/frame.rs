@@ -7,13 +7,13 @@ use crate::{heph_expect_err, heph_expect_success, renderer::RendererTests};
 
 impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     pub(crate) fn test_begin_twice(&self) {
-        let mut renderer = self.create_renderer_with_any_device(&[]);
+        let renderer = self.create_renderer_with_any_device(&[]);
         heph_expect_success!(renderer.begin_frame());
         heph_expect_err!(renderer.begin_frame(), Error::InvalidOperation(_));
     }
 
     pub(crate) fn test_end_without_begin(&self) {
-        let mut renderer = self.create_renderer_with_any_device(&[]);
+        let renderer = self.create_renderer_with_any_device(&[]);
         heph_expect_err!(renderer.end_frame(), Error::InvalidOperation(_));
     }
 
@@ -29,7 +29,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
 
         use crate::utils::SHADERS_DIR;
 
-        let mut renderer =
+        let renderer =
             self.create_renderer_with_any_device(&[FeatureRequest::new(ComputeShaders, true)]);
         let compute_shader =
             heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/addition.spv")));

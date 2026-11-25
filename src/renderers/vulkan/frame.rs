@@ -1,3 +1,8 @@
+use std::{
+    cell::UnsafeCell,
+    sync::{Condvar, Mutex},
+};
+
 use crate::{
     Error, Result,
     renderers::{
@@ -28,7 +33,9 @@ pub(super) enum FrameState {
 pub(super) struct FrameBase<ThreadContext: VulkanThreadContext> {
     /// Contains the resources used for recording commands per thread for this
     /// frame.
-    pub(super) thread_contexts: ThreadContextArray<ThreadContext>,
+    pub(super) thread_contexts: ThreadContextArray<UnsafeCell<ThreadContext>>,
+    /// The frame state of each thread, which other threads wait on while the thread is recording.
+    pub(super) sync_states: ThreadContextArray<(Mutex<FrameState>, Condvar)>,
 }
 
 /// Represents the resources and synchronization state of the compute queue for a single frame.
@@ -62,14 +69,13 @@ pub(super) trait VulkanFrame: Default {
 
     /// Gets the base frame resources.
     fn base(&self) -> &FrameBase<Self::ThreadContext>;
-    /// Gets the base frame resources as mutable.
-    fn base_mut(&mut self) -> &mut FrameBase<Self::ThreadContext>;
 }
 
 impl<ThreadContext: VulkanThreadContext> Default for FrameBase<ThreadContext> {
     fn default() -> Self {
         Self {
-            thread_contexts: std::array::from_fn(|_| ThreadContext::default()),
+            thread_contexts: std::array::from_fn(|_| UnsafeCell::default()),
+            sync_states: std::array::from_fn(|_| Default::default()),
         }
     }
 }
@@ -80,10 +86,6 @@ impl VulkanFrame for TransferFrame {
     fn base(&self) -> &FrameBase<TransferThreadContext> {
         &self.base
     }
-
-    fn base_mut(&mut self) -> &mut FrameBase<TransferThreadContext> {
-        &mut self.base
-    }
 }
 
 impl VulkanFrame for GraphicsFrame {
@@ -92,10 +94,6 @@ impl VulkanFrame for GraphicsFrame {
     fn base(&self) -> &FrameBase<GraphicsThreadContext> {
         &self.base
     }
-
-    fn base_mut(&mut self) -> &mut FrameBase<GraphicsThreadContext> {
-        &mut self.base
-    }
 }
 
 impl VulkanFrame for ComputeFrame {
@@ -103,10 +101,6 @@ impl VulkanFrame for ComputeFrame {
 
     fn base(&self) -> &FrameBase<ComputeThreadContext> {
         &self.base
-    }
-
-    fn base_mut(&mut self) -> &mut FrameBase<ComputeThreadContext> {
-        &mut self.base
     }
 }
 
@@ -121,11 +115,9 @@ impl VulkanRenderer {
         // All queues start at the same time, so we can use any queue context here to check the
         // state.
         let state = device_context.graphics_queue_context.frames
-            [device_context.current_frame_index]
-            .base
-            .thread_contexts[thread_context_index]
-            .base
-            .sync_state
+            [device_context.current_frame_index.get()]
+        .base
+        .sync_states[thread_context_index]
             .0
             .lock()?;
         match *state != FrameState::Started {

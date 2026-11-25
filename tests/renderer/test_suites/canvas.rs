@@ -8,7 +8,7 @@ use crate::{heph_expect_err, heph_expect_success, renderer::RendererTests};
 impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     pub(crate) fn test_canvas(&self) {
         for depth_only in [false, true] {
-            let mut renderer = self.create_renderer_with_any_device(&[]);
+            let renderer = self.create_renderer_with_any_device(&[]);
             let canvas_options = CanvasOptions {
                 width: 640,
                 height: 360,
@@ -39,7 +39,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         }
 
         {
-            let mut renderer = self.create_renderer_with_any_device(&[]);
+            let renderer = self.create_renderer_with_any_device(&[]);
             let canvas_options = CanvasOptions {
                 width: 640,
                 height: 360,
@@ -59,7 +59,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         }
 
         {
-            let mut renderer = self.create_renderer_with_any_device(&[]);
+            let renderer = self.create_renderer_with_any_device(&[]);
             heph_expect_success!(renderer.begin_frame());
             heph_expect_err!(
                 renderer.create_canvas(&CanvasOptions {

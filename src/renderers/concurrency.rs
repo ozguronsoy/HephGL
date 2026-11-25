@@ -7,7 +7,7 @@ use crate::{Error, Result, renderers::Renderer};
 /// Each task receives the worker's current param, or `None` if it has none. Returning `Some`
 /// replaces the param for the following tasks, and returning `None` keeps the current one.
 pub type RendererTask = fn(
-    &mut dyn Renderer,
+    &dyn Renderer,
     Option<&mut dyn RendererTaskParam>,
 ) -> Result<Option<Box<dyn RendererTaskParam>>>;
 

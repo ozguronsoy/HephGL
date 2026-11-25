@@ -458,7 +458,7 @@ impl VulkanRendering for DynamicRendering {
         Ok(())
     }
     fn begin(
-        &mut self,
+        &self,
         device: &ash::Device,
         command_buffer: CommandBuffer,
         canvas: &VulkanColorCanvas,
@@ -507,7 +507,7 @@ impl VulkanRendering for DynamicRendering {
         Ok(())
     }
     fn begin_depth(
-        &mut self,
+        &self,
         device: &ash::Device,
         command_buffer: CommandBuffer,
         canvas: &VulkanDepthCanvas,
@@ -532,7 +532,7 @@ impl VulkanRendering for DynamicRendering {
         }
         Ok(())
     }
-    fn end(&mut self, device: &ash::Device, command_buffer: CommandBuffer) -> Result<()> {
+    fn end(&self, device: &ash::Device, command_buffer: CommandBuffer) -> Result<()> {
         unsafe {
             device.cmd_end_rendering(command_buffer);
         }

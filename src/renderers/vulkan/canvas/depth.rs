@@ -62,7 +62,7 @@ impl VulkanCanvas for VulkanDepthCanvas {
     fn begin_rendering(
         &self,
         device: &ash::Device,
-        rendering: &mut dyn VulkanRendering,
+        rendering: &dyn VulkanRendering,
         command_buffer: CommandBuffer,
         sampling_stages: PipelineStageFlags,
     ) -> Result<()> {
@@ -136,8 +136,7 @@ impl VulkanDepthCanvas {
         options: &CanvasOptions,
         layer_count: u32,
     ) -> Result<Self> {
-        let rendering = device_context
-            .rendering
+        let rendering = unsafe { &*device_context.rendering.get() }
             .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let depth_image = VulkanRenderer::create_attachment_image(

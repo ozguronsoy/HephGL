@@ -16,7 +16,7 @@ use crate::{
     renderers::{
         RendererCanvas, RendererResource, downcast_mut,
         resources::TextureFormat,
-        settings::Settings,
+        settings::{CanvasOptions, Settings},
         vulkan::{
             VulkanRenderer, device::DeviceContext, rendering::VulkanRendering,
             resources::VulkanTexture, thread::GraphicsThreadContext,
@@ -36,7 +36,7 @@ pub(super) trait VulkanCanvas: RendererCanvas {
     fn begin_rendering(
         &self,
         device: &ash::Device,
-        rendering: &mut dyn VulkanRendering,
+        rendering: &dyn VulkanRendering,
         command_buffer: CommandBuffer,
         sampling_stages: PipelineStageFlags,
     ) -> Result<()>;
@@ -66,15 +66,103 @@ pub(super) fn vulkan_canvas_mut(canvas: &mut dyn RendererCanvas) -> Result<&mut 
 }
 
 impl VulkanRenderer {
+    /// Creates a canvas using the provided options and clears it in the current thread's graphics
+    /// command buffer.
+    pub(super) fn create_vulkan_canvas(
+        &self,
+        options: &CanvasOptions,
+    ) -> Result<Box<dyn VulkanCanvas>> {
+        let instance = self
+            .instance
+            .as_ref()
+            .ok_or(Error::invalid_operation("Renderer is not initialized."))?;
+        let device_context = self
+            .device_context
+            .as_ref()
+            .ok_or(Error::invalid_operation("Device is not set."))?;
+        let thread_context_index = Self::thread_context_index()?;
+
+        if options.width == 0 || options.height == 0 {
+            return Err(Error::invalid_argument(
+                "Canvas dimensions must be greater than zero.",
+            ));
+        }
+
+        let limits = unsafe {
+            instance
+                .get_physical_device_properties(device_context.physical_device)
+                .limits
+        };
+        let max_width = limits
+            .max_image_dimension2_d
+            .min(limits.max_framebuffer_width);
+        let max_height = limits
+            .max_image_dimension2_d
+            .min(limits.max_framebuffer_height);
+        if options.width > max_width || options.height > max_height {
+            return Err(Error::InvalidArgument(format!(
+                "Canvas dimensions cannot exceed {max_width}x{max_height}."
+            )));
+        }
+
+        let current_frame = unsafe {
+            &mut *device_context.graphics_queue_context.frames
+                [device_context.current_frame_index.get()]
+            .base
+            .thread_contexts[thread_context_index]
+                .get()
+        };
+        current_frame.base.debug_label |=
+            Self::begin_labels(self.debugger.as_deref(), current_frame.base.command_buffer)?;
+
+        let layer_count = self.settings.array_layer_count();
+        let mut canvas: Box<dyn VulkanCanvas> = match options.depth_only {
+            true => Box::new(VulkanDepthCanvas::new(
+                device_context,
+                options,
+                layer_count,
+            )?),
+            false => Box::new(VulkanColorCanvas::new(
+                device_context,
+                options,
+                &Self::resolve_texture_formats(
+                    instance,
+                    device_context,
+                    &options.texture_formats,
+                    FormatFeatureFlags::COLOR_ATTACHMENT
+                        | FormatFeatureFlags::SAMPLED_IMAGE
+                        | FormatFeatureFlags::TRANSFER_DST,
+                )?,
+                self.settings.msaa,
+                layer_count,
+            )?),
+        };
+        if let Err(error) = match unsafe { &*device_context.rendering.get() }.as_ref() {
+            Some(rendering) => Self::clear_new_canvas(
+                &device_context.logical_device,
+                rendering.as_ref(),
+                current_frame,
+                canvas.as_ref(),
+                device_context.sampling_stages,
+            ),
+            None => Err(Error::invalid_operation("Device is not set.")),
+        } {
+            canvas.destroy(device_context);
+            return Err(error);
+        }
+
+        Ok(canvas)
+    }
+
     /// Starts rendering into the canvas, ending the rendering into the previous canvas if there is
     /// one.
     pub(super) fn begin_canvas_rendering(
         device: &ash::Device,
-        rendering: &mut dyn VulkanRendering,
+        rendering: &dyn VulkanRendering,
         swapchain_format: Format,
         settings: &Settings,
         thread_context: &mut GraphicsThreadContext,
-        canvas: &mut dyn VulkanCanvas,
+        canvas: &dyn VulkanCanvas,
         sampling_stages: PipelineStageFlags,
     ) -> Result<()> {
         let (textures, aspect_mask) = canvas.render_target();
@@ -137,7 +225,7 @@ impl VulkanRenderer {
     /// if there is one.
     pub(super) fn clear_new_canvas(
         device: &ash::Device,
-        rendering: &mut dyn VulkanRendering,
+        rendering: &dyn VulkanRendering,
         thread_context: &mut GraphicsThreadContext,
         canvas: &dyn VulkanCanvas,
         sampling_stages: PipelineStageFlags,
@@ -182,7 +270,9 @@ impl VulkanRenderer {
             .iter()
             .map(|texture_format| {
                 let Some(texture_format) = *texture_format else {
-                    return TextureFormat::try_from(device_context.swapchain_context.format);
+                    return TextureFormat::try_from(
+                        unsafe { &*device_context.swapchain_context.get() }.format,
+                    );
                 };
                 let format_properties = unsafe {
                     instance.get_physical_device_format_properties(

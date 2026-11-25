@@ -161,7 +161,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         }
 
         fn canvas_task(
-            renderer: &mut dyn Renderer,
+            renderer: &dyn Renderer,
             param: Option<&mut dyn RendererTaskParam>,
         ) -> Result<Option<Box<dyn RendererTaskParam>>> {
             let frame_barrier = heph_expect_success!(
@@ -185,7 +185,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         }
 
         fn buffer_name_task(
-            renderer: &mut dyn Renderer,
+            renderer: &dyn Renderer,
             param: Option<&mut dyn RendererTaskParam>,
         ) -> Result<Option<Box<dyn RendererTaskParam>>> {
             let index = heph_expect_success!(
@@ -204,7 +204,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         }
 
         fn no_error_logs_task(
-            renderer: &mut dyn Renderer,
+            renderer: &dyn Renderer,
             _: Option<&mut dyn RendererTaskParam>,
         ) -> Result<Option<Box<dyn RendererTaskParam>>> {
             let debugger =
@@ -711,7 +711,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
 
         {
             fn idle_task(
-                _: &mut dyn Renderer,
+                _: &dyn Renderer,
                 _: Option<&mut dyn RendererTaskParam>,
             ) -> Result<Option<Box<dyn RendererTaskParam>>> {
                 Ok(None)
@@ -756,10 +756,8 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                     hdr_mode,
                     ..Default::default()
                 }));
-                if supported {
-                    assert_eq!(renderer.get_settings().hdr_mode, hdr_mode);
-                } else {
-                    assert_eq!(renderer.get_settings().hdr_mode, HdrMode::Disabled);
+                assert_eq!(renderer.get_settings().hdr_mode, hdr_mode);
+                if !supported {
                     let debugger =
                         heph_expect_success!(renderer.debugger().ok_or("No debugger is attached."));
                     let mut logs = debugger.logs();

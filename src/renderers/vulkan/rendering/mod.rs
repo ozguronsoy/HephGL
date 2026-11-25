@@ -58,57 +58,58 @@ pub(super) trait VulkanRendering {
     ) -> Result<()>;
     /// Starts rendering into the canvas, keeping its color and depth.
     fn begin(
-        &mut self,
+        &self,
         device: &ash::Device,
         command_buffer: CommandBuffer,
         canvas: &VulkanColorCanvas,
     ) -> Result<()>;
     /// Starts rendering into the depth-only canvas, keeping its depth.
     fn begin_depth(
-        &mut self,
+        &self,
         device: &ash::Device,
         command_buffer: CommandBuffer,
         canvas: &VulkanDepthCanvas,
     ) -> Result<()>;
     /// Ends rendering into the canvas.
-    fn end(&mut self, device: &ash::Device, command_buffer: CommandBuffer) -> Result<()>;
+    fn end(&self, device: &ash::Device, command_buffer: CommandBuffer) -> Result<()>;
     /// Frees the resources.
     fn destroy(&mut self, device: &ash::Device) -> Result<()>;
 }
 
 impl VulkanRenderer {
     /// Creates rendering resources for the current device.
-    pub(super) fn create_rendering(&mut self) -> Result<()> {
+    pub(super) fn create_rendering(&self) -> Result<()> {
         self.destroy_rendering()?;
 
         let device_context = self
             .device_context
-            .as_mut()
+            .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
 
-        if device_context.supports_dynamic_rendering {
-            device_context.rendering = Some(Box::new(DynamicRendering::new(
+        let rendering: Box<dyn VulkanRendering> = if device_context.supports_dynamic_rendering {
+            Box::new(DynamicRendering::new(
                 &self.settings,
                 &device_context.logical_device,
-            )?));
+            )?)
         } else {
-            device_context.rendering = Some(Box::new(RenderPassRendering::new(
+            Box::new(RenderPassRendering::new(
                 &self.settings,
                 &device_context.logical_device,
-            )?));
-        }
+            )?)
+        };
+        unsafe { *device_context.rendering.get() = Some(rendering) };
 
         Ok(())
     }
 
     /// Destroys the rendering resources.
-    pub(super) fn destroy_rendering(&mut self) -> Result<()> {
+    pub(super) fn destroy_rendering(&self) -> Result<()> {
         let device_context = self
             .device_context
-            .as_mut()
+            .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
-        let display_canvas = device_context.display_canvas.take();
-        if let Some(mut rendering) = device_context.rendering.take() {
+        let display_canvas = unsafe { &mut *device_context.display_canvas.get() }.take();
+        if let Some(mut rendering) = unsafe { &mut *device_context.rendering.get() }.take() {
             rendering.destroy(&device_context.logical_device)?;
         }
         if let Some(mut display_canvas) = display_canvas {
@@ -121,7 +122,7 @@ impl VulkanRenderer {
     /// textures can be sampled by shaders.
     pub(super) fn end_rendering(
         device: &ash::Device,
-        rendering: &mut dyn VulkanRendering,
+        rendering: &dyn VulkanRendering,
         thread_context: &mut GraphicsThreadContext,
         layer_count: u32,
         sampling_stages: ash::vk::PipelineStageFlags,
