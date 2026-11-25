@@ -4,8 +4,8 @@ use heph_gl::{
     Error,
     GraphicsDeviceFeature::{
         AnisotropicFiltering, AsyncTransfer, BcTextures, ComputeShaders, DepthBiasClamp,
-        DepthClamp, GeometryShaders, RayTracing, SampleRateShading, TessellationShaders,
-        VideoDecoding, VideoEncoding, WireframeMode,
+        DepthClamp, GeometryShaders, MeshShaders, RayTracing, SampleRateShading,
+        TessellationShaders, VideoDecoding, VideoEncoding, WireframeMode,
     },
     Result, Shader, Version,
     renderers::{
@@ -665,6 +665,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             FeatureRequest::new(DepthBiasClamp, false),
             FeatureRequest::new(DepthClamp, false),
             FeatureRequest::new(GeometryShaders, false),
+            FeatureRequest::new(MeshShaders, false),
             FeatureRequest::new(RayTracing, false),
             FeatureRequest::new(SampleRateShading, false),
             FeatureRequest::new(TessellationShaders, false),

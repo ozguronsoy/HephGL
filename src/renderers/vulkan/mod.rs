@@ -540,10 +540,29 @@ impl Renderer for VulkanRenderer {
             if physical_features.fill_mode_non_solid == ash::vk::TRUE {
                 let _ = supported_features.insert(GraphicsDeviceFeature::WireframeMode);
             }
+            const V12: Version = Version::new(1, 2, 0);
             for ext in extension_properties {
                 let name = unsafe { std::ffi::CStr::from_ptr(ext.extension_name.as_ptr()) };
                 if name == ash::vk::KHR_RAY_TRACING_PIPELINE_NAME {
                     let _ = supported_features.insert(GraphicsDeviceFeature::RayTracing);
+                }
+                // Mesh shaders require SPIR-V 1.4, which is core in Vulkan 1.2.
+                if name == ash::vk::EXT_MESH_SHADER_NAME
+                    && self.api_version >= V12
+                    && device_api_version >= V12
+                {
+                    let mut mesh_shader_features =
+                        ash::vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
+                    let mut features = ash::vk::PhysicalDeviceFeatures2::default()
+                        .push_next(&mut mesh_shader_features);
+                    unsafe {
+                        instance.get_physical_device_features2(physical_device, &mut features);
+                    }
+                    if mesh_shader_features.mesh_shader == ash::vk::TRUE
+                        && mesh_shader_features.task_shader == ash::vk::TRUE
+                    {
+                        let _ = supported_features.insert(GraphicsDeviceFeature::MeshShaders);
+                    }
                 }
             }
             for queue_family_properties in &queue_family_properties_vec {

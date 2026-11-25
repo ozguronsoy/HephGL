@@ -51,6 +51,8 @@ pub enum GraphicsDeviceFeature {
     DepthClamp,
     /// The device supports dedicated geometry shaders.
     GeometryShaders,
+    /// The device supports task and mesh shaders.
+    MeshShaders,
     /// The device features hardware-accelerated ray tracing.
     RayTracing,
     /// The device supports shading individual samples of multisampled pixels.
