@@ -752,6 +752,11 @@ impl Renderer for VulkanRenderer {
             // This must be enabled whenever the physical device supports it per specification.
             device_extension_names.push(ash::vk::KHR_PORTABILITY_SUBSET_NAME.as_ptr());
         }
+        let mut mesh_shader_features = ash::vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
+        if enabled_features.contains(&GraphicsDeviceFeature::MeshShaders) {
+            device_extension_names.push(ash::vk::EXT_MESH_SHADER_NAME.as_ptr());
+            mesh_shader_features = mesh_shader_features.mesh_shader(true).task_shader(true);
+        }
         let mut physical_features2 = PhysicalDeviceFeatures2::default();
         if enabled_features.contains(&GraphicsDeviceFeature::AnisotropicFiltering) {
             physical_features2.features.sampler_anisotropy = ash::vk::TRUE;
@@ -812,6 +817,9 @@ impl Renderer for VulkanRenderer {
             vulkan_13_features = vulkan_13_features.dynamic_rendering(supports_dynamic_rendering);
             device_create_info = device_create_info.push_next(&mut vulkan_13_features);
         }
+        if enabled_features.contains(&GraphicsDeviceFeature::MeshShaders) {
+            device_create_info = device_create_info.push_next(&mut mesh_shader_features);
+        }
         device_create_info = device_create_info.push_next(&mut physical_features2);
         let logical_device = DropGuard::new(
             unsafe { instance.create_device(physical_device, &device_create_info, None)? },
@@ -846,6 +854,10 @@ impl Renderer for VulkanRenderer {
         if enabled_features.contains(&GraphicsDeviceFeature::TessellationShaders) {
             sampling_stages |= ash::vk::PipelineStageFlags::TESSELLATION_CONTROL_SHADER
                 | ash::vk::PipelineStageFlags::TESSELLATION_EVALUATION_SHADER;
+        }
+        if enabled_features.contains(&GraphicsDeviceFeature::MeshShaders) {
+            sampling_stages |= ash::vk::PipelineStageFlags::TASK_SHADER_EXT
+                | ash::vk::PipelineStageFlags::MESH_SHADER_EXT;
         }
 
         self.device_context = Some(DeviceContext {
