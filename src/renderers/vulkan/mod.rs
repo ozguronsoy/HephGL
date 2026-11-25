@@ -70,7 +70,7 @@ use crate::{
             version::VulkanApiVersion,
         },
     },
-    shader::Shader,
+    shader::{Shader, ShaderStage},
 };
 
 /// Gets the name of the function that's currently calling this macro.
@@ -753,9 +753,14 @@ impl Renderer for VulkanRenderer {
             device_extension_names.push(ash::vk::KHR_PORTABILITY_SUBSET_NAME.as_ptr());
         }
         let mut mesh_shader_features = ash::vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
+        let mut mesh_shader_properties = ash::vk::PhysicalDeviceMeshShaderPropertiesEXT::default();
         if enabled_features.contains(&GraphicsDeviceFeature::MeshShaders) {
             device_extension_names.push(ash::vk::EXT_MESH_SHADER_NAME.as_ptr());
             mesh_shader_features = mesh_shader_features.mesh_shader(true).task_shader(true);
+
+            let mut properties2 = ash::vk::PhysicalDeviceProperties2::default()
+                .push_next(&mut mesh_shader_properties);
+            unsafe { instance.get_physical_device_properties2(physical_device, &mut properties2) };
         }
         let mut physical_features2 = PhysicalDeviceFeatures2::default();
         if enabled_features.contains(&GraphicsDeviceFeature::AnisotropicFiltering) {
@@ -855,9 +860,14 @@ impl Renderer for VulkanRenderer {
             sampling_stages |= ash::vk::PipelineStageFlags::TESSELLATION_CONTROL_SHADER
                 | ash::vk::PipelineStageFlags::TESSELLATION_EVALUATION_SHADER;
         }
+        let mut mesh_shader_loader = None;
         if enabled_features.contains(&GraphicsDeviceFeature::MeshShaders) {
             sampling_stages |= ash::vk::PipelineStageFlags::TASK_SHADER_EXT
                 | ash::vk::PipelineStageFlags::MESH_SHADER_EXT;
+            mesh_shader_loader = Some(ash::ext::mesh_shader::Device::new(
+                instance,
+                &logical_device,
+            ));
         }
 
         self.device_context = Some(DeviceContext {
@@ -907,10 +917,15 @@ impl Renderer for VulkanRenderer {
 
             physical_device,
             logical_device: DropGuard::dismiss(logical_device),
+            mesh_shader_loader,
             supports_timeline_semaphore,
             supports_dynamic_rendering,
             sampling_stages,
             max_tessellation_patch_size,
+            max_task_work_group_count: mesh_shader_properties.max_task_work_group_count,
+            max_task_work_group_total_count: mesh_shader_properties.max_task_work_group_total_count,
+            max_mesh_work_group_count: mesh_shader_properties.max_mesh_work_group_count,
+            max_mesh_work_group_total_count: mesh_shader_properties.max_mesh_work_group_total_count,
 
             current_frame_index: Cell::new(0),
             current_frame_index_sync: Mutex::new(()),
@@ -1895,6 +1910,41 @@ impl Renderer for VulkanRenderer {
                 "The pipeline is incompatible with the target canvas.",
             ));
         }
+        let mesh_shader_loader = match pipeline.mesh_stage {
+            Some(mesh_stage) => {
+                let (max_count, max_total_count) = match mesh_stage {
+                    ShaderStage::Task => (
+                        device_context.max_task_work_group_count,
+                        device_context.max_task_work_group_total_count,
+                    ),
+                    _ => (
+                        device_context.max_mesh_work_group_count,
+                        device_context.max_mesh_work_group_total_count,
+                    ),
+                };
+                if draw_count > max_count[0]
+                    || instance_count > max_count[1]
+                    || u64::from(draw_count) * u64::from(instance_count)
+                        > u64::from(max_total_count)
+                {
+                    return Err(Error::InvalidArgument(format!(
+                        "The draw count ({draw_count}) and instance count ({instance_count}) of a \
+                         mesh pipeline must not exceed {} and {}, and their product must not \
+                         exceed {max_total_count}.",
+                        max_count[0], max_count[1]
+                    )));
+                }
+                Some(
+                    device_context
+                        .mesh_shader_loader
+                        .as_ref()
+                        .ok_or(Error::invalid_operation(
+                            "Device is not initialized with the `MeshShaders` feature.",
+                        ))?,
+                )
+            }
+            None => None,
+        };
 
         current_frame.base.debug_label |=
             Self::begin_labels(self.debugger.as_deref(), current_frame.base.command_buffer)?;
@@ -1939,70 +1989,79 @@ impl Renderer for VulkanRenderer {
                     &[],
                 );
             }
-            for vertex_binding in vertex_bindings {
-                let ResourceBindingType::Buffer {
-                    buffer,
-                    offset,
-                    size,
-                } = vertex_binding.resource
-                else {
-                    return Err(Error::invalid_argument(
-                        "Vertex binding type must be a buffer",
-                    ));
-                };
-                if buffer.usage() != BufferUsage::Vertex {
-                    return Err(Error::invalid_argument(
-                        "Vertex buffer's usage must be `BufferUsage::Vertex`.",
-                    ));
-                }
-
-                let vertex_buffer = downcast_ref::<VulkanBuffer>(buffer)?;
-                if offset
-                    .checked_add(size)
-                    .is_none_or(|x| x > vertex_buffer.size)
-                {
-                    return Err(Error::invalid_argument(
-                        "Buffer overflow while binding the vertex buffer.",
-                    ));
-                }
-                device_context.logical_device.cmd_bind_vertex_buffers(
-                    current_frame.base.command_buffer,
-                    vertex_binding.binding,
-                    std::slice::from_ref(&vertex_buffer.buffer),
-                    std::slice::from_ref(&(offset as u64)),
-                );
-            }
-
-            if let Some(index_buffer) = index_buffer {
-                if index_buffer.usage() != BufferUsage::Index {
-                    return Err(Error::invalid_argument(
-                        "Index buffer's usage must be `BufferUsage::Index`.",
-                    ));
-                }
-
-                let index_buffer = downcast_ref::<VulkanBuffer>(index_buffer)?;
-                device_context.logical_device.cmd_bind_index_buffer(
-                    current_frame.base.command_buffer,
-                    index_buffer.buffer,
-                    0,
-                    ash::vk::IndexType::UINT32,
-                );
-                device_context.logical_device.cmd_draw_indexed(
+            if let Some(mesh_shader_loader) = mesh_shader_loader {
+                mesh_shader_loader.cmd_draw_mesh_tasks(
                     current_frame.base.command_buffer,
                     draw_count,
                     instance_count,
-                    0,
-                    0,
-                    0,
+                    1,
                 );
             } else {
-                device_context.logical_device.cmd_draw(
-                    current_frame.base.command_buffer,
-                    draw_count,
-                    instance_count,
-                    0,
-                    0,
-                );
+                for vertex_binding in vertex_bindings {
+                    let ResourceBindingType::Buffer {
+                        buffer,
+                        offset,
+                        size,
+                    } = vertex_binding.resource
+                    else {
+                        return Err(Error::invalid_argument(
+                            "Vertex binding type must be a buffer",
+                        ));
+                    };
+                    if buffer.usage() != BufferUsage::Vertex {
+                        return Err(Error::invalid_argument(
+                            "Vertex buffer's usage must be `BufferUsage::Vertex`.",
+                        ));
+                    }
+
+                    let vertex_buffer = downcast_ref::<VulkanBuffer>(buffer)?;
+                    if offset
+                        .checked_add(size)
+                        .is_none_or(|x| x > vertex_buffer.size)
+                    {
+                        return Err(Error::invalid_argument(
+                            "Buffer overflow while binding the vertex buffer.",
+                        ));
+                    }
+                    device_context.logical_device.cmd_bind_vertex_buffers(
+                        current_frame.base.command_buffer,
+                        vertex_binding.binding,
+                        std::slice::from_ref(&vertex_buffer.buffer),
+                        std::slice::from_ref(&(offset as u64)),
+                    );
+                }
+
+                if let Some(index_buffer) = index_buffer {
+                    if index_buffer.usage() != BufferUsage::Index {
+                        return Err(Error::invalid_argument(
+                            "Index buffer's usage must be `BufferUsage::Index`.",
+                        ));
+                    }
+
+                    let index_buffer = downcast_ref::<VulkanBuffer>(index_buffer)?;
+                    device_context.logical_device.cmd_bind_index_buffer(
+                        current_frame.base.command_buffer,
+                        index_buffer.buffer,
+                        0,
+                        ash::vk::IndexType::UINT32,
+                    );
+                    device_context.logical_device.cmd_draw_indexed(
+                        current_frame.base.command_buffer,
+                        draw_count,
+                        instance_count,
+                        0,
+                        0,
+                        0,
+                    );
+                } else {
+                    device_context.logical_device.cmd_draw(
+                        current_frame.base.command_buffer,
+                        draw_count,
+                        instance_count,
+                        0,
+                        0,
+                    );
+                }
             }
         }
 

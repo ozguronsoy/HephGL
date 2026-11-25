@@ -1,0 +1,65 @@
+#version 460
+#extension GL_EXT_mesh_shader : require
+
+const uint TRIANGLES_PER_MESHLET = 64;
+const uint FLOATS_PER_VERTEX = 8;
+
+// Each invocation outputs one triangle with its own three vertices.
+layout(local_size_x = TRIANGLES_PER_MESHLET) in;
+layout(triangles, max_vertices = TRIANGLES_PER_MESHLET * 3, max_primitives = TRIANGLES_PER_MESHLET) out;
+
+layout(set = 0, binding = 5, std140) uniform Matrices
+{
+    mat4 model;
+    mat4 view_projection;
+    mat4 normal;
+} matrices;
+// [px, py, pz, nx, ny, nz, u, v] per vertex.
+layout(set = 0, binding = 6, std430) readonly buffer Vertices
+{
+    float vertices[];
+};
+layout(set = 0, binding = 7, std430) readonly buffer Indices
+{
+    uint indices[];
+};
+
+struct Payload
+{
+    uint first_meshlet;
+};
+taskPayloadSharedEXT Payload payload;
+
+layout(location = 0) out vec3 frag_position[];
+layout(location = 1) out vec3 frag_normal[];
+layout(location = 2) out vec2 frag_uv[];
+
+void main()
+{
+    uint triangle_count = uint(indices.length()) / 3;
+    uint first_triangle = (payload.first_meshlet + gl_WorkGroupID.x) * TRIANGLES_PER_MESHLET;
+    uint meshlet_triangle_count = min(TRIANGLES_PER_MESHLET, triangle_count - first_triangle);
+    SetMeshOutputsEXT(meshlet_triangle_count * 3, meshlet_triangle_count);
+
+    uint triangle = gl_LocalInvocationIndex;
+    if (triangle >= meshlet_triangle_count)
+    {
+        return;
+    }
+
+    for (uint corner = 0; corner < 3; corner++)
+    {
+        uint vertex = indices[(first_triangle + triangle) * 3 + corner] * FLOATS_PER_VERTEX;
+        vec3 position = vec3(vertices[vertex], vertices[vertex + 1], vertices[vertex + 2]);
+        vec3 normal = vec3(vertices[vertex + 3], vertices[vertex + 4], vertices[vertex + 5]);
+        vec2 uv = vec2(vertices[vertex + 6], vertices[vertex + 7]);
+
+        uint output_vertex = triangle * 3 + corner;
+        vec4 world_position = matrices.model * vec4(position, 1.0);
+        gl_MeshVerticesEXT[output_vertex].gl_Position = matrices.view_projection * world_position;
+        frag_position[output_vertex] = world_position.xyz;
+        frag_normal[output_vertex] = mat3(matrices.normal) * normal;
+        frag_uv[output_vertex] = uv;
+    }
+    gl_PrimitiveTriangleIndicesEXT[triangle] = uvec3(triangle * 3, triangle * 3 + 1, triangle * 3 + 2);
+}

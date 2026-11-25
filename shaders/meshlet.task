@@ -1,0 +1,27 @@
+#version 460
+#extension GL_EXT_mesh_shader : require
+
+const uint TRIANGLES_PER_MESHLET = 64;
+const uint MESHLETS_PER_TASK = 32;
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 7, std430) readonly buffer Indices
+{
+    uint indices[];
+};
+
+struct Payload
+{
+    uint first_meshlet;
+};
+taskPayloadSharedEXT Payload payload;
+
+void main()
+{
+    uint triangle_count = uint(indices.length()) / 3;
+    uint meshlet_count = (triangle_count + TRIANGLES_PER_MESHLET - 1) / TRIANGLES_PER_MESHLET;
+    payload.first_meshlet = gl_WorkGroupID.x * MESHLETS_PER_TASK;
+    // The last task launches only the meshlets that remain.
+    EmitMeshTasksEXT(min(MESHLETS_PER_TASK, meshlet_count - payload.first_meshlet), 1, 1);
+}

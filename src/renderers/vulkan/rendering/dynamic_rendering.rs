@@ -477,6 +477,13 @@ impl VulkanRendering for DynamicRendering {
             descriptor_set_cache: DescriptorSetCache::new(),
             depth_only: options.depth_only,
             color_formats,
+            mesh_stage: match pipeline_type {
+                PipelineType::Mesh => match shader_stages.contains(&ShaderStageFlags::TASK_EXT) {
+                    true => Some(ShaderStage::Task),
+                    false => Some(ShaderStage::Mesh),
+                },
+                _ => None,
+            },
         })
     }
     fn destroy_graphics_pipeline(

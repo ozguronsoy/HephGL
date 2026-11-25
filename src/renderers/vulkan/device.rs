@@ -68,10 +68,15 @@ pub(super) struct DeviceContext {
 
     pub(super) physical_device: ash::vk::PhysicalDevice,
     pub(super) logical_device: ash::Device,
+    pub(super) mesh_shader_loader: Option<ash::ext::mesh_shader::Device>,
     pub(super) supports_timeline_semaphore: bool,
     pub(super) supports_dynamic_rendering: bool,
     pub(super) sampling_stages: ash::vk::PipelineStageFlags,
     pub(super) max_tessellation_patch_size: u32,
+    pub(super) max_task_work_group_count: [u32; 3],
+    pub(super) max_task_work_group_total_count: u32,
+    pub(super) max_mesh_work_group_count: [u32; 3],
+    pub(super) max_mesh_work_group_total_count: u32,
 
     pub(super) current_frame_index: Cell<usize>,
     pub(super) current_frame_index_sync: Mutex<()>,

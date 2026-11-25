@@ -1,8 +1,11 @@
 use ash::vk::{DescriptorSetLayout, Handle, Pipeline, PipelineLayout};
 
-use crate::renderers::{
-    RendererComputePipeline, RendererGraphicsPipeline, RendererPipeline, TextureFormat,
-    debug::RendererDebugObject, vulkan::resources::DescriptorSetCache,
+use crate::{
+    renderers::{
+        RendererComputePipeline, RendererGraphicsPipeline, RendererPipeline, TextureFormat,
+        debug::RendererDebugObject, vulkan::resources::DescriptorSetCache,
+    },
+    shader::ShaderStage,
 };
 
 /// Represents a Vulkan compute pipeline.
@@ -25,6 +28,7 @@ pub(super) struct VulkanGraphicsPipeline {
     pub(super) descriptor_set_cache: DescriptorSetCache,
     pub(super) depth_only: bool,
     pub(super) color_formats: Vec<TextureFormat>,
+    pub(super) mesh_stage: Option<ShaderStage>,
 }
 
 impl RendererDebugObject for VulkanGraphicsPipeline {}
