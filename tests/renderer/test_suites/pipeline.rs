@@ -1,8 +1,8 @@
 use heph_gl::{
     Error,
     GraphicsDeviceFeature::{
-        DepthBiasClamp, DepthClamp, GeometryShaders, SampleRateShading, TessellationShaders,
-        WireframeMode,
+        DepthBiasClamp, DepthClamp, GeometryShaders, MeshShaders, SampleRateShading,
+        TessellationShaders, WireframeMode,
     },
     Shader,
     renderers::{
@@ -98,6 +98,73 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                 renderer.create_graphics_pipeline(
                     &[&frag_shader, &vert_shader, &comp_shader],
                     &GraphicsPipelineOptions::default()
+                ),
+                Error::InvalidArgument(_)
+            );
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[]);
+            let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                "{SHADERS_DIR}/shapes/basic_triangle_frag.spv"
+            )));
+            heph_expect_err!(
+                renderer
+                    .create_graphics_pipeline(&[&frag_shader], &GraphicsPipelineOptions::default()),
+                Error::InvalidArgument(_)
+            );
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[]);
+            let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                "{SHADERS_DIR}/shapes/basic_triangle_frag.spv"
+            )));
+            let mut vert_data = heph_expect_success!(std::fs::read(format!(
+                "{SHADERS_DIR}/shapes/basic_triangle_vert.spv"
+            )));
+            vert_data.push(0);
+            let vert_shader = heph_expect_success!(Shader::from_bytes(vert_data));
+            heph_expect_err!(
+                renderer.create_graphics_pipeline(
+                    &[&frag_shader, &vert_shader],
+                    &GraphicsPipelineOptions::default()
+                ),
+                Error::Fail(_)
+            );
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[]);
+            let frag_shader =
+                heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/mesh_frag.spv")));
+            let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                "{SHADERS_DIR}/text_world_vert.spv"
+            )));
+            heph_expect_err!(
+                renderer.create_graphics_pipeline(
+                    &[&frag_shader, &vert_shader],
+                    &GraphicsPipelineOptions::default()
+                ),
+                Error::InvalidArgument(_)
+            );
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[]);
+            let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                "{SHADERS_DIR}/shapes/basic_triangle_frag.spv"
+            )));
+            let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                "{SHADERS_DIR}/shapes/basic_triangle_vert.spv"
+            )));
+            heph_expect_err!(
+                renderer.create_graphics_pipeline(
+                    &[&frag_shader, &vert_shader],
+                    &GraphicsPipelineOptions {
+                        texture_formats: Vec::new(),
+                        ..Default::default()
+                    }
                 ),
                 Error::InvalidArgument(_)
             );
@@ -552,6 +619,152 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                 ),
                 Error::InvalidOperation(_)
             );
+            let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+                &[&frag_shader, &vert_shader],
+                &GraphicsPipelineOptions {
+                    depth_bias: Some(DepthBias {
+                        constant: 1.0,
+                        slope: 1.0,
+                        clamp: None,
+                    }),
+                    ..Default::default()
+                }
+            ));
+            heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[]);
+            let frag_shader =
+                heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/mesh_frag.spv")));
+            let task_shader =
+                heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/meshlet_task.spv")));
+            let mesh_shader =
+                heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/meshlet_mesh.spv")));
+            heph_expect_err!(
+                renderer.create_graphics_pipeline(
+                    &[&frag_shader, &mesh_shader],
+                    &GraphicsPipelineOptions::default()
+                ),
+                Error::InvalidOperation(_)
+            );
+            heph_expect_err!(
+                renderer.create_graphics_pipeline(
+                    &[&frag_shader, &task_shader, &mesh_shader],
+                    &GraphicsPipelineOptions::default()
+                ),
+                Error::InvalidOperation(_)
+            );
+        }
+
+        {
+            let renderer =
+                self.create_renderer_with_any_device(&[FeatureRequest::new(MeshShaders, false)]);
+            if renderer
+                .get_device()
+                .unwrap()
+                .supported_features()
+                .contains(&MeshShaders)
+            {
+                let frag_shader =
+                    heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/mesh_frag.spv")));
+                let task_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{SHADERS_DIR}/meshlet_task.spv"
+                )));
+                let mesh_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{SHADERS_DIR}/meshlet_mesh.spv"
+                )));
+                let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{SHADERS_DIR}/camera_vert.spv"
+                )));
+                let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+                    &[&frag_shader, &task_shader, &mesh_shader],
+                    &GraphicsPipelineOptions::default()
+                ));
+                heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
+                heph_expect_err!(
+                    renderer.create_graphics_pipeline(
+                        &[&frag_shader, &mesh_shader, &vert_shader],
+                        &GraphicsPipelineOptions::default()
+                    ),
+                    Error::InvalidArgument(_)
+                );
+                heph_expect_err!(
+                    renderer.create_graphics_pipeline(
+                        &[&frag_shader, &task_shader, &vert_shader],
+                        &GraphicsPipelineOptions::default()
+                    ),
+                    Error::InvalidArgument(_)
+                );
+                heph_expect_err!(
+                    renderer.create_graphics_pipeline(
+                        &[&frag_shader, &task_shader],
+                        &GraphicsPipelineOptions::default()
+                    ),
+                    Error::InvalidArgument(_)
+                );
+                heph_expect_err!(
+                    renderer.create_graphics_pipeline(
+                        &[&frag_shader, &task_shader, &mesh_shader, &mesh_shader],
+                        &GraphicsPipelineOptions::default()
+                    ),
+                    Error::InvalidArgument(_)
+                );
+            }
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[
+                FeatureRequest::new(MeshShaders, false),
+                FeatureRequest::new(TessellationShaders, false),
+                FeatureRequest::new(GeometryShaders, false),
+            ]);
+            let supported_features = &renderer.get_device().unwrap().supported_features();
+            if supported_features.contains(&MeshShaders)
+                && supported_features.contains(&TessellationShaders)
+                && supported_features.contains(&GeometryShaders)
+            {
+                let frag_shader =
+                    heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/mesh_frag.spv")));
+                let geom_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{SHADERS_DIR}/explode_geom.spv"
+                )));
+                let tese_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{SHADERS_DIR}/broken_brick_wall_tese.spv"
+                )));
+                let tesc_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{SHADERS_DIR}/broken_brick_wall_tesc.spv"
+                )));
+                let task_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{SHADERS_DIR}/meshlet_task.spv"
+                )));
+                let mesh_shader = heph_expect_success!(Shader::from_file(format!(
+                    "{SHADERS_DIR}/meshlet_mesh.spv"
+                )));
+                heph_expect_err!(
+                    renderer.create_graphics_pipeline(
+                        &[&frag_shader, &geom_shader, &task_shader, &mesh_shader],
+                        &GraphicsPipelineOptions::default()
+                    ),
+                    Error::InvalidArgument(_)
+                );
+                heph_expect_err!(
+                    renderer.create_graphics_pipeline(
+                        &[
+                            &frag_shader,
+                            &tese_shader,
+                            &tesc_shader,
+                            &task_shader,
+                            &mesh_shader
+                        ],
+                        &GraphicsPipelineOptions {
+                            topology: PrimitiveTopology::PatchList { control_points: 3 },
+                            ..Default::default()
+                        }
+                    ),
+                    Error::InvalidArgument(_)
+                );
+            }
         }
     }
 
