@@ -8,7 +8,7 @@ use crate::{
     renderers::{
         RendererCanvas,
         debug::RendererDebugObject,
-        resources::{RendererTexture, TextureFormat},
+        resources::{RendererResource, RendererTexture, TextureFormat},
         settings::{CanvasOptions, Settings, TextureOptions},
         vulkan::{
             VulkanRenderer,
@@ -37,6 +37,10 @@ pub struct VulkanDepthCanvas {
 impl RendererDebugObject for VulkanDepthCanvas {}
 
 impl RendererCanvas for VulkanDepthCanvas {
+    fn is_allocated(&self) -> bool {
+        self.texture.is_allocated()
+    }
+
     fn options(&self) -> &CanvasOptions {
         &self.options
     }

@@ -1,8 +1,8 @@
 use std::mem::DropGuard;
 
 use ash::vk::{
-    AccessFlags, CommandBuffer, Extent2D, Format, ImageAspectFlags, ImageLayout, ImageUsageFlags,
-    PipelineStageFlags, SampleCountFlags,
+    AccessFlags, CommandBuffer, Extent2D, Format, Handle, ImageAspectFlags, ImageLayout,
+    ImageUsageFlags, PipelineStageFlags, SampleCountFlags,
 };
 
 use crate::{
@@ -45,6 +45,10 @@ pub struct VulkanColorCanvas {
 impl RendererDebugObject for VulkanColorCanvas {}
 
 impl RendererCanvas for VulkanColorCanvas {
+    fn is_allocated(&self) -> bool {
+        !self.depth_image.image.is_null()
+    }
+
     fn options(&self) -> &CanvasOptions {
         &self.options
     }

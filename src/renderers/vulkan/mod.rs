@@ -40,8 +40,8 @@ use crate::{
     graphics_device::{GraphicsDevice, GraphicsDeviceFeature, GraphicsDeviceType},
     renderers::{
         BufferUsage, DISPLAY_TEXTURE_FORMAT, FeatureRequest, InitializeOptions, Renderer,
-        RendererCanvas, RendererComputePipeline, RendererGraphicsPipeline, RendererWorker,
-        ResourceBinding, Settings,
+        RendererCanvas, RendererComputePipeline, RendererGraphicsPipeline, RendererPipeline,
+        RendererResource, RendererWorker, ResourceBinding, Settings,
         debug::Debugger,
         downcast_mut, downcast_ref,
         resources::{RendererBuffer, RendererSampler, RendererTexture, ResourceBindingType},
@@ -995,6 +995,11 @@ impl Renderer for VulkanRenderer {
         src: &[u8],
     ) -> Result<()> {
         let buffer = downcast_ref::<VulkanBuffer>(buffer)?;
+        if !buffer.is_allocated() {
+            return Err(Error::invalid_argument(
+                "Cannot write to a destroyed buffer.",
+            ));
+        }
         if offset >= buffer.size {
             return Err(Error::invalid_argument(
                 "Offset is greater than the source buffer size.",
@@ -1033,6 +1038,11 @@ impl Renderer for VulkanRenderer {
         dest: &mut [u8],
     ) -> Result<()> {
         let buffer = downcast_ref::<VulkanBuffer>(buffer)?;
+        if !buffer.is_allocated() {
+            return Err(Error::invalid_argument(
+                "Cannot read from a destroyed buffer.",
+            ));
+        }
         if offset >= buffer.size {
             return Err(Error::invalid_argument(
                 "Offset is greater than the source buffer size.",
@@ -1068,6 +1078,11 @@ impl Renderer for VulkanRenderer {
 
     fn destroy_buffer(&self, buffer: &mut dyn RendererBuffer) -> Result<()> {
         let buffer = downcast_mut::<VulkanBuffer>(buffer)?;
+        if !buffer.is_allocated() {
+            return Err(Error::invalid_argument(
+                "Buffer has already been destroyed.",
+            ));
+        }
         let device_context = self
             .device_context
             .as_ref()
@@ -1542,6 +1557,11 @@ impl Renderer for VulkanRenderer {
 
     fn destroy_texture(&self, texture: &mut dyn RendererTexture) -> Result<()> {
         let texture = downcast_mut::<VulkanTexture>(texture)?;
+        if !texture.is_allocated() {
+            return Err(Error::invalid_argument(
+                "Texture has already been destroyed.",
+            ));
+        }
         let device_context = self
             .device_context
             .as_ref()
@@ -1615,6 +1635,11 @@ impl Renderer for VulkanRenderer {
 
     fn destroy_sampler(&self, sampler: &mut dyn RendererSampler) -> Result<()> {
         let sampler = downcast_mut::<VulkanSampler>(sampler)?;
+        if !sampler.is_allocated() {
+            return Err(Error::invalid_argument(
+                "Sampler has already been destroyed.",
+            ));
+        }
         let device_context = self
             .device_context
             .as_ref()
@@ -1730,6 +1755,11 @@ impl Renderer for VulkanRenderer {
 
     fn destroy_compute_pipeline(&self, pipeline: &mut dyn RendererComputePipeline) -> Result<()> {
         let pipeline = downcast_mut::<VulkanComputePipeline>(pipeline)?;
+        if !pipeline.is_allocated() {
+            return Err(Error::invalid_argument(
+                "Compute pipeline has already been destroyed.",
+            ));
+        }
         let device_context = self
             .device_context
             .as_ref()
@@ -1762,6 +1792,12 @@ impl Renderer for VulkanRenderer {
         self.frame_only(function!())?;
 
         let pipeline = downcast_mut::<VulkanComputePipeline>(pipeline)?;
+        if !pipeline.is_allocated() {
+            return Err(Error::invalid_argument(
+                "Cannot record a compute command with a destroyed pipeline.",
+            ));
+        }
+
         let device_context = self
             .device_context
             .as_ref()
@@ -1853,6 +1889,11 @@ impl Renderer for VulkanRenderer {
 
     fn destroy_graphics_pipeline(&self, pipeline: &mut dyn RendererGraphicsPipeline) -> Result<()> {
         let pipeline = downcast_mut::<VulkanGraphicsPipeline>(pipeline)?;
+        if !pipeline.is_allocated() {
+            return Err(Error::invalid_argument(
+                "Graphics pipeline has already been destroyed.",
+            ));
+        }
         let device_context = self
             .device_context
             .as_ref()
@@ -1876,6 +1917,11 @@ impl Renderer for VulkanRenderer {
         self.frame_only(function!())?;
 
         let pipeline = downcast_mut::<VulkanGraphicsPipeline>(pipeline)?;
+        if !pipeline.is_allocated() {
+            return Err(Error::invalid_argument(
+                "Cannot record a graphics command with a destroyed pipeline.",
+            ));
+        }
 
         let device_context = self
             .device_context
@@ -2015,6 +2061,11 @@ impl Renderer for VulkanRenderer {
                     }
 
                     let vertex_buffer = downcast_ref::<VulkanBuffer>(buffer)?;
+                    if !vertex_buffer.is_allocated() {
+                        return Err(Error::invalid_argument(
+                            "Cannot bind a destroyed vertex buffer.",
+                        ));
+                    }
                     if offset
                         .checked_add(size)
                         .is_none_or(|x| x > vertex_buffer.size)
@@ -2039,6 +2090,11 @@ impl Renderer for VulkanRenderer {
                     }
 
                     let index_buffer = downcast_ref::<VulkanBuffer>(index_buffer)?;
+                    if !index_buffer.is_allocated() {
+                        return Err(Error::invalid_argument(
+                            "Cannot bind a destroyed index buffer.",
+                        ));
+                    }
                     device_context.logical_device.cmd_bind_index_buffer(
                         current_frame.base.command_buffer,
                         index_buffer.buffer,
@@ -2076,6 +2132,11 @@ impl Renderer for VulkanRenderer {
 
     fn destroy_canvas(&self, canvas: &mut dyn RendererCanvas) -> Result<()> {
         let canvas = vulkan_canvas_mut(canvas)?;
+        if !canvas.is_allocated() {
+            return Err(Error::invalid_argument(
+                "Canvas has already been destroyed.",
+            ));
+        }
         let device_context = self
             .device_context
             .as_ref()

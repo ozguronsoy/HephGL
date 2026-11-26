@@ -273,21 +273,35 @@ impl VulkanRenderer {
         binding_sets: &[&[ResourceBinding<'_>]],
     ) -> Result<()> {
         for binding in binding_sets.iter().flat_map(|&s| s.iter()) {
-            if let ResourceBindingType::Buffer {
-                buffer,
-                offset,
-                size,
-            } = binding.resource
-            {
-                if offset.checked_add(size).is_none_or(|x| x > buffer.size()) {
-                    return Err(Error::invalid_argument(
-                        "Buffer overflow while binding resources.",
-                    ));
+            match binding.resource {
+                ResourceBindingType::Buffer {
+                    buffer,
+                    offset,
+                    size,
+                } => {
+                    if !buffer.is_allocated() {
+                        return Err(Error::invalid_argument("Cannot bind a destroyed buffer."));
+                    }
+                    if offset.checked_add(size).is_none_or(|x| x > buffer.size()) {
+                        return Err(Error::invalid_argument(
+                            "Buffer overflow while binding resources.",
+                        ));
+                    }
+                    if matches!(buffer.usage(), BufferUsage::Index | BufferUsage::Vertex) {
+                        return Err(Error::invalid_argument(
+                            "Index and vertex buffers are not allowed in binding sets.",
+                        ));
+                    }
                 }
-                if matches!(buffer.usage(), BufferUsage::Index | BufferUsage::Vertex) {
-                    return Err(Error::invalid_argument(
-                        "Index and vertex buffers are not allowed in binding sets.",
-                    ));
+                ResourceBindingType::Texture { texture } => {
+                    if !texture.is_allocated() {
+                        return Err(Error::invalid_argument("Cannot bind a destroyed texture."));
+                    }
+                }
+                ResourceBindingType::Sampler { sampler } => {
+                    if !sampler.is_allocated() {
+                        return Err(Error::invalid_argument("Cannot bind a destroyed sampler."));
+                    }
                 }
             }
         }
