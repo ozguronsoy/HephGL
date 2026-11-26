@@ -175,6 +175,21 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                 create_trial!(versioned_test_suite, test_graphics_pipeline),
                 create_trial!(versioned_test_suite, test_reject_foreign_resources),
                 create_trial!(versioned_test_suite, test_reject_foreign_pipelines),
+                create_trial!(versioned_test_suite, test_reject_resource_use_after_free),
+                create_trial!(
+                    versioned_test_suite,
+                    test_reject_resource_use_in_other_renderer
+                ),
+                create_trial!(versioned_test_suite, test_reject_canvas_use_after_free),
+                create_trial!(
+                    versioned_test_suite,
+                    test_reject_canvas_use_in_other_renderer
+                ),
+                create_trial!(versioned_test_suite, test_reject_pipeline_use_after_free),
+                create_trial!(
+                    versioned_test_suite,
+                    test_reject_pipeline_use_in_other_renderer
+                ),
                 create_trial!(versioned_test_suite, test_begin_twice),
                 create_trial!(versioned_test_suite, test_end_without_begin),
                 create_trial!(
