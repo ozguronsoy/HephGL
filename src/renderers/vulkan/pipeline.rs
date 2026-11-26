@@ -3,7 +3,7 @@ use ash::vk::{DescriptorSetLayout, Handle, Pipeline, PipelineLayout};
 use crate::{
     renderers::{
         RendererComputePipeline, RendererGraphicsPipeline, RendererPipeline, TextureFormat,
-        debug::RendererDebugObject, vulkan::resources::DescriptorSetCache,
+        debug::RendererDebugObject, id::RendererId, vulkan::resources::DescriptorSetCache,
     },
     shader::ShaderStage,
 };
@@ -11,6 +11,7 @@ use crate::{
 /// Represents a Vulkan compute pipeline.
 #[derive(Clone)]
 pub(super) struct VulkanComputePipeline {
+    pub(super) renderer_id: RendererId,
     pub(super) pipeline: Pipeline,
     pub(super) layout: PipelineLayout,
     pub(super) descriptor_layouts: Vec<DescriptorSetLayout>,
@@ -21,6 +22,7 @@ pub(super) struct VulkanComputePipeline {
 /// Represents a Vulkan graphics pipeline.
 #[derive(Clone)]
 pub(super) struct VulkanGraphicsPipeline {
+    pub(super) renderer_id: RendererId,
     pub(super) pipeline: Pipeline,
     pub(super) layout: PipelineLayout,
     pub(super) descriptor_layouts: Vec<DescriptorSetLayout>,

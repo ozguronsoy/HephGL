@@ -10,6 +10,7 @@ use crate::{
     Result,
     renderers::{
         RendererCanvas, TextureFormat,
+        id::RendererId,
         settings::{GraphicsPipelineOptions, Msaa, Settings},
         vulkan::{
             canvas::{VulkanColorCanvas, VulkanDepthCanvas},
@@ -41,6 +42,7 @@ impl VulkanRendering for RenderPassRendering {
         device_context: &DeviceContext,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
+        renderer_id: RendererId,
     ) -> Result<VulkanGraphicsPipeline> {
         let device = &device_context.logical_device;
         super::create_graphics_pipeline(
@@ -48,6 +50,7 @@ impl VulkanRendering for RenderPassRendering {
             device_context,
             shaders,
             options,
+            renderer_id,
             self.msaa,
             |pipeline_info, color_formats| {
                 // The render pass only describes the canvases the pipeline is compatible with, thus

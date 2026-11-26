@@ -11,6 +11,7 @@ use crate::{
     renderers::{
         debug::RendererDebugObject,
         downcast_ref,
+        id::RendererId,
         resources::{
             BufferUsage, RendererBuffer, RendererResource, RendererSampler, RendererTexture,
             ResourceBinding, ResourceBindingType, TextureFormat,
@@ -39,6 +40,7 @@ pub(super) struct DescriptorSetCache {
 /// Represents a Vulkan buffer.
 #[derive(Copy, Clone)]
 pub(super) struct VulkanBuffer {
+    pub(super) renderer_id: RendererId,
     pub(super) buffer: Buffer,
     pub(super) vma_allocation: vk_mem::Allocation,
     pub(super) size: usize,
@@ -48,6 +50,7 @@ pub(super) struct VulkanBuffer {
 /// Represents a Vulkan texture.
 #[derive(Copy, Clone)]
 pub(super) struct VulkanTexture {
+    pub(super) renderer_id: RendererId,
     pub(super) image: ash::vk::Image,
     pub(super) image_view: ash::vk::ImageView,
     pub(super) vma_allocation: vk_mem::Allocation,
@@ -57,6 +60,7 @@ pub(super) struct VulkanTexture {
 /// Represents a Vulkan texture sampler.
 #[derive(Copy, Clone)]
 pub(super) struct VulkanSampler {
+    pub(super) renderer_id: RendererId,
     pub(super) sampler: ash::vk::Sampler,
 }
 
@@ -163,6 +167,7 @@ impl VulkanRenderer {
         Self::validate_binding_sets(
             &pipeline.descriptor_layouts,
             &pipeline.descriptor_binding_counts,
+            pipeline.renderer_id,
             binding_sets,
         )?;
         let hash = Self::hash_resource_bindings(binding_sets)?;
@@ -234,6 +239,7 @@ impl VulkanRenderer {
         Self::validate_binding_sets(
             &pipeline.descriptor_layouts,
             &pipeline.descriptor_binding_counts,
+            pipeline.renderer_id,
             binding_sets,
         )?;
         let hash = Self::hash_resource_bindings(binding_sets)?;
@@ -270,6 +276,7 @@ impl VulkanRenderer {
     fn validate_binding_sets(
         descriptor_layouts: &[ash::vk::DescriptorSetLayout],
         descriptor_binding_counts: &[usize],
+        renderer_id: RendererId,
         binding_sets: &[&[ResourceBinding<'_>]],
     ) -> Result<()> {
         for binding in binding_sets.iter().flat_map(|&s| s.iter()) {
@@ -279,6 +286,12 @@ impl VulkanRenderer {
                     offset,
                     size,
                 } => {
+                    let buffer = downcast_ref::<VulkanBuffer>(buffer)?;
+                    if buffer.renderer_id != renderer_id {
+                        return Err(Error::invalid_argument(
+                            "Cannot bind a buffer created by another renderer or old device.",
+                        ));
+                    }
                     if !buffer.is_allocated() {
                         return Err(Error::invalid_argument("Cannot bind a destroyed buffer."));
                     }
@@ -294,11 +307,23 @@ impl VulkanRenderer {
                     }
                 }
                 ResourceBindingType::Texture { texture } => {
+                    let texture = downcast_ref::<VulkanTexture>(texture)?;
+                    if texture.renderer_id != renderer_id {
+                        return Err(Error::invalid_argument(
+                            "Cannot bind a texture created by another renderer or old device.",
+                        ));
+                    }
                     if !texture.is_allocated() {
                         return Err(Error::invalid_argument("Cannot bind a destroyed texture."));
                     }
                 }
                 ResourceBindingType::Sampler { sampler } => {
+                    let sampler = downcast_ref::<VulkanSampler>(sampler)?;
+                    if sampler.renderer_id != renderer_id {
+                        return Err(Error::invalid_argument(
+                            "Cannot bind a sampler created by another renderer or old device.",
+                        ));
+                    }
                     if !sampler.is_allocated() {
                         return Err(Error::invalid_argument("Cannot bind a destroyed sampler."));
                     }

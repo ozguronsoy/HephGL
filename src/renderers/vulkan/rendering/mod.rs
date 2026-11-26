@@ -20,6 +20,7 @@ use crate::{
     graphics_device::GraphicsDeviceFeature,
     renderers::{
         Renderer, TextureFormat,
+        id::RendererId,
         settings::{ColorBlending, GraphicsPipelineOptions, Msaa, PolygonMode, Settings},
         vulkan::{
             VulkanRenderer,
@@ -49,6 +50,7 @@ pub(super) trait VulkanRendering {
         device_context: &DeviceContext,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
+        renderer_id: RendererId,
     ) -> Result<VulkanGraphicsPipeline>;
     /// Destroys the graphics pipeline.
     fn destroy_graphics_pipeline(
@@ -111,6 +113,7 @@ fn create_graphics_pipeline(
     device_context: &DeviceContext,
     shaders: &[&Shader],
     options: &GraphicsPipelineOptions,
+    renderer_id: RendererId,
     msaa: Msaa,
     create_pipeline: impl FnOnce(GraphicsPipelineCreateInfo<'_>, &[TextureFormat]) -> Result<Pipeline>,
 ) -> Result<VulkanGraphicsPipeline> {
@@ -508,6 +511,7 @@ fn create_graphics_pipeline(
     }
     let pipeline = create_pipeline(pipeline_info, &color_formats)?;
     Ok(VulkanGraphicsPipeline {
+        renderer_id,
         pipeline,
         layout: DropGuard::dismiss(pipeline_layout),
         descriptor_layouts: DropGuard::dismiss(descriptor_set_layouts),

@@ -15,6 +15,7 @@ use crate::{
     Error, Result,
     renderers::{
         RendererCanvas, RendererResource, downcast_mut,
+        id::RendererId,
         resources::TextureFormat,
         settings::{CanvasOptions, Settings},
         vulkan::{
@@ -30,6 +31,8 @@ pub(super) trait VulkanCanvas: RendererCanvas {
     fn render_target(&self) -> (&[VulkanTexture], ImageAspectFlags);
     /// Returns the number of array layers of the canvas images.
     fn layer_count(&self) -> u32;
+    /// Returns the ID of the renderer that created the canvas.
+    fn renderer_id(&self) -> RendererId;
     /// Checks whether the canvas can be rendered into with the current settings.
     fn is_compatible(&self, settings: &Settings, swapchain_format: Format) -> bool;
     /// Prepares the canvas images for rendering and starts rendering into them.
@@ -121,6 +124,7 @@ impl VulkanRenderer {
                 device_context,
                 options,
                 layer_count,
+                self.id,
             )?),
             false => Box::new(VulkanColorCanvas::new(
                 device_context,
@@ -135,6 +139,7 @@ impl VulkanRenderer {
                 )?,
                 self.settings.msaa,
                 layer_count,
+                self.id,
             )?),
         };
         if let Err(error) = match unsafe { &*device_context.rendering.get() }.as_ref() {

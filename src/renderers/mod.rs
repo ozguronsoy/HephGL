@@ -1,6 +1,7 @@
 mod canvas;
 mod concurrency;
 pub mod debug;
+mod id;
 mod pipeline;
 mod resources;
 mod settings;

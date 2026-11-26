@@ -44,6 +44,7 @@ use crate::{
         RendererResource, RendererWorker, ResourceBinding, Settings,
         debug::Debugger,
         downcast_mut, downcast_ref,
+        id::RendererId,
         resources::{RendererBuffer, RendererSampler, RendererTexture, ResourceBindingType},
         settings::{
             CanvasOptions, GraphicsPipelineOptions, HdrMode, Msaa, SamplerOptions, TextureOptions,
@@ -116,6 +117,7 @@ pub struct VulkanRenderer {
     debug_utils_loader: Option<ash::ext::debug_utils::Instance>,
     debug_messenger: Cell<Option<ash::vk::DebugUtilsMessengerEXT>>,
 
+    id: RendererId,
     main_thread_id: std::thread::ThreadId,
 }
 
@@ -140,6 +142,7 @@ impl Renderer for VulkanRenderer {
             debug_utils_loader: None,
             debug_messenger: Cell::new(None),
 
+            id: RendererId::new(),
             main_thread_id: std::thread::current().id(),
         }
     }
@@ -870,6 +873,7 @@ impl Renderer for VulkanRenderer {
             ));
         }
 
+        self.id.advance_device_generation();
         self.device_context = Some(DeviceContext {
             graphics_device: device.clone(),
             enabled_features,
@@ -981,6 +985,7 @@ impl Renderer for VulkanRenderer {
         };
 
         Ok(Box::new(VulkanBuffer {
+            renderer_id: self.id,
             buffer,
             vma_allocation,
             size,
@@ -995,6 +1000,11 @@ impl Renderer for VulkanRenderer {
         src: &[u8],
     ) -> Result<()> {
         let buffer = downcast_ref::<VulkanBuffer>(buffer)?;
+        if buffer.renderer_id != self.id {
+            return Err(Error::invalid_argument(
+                "Cannot write to a buffer created by another renderer or old device.",
+            ));
+        }
         if !buffer.is_allocated() {
             return Err(Error::invalid_argument(
                 "Cannot write to a destroyed buffer.",
@@ -1038,6 +1048,11 @@ impl Renderer for VulkanRenderer {
         dest: &mut [u8],
     ) -> Result<()> {
         let buffer = downcast_ref::<VulkanBuffer>(buffer)?;
+        if buffer.renderer_id != self.id {
+            return Err(Error::invalid_argument(
+                "Cannot read from a buffer created by another renderer or old device.",
+            ));
+        }
         if !buffer.is_allocated() {
             return Err(Error::invalid_argument(
                 "Cannot read from a destroyed buffer.",
@@ -1078,6 +1093,11 @@ impl Renderer for VulkanRenderer {
 
     fn destroy_buffer(&self, buffer: &mut dyn RendererBuffer) -> Result<()> {
         let buffer = downcast_mut::<VulkanBuffer>(buffer)?;
+        if buffer.renderer_id != self.id {
+            return Err(Error::invalid_argument(
+                "Cannot destroy a buffer created by another renderer or old device.",
+            ));
+        }
         if !buffer.is_allocated() {
             return Err(Error::invalid_argument(
                 "Buffer has already been destroyed.",
@@ -1538,6 +1558,7 @@ impl Renderer for VulkanRenderer {
 
         let (staging_buffer, staging_allocation) = DropGuard::dismiss(staging);
         current_frame.transfer_buffers.push(VulkanBuffer {
+            renderer_id: self.id,
             buffer: staging_buffer,
             vma_allocation: staging_allocation,
             size: staging_size,
@@ -1548,6 +1569,7 @@ impl Renderer for VulkanRenderer {
         let (image, image_allocation) = DropGuard::dismiss(image);
         let image_view = DropGuard::dismiss(image_view);
         Ok(Box::new(VulkanTexture {
+            renderer_id: self.id,
             image,
             image_view,
             vma_allocation: image_allocation,
@@ -1557,6 +1579,11 @@ impl Renderer for VulkanRenderer {
 
     fn destroy_texture(&self, texture: &mut dyn RendererTexture) -> Result<()> {
         let texture = downcast_mut::<VulkanTexture>(texture)?;
+        if texture.renderer_id != self.id {
+            return Err(Error::invalid_argument(
+                "Cannot destroy a texture created by another renderer or old device.",
+            ));
+        }
         if !texture.is_allocated() {
             return Err(Error::invalid_argument(
                 "Texture has already been destroyed.",
@@ -1630,11 +1657,19 @@ impl Renderer for VulkanRenderer {
                 .logical_device
                 .create_sampler(&create_info, None)?
         };
-        Ok(Box::new(VulkanSampler { sampler }))
+        Ok(Box::new(VulkanSampler {
+            renderer_id: self.id,
+            sampler,
+        }))
     }
 
     fn destroy_sampler(&self, sampler: &mut dyn RendererSampler) -> Result<()> {
         let sampler = downcast_mut::<VulkanSampler>(sampler)?;
+        if sampler.renderer_id != self.id {
+            return Err(Error::invalid_argument(
+                "Cannot destroy a sampler created by another renderer or old device.",
+            ));
+        }
         if !sampler.is_allocated() {
             return Err(Error::invalid_argument(
                 "Sampler has already been destroyed.",
@@ -1745,6 +1780,7 @@ impl Renderer for VulkanRenderer {
         };
 
         Ok(Box::new(VulkanComputePipeline {
+            renderer_id: self.id,
             pipeline,
             layout: DropGuard::dismiss(layout),
             descriptor_layouts: DropGuard::dismiss(descriptor_set_layouts),
@@ -1755,6 +1791,11 @@ impl Renderer for VulkanRenderer {
 
     fn destroy_compute_pipeline(&self, pipeline: &mut dyn RendererComputePipeline) -> Result<()> {
         let pipeline = downcast_mut::<VulkanComputePipeline>(pipeline)?;
+        if pipeline.renderer_id != self.id {
+            return Err(Error::invalid_argument(
+                "Cannot destroy a compute pipeline created by another renderer or old device.",
+            ));
+        }
         if !pipeline.is_allocated() {
             return Err(Error::invalid_argument(
                 "Compute pipeline has already been destroyed.",
@@ -1792,6 +1833,11 @@ impl Renderer for VulkanRenderer {
         self.frame_only(function!())?;
 
         let pipeline = downcast_mut::<VulkanComputePipeline>(pipeline)?;
+        if pipeline.renderer_id != self.id {
+            return Err(Error::invalid_argument(
+                "Cannot record a compute command with a pipeline created by another renderer or old device.",
+            ));
+        }
         if !pipeline.is_allocated() {
             return Err(Error::invalid_argument(
                 "Cannot record a compute command with a destroyed pipeline.",
@@ -1884,11 +1930,17 @@ impl Renderer for VulkanRenderer {
             device_context,
             shaders,
             options,
+            self.id,
         )?))
     }
 
     fn destroy_graphics_pipeline(&self, pipeline: &mut dyn RendererGraphicsPipeline) -> Result<()> {
         let pipeline = downcast_mut::<VulkanGraphicsPipeline>(pipeline)?;
+        if pipeline.renderer_id != self.id {
+            return Err(Error::invalid_argument(
+                "Cannot destroy a graphics pipeline created by another renderer or old device.",
+            ));
+        }
         if !pipeline.is_allocated() {
             return Err(Error::invalid_argument(
                 "Graphics pipeline has already been destroyed.",
@@ -1917,6 +1969,11 @@ impl Renderer for VulkanRenderer {
         self.frame_only(function!())?;
 
         let pipeline = downcast_mut::<VulkanGraphicsPipeline>(pipeline)?;
+        if pipeline.renderer_id != self.id {
+            return Err(Error::invalid_argument(
+                "Cannot record a graphics command with a pipeline created by another renderer or old device.",
+            ));
+        }
         if !pipeline.is_allocated() {
             return Err(Error::invalid_argument(
                 "Cannot record a graphics command with a destroyed pipeline.",
@@ -1944,6 +2001,11 @@ impl Renderer for VulkanRenderer {
                 .as_ref()
                 .ok_or(Error::invalid_operation("Device is not set."))?,
         };
+        if canvas.renderer_id() != self.id {
+            return Err(Error::invalid_argument(
+                "Cannot record a graphics command into a canvas created by another renderer or old device.",
+            ));
+        }
         if pipeline.depth_only != canvas.depth_only()
             || (!pipeline.depth_only
                 && !pipeline.color_formats.iter().eq(canvas
@@ -2061,6 +2123,11 @@ impl Renderer for VulkanRenderer {
                     }
 
                     let vertex_buffer = downcast_ref::<VulkanBuffer>(buffer)?;
+                    if vertex_buffer.renderer_id != self.id {
+                        return Err(Error::invalid_argument(
+                            "Cannot bind a vertex buffer created by another renderer or old device.",
+                        ));
+                    }
                     if !vertex_buffer.is_allocated() {
                         return Err(Error::invalid_argument(
                             "Cannot bind a destroyed vertex buffer.",
@@ -2090,6 +2157,11 @@ impl Renderer for VulkanRenderer {
                     }
 
                     let index_buffer = downcast_ref::<VulkanBuffer>(index_buffer)?;
+                    if index_buffer.renderer_id != self.id {
+                        return Err(Error::invalid_argument(
+                            "Cannot bind an index buffer created by another renderer or old device.",
+                        ));
+                    }
                     if !index_buffer.is_allocated() {
                         return Err(Error::invalid_argument(
                             "Cannot bind a destroyed index buffer.",
@@ -2132,6 +2204,11 @@ impl Renderer for VulkanRenderer {
 
     fn destroy_canvas(&self, canvas: &mut dyn RendererCanvas) -> Result<()> {
         let canvas = vulkan_canvas_mut(canvas)?;
+        if canvas.renderer_id() != self.id {
+            return Err(Error::invalid_argument(
+                "Cannot destroy a canvas created by another renderer or old device.",
+            ));
+        }
         if !canvas.is_allocated() {
             return Err(Error::invalid_argument(
                 "Canvas has already been destroyed.",
@@ -2740,6 +2817,11 @@ impl Renderer for VulkanRenderer {
                 .as_ref()
                 .ok_or(Error::invalid_operation("Device is not set."))?,
         };
+        if canvas.renderer_id() != self.id {
+            return Err(Error::invalid_argument(
+                "Cannot clear a canvas created by another renderer or old device.",
+            ));
+        }
         Self::begin_canvas_rendering(
             &device_context.logical_device,
             rendering.as_ref(),

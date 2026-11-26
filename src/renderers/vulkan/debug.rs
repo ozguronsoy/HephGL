@@ -13,6 +13,7 @@ use crate::{
     renderers::{
         debug::{DebugWriter, Debugger, RendererDebugObject, Severity},
         downcast_ref,
+        id::RendererId,
         vulkan::{
             VulkanBuffer, VulkanColorCanvas, VulkanComputePipeline, VulkanDepthCanvas,
             VulkanGraphicsPipeline, VulkanRenderer, VulkanSampler, VulkanTexture,
@@ -21,6 +22,7 @@ use crate::{
 };
 
 pub(super) struct VulkanDebugWriter {
+    pub(super) renderer_id: RendererId,
     pub(super) device: ash::ext::debug_utils::Device,
     pub(super) render_pass_rendering: bool,
 }
@@ -42,14 +44,26 @@ impl DebugWriter for VulkanDebugWriter {
             unsafe { device.set_debug_utils_object_name(&name_info)? };
             Ok(())
         }
+        let validate_renderer_id = |renderer_id: RendererId| -> Result<()> {
+            if renderer_id != self.renderer_id {
+                return Err(Error::invalid_argument(
+                    "Cannot set the name of an object created by another renderer or old device.",
+                ));
+            }
+            Ok(())
+        };
         if let Ok(buffer) = downcast_ref::<VulkanBuffer>(object) {
+            validate_renderer_id(buffer.renderer_id)?;
             set(&self.device, &c_name, buffer.buffer)?;
         } else if let Ok(texture) = downcast_ref::<VulkanTexture>(object) {
+            validate_renderer_id(texture.renderer_id)?;
             set(&self.device, &c_name, texture.image)?;
             set(&self.device, &c_name, texture.image_view)?;
         } else if let Ok(sampler) = downcast_ref::<VulkanSampler>(object) {
+            validate_renderer_id(sampler.renderer_id)?;
             set(&self.device, &c_name, sampler.sampler)?;
         } else if let Ok(pipeline) = downcast_ref::<VulkanComputePipeline>(object) {
+            validate_renderer_id(pipeline.renderer_id)?;
             set(&self.device, &c_name, pipeline.pipeline)?;
             set(&self.device, &c_name, pipeline.layout)?;
             for (index, descriptor_set_layout) in pipeline.descriptor_layouts.iter().enumerate() {
@@ -57,6 +71,7 @@ impl DebugWriter for VulkanDebugWriter {
                 set(&self.device, &group_name, *descriptor_set_layout)?;
             }
         } else if let Ok(pipeline) = downcast_ref::<VulkanGraphicsPipeline>(object) {
+            validate_renderer_id(pipeline.renderer_id)?;
             set(&self.device, &c_name, pipeline.pipeline)?;
             set(&self.device, &c_name, pipeline.layout)?;
             for (index, descriptor_set_layout) in pipeline.descriptor_layouts.iter().enumerate() {
@@ -64,6 +79,7 @@ impl DebugWriter for VulkanDebugWriter {
                 set(&self.device, &group_name, *descriptor_set_layout)?;
             }
         } else if let Ok(canvas) = downcast_ref::<VulkanColorCanvas>(object) {
+            validate_renderer_id(canvas.renderer_id)?;
             if self.render_pass_rendering {
                 set(&self.device, &c_name, canvas.render_pass)?;
                 set(&self.device, &c_name, canvas.framebuffer)?;
@@ -82,6 +98,7 @@ impl DebugWriter for VulkanDebugWriter {
                 set(&self.device, &msaa_name, msaa_image.view)?;
             }
         } else if let Ok(canvas) = downcast_ref::<VulkanDepthCanvas>(object) {
+            validate_renderer_id(canvas.renderer_id)?;
             if self.render_pass_rendering {
                 set(&self.device, &c_name, canvas.render_pass)?;
                 set(&self.device, &c_name, canvas.framebuffer)?;
@@ -108,6 +125,7 @@ impl VulkanRenderer {
             .as_ref()
             .ok_or(Error::invalid_operation("Device is not set."))?;
         let _ = debugger.set_writer(Some(Box::new(VulkanDebugWriter {
+            renderer_id: self.id,
             device: ash::ext::debug_utils::Device::new(instance, &device_context.logical_device),
             render_pass_rendering: !device_context.supports_dynamic_rendering,
         })));

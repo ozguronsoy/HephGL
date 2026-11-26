@@ -7,6 +7,7 @@ use crate::{
     Result,
     renderers::{
         RendererCanvas,
+        id::RendererId,
         settings::{GraphicsPipelineOptions, Msaa, Settings},
         vulkan::{
             canvas::{VulkanColorCanvas, VulkanDepthCanvas},
@@ -42,12 +43,14 @@ impl VulkanRendering for DynamicRendering {
         device_context: &DeviceContext,
         shaders: &[&Shader],
         options: &GraphicsPipelineOptions,
+        renderer_id: RendererId,
     ) -> Result<VulkanGraphicsPipeline> {
         super::create_graphics_pipeline(
             instance,
             device_context,
             shaders,
             options,
+            renderer_id,
             self.msaa,
             |pipeline_info, color_formats| {
                 let vulkan_color_formats = color_formats

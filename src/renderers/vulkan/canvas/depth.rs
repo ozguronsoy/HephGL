@@ -8,6 +8,7 @@ use crate::{
     renderers::{
         RendererCanvas,
         debug::RendererDebugObject,
+        id::RendererId,
         resources::{RendererResource, RendererTexture, TextureFormat},
         settings::{CanvasOptions, Settings, TextureOptions},
         vulkan::{
@@ -22,6 +23,8 @@ use crate::{
 
 /// Represents a Vulkan canvas that has only a depth buffer.
 pub struct VulkanDepthCanvas {
+    /// The ID of the renderer that created the canvas.
+    pub renderer_id: RendererId,
     /// The options the canvas was created with.
     pub options: CanvasOptions,
     /// The depth buffer that is sampled by shaders. It is never multisampled.
@@ -57,6 +60,10 @@ impl VulkanCanvas for VulkanDepthCanvas {
 
     fn layer_count(&self) -> u32 {
         self.layer_count
+    }
+
+    fn renderer_id(&self) -> RendererId {
+        self.renderer_id
     }
 
     fn is_compatible(&self, settings: &Settings, _: Format) -> bool {
@@ -139,6 +146,7 @@ impl VulkanDepthCanvas {
         device_context: &DeviceContext,
         options: &CanvasOptions,
         layer_count: u32,
+        renderer_id: RendererId,
     ) -> Result<Self> {
         let rendering = unsafe { &*device_context.rendering.get() }
             .as_ref()
@@ -159,8 +167,10 @@ impl VulkanDepthCanvas {
         )?;
 
         let mut canvas = Self {
+            renderer_id,
             options: options.clone(),
             texture: VulkanTexture {
+                renderer_id,
                 image: depth_image.image,
                 image_view: depth_image.view,
                 vma_allocation: depth_image.allocation,
