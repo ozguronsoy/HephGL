@@ -1,14 +1,14 @@
 use heph_gl::{
     Error,
     GraphicsDeviceFeature::{
-        DepthBiasClamp, DepthClamp, GeometryShaders, MeshShaders, SampleRateShading,
-        TessellationShaders, WireframeMode,
+        ComputeShaders, DepthBiasClamp, DepthClamp, GeometryShaders, MeshShaders,
+        SampleRateShading, TessellationShaders, WireframeMode,
     },
     Shader,
     renderers::{
-        DISPLAY_CANVAS, DepthBias, FeatureRequest, GraphicsPipelineOptions, PolygonMode,
-        PrimitiveTopology, Renderer, RendererComputePipeline, RendererGraphicsPipeline,
-        RendererPipeline, debug::RendererDebugObject,
+        BufferUsage, DISPLAY_CANVAS, DepthBias, FeatureRequest, GraphicsPipelineOptions,
+        PolygonMode, PrimitiveTopology, Renderer, RendererComputePipeline,
+        RendererGraphicsPipeline, RendererPipeline, ResourceBinding, debug::RendererDebugObject,
     },
 };
 
@@ -801,5 +801,145 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             Error::InvalidArgument(_)
         );
         heph_expect_success!(renderer.end_frame());
+    }
+
+    pub(crate) fn test_reject_pipeline_use_after_free(&self) {
+        let renderer =
+            self.create_renderer_with_any_device(&[FeatureRequest::new(ComputeShaders, true)]);
+        let compute_shader =
+            heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/addition.spv")));
+        let vert_shader = heph_expect_success!(Shader::from_file(format!(
+            "{SHADERS_DIR}/shapes/basic_triangle_vert.spv"
+        )));
+        let frag_shader = heph_expect_success!(Shader::from_file(format!(
+            "{SHADERS_DIR}/shapes/basic_triangle_frag.spv"
+        )));
+
+        let mut compute_pipeline =
+            heph_expect_success!(renderer.create_compute_pipeline(&compute_shader));
+        let mut graphics_pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+            &[&vert_shader, &frag_shader],
+            &GraphicsPipelineOptions::default()
+        ));
+        heph_expect_success!(renderer.destroy_compute_pipeline(compute_pipeline.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(graphics_pipeline.as_mut()));
+
+        Self::expect_pipelines_rejected(
+            &renderer,
+            compute_pipeline.as_mut(),
+            graphics_pipeline.as_mut(),
+        );
+    }
+
+    pub(crate) fn test_reject_pipeline_use_in_other_renderer(&self) {
+        let renderer =
+            self.create_renderer_with_any_device(&[FeatureRequest::new(ComputeShaders, true)]);
+        let compute_shader =
+            heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/addition.spv")));
+        let vert_shader = heph_expect_success!(Shader::from_file(format!(
+            "{SHADERS_DIR}/shapes/basic_triangle_vert.spv"
+        )));
+        let frag_shader = heph_expect_success!(Shader::from_file(format!(
+            "{SHADERS_DIR}/shapes/basic_triangle_frag.spv"
+        )));
+
+        let mut compute_pipeline =
+            heph_expect_success!(renderer.create_compute_pipeline(&compute_shader));
+        let mut graphics_pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+            &[&vert_shader, &frag_shader],
+            &GraphicsPipelineOptions::default()
+        ));
+        heph_expect_success!(renderer.destroy_compute_pipeline(compute_pipeline.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(graphics_pipeline.as_mut()));
+        drop(renderer);
+
+        let renderer =
+            self.create_renderer_with_any_device(&[FeatureRequest::new(ComputeShaders, true)]);
+        Self::expect_pipelines_rejected(
+            &renderer,
+            compute_pipeline.as_mut(),
+            graphics_pipeline.as_mut(),
+        );
+    }
+
+    pub(crate) fn test_reject_pipeline_use_from_previous_device(&self) {
+        let mut renderer =
+            self.create_renderer_with_any_device(&[FeatureRequest::new(ComputeShaders, true)]);
+        let compute_shader =
+            heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/addition.spv")));
+        let vert_shader = heph_expect_success!(Shader::from_file(format!(
+            "{SHADERS_DIR}/shapes/basic_triangle_vert.spv"
+        )));
+        let frag_shader = heph_expect_success!(Shader::from_file(format!(
+            "{SHADERS_DIR}/shapes/basic_triangle_frag.spv"
+        )));
+
+        let mut compute_pipeline =
+            heph_expect_success!(renderer.create_compute_pipeline(&compute_shader));
+        let mut graphics_pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+            &[&vert_shader, &frag_shader],
+            &GraphicsPipelineOptions::default()
+        ));
+        heph_expect_success!(renderer.destroy_compute_pipeline(compute_pipeline.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(graphics_pipeline.as_mut()));
+
+        heph_expect_success!(
+            renderer.set_device(None, &[FeatureRequest::new(ComputeShaders, true)])
+        );
+        Self::expect_pipelines_rejected(
+            &renderer,
+            compute_pipeline.as_mut(),
+            graphics_pipeline.as_mut(),
+        );
+    }
+
+    fn expect_pipelines_rejected(
+        renderer: &TestRenderer,
+        compute_pipeline: &mut dyn RendererComputePipeline,
+        graphics_pipeline: &mut dyn RendererGraphicsPipeline,
+    ) {
+        const COMPUTE_BUFFER_SIZE: usize = 256 * size_of::<f32>();
+
+        let mut buffer =
+            heph_expect_success!(renderer.create_buffer(COMPUTE_BUFFER_SIZE, BufferUsage::Storage));
+
+        heph_expect_success!(renderer.begin_frame());
+        heph_expect_err!(
+            renderer.record_compute_command(
+                compute_pipeline,
+                &[&[
+                    ResourceBinding::buffer(0, buffer.as_ref(), 0, COMPUTE_BUFFER_SIZE),
+                    ResourceBinding::buffer(1, buffer.as_ref(), 0, COMPUTE_BUFFER_SIZE),
+                    ResourceBinding::buffer(2, buffer.as_ref(), 0, COMPUTE_BUFFER_SIZE),
+                ]],
+                (1, 1, 1)
+            ),
+            Error::InvalidArgument(_)
+        );
+        heph_expect_err!(
+            renderer.record_graphics_command(
+                DISPLAY_CANVAS,
+                graphics_pipeline,
+                None,
+                &[],
+                &[],
+                3,
+                1
+            ),
+            Error::InvalidArgument(_)
+        );
+        heph_expect_success!(renderer.end_frame());
+
+        heph_expect_err!(
+            renderer.destroy_compute_pipeline(compute_pipeline),
+            Error::InvalidArgument(_)
+        );
+        heph_expect_err!(
+            renderer.destroy_graphics_pipeline(graphics_pipeline),
+            Error::InvalidArgument(_)
+        );
+
+        heph_expect_success!(renderer.wait_idle());
+        heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
     }
 }

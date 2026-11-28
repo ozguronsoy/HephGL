@@ -4,6 +4,8 @@ use crate::renderers::{
 
 /// Represents an off-screen render target.
 pub trait RendererCanvas: RendererDebugObject {
+    /// Indicates whether the canvas currently has an allocation.
+    fn is_allocated(&self) -> bool;
     /// Returns the canvas width in pixels.
     fn width(&self) -> u32 {
         self.options().width

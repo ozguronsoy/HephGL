@@ -24,6 +24,8 @@ macro_rules! define_renderer_test_flags {
 }
 
 define_renderer_test_flags!(
+    test_create_multiple_instances,
+    test_create_instances_concurrently,
     test_initialize_renderer,
     test_debugger,
     test_enumerate_devices,
@@ -43,6 +45,15 @@ define_renderer_test_flags!(
     test_graphics_pipeline,
     test_reject_foreign_resources,
     test_reject_foreign_pipelines,
+    test_reject_resource_use_after_free,
+    test_reject_resource_use_in_other_renderer,
+    test_reject_resource_use_from_previous_device,
+    test_reject_canvas_use_after_free,
+    test_reject_canvas_use_in_other_renderer,
+    test_reject_canvas_use_from_previous_device,
+    test_reject_pipeline_use_after_free,
+    test_reject_pipeline_use_in_other_renderer,
+    test_reject_pipeline_use_from_previous_device,
     test_begin_twice,
     test_end_without_begin,
     test_calling_frame_only_fn_outside_of_frame,

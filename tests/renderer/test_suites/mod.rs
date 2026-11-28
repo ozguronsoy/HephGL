@@ -70,7 +70,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     pub(super) fn create_renderer(&self) -> TestRendererDropGuard<'_, TestRenderer> {
         let test_env = test_env!();
         let app_name = format!("{} Tests", std::any::type_name::<TestRenderer>());
-        let mut renderer = TestRenderer::new();
+        let mut renderer = heph_expect_success!(TestRenderer::new());
         heph_expect_success!(renderer.initialize(&InitializeOptions {
             app_name: app_name.as_str(),
             window_handle: test_env.raw_window_handle(),

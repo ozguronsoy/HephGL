@@ -1,8 +1,8 @@
 use std::mem::DropGuard;
 
 use ash::vk::{
-    AccessFlags, CommandBuffer, Extent2D, Format, ImageAspectFlags, ImageLayout, ImageUsageFlags,
-    PipelineStageFlags, SampleCountFlags,
+    AccessFlags, CommandBuffer, Extent2D, Format, Handle, ImageAspectFlags, ImageLayout,
+    ImageUsageFlags, PipelineStageFlags, SampleCountFlags,
 };
 
 use crate::{
@@ -10,6 +10,7 @@ use crate::{
     renderers::{
         RendererCanvas,
         debug::RendererDebugObject,
+        id::RendererId,
         resources::{RendererTexture, TextureFormat},
         settings::{CanvasOptions, Msaa, Settings, TextureOptions},
         vulkan::{
@@ -24,6 +25,8 @@ use crate::{
 
 /// Represents a Vulkan canvas that has color images and a depth buffer.
 pub struct VulkanColorCanvas {
+    /// The ID of the renderer that created the canvas.
+    pub renderer_id: RendererId,
     /// The options the canvas was created with.
     pub options: CanvasOptions,
     /// The single-sample color images that are sampled by shaders.
@@ -45,6 +48,10 @@ pub struct VulkanColorCanvas {
 impl RendererDebugObject for VulkanColorCanvas {}
 
 impl RendererCanvas for VulkanColorCanvas {
+    fn is_allocated(&self) -> bool {
+        !self.depth_image.image.is_null()
+    }
+
     fn options(&self) -> &CanvasOptions {
         &self.options
     }
@@ -65,6 +72,10 @@ impl VulkanCanvas for VulkanColorCanvas {
 
     fn layer_count(&self) -> u32 {
         self.layer_count
+    }
+
+    fn renderer_id(&self) -> RendererId {
+        self.renderer_id
     }
 
     fn is_compatible(&self, settings: &Settings, swapchain_format: Format) -> bool {
@@ -246,6 +257,7 @@ impl VulkanColorCanvas {
         texture_formats: &[TextureFormat],
         msaa: Msaa,
         layer_count: u32,
+        renderer_id: RendererId,
     ) -> Result<Self> {
         let rendering = unsafe { &*device_context.rendering.get() }
             .as_ref()
@@ -301,11 +313,13 @@ impl VulkanColorCanvas {
         )?;
 
         let mut canvas = Self {
+            renderer_id,
             options: options.clone(),
             textures: DropGuard::dismiss(color_images)
                 .into_iter()
                 .zip(texture_formats)
                 .map(|(color_image, &format)| VulkanTexture {
+                    renderer_id,
                     image: color_image.image,
                     image_view: color_image.view,
                     vma_allocation: color_image.allocation,

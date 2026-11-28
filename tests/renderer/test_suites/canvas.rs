@@ -1,9 +1,12 @@
 use heph_gl::{
-    Error,
-    renderers::{CanvasOptions, Renderer},
+    Error, Shader,
+    renderers::{
+        BufferUsage, CanvasOptions, DISPLAY_CANVAS, GraphicsPipelineOptions, Renderer,
+        RendererCanvas, ResourceBinding, SamplerOptions,
+    },
 };
 
-use crate::{heph_expect_err, heph_expect_success, renderer::RendererTests};
+use crate::{heph_expect_err, heph_expect_success, renderer::RendererTests, utils::SHADERS_DIR};
 
 impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     pub(crate) fn test_canvas(&self) {
@@ -95,5 +98,136 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             );
             heph_expect_success!(renderer.end_frame());
         }
+    }
+
+    pub(crate) fn test_reject_canvas_use_after_free(&self) {
+        let renderer = self.create_renderer_with_any_device(&[]);
+
+        heph_expect_success!(renderer.begin_frame());
+        let mut canvas = heph_expect_success!(renderer.create_canvas(&CanvasOptions {
+            width: 640,
+            height: 360,
+            ..Default::default()
+        }));
+        heph_expect_success!(renderer.end_frame());
+        heph_expect_success!(renderer.wait_idle());
+        heph_expect_success!(renderer.destroy_canvas(canvas.as_mut()));
+
+        Self::expect_canvas_rejected(&renderer, canvas.as_mut());
+    }
+
+    pub(crate) fn test_reject_canvas_use_in_other_renderer(&self) {
+        let renderer = self.create_renderer_with_any_device(&[]);
+
+        heph_expect_success!(renderer.begin_frame());
+        let mut canvas = heph_expect_success!(renderer.create_canvas(&CanvasOptions {
+            width: 640,
+            height: 360,
+            ..Default::default()
+        }));
+        heph_expect_success!(renderer.end_frame());
+        heph_expect_success!(renderer.wait_idle());
+        heph_expect_success!(renderer.destroy_canvas(canvas.as_mut()));
+        drop(renderer);
+
+        let renderer = self.create_renderer_with_any_device(&[]);
+        Self::expect_canvas_rejected(&renderer, canvas.as_mut());
+    }
+
+    pub(crate) fn test_reject_canvas_use_from_previous_device(&self) {
+        let mut renderer = self.create_renderer_with_any_device(&[]);
+
+        heph_expect_success!(renderer.begin_frame());
+        let mut canvas = heph_expect_success!(renderer.create_canvas(&CanvasOptions {
+            width: 640,
+            height: 360,
+            ..Default::default()
+        }));
+        heph_expect_success!(renderer.end_frame());
+        heph_expect_success!(renderer.wait_idle());
+        heph_expect_success!(renderer.destroy_canvas(canvas.as_mut()));
+
+        heph_expect_success!(renderer.set_device(None, &[]));
+        Self::expect_canvas_rejected(&renderer, canvas.as_mut());
+    }
+
+    fn expect_canvas_rejected(renderer: &TestRenderer, canvas: &mut dyn RendererCanvas) {
+        const QUAD_VERTEX_COUNT: u32 = 6;
+        const QUAD_VERTEX_BUFFER_SIZE: usize = size_of::<[f32; 4]>() * QUAD_VERTEX_COUNT as usize;
+
+        let triangle_vert_shader = heph_expect_success!(Shader::from_file(format!(
+            "{SHADERS_DIR}/shapes/basic_triangle_vert.spv"
+        )));
+        let triangle_frag_shader = heph_expect_success!(Shader::from_file(format!(
+            "{SHADERS_DIR}/shapes/basic_triangle_frag.spv"
+        )));
+        let canvas_vert_shader =
+            heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/canvas_vert.spv")));
+        let canvas_frag_shader =
+            heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/canvas_frag.spv")));
+        let mut triangle_pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+            &[&triangle_vert_shader, &triangle_frag_shader],
+            &GraphicsPipelineOptions::default()
+        ));
+        let mut canvas_pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+            &[&canvas_vert_shader, &canvas_frag_shader],
+            &GraphicsPipelineOptions::default()
+        ));
+        let mut vertex_buffer = heph_expect_success!(
+            renderer.create_buffer(QUAD_VERTEX_BUFFER_SIZE, BufferUsage::Vertex)
+        );
+        let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
+
+        heph_expect_success!(renderer.begin_frame());
+        heph_expect_err!(
+            renderer.clear(Some(&mut *canvas), [0.0, 0.0, 0.0]),
+            Error::InvalidArgument(_)
+        );
+        heph_expect_err!(
+            renderer.record_graphics_command(
+                Some(&mut *canvas),
+                triangle_pipeline.as_mut(),
+                None,
+                &[],
+                &[],
+                3,
+                1
+            ),
+            Error::InvalidArgument(_)
+        );
+        heph_expect_err!(
+            renderer.record_graphics_command(
+                DISPLAY_CANVAS,
+                canvas_pipeline.as_mut(),
+                None,
+                &[ResourceBinding::buffer(
+                    0,
+                    vertex_buffer.as_ref(),
+                    0,
+                    QUAD_VERTEX_BUFFER_SIZE
+                )],
+                &[&[
+                    ResourceBinding::texture(
+                        0,
+                        heph_expect_success!(
+                            canvas.textures().next().ok_or("Canvas has no texture.")
+                        )
+                    ),
+                    ResourceBinding::sampler(1, sampler.as_ref()),
+                ]],
+                QUAD_VERTEX_COUNT,
+                1
+            ),
+            Error::InvalidArgument(_)
+        );
+        heph_expect_success!(renderer.end_frame());
+
+        heph_expect_err!(renderer.destroy_canvas(canvas), Error::InvalidArgument(_));
+
+        heph_expect_success!(renderer.wait_idle());
+        heph_expect_success!(renderer.destroy_buffer(vertex_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(triangle_pipeline.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(canvas_pipeline.as_mut()));
     }
 }

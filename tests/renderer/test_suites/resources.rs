@@ -3,17 +3,28 @@ use std::fs::File;
 use ddsfile::{Dds, DxgiFormat};
 use heph_gl::{
     Error,
-    GraphicsDeviceFeature::{AnisotropicFiltering, BcTextures},
+    GraphicsDeviceFeature::{AnisotropicFiltering, BcTextures, ComputeShaders},
+    Shader,
     renderers::{
-        BufferUsage, CompareOp, FeatureRequest, Renderer, RendererBuffer, RendererResource,
-        RendererSampler, RendererTexture, SamplerOptions, TextureFormat, TextureOptions,
-        debug::RendererDebugObject,
+        BufferUsage, CompareOp, DISPLAY_CANVAS, FeatureRequest, GraphicsPipelineOptions, Renderer,
+        RendererBuffer, RendererResource, RendererSampler, RendererTexture, ResourceBinding,
+        SamplerOptions, TextureFormat, TextureOptions, debug::RendererDebugObject,
     },
 };
 
-use crate::{heph_expect_err, heph_expect_success, renderer::RendererTests};
+use crate::{heph_expect_err, heph_expect_success, renderer::RendererTests, utils::SHADERS_DIR};
 
 const BUFFER_SIZE: usize = 1024;
+const COMPUTE_BUFFER_SIZE: usize = 256 * size_of::<f32>();
+const QUAD_VERTEX_COUNT: u32 = 6;
+const QUAD_VERTEX_BUFFER_SIZE: usize = size_of::<[f32; 4]>() * QUAD_VERTEX_COUNT as usize;
+const QUAD_INDEX_BUFFER_SIZE: usize = size_of::<u32>() * QUAD_VERTEX_COUNT as usize;
+const SINGLE_PIXEL_TEXTURE_OPTIONS: TextureOptions = TextureOptions {
+    width: 1,
+    height: 1,
+    format: TextureFormat::Rgba8Unorm,
+    mip_level_count: 1,
+};
 
 struct ForeignBuffer;
 impl RendererDebugObject for ForeignBuffer {}
@@ -576,6 +587,275 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             renderer.destroy_sampler(sampler.as_mut()),
             Error::InvalidArgument(_)
         );
+    }
+
+    pub(crate) fn test_reject_resource_use_after_free(&self) {
+        let renderer =
+            self.create_renderer_with_any_device(&[FeatureRequest::new(ComputeShaders, true)]);
+
+        let mut buffer =
+            heph_expect_success!(renderer.create_buffer(COMPUTE_BUFFER_SIZE, BufferUsage::Storage));
+        let mut vertex_buffer = heph_expect_success!(
+            renderer.create_buffer(QUAD_VERTEX_BUFFER_SIZE, BufferUsage::Vertex)
+        );
+        let mut index_buffer = heph_expect_success!(
+            renderer.create_buffer(QUAD_INDEX_BUFFER_SIZE, BufferUsage::Index)
+        );
+        let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
+        heph_expect_success!(renderer.begin_frame());
+        let mut texture =
+            heph_expect_success!(renderer.create_texture(&SINGLE_PIXEL_TEXTURE_OPTIONS, &[255; 4]));
+        heph_expect_success!(renderer.end_frame());
+        heph_expect_success!(renderer.wait_idle());
+
+        heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(vertex_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(index_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
+        heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
+
+        Self::expect_resources_rejected(
+            &renderer,
+            buffer.as_mut(),
+            vertex_buffer.as_mut(),
+            index_buffer.as_mut(),
+            texture.as_mut(),
+            sampler.as_mut(),
+        );
+    }
+
+    pub(crate) fn test_reject_resource_use_in_other_renderer(&self) {
+        let renderer =
+            self.create_renderer_with_any_device(&[FeatureRequest::new(ComputeShaders, true)]);
+
+        let mut buffer =
+            heph_expect_success!(renderer.create_buffer(COMPUTE_BUFFER_SIZE, BufferUsage::Storage));
+        let mut vertex_buffer = heph_expect_success!(
+            renderer.create_buffer(QUAD_VERTEX_BUFFER_SIZE, BufferUsage::Vertex)
+        );
+        let mut index_buffer = heph_expect_success!(
+            renderer.create_buffer(QUAD_INDEX_BUFFER_SIZE, BufferUsage::Index)
+        );
+        let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
+        heph_expect_success!(renderer.begin_frame());
+        let mut texture =
+            heph_expect_success!(renderer.create_texture(&SINGLE_PIXEL_TEXTURE_OPTIONS, &[255; 4]));
+        heph_expect_success!(renderer.end_frame());
+        heph_expect_success!(renderer.wait_idle());
+
+        heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(vertex_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(index_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
+        heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
+        drop(renderer);
+
+        let renderer =
+            self.create_renderer_with_any_device(&[FeatureRequest::new(ComputeShaders, true)]);
+        Self::expect_resources_rejected(
+            &renderer,
+            buffer.as_mut(),
+            vertex_buffer.as_mut(),
+            index_buffer.as_mut(),
+            texture.as_mut(),
+            sampler.as_mut(),
+        );
+    }
+
+    pub(crate) fn test_reject_resource_use_from_previous_device(&self) {
+        let mut renderer =
+            self.create_renderer_with_any_device(&[FeatureRequest::new(ComputeShaders, true)]);
+
+        let mut buffer =
+            heph_expect_success!(renderer.create_buffer(COMPUTE_BUFFER_SIZE, BufferUsage::Storage));
+        let mut vertex_buffer = heph_expect_success!(
+            renderer.create_buffer(QUAD_VERTEX_BUFFER_SIZE, BufferUsage::Vertex)
+        );
+        let mut index_buffer = heph_expect_success!(
+            renderer.create_buffer(QUAD_INDEX_BUFFER_SIZE, BufferUsage::Index)
+        );
+        let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
+        heph_expect_success!(renderer.begin_frame());
+        let mut texture =
+            heph_expect_success!(renderer.create_texture(&SINGLE_PIXEL_TEXTURE_OPTIONS, &[255; 4]));
+        heph_expect_success!(renderer.end_frame());
+        heph_expect_success!(renderer.wait_idle());
+
+        heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(vertex_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(index_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
+        heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
+
+        heph_expect_success!(
+            renderer.set_device(None, &[FeatureRequest::new(ComputeShaders, true)])
+        );
+        Self::expect_resources_rejected(
+            &renderer,
+            buffer.as_mut(),
+            vertex_buffer.as_mut(),
+            index_buffer.as_mut(),
+            texture.as_mut(),
+            sampler.as_mut(),
+        );
+    }
+
+    fn expect_resources_rejected(
+        renderer: &TestRenderer,
+        buffer: &mut dyn RendererBuffer,
+        vertex_buffer: &mut dyn RendererBuffer,
+        index_buffer: &mut dyn RendererBuffer,
+        texture: &mut dyn RendererTexture,
+        sampler: &mut dyn RendererSampler,
+    ) {
+        let compute_shader =
+            heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/addition.spv")));
+        let vert_shader =
+            heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/canvas_vert.spv")));
+        let frag_shader =
+            heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/canvas_frag.spv")));
+        let mut compute_pipeline =
+            heph_expect_success!(renderer.create_compute_pipeline(&compute_shader));
+        let mut graphics_pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+            &[&vert_shader, &frag_shader],
+            &GraphicsPipelineOptions::default()
+        ));
+
+        let mut valid_buffer =
+            heph_expect_success!(renderer.create_buffer(COMPUTE_BUFFER_SIZE, BufferUsage::Storage));
+        let mut valid_vertex_buffer = heph_expect_success!(
+            renderer.create_buffer(QUAD_VERTEX_BUFFER_SIZE, BufferUsage::Vertex)
+        );
+        let mut valid_sampler =
+            heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
+        heph_expect_success!(renderer.begin_frame());
+        let mut valid_texture =
+            heph_expect_success!(renderer.create_texture(&SINGLE_PIXEL_TEXTURE_OPTIONS, &[255; 4]));
+        heph_expect_success!(renderer.end_frame());
+        heph_expect_success!(renderer.wait_idle());
+
+        heph_expect_success!(renderer.begin_frame());
+        heph_expect_err!(
+            renderer.record_compute_command(
+                compute_pipeline.as_mut(),
+                &[&[
+                    ResourceBinding::buffer(0, buffer, 0, COMPUTE_BUFFER_SIZE),
+                    ResourceBinding::buffer(1, valid_buffer.as_ref(), 0, COMPUTE_BUFFER_SIZE),
+                    ResourceBinding::buffer(2, valid_buffer.as_ref(), 0, COMPUTE_BUFFER_SIZE),
+                ]],
+                (1, 1, 1)
+            ),
+            Error::InvalidArgument(_)
+        );
+        heph_expect_err!(
+            renderer.record_graphics_command(
+                DISPLAY_CANVAS,
+                graphics_pipeline.as_mut(),
+                None,
+                &[ResourceBinding::buffer(
+                    0,
+                    vertex_buffer,
+                    0,
+                    QUAD_VERTEX_BUFFER_SIZE
+                )],
+                &[&[
+                    ResourceBinding::texture(0, valid_texture.as_ref()),
+                    ResourceBinding::sampler(1, valid_sampler.as_ref()),
+                ]],
+                QUAD_VERTEX_COUNT,
+                1
+            ),
+            Error::InvalidArgument(_)
+        );
+        heph_expect_err!(
+            renderer.record_graphics_command(
+                DISPLAY_CANVAS,
+                graphics_pipeline.as_mut(),
+                Some(&*index_buffer),
+                &[ResourceBinding::buffer(
+                    0,
+                    valid_vertex_buffer.as_ref(),
+                    0,
+                    QUAD_VERTEX_BUFFER_SIZE
+                )],
+                &[&[
+                    ResourceBinding::texture(0, valid_texture.as_ref()),
+                    ResourceBinding::sampler(1, valid_sampler.as_ref()),
+                ]],
+                QUAD_VERTEX_COUNT,
+                1
+            ),
+            Error::InvalidArgument(_)
+        );
+        heph_expect_err!(
+            renderer.record_graphics_command(
+                DISPLAY_CANVAS,
+                graphics_pipeline.as_mut(),
+                None,
+                &[ResourceBinding::buffer(
+                    0,
+                    valid_vertex_buffer.as_ref(),
+                    0,
+                    QUAD_VERTEX_BUFFER_SIZE
+                )],
+                &[&[
+                    ResourceBinding::texture(0, texture),
+                    ResourceBinding::sampler(1, valid_sampler.as_ref()),
+                ]],
+                QUAD_VERTEX_COUNT,
+                1
+            ),
+            Error::InvalidArgument(_)
+        );
+        heph_expect_err!(
+            renderer.record_graphics_command(
+                DISPLAY_CANVAS,
+                graphics_pipeline.as_mut(),
+                None,
+                &[ResourceBinding::buffer(
+                    0,
+                    valid_vertex_buffer.as_ref(),
+                    0,
+                    QUAD_VERTEX_BUFFER_SIZE
+                )],
+                &[&[
+                    ResourceBinding::texture(0, valid_texture.as_ref()),
+                    ResourceBinding::sampler(1, sampler),
+                ]],
+                QUAD_VERTEX_COUNT,
+                1
+            ),
+            Error::InvalidArgument(_)
+        );
+        heph_expect_success!(renderer.end_frame());
+
+        heph_expect_err!(
+            renderer.write_buffer(buffer, 0, &[0; 4]),
+            Error::InvalidArgument(_)
+        );
+        heph_expect_err!(
+            renderer.read_buffer(buffer, 0, &mut [0; 4]),
+            Error::InvalidArgument(_)
+        );
+        heph_expect_err!(renderer.destroy_buffer(buffer), Error::InvalidArgument(_));
+        heph_expect_err!(
+            renderer.destroy_buffer(vertex_buffer),
+            Error::InvalidArgument(_)
+        );
+        heph_expect_err!(
+            renderer.destroy_buffer(index_buffer),
+            Error::InvalidArgument(_)
+        );
+        heph_expect_err!(renderer.destroy_texture(texture), Error::InvalidArgument(_));
+        heph_expect_err!(renderer.destroy_sampler(sampler), Error::InvalidArgument(_));
+
+        heph_expect_success!(renderer.wait_idle());
+        heph_expect_success!(renderer.destroy_buffer(valid_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(valid_vertex_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_texture(valid_texture.as_mut()));
+        heph_expect_success!(renderer.destroy_sampler(valid_sampler.as_mut()));
+        heph_expect_success!(renderer.destroy_compute_pipeline(compute_pipeline.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(graphics_pipeline.as_mut()));
     }
 
     fn test_buffer<T>(&self, data: &Vec<T>, usage: BufferUsage)
