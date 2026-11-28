@@ -1,7 +1,4 @@
-use crate::{
-    graphics_device::GraphicsDeviceFeature,
-    renderers::{DISPLAY_TEXTURE_FORMAT, resources::TextureFormat},
-};
+use crate::graphics_device::GraphicsDeviceFeature;
 
 /// Defines the multisample anti-aliasing sample count used when rendering.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -37,110 +34,19 @@ pub enum HdrMode {
     Scrgb,
 }
 
-/// Defines the color blending modes supported by the renderers.
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub enum ColorBlending {
-    /// Color blending is disabled.
-    #[default]
-    Disabled,
-    /// Uses standard alpha blending, combining the source and destination colors based on the
-    /// source alpha.
-    Alpha,
-}
-
-/// Defines how vertices are assembled into primitives.
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub enum PrimitiveTopology {
-    /// Each vertex represents an individual point.
-    PointList,
-    /// Every pair of vertices represents an independent line.
-    LineList,
-    /// Consecutive vertices form a connected sequence of lines.
-    LineStrip,
-    /// Every three vertices represent an independent triangle.
-    #[default]
-    TriangleList,
-    /// Consecutive vertices form a connected sequence of triangles.
-    TriangleStrip,
-    /// Every `control_points` vertices represent a patch, which is subdivided by the tessellation
-    /// shaders.
-    PatchList {
-        /// The number of control points in each patch.
-        control_points: u32,
-    },
-}
-
-/// Defines which triangle faces are discarded during rasterization.
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub enum CullingMode {
-    /// No faces are culled.
-    #[default]
-    Disabled,
-    /// Front-facing triangles are culled.
-    Front,
-    /// Back-facing triangles are culled.
-    Back,
-}
-
-/// Defines how polygons are rasterized.
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub enum PolygonMode {
-    /// Polygons are filled.
-    #[default]
-    Fill,
-    /// Only the polygon edges are drawn as lines.
-    Line,
-    /// Only the polygon vertices are drawn as points.
-    Point,
-}
-
-/// Defines which vertex winding order is considered front-facing.
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub enum FrontFace {
-    /// Vertices ordered clockwise are considered front-facing.
-    Clockwise,
-    /// Vertices ordered counter-clockwise are considered front-facing.
-    #[default]
-    CounterClockwise,
-}
-
-/// Defines the filtering mode used by a sampler.
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub enum SamplerFilter {
-    Nearest,
-    #[default]
-    Linear,
-}
-
-/// Defines how texture coordinates outside the texture range are handled.
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub enum SamplerAddressMode {
-    Repeat,
-    MirroredRepeat,
-    #[default]
-    ClampToEdge,
-}
-
-/// Defines how a reference value is compared against an existing value.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum CompareOp {
-    /// The comparison never passes.
-    Never,
-    /// The comparison passes if the reference value is equal to the existing value.
-    Equal,
-    /// The comparison passes if the reference value is not equal to the existing value.
-    NotEqual,
-    /// The comparison passes if the reference value is less than the existing value.
-    Less,
-    /// The comparison passes if the reference value is less than or equal to the existing value.
-    LessOrEqual,
-    /// The comparison passes if the reference value is greater than the existing value.
-    Greater,
-    /// The comparison passes if the reference value is greater than or equal to the existing
-    /// value.
-    GreaterOrEqual,
-    /// The comparison always passes.
-    Always,
+/// Represents the options used while initializing the renderer.
+pub struct InitializeOptions<'a> {
+    /// The name of the application using the renderer.
+    pub app_name: &'a str,
+    /// Handle to the native window.
+    pub window_handle: raw_window_handle::RawWindowHandle,
+    /// Handle to the display device.
+    pub display_handle: raw_window_handle::RawDisplayHandle,
+    /// The underlying backend's API version. Set this to `None` for using the latest available
+    /// version.
+    pub api_version: Option<crate::Version>,
+    /// Indicates whether the debugging is enabled.
+    pub debug: bool,
 }
 
 /// Represents the settings used throughout the lifetime of the renderer.
@@ -168,21 +74,6 @@ pub struct Settings {
     pub hdr_mode: HdrMode,
 }
 
-/// Represents the options used while initializing the renderer.
-pub struct InitializeOptions<'a> {
-    /// The name of the application using the renderer.
-    pub app_name: &'a str,
-    /// Handle to the native window.
-    pub window_handle: raw_window_handle::RawWindowHandle,
-    /// Handle to the display device.
-    pub display_handle: raw_window_handle::RawDisplayHandle,
-    /// The underlying backend's API version. Set this to `None` for using the latest available
-    /// version.
-    pub api_version: Option<crate::Version>,
-    /// Indicates whether the debugging is enabled.
-    pub debug: bool,
-}
-
 /// Represents a request for a specific graphics feature, indicating whether it
 /// is strictly required.
 #[derive(Clone, Copy)]
@@ -192,146 +83,6 @@ pub struct FeatureRequest {
     /// Indicates whether the graphics device must support the requested
     /// feature.
     pub required: bool,
-}
-
-/// Defines the offset that is added to the depth value of fragments.
-#[derive(Clone, Copy)]
-pub struct DepthBias {
-    /// The constant offset, in units of the smallest depth difference the depth buffer can
-    /// resolve.
-    pub constant: f32,
-    /// The offset that is scaled by the depth slope of the polygon.
-    pub slope: f32,
-    /// The largest offset that can be added, or the smallest one if the value is negative.
-    pub clamp: Option<f32>,
-}
-
-/// Provides the capabilities of a graphics pipeline.
-#[derive(Clone)]
-pub struct GraphicsPipelineOptions {
-    /// The color blending mode.
-    pub blending: ColorBlending,
-    /// The primitive topology used to assemble vertices.
-    pub topology: PrimitiveTopology,
-    /// The face culling mode.
-    pub culling: CullingMode,
-    /// The polygon rasterization mode.
-    pub polygon_mode: PolygonMode,
-    /// The vertex winding order considered front-facing.
-    pub front_face: FrontFace,
-    /// Indicates whether depth testing is enabled.
-    pub depth_test: bool,
-    /// Indicates whether fragments write their depth value to the depth buffer.
-    pub depth_write: bool,
-    /// Indicates whether fragment depth values are clamped to the depth range instead of clipping
-    /// primitives against the near and far planes.
-    pub depth_clamp: bool,
-    /// Indicates whether the pipeline renders into depth-only canvases.
-    pub depth_only: bool,
-    /// The offset added to the depth value of fragments.
-    pub depth_bias: Option<DepthBias>,
-    /// The minimum fraction of samples in each pixel that are shaded individually. The value must
-    /// be between `0.0` and `1.0`.
-    pub min_sample_shading: Option<f32>,
-    /// The formats of the textures the pipeline renders into.
-    pub texture_formats: Vec<Option<TextureFormat>>,
-}
-
-/// Defines the properties of a texture.
-#[derive(Clone, Copy)]
-pub struct TextureOptions {
-    /// The width of the texture.
-    pub width: u32,
-    /// The height of the texture.
-    pub height: u32,
-    /// The pixel format of the texture.
-    pub format: TextureFormat,
-    /// The number of mip levels.
-    pub mip_level_count: u32,
-}
-
-/// Defines the properties of a texture sampler.
-#[derive(Default, Clone, Copy)]
-pub struct SamplerOptions {
-    /// The filtering mode used when the texture is minified.
-    pub min_filter: SamplerFilter,
-    /// The filtering mode used when the texture is magnified.
-    pub mag_filter: SamplerFilter,
-    /// The filtering mode used between mip levels.
-    pub mipmap_filter: SamplerFilter,
-    /// The addressing mode used for the U texture coordinate.
-    pub address_mode_u: SamplerAddressMode,
-    /// The addressing mode used for the V texture coordinate.
-    pub address_mode_v: SamplerAddressMode,
-    /// The addressing mode used for the W texture coordinate.
-    pub address_mode_w: SamplerAddressMode,
-    /// The maximum anisotropy level, clamped to the current device's limit. The value must be at
-    /// least `1.0`.
-    pub max_anisotropy: Option<f32>,
-    /// The operation used to compare a reference value against the sampled depth value.
-    pub compare_op: Option<CompareOp>,
-}
-
-/// Defines the properties of a canvas.
-#[derive(Clone)]
-pub struct CanvasOptions {
-    /// The width of the canvas in pixels.
-    pub width: u32,
-    /// The height of the canvas in pixels.
-    pub height: u32,
-    /// Indicates whether the canvas has only a depth buffer. The texture of a depth-only canvas
-    /// contains the depth values, and only depth-only pipelines can render into it.
-    pub depth_only: bool,
-    /// The formats of the textures the canvas renders into. Ignored for depth-only canvases.
-    pub texture_formats: Vec<Option<TextureFormat>>,
-}
-
-impl Default for CanvasOptions {
-    fn default() -> Self {
-        Self {
-            width: 0,
-            height: 0,
-            depth_only: false,
-            texture_formats: vec![DISPLAY_TEXTURE_FORMAT],
-        }
-    }
-}
-
-impl Default for TextureOptions {
-    fn default() -> Self {
-        Self {
-            width: 0,
-            height: 0,
-            format: TextureFormat::default(),
-            mip_level_count: 1,
-        }
-    }
-}
-impl TextureOptions {
-    /// Calculates the maximum number of mip levels a texture with the provided dimensions can have.
-    // TODO: Should we move this function somewhere else?
-    pub fn max_mip_level_count(width: u32, height: u32) -> u32 {
-        u32::BITS - width.max(height).leading_zeros()
-    }
-}
-
-impl Default for GraphicsPipelineOptions {
-    fn default() -> Self {
-        Self {
-            blending: ColorBlending::default(),
-            topology: PrimitiveTopology::default(),
-            polygon_mode: PolygonMode::default(),
-            culling: CullingMode::default(),
-            front_face: FrontFace::default(),
-            depth_test: true,
-            depth_write: true,
-            depth_clamp: false,
-            depth_only: false,
-            depth_bias: None,
-            min_sample_shading: None,
-            texture_formats: vec![DISPLAY_TEXTURE_FORMAT],
-        }
-    }
 }
 
 impl FeatureRequest {

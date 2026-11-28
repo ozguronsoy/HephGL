@@ -7,10 +7,11 @@ use crate::{
     Error, Result,
     renderers::{
         RendererCanvas,
+        canvas::CanvasOptions,
         debug::RendererDebugObject,
         id::RendererId,
-        resources::{RendererResource, RendererTexture, TextureFormat},
-        settings::{CanvasOptions, Settings, TextureOptions},
+        resources::{RendererResource, RendererTexture, TextureFormat, TextureOptions},
+        settings::Settings,
         vulkan::{
             VulkanRenderer,
             canvas::{VulkanCanvas, attachment_image::AttachmentImage},

@@ -2,7 +2,7 @@ use ash::vk::{ColorComponentFlags, PipelineColorBlendAttachmentState, SampleCoun
 
 use crate::renderers::{
     ColorBlending, CompareOp, CullingMode, Msaa, SamplerAddressMode, SamplerFilter,
-    settings::{FrontFace, PolygonMode, PrimitiveTopology},
+    pipeline::{FrontFace, PolygonMode, PrimitiveTopology},
 };
 
 impl From<Msaa> for SampleCountFlags {

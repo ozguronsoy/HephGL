@@ -14,9 +14,8 @@ use crate::{
         id::RendererId,
         resources::{
             BufferUsage, RendererBuffer, RendererResource, RendererSampler, RendererTexture,
-            ResourceBinding, ResourceBindingType, TextureFormat,
+            ResourceBinding, ResourceBindingType, TextureFormat, TextureOptions,
         },
-        settings::TextureOptions,
         vulkan::{
             VulkanRenderer,
             frame::{ComputeFrame, GraphicsFrame},

@@ -14,10 +14,12 @@ pub(super) use crate::renderers::vulkan::canvas::{
 use crate::{
     Error, Result,
     renderers::{
-        RendererCanvas, RendererResource, downcast_mut,
+        RendererCanvas, RendererResource,
+        canvas::CanvasOptions,
+        downcast_mut,
         id::RendererId,
         resources::TextureFormat,
-        settings::{CanvasOptions, Settings},
+        settings::Settings,
         vulkan::{
             VulkanRenderer, device::DeviceContext, rendering::VulkanRendering,
             resources::VulkanTexture, thread::GraphicsThreadContext,

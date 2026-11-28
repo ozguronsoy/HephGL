@@ -45,13 +45,16 @@ use crate::{
         BufferUsage, DISPLAY_TEXTURE_FORMAT, FeatureRequest, InitializeOptions, Renderer,
         RendererCanvas, RendererComputePipeline, RendererGraphicsPipeline, RendererPipeline,
         RendererResource, RendererWorker, ResourceBinding, Settings,
+        canvas::CanvasOptions,
         debug::Debugger,
         downcast_mut, downcast_ref,
         id::RendererId,
-        resources::{RendererBuffer, RendererSampler, RendererTexture, ResourceBindingType},
-        settings::{
-            CanvasOptions, GraphicsPipelineOptions, HdrMode, Msaa, SamplerOptions, TextureOptions,
+        pipeline::GraphicsPipelineOptions,
+        resources::{
+            RendererBuffer, RendererSampler, RendererTexture, ResourceBindingType, SamplerOptions,
+            TextureOptions,
         },
+        settings::{HdrMode, Msaa},
         thread_context::{
             ThreadContextIndex, ThreadContextMask, is_thread_context_active,
             main_thread_context_index,

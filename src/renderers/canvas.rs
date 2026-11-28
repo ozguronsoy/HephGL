@@ -1,6 +1,20 @@
 use crate::renderers::{
-    CanvasOptions, TextureFormat, debug::RendererDebugObject, resources::RendererTexture,
+    DISPLAY_TEXTURE_FORMAT, TextureFormat, debug::RendererDebugObject, resources::RendererTexture,
 };
+
+/// Defines the properties of a canvas.
+#[derive(Clone)]
+pub struct CanvasOptions {
+    /// The width of the canvas in pixels.
+    pub width: u32,
+    /// The height of the canvas in pixels.
+    pub height: u32,
+    /// Indicates whether the canvas has only a depth buffer. The texture of a depth-only canvas
+    /// contains the depth values, and only depth-only pipelines can render into it.
+    pub depth_only: bool,
+    /// The formats of the textures the canvas renders into. Ignored for depth-only canvases.
+    pub texture_formats: Vec<Option<TextureFormat>>,
+}
 
 /// Represents an off-screen render target.
 pub trait RendererCanvas: RendererDebugObject {
@@ -26,4 +40,15 @@ pub trait RendererCanvas: RendererDebugObject {
     fn options(&self) -> &CanvasOptions;
     /// Returns the textures the canvas renders into.
     fn textures(&self) -> Box<dyn Iterator<Item = &dyn RendererTexture> + '_>;
+}
+
+impl Default for CanvasOptions {
+    fn default() -> Self {
+        Self {
+            width: 0,
+            height: 0,
+            depth_only: false,
+            texture_formats: vec![DISPLAY_TEXTURE_FORMAT],
+        }
+    }
 }

@@ -8,7 +8,8 @@ use crate::{
     renderers::{
         RendererCanvas,
         id::RendererId,
-        settings::{GraphicsPipelineOptions, Msaa, Settings},
+        pipeline::GraphicsPipelineOptions,
+        settings::{Msaa, Settings},
         vulkan::{
             canvas::{VulkanColorCanvas, VulkanDepthCanvas},
             device::DeviceContext,
