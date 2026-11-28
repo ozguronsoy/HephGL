@@ -1,4 +1,5 @@
 mod canvas;
+mod command;
 mod concurrency;
 mod debug;
 mod descriptor_pool;
@@ -42,17 +43,17 @@ use crate::{
     Error, GraphicsDeviceId, GraphicsDeviceVendor, HEPHGL_VERSION, Result, Version,
     graphics_device::{GraphicsDevice, GraphicsDeviceFeature, GraphicsDeviceType},
     renderers::{
-        BufferUsage, DISPLAY_TEXTURE_FORMAT, FeatureRequest, InitializeOptions, Renderer,
-        RendererCanvas, RendererComputePipeline, RendererGraphicsPipeline, RendererPipeline,
-        RendererResource, RendererWorker, ResourceBinding, Settings,
+        BufferUsage, DISPLAY_TEXTURE_FORMAT, FeatureRequest, GraphicsCommandArgs,
+        InitializeOptions, Renderer, RendererCanvas, RendererComputePipeline,
+        RendererGraphicsPipeline, RendererPipeline, RendererResource, RendererWorker,
+        ResourceBinding, Settings,
         canvas::CanvasOptions,
         debug::Debugger,
         downcast_mut, downcast_ref,
         id::RendererId,
         pipeline::GraphicsPipelineOptions,
         resources::{
-            RendererBuffer, RendererSampler, RendererTexture, ResourceBindingType, SamplerOptions,
-            TextureOptions,
+            RendererBuffer, RendererSampler, RendererTexture, SamplerOptions, TextureOptions,
         },
         settings::{HdrMode, Msaa},
         thread_context::{
@@ -77,7 +78,7 @@ use crate::{
             version::VulkanApiVersion,
         },
     },
-    shader::{Shader, ShaderStage},
+    shader::Shader,
 };
 
 /// Gets the name of the function that's currently calling this macro.
@@ -1967,11 +1968,8 @@ impl Renderer for VulkanRenderer {
         &self,
         target_canvas: Option<&mut dyn RendererCanvas>,
         pipeline: &mut dyn RendererGraphicsPipeline,
-        index_buffer: Option<&dyn RendererBuffer>,
-        vertex_bindings: &[ResourceBinding<'_>],
         binding_sets: &[&[ResourceBinding<'_>]],
-        draw_count: u32,
-        instance_count: u32,
+        args: &GraphicsCommandArgs<'_>,
     ) -> Result<()> {
         self.frame_only(function!())?;
 
@@ -2025,42 +2023,6 @@ impl Renderer for VulkanRenderer {
                 "The pipeline is incompatible with the target canvas.",
             ));
         }
-        let mesh_shader_loader = match pipeline.mesh_stage {
-            Some(mesh_stage) => {
-                let (max_count, max_total_count) = match mesh_stage {
-                    ShaderStage::Task => (
-                        device_context.max_task_work_group_count,
-                        device_context.max_task_work_group_total_count,
-                    ),
-                    _ => (
-                        device_context.max_mesh_work_group_count,
-                        device_context.max_mesh_work_group_total_count,
-                    ),
-                };
-                if draw_count > max_count[0]
-                    || instance_count > max_count[1]
-                    || u64::from(draw_count) * u64::from(instance_count)
-                        > u64::from(max_total_count)
-                {
-                    return Err(Error::InvalidArgument(format!(
-                        "The draw count ({draw_count}) and instance count ({instance_count}) of a \
-                         mesh pipeline must not exceed {} and {}, and their product must not \
-                         exceed {max_total_count}.",
-                        max_count[0], max_count[1]
-                    )));
-                }
-                Some(
-                    device_context
-                        .mesh_shader_loader
-                        .as_ref()
-                        .ok_or(Error::invalid_operation(
-                            "Device is not initialized with the `MeshShaders` feature.",
-                        ))?,
-                )
-            }
-            None => None,
-        };
-
         current_frame.base.debug_label |=
             Self::begin_labels(self.debugger.as_deref(), current_frame.base.command_buffer)?;
 
@@ -2104,99 +2066,41 @@ impl Renderer for VulkanRenderer {
                     &[],
                 );
             }
-            if let Some(mesh_shader_loader) = mesh_shader_loader {
-                mesh_shader_loader.cmd_draw_mesh_tasks(
-                    current_frame.base.command_buffer,
+        }
+        match (args, pipeline.mesh_stage) {
+            (
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer,
+                    vertex_bindings,
                     draw_count,
                     instance_count,
-                    1,
-                );
-            } else {
-                for vertex_binding in vertex_bindings {
-                    let ResourceBindingType::Buffer {
-                        buffer,
-                        offset,
-                        size,
-                    } = vertex_binding.resource
-                    else {
-                        return Err(Error::invalid_argument(
-                            "Vertex binding type must be a buffer",
-                        ));
-                    };
-                    if buffer.usage() != BufferUsage::Vertex {
-                        return Err(Error::invalid_argument(
-                            "Vertex buffer's usage must be `BufferUsage::Vertex`.",
-                        ));
-                    }
-
-                    let vertex_buffer = downcast_ref::<VulkanBuffer>(buffer)?;
-                    if vertex_buffer.renderer_id != self.id {
-                        return Err(Error::invalid_argument(
-                            "Cannot bind a vertex buffer created by another renderer or old device.",
-                        ));
-                    }
-                    if !vertex_buffer.is_allocated() {
-                        return Err(Error::invalid_argument(
-                            "Cannot bind a destroyed vertex buffer.",
-                        ));
-                    }
-                    if offset
-                        .checked_add(size)
-                        .is_none_or(|x| x > vertex_buffer.size)
-                    {
-                        return Err(Error::invalid_argument(
-                            "Buffer overflow while binding the vertex buffer.",
-                        ));
-                    }
-                    device_context.logical_device.cmd_bind_vertex_buffers(
-                        current_frame.base.command_buffer,
-                        vertex_binding.binding,
-                        std::slice::from_ref(&vertex_buffer.buffer),
-                        std::slice::from_ref(&(offset as u64)),
-                    );
-                }
-
-                if let Some(index_buffer) = index_buffer {
-                    if index_buffer.usage() != BufferUsage::Index {
-                        return Err(Error::invalid_argument(
-                            "Index buffer's usage must be `BufferUsage::Index`.",
-                        ));
-                    }
-
-                    let index_buffer = downcast_ref::<VulkanBuffer>(index_buffer)?;
-                    if index_buffer.renderer_id != self.id {
-                        return Err(Error::invalid_argument(
-                            "Cannot bind an index buffer created by another renderer or old device.",
-                        ));
-                    }
-                    if !index_buffer.is_allocated() {
-                        return Err(Error::invalid_argument(
-                            "Cannot bind a destroyed index buffer.",
-                        ));
-                    }
-                    device_context.logical_device.cmd_bind_index_buffer(
-                        current_frame.base.command_buffer,
-                        index_buffer.buffer,
-                        0,
-                        ash::vk::IndexType::UINT32,
-                    );
-                    device_context.logical_device.cmd_draw_indexed(
-                        current_frame.base.command_buffer,
-                        draw_count,
-                        instance_count,
-                        0,
-                        0,
-                        0,
-                    );
-                } else {
-                    device_context.logical_device.cmd_draw(
-                        current_frame.base.command_buffer,
-                        draw_count,
-                        instance_count,
-                        0,
-                        0,
-                    );
-                }
+                },
+                None,
+            ) => self.record_vertex_draw(
+                &device_context.logical_device,
+                current_frame.base.command_buffer,
+                index_buffer,
+                vertex_bindings,
+                draw_count,
+                instance_count,
+            )?,
+            (&GraphicsCommandArgs::MeshArgs { group_count }, Some(mesh_stage)) => {
+                Self::record_mesh_draw(
+                    device_context,
+                    current_frame.base.command_buffer,
+                    mesh_stage,
+                    group_count,
+                )?
+            }
+            (GraphicsCommandArgs::VertexArgs { .. }, Some(_)) => {
+                return Err(Error::invalid_argument(
+                    "Cannot record a graphics command with vertex arguments using a mesh pipeline.",
+                ));
+            }
+            (GraphicsCommandArgs::MeshArgs { .. }, None) => {
+                return Err(Error::invalid_argument(
+                    "Cannot record a graphics command with mesh arguments using a vertex pipeline.",
+                ));
             }
         }
 

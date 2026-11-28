@@ -17,9 +17,9 @@ use heph_gl::{
     math::{Mat4, Quat, Vec3},
     renderers::{
         BufferUsage, CanvasOptions, ColorBlending, CullingMode, DISPLAY_CANVAS,
-        DISPLAY_TEXTURE_FORMAT, FeatureRequest, FrontFace, GraphicsPipelineOptions,
-        PrimitiveTopology, Renderer, ResourceBinding, SamplerAddressMode, SamplerOptions, Settings,
-        TextureFormat, TextureOptions,
+        DISPLAY_TEXTURE_FORMAT, FeatureRequest, FrontFace, GraphicsCommandArgs,
+        GraphicsPipelineOptions, PrimitiveTopology, Renderer, ResourceBinding, SamplerAddressMode,
+        SamplerOptions, Settings, TextureFormat, TextureOptions,
     },
 };
 
@@ -96,11 +96,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             heph_expect_success!(renderer.record_graphics_command(
                 DISPLAY_CANVAS,
                 pipeline.as_mut(),
-                None,
                 &[],
-                &[],
-                *draw_count,
-                1
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &[],
+                    draw_count: *draw_count,
+                    instance_count: 1
+                }
             ));
         }
         heph_expect_success!(renderer.end_frame());
@@ -236,20 +238,24 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             heph_expect_success!(renderer.record_graphics_command(
                 DISPLAY_CANVAS,
                 pipeline.as_mut(),
-                Some(index_buffer.as_ref()),
-                &cube_a_vertex_bindings,
                 &[],
-                INDICES.len() as u32,
-                1
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: Some(index_buffer.as_ref()),
+                    vertex_bindings: &cube_a_vertex_bindings,
+                    draw_count: INDICES.len() as u32,
+                    instance_count: 1
+                }
             ));
             heph_expect_success!(renderer.record_graphics_command(
                 DISPLAY_CANVAS,
                 pipeline.as_mut(),
-                Some(index_buffer.as_ref()),
-                &cube_b_vertex_bindings,
                 &[],
-                INDICES.len() as u32,
-                1
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: Some(index_buffer.as_ref()),
+                    vertex_bindings: &cube_b_vertex_bindings,
+                    draw_count: INDICES.len() as u32,
+                    instance_count: 1
+                }
             ));
 
             heph_expect_success!(renderer.end_frame());
@@ -444,11 +450,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         heph_expect_success!(renderer.record_graphics_command(
             DISPLAY_CANVAS,
             pipeline.as_mut(),
-            None,
-            &vertex_bindings,
             &[&resource_bindings],
-            vertex_count as u32,
-            1,
+            &GraphicsCommandArgs::VertexArgs {
+                index_buffer: None,
+                vertex_bindings: &vertex_bindings,
+                draw_count: vertex_count as u32,
+                instance_count: 1
+            }
         ));
         heph_expect_success!(renderer.end_frame());
 
@@ -554,11 +562,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             heph_expect_success!(renderer.record_graphics_command(
                 Some(canvas.as_mut()),
                 triangle_pipeline.as_mut(),
-                None,
                 &[],
-                &[],
-                3,
-                1,
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &[],
+                    draw_count: 3,
+                    instance_count: 1
+                }
             ));
 
             let vertex_bindings = [ResourceBinding::buffer(
@@ -574,11 +584,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             heph_expect_success!(renderer.record_graphics_command(
                 DISPLAY_CANVAS,
                 canvas_pipeline.as_mut(),
-                None,
-                &vertex_bindings,
                 &[&resource_bindings],
-                vertices.len() as u32,
-                1,
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &vertex_bindings,
+                    draw_count: vertices.len() as u32,
+                    instance_count: 1
+                }
             ));
 
             heph_expect_success!(renderer.end_frame());
@@ -699,11 +711,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             heph_expect_success!(renderer.record_graphics_command(
                 Some(canvas.as_mut()),
                 triangle_pipeline.as_mut(),
-                None,
                 &[],
-                &[],
-                3,
-                1,
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &[],
+                    draw_count: 3,
+                    instance_count: 1
+                }
             ));
 
             let quad_size = 6 * std::mem::size_of::<Vertex>();
@@ -721,11 +735,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                 heph_expect_success!(renderer.record_graphics_command(
                     DISPLAY_CANVAS,
                     canvas_pipeline.as_mut(),
-                    None,
-                    &vertex_bindings,
                     &[&resource_bindings],
-                    6,
-                    1,
+                    &GraphicsCommandArgs::VertexArgs {
+                        index_buffer: None,
+                        vertex_bindings: &vertex_bindings,
+                        draw_count: 6,
+                        instance_count: 1
+                    }
                 ));
             }
 
@@ -976,29 +992,35 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             heph_expect_success!(renderer.record_graphics_command(
                 DISPLAY_CANVAS,
                 screen_pipeline.as_mut(),
-                None,
-                &screen_vertex_bindings,
                 &[&screen_resource_bindings],
-                screen_vertices.len() as u32,
-                1,
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &screen_vertex_bindings,
+                    draw_count: screen_vertices.len() as u32,
+                    instance_count: 1
+                }
             ));
             heph_expect_success!(renderer.record_graphics_command(
                 DISPLAY_CANVAS,
                 world_pipeline.as_mut(),
-                None,
-                &world_vertex_bindings,
                 &[&world_resource_bindings],
-                world_vertices.len() as u32,
-                1,
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &world_vertex_bindings,
+                    draw_count: world_vertices.len() as u32,
+                    instance_count: 1
+                }
             ));
             heph_expect_success!(renderer.record_graphics_command(
                 DISPLAY_CANVAS,
                 extruded_pipeline.as_mut(),
-                None,
-                &extruded_vertex_bindings,
                 &[&extruded_resource_bindings],
-                extruded_vertices.len() as u32,
-                1,
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &extruded_vertex_bindings,
+                    draw_count: extruded_vertices.len() as u32,
+                    instance_count: 1
+                }
             ));
 
             heph_expect_success!(renderer.end_frame());
@@ -1318,11 +1340,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                         true => double_sided_pipeline.as_mut(),
                         false => pipeline.as_mut(),
                     },
-                    Some(index_buffer.as_ref()),
-                    &vertex_bindings,
                     &[&resource_bindings],
-                    *index_count,
-                    1
+                    &GraphicsCommandArgs::VertexArgs {
+                        index_buffer: Some(index_buffer.as_ref()),
+                        vertex_bindings: &vertex_bindings,
+                        draw_count: *index_count,
+                        instance_count: 1
+                    }
                 ));
             }
             heph_expect_success!(renderer.end_frame());
@@ -1649,11 +1673,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             heph_expect_success!(renderer.record_graphics_command(
                 DISPLAY_CANVAS,
                 pipeline.as_mut(),
-                Some(index_buffer.as_ref()),
-                &vertex_bindings,
                 &[&resource_bindings],
-                indices.len() as u32,
-                1
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: Some(index_buffer.as_ref()),
+                    vertex_bindings: &vertex_bindings,
+                    draw_count: indices.len() as u32,
+                    instance_count: 1
+                }
             ));
 
             heph_expect_success!(renderer.end_frame());
@@ -2017,11 +2043,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                         true => double_sided_pipeline.as_mut(),
                         false => pipeline.as_mut(),
                     },
-                    Some(index_buffer.as_ref()),
-                    &vertex_bindings,
                     &[&resource_bindings],
-                    *index_count,
-                    1
+                    &GraphicsCommandArgs::VertexArgs {
+                        index_buffer: Some(index_buffer.as_ref()),
+                        vertex_bindings: &vertex_bindings,
+                        draw_count: *index_count,
+                        instance_count: 1
+                    }
                 ));
             }
             heph_expect_success!(renderer.end_frame());
@@ -2396,11 +2424,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             heph_expect_success!(renderer.record_graphics_command(
                 DISPLAY_CANVAS,
                 sky_pipeline.as_mut(),
-                None,
-                &sky_vertex_bindings,
                 &[&sky_resource_bindings],
-                sky_vertices.len() as u32,
-                1,
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &sky_vertex_bindings,
+                    draw_count: sky_vertices.len() as u32,
+                    instance_count: 1
+                }
             ));
 
             let progress =
@@ -2444,11 +2474,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                         true => double_sided_mesh_pipeline.as_mut(),
                         false => mesh_pipeline.as_mut(),
                     },
-                    Some(index_buffer.as_ref()),
-                    &vertex_bindings,
                     &[&resource_bindings],
-                    *index_count,
-                    1
+                    &GraphicsCommandArgs::VertexArgs {
+                        index_buffer: Some(index_buffer.as_ref()),
+                        vertex_bindings: &vertex_bindings,
+                        draw_count: *index_count,
+                        instance_count: 1
+                    }
                 ));
             }
             heph_expect_success!(renderer.end_frame());
@@ -2940,11 +2972,10 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                         true => double_sided_pipeline.as_mut(),
                         false => pipeline.as_mut(),
                     },
-                    None,
-                    &[],
                     &[&resource_bindings],
-                    *task_count,
-                    1
+                    &GraphicsCommandArgs::MeshArgs {
+                        group_count: (*task_count, 1, 1),
+                    }
                 ));
             }
             heph_expect_success!(renderer.end_frame());

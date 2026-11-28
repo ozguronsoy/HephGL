@@ -6,9 +6,10 @@ use heph_gl::{
     },
     Shader,
     renderers::{
-        BufferUsage, DISPLAY_CANVAS, DepthBias, FeatureRequest, GraphicsPipelineOptions,
-        PolygonMode, PrimitiveTopology, Renderer, RendererComputePipeline,
-        RendererGraphicsPipeline, RendererPipeline, ResourceBinding, debug::RendererDebugObject,
+        BufferUsage, DISPLAY_CANVAS, DepthBias, FeatureRequest, GraphicsCommandArgs,
+        GraphicsPipelineOptions, PolygonMode, PrimitiveTopology, Renderer, RendererComputePipeline,
+        RendererGraphicsPipeline, RendererPipeline, ResourceBinding, SamplerOptions, TextureFormat,
+        TextureOptions, debug::RendererDebugObject,
     },
 };
 
@@ -635,6 +636,35 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
 
         {
             let renderer = self.create_renderer_with_any_device(&[]);
+            let frag_shader = heph_expect_success!(Shader::from_file(format!(
+                "{SHADERS_DIR}/shapes/basic_triangle_frag.spv"
+            )));
+            let vert_shader = heph_expect_success!(Shader::from_file(format!(
+                "{SHADERS_DIR}/shapes/basic_triangle_vert.spv"
+            )));
+            let mut pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+                &[&frag_shader, &vert_shader],
+                &GraphicsPipelineOptions::default()
+            ));
+            heph_expect_success!(renderer.begin_frame());
+            heph_expect_err!(
+                renderer.record_graphics_command(
+                    DISPLAY_CANVAS,
+                    pipeline.as_mut(),
+                    &[],
+                    &GraphicsCommandArgs::MeshArgs {
+                        group_count: (1, 1, 1),
+                    }
+                ),
+                Error::InvalidArgument(_)
+            );
+            heph_expect_success!(renderer.end_frame());
+            heph_expect_success!(renderer.wait_idle());
+            heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
+        }
+
+        {
+            let renderer = self.create_renderer_with_any_device(&[]);
             let frag_shader =
                 heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/mesh_frag.spv")));
             let task_shader =
@@ -681,6 +711,63 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                     &[&frag_shader, &task_shader, &mesh_shader],
                     &GraphicsPipelineOptions::default()
                 ));
+                let mut uniform_buffer =
+                    heph_expect_success!(renderer.create_buffer(256, BufferUsage::Uniform));
+                let mut storage_buffer =
+                    heph_expect_success!(renderer.create_buffer(256, BufferUsage::Storage));
+                let mut sampler =
+                    heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
+                heph_expect_success!(renderer.begin_frame());
+                let mut texture = heph_expect_success!(renderer.create_texture(
+                    &TextureOptions {
+                        width: 1,
+                        height: 1,
+                        format: TextureFormat::Rgba8Srgb,
+                        mip_level_count: 1,
+                    },
+                    &[0; 4]
+                ));
+                let resource_bindings = [
+                    ResourceBinding::texture(0, texture.as_ref()),
+                    ResourceBinding::sampler(1, sampler.as_ref()),
+                    ResourceBinding::texture(2, texture.as_ref()),
+                    ResourceBinding::texture(3, texture.as_ref()),
+                    ResourceBinding::buffer(4, uniform_buffer.as_ref(), 0, uniform_buffer.size()),
+                    ResourceBinding::buffer(5, uniform_buffer.as_ref(), 0, uniform_buffer.size()),
+                    ResourceBinding::buffer(6, storage_buffer.as_ref(), 0, storage_buffer.size()),
+                    ResourceBinding::buffer(7, storage_buffer.as_ref(), 0, storage_buffer.size()),
+                ];
+                heph_expect_err!(
+                    renderer.record_graphics_command(
+                        DISPLAY_CANVAS,
+                        pipeline.as_mut(),
+                        &[&resource_bindings],
+                        &GraphicsCommandArgs::VertexArgs {
+                            index_buffer: None,
+                            vertex_bindings: &[],
+                            draw_count: 3,
+                            instance_count: 1,
+                        }
+                    ),
+                    Error::InvalidArgument(_)
+                );
+                for group_count in [(u32::MAX, 1, 1), (1, u32::MAX, 1), (1, 1, u32::MAX)] {
+                    heph_expect_err!(
+                        renderer.record_graphics_command(
+                            DISPLAY_CANVAS,
+                            pipeline.as_mut(),
+                            &[&resource_bindings],
+                            &GraphicsCommandArgs::MeshArgs { group_count }
+                        ),
+                        Error::InvalidArgument(_)
+                    );
+                }
+                heph_expect_success!(renderer.end_frame());
+                heph_expect_success!(renderer.wait_idle());
+                heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
+                heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
+                heph_expect_success!(renderer.destroy_buffer(storage_buffer.as_mut()));
+                heph_expect_success!(renderer.destroy_buffer(uniform_buffer.as_mut()));
                 heph_expect_success!(renderer.destroy_graphics_pipeline(pipeline.as_mut()));
                 heph_expect_err!(
                     renderer.create_graphics_pipeline(
@@ -788,11 +875,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             renderer.record_graphics_command(
                 DISPLAY_CANVAS,
                 graphics_pipeline.as_mut(),
-                None,
                 &[],
-                &[],
-                3,
-                1
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &[],
+                    draw_count: 3,
+                    instance_count: 1
+                }
             ),
             Error::InvalidArgument(_)
         );
@@ -920,11 +1009,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             renderer.record_graphics_command(
                 DISPLAY_CANVAS,
                 graphics_pipeline,
-                None,
                 &[],
-                &[],
-                3,
-                1
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &[],
+                    draw_count: 3,
+                    instance_count: 1
+                }
             ),
             Error::InvalidArgument(_)
         );

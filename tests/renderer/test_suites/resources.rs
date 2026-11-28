@@ -6,9 +6,10 @@ use heph_gl::{
     GraphicsDeviceFeature::{AnisotropicFiltering, BcTextures, ComputeShaders},
     Shader,
     renderers::{
-        BufferUsage, CompareOp, DISPLAY_CANVAS, FeatureRequest, GraphicsPipelineOptions, Renderer,
-        RendererBuffer, RendererResource, RendererSampler, RendererTexture, ResourceBinding,
-        SamplerOptions, TextureFormat, TextureOptions, debug::RendererDebugObject,
+        BufferUsage, CompareOp, DISPLAY_CANVAS, FeatureRequest, GraphicsCommandArgs,
+        GraphicsPipelineOptions, Renderer, RendererBuffer, RendererResource, RendererSampler,
+        RendererTexture, ResourceBinding, SamplerOptions, TextureFormat, TextureOptions,
+        debug::RendererDebugObject,
     },
 };
 
@@ -751,19 +752,21 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             renderer.record_graphics_command(
                 DISPLAY_CANVAS,
                 graphics_pipeline.as_mut(),
-                None,
-                &[ResourceBinding::buffer(
-                    0,
-                    vertex_buffer,
-                    0,
-                    QUAD_VERTEX_BUFFER_SIZE
-                )],
                 &[&[
                     ResourceBinding::texture(0, valid_texture.as_ref()),
                     ResourceBinding::sampler(1, valid_sampler.as_ref()),
                 ]],
-                QUAD_VERTEX_COUNT,
-                1
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &[ResourceBinding::buffer(
+                        0,
+                        vertex_buffer,
+                        0,
+                        QUAD_VERTEX_BUFFER_SIZE
+                    )],
+                    draw_count: QUAD_VERTEX_COUNT,
+                    instance_count: 1
+                }
             ),
             Error::InvalidArgument(_)
         );
@@ -771,19 +774,21 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             renderer.record_graphics_command(
                 DISPLAY_CANVAS,
                 graphics_pipeline.as_mut(),
-                Some(&*index_buffer),
-                &[ResourceBinding::buffer(
-                    0,
-                    valid_vertex_buffer.as_ref(),
-                    0,
-                    QUAD_VERTEX_BUFFER_SIZE
-                )],
                 &[&[
                     ResourceBinding::texture(0, valid_texture.as_ref()),
                     ResourceBinding::sampler(1, valid_sampler.as_ref()),
                 ]],
-                QUAD_VERTEX_COUNT,
-                1
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: Some(&*index_buffer),
+                    vertex_bindings: &[ResourceBinding::buffer(
+                        0,
+                        valid_vertex_buffer.as_ref(),
+                        0,
+                        QUAD_VERTEX_BUFFER_SIZE
+                    )],
+                    draw_count: QUAD_VERTEX_COUNT,
+                    instance_count: 1
+                }
             ),
             Error::InvalidArgument(_)
         );
@@ -791,19 +796,21 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             renderer.record_graphics_command(
                 DISPLAY_CANVAS,
                 graphics_pipeline.as_mut(),
-                None,
-                &[ResourceBinding::buffer(
-                    0,
-                    valid_vertex_buffer.as_ref(),
-                    0,
-                    QUAD_VERTEX_BUFFER_SIZE
-                )],
                 &[&[
                     ResourceBinding::texture(0, texture),
                     ResourceBinding::sampler(1, valid_sampler.as_ref()),
                 ]],
-                QUAD_VERTEX_COUNT,
-                1
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &[ResourceBinding::buffer(
+                        0,
+                        valid_vertex_buffer.as_ref(),
+                        0,
+                        QUAD_VERTEX_BUFFER_SIZE
+                    )],
+                    draw_count: QUAD_VERTEX_COUNT,
+                    instance_count: 1
+                }
             ),
             Error::InvalidArgument(_)
         );
@@ -811,19 +818,21 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             renderer.record_graphics_command(
                 DISPLAY_CANVAS,
                 graphics_pipeline.as_mut(),
-                None,
-                &[ResourceBinding::buffer(
-                    0,
-                    valid_vertex_buffer.as_ref(),
-                    0,
-                    QUAD_VERTEX_BUFFER_SIZE
-                )],
                 &[&[
                     ResourceBinding::texture(0, valid_texture.as_ref()),
                     ResourceBinding::sampler(1, sampler),
                 ]],
-                QUAD_VERTEX_COUNT,
-                1
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &[ResourceBinding::buffer(
+                        0,
+                        valid_vertex_buffer.as_ref(),
+                        0,
+                        QUAD_VERTEX_BUFFER_SIZE
+                    )],
+                    draw_count: QUAD_VERTEX_COUNT,
+                    instance_count: 1
+                }
             ),
             Error::InvalidArgument(_)
         );

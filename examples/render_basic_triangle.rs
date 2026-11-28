@@ -1,6 +1,6 @@
 use heph_gl::{
     Shader,
-    renderers::{DISPLAY_CANVAS, GraphicsPipelineOptions},
+    renderers::{DISPLAY_CANVAS, GraphicsCommandArgs, GraphicsPipelineOptions},
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
@@ -46,11 +46,13 @@ fn example(
         .record_graphics_command(
             DISPLAY_CANVAS,
             pipeline.as_mut(),
-            None,
             &[],
-            &[],
-            VERTEX_COUNT,
-            INSTANCE_COUNT,
+            &GraphicsCommandArgs::VertexArgs {
+                index_buffer: None,
+                vertex_bindings: &[],
+                draw_count: VERTEX_COUNT,
+                instance_count: INSTANCE_COUNT,
+            },
         )
         .unwrap();
 

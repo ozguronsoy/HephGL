@@ -1,8 +1,8 @@
 use heph_gl::{
     Error, Shader,
     renderers::{
-        BufferUsage, CanvasOptions, DISPLAY_CANVAS, GraphicsPipelineOptions, Renderer,
-        RendererCanvas, ResourceBinding, SamplerOptions,
+        BufferUsage, CanvasOptions, DISPLAY_CANVAS, GraphicsCommandArgs, GraphicsPipelineOptions,
+        Renderer, RendererCanvas, ResourceBinding, SamplerOptions,
     },
 };
 
@@ -187,11 +187,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             renderer.record_graphics_command(
                 Some(&mut *canvas),
                 triangle_pipeline.as_mut(),
-                None,
                 &[],
-                &[],
-                3,
-                1
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &[],
+                    draw_count: 3,
+                    instance_count: 1
+                }
             ),
             Error::InvalidArgument(_)
         );
@@ -199,13 +201,6 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             renderer.record_graphics_command(
                 DISPLAY_CANVAS,
                 canvas_pipeline.as_mut(),
-                None,
-                &[ResourceBinding::buffer(
-                    0,
-                    vertex_buffer.as_ref(),
-                    0,
-                    QUAD_VERTEX_BUFFER_SIZE
-                )],
                 &[&[
                     ResourceBinding::texture(
                         0,
@@ -215,8 +210,17 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                     ),
                     ResourceBinding::sampler(1, sampler.as_ref()),
                 ]],
-                QUAD_VERTEX_COUNT,
-                1
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &[ResourceBinding::buffer(
+                        0,
+                        vertex_buffer.as_ref(),
+                        0,
+                        QUAD_VERTEX_BUFFER_SIZE
+                    )],
+                    draw_count: QUAD_VERTEX_COUNT,
+                    instance_count: 1
+                }
             ),
             Error::InvalidArgument(_)
         );

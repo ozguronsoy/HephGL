@@ -13,9 +13,9 @@ use heph_gl::{
     math::{Mat4, Quat, Vec3},
     renderers::{
         BufferUsage, CanvasOptions, ColorBlending, CompareOp, CullingMode, DISPLAY_CANVAS,
-        DepthBias, FeatureRequest, FrontFace, GraphicsPipelineOptions, Renderer, RendererBuffer,
-        ResourceBinding, SamplerAddressMode, SamplerOptions, Settings, TextureFormat,
-        TextureOptions,
+        DepthBias, FeatureRequest, FrontFace, GraphicsCommandArgs, GraphicsPipelineOptions,
+        Renderer, RendererBuffer, ResourceBinding, SamplerAddressMode, SamplerOptions, Settings,
+        TextureFormat, TextureOptions,
     },
 };
 
@@ -615,11 +615,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                         true => double_sided_shadow_pipeline.as_mut(),
                         false => shadow_pipeline.as_mut(),
                     },
-                    Some(draw.index_buffer.as_ref()),
-                    &vertex_bindings,
                     &[&resource_bindings],
-                    draw.index_count,
-                    1,
+                    &GraphicsCommandArgs::VertexArgs {
+                        index_buffer: Some(draw.index_buffer.as_ref()),
+                        vertex_bindings: &vertex_bindings,
+                        draw_count: draw.index_count,
+                        instance_count: 1
+                    }
                 ));
             }
 
@@ -653,11 +655,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                         (false, true) => double_sided_pipeline.as_mut(),
                         (false, false) => pipeline.as_mut(),
                     },
-                    Some(draw.index_buffer.as_ref()),
-                    &vertex_bindings,
                     &[&resource_bindings],
-                    draw.index_count,
-                    1,
+                    &GraphicsCommandArgs::VertexArgs {
+                        index_buffer: Some(draw.index_buffer.as_ref()),
+                        vertex_bindings: &vertex_bindings,
+                        draw_count: draw.index_count,
+                        instance_count: 1
+                    }
                 ));
             }
 
