@@ -6,8 +6,8 @@ use heph_gl::{
     },
     Shader,
     renderers::{
-        BufferUsage, DISPLAY_CANVAS, DepthBias, FeatureRequest, GraphicsPipelineOptions,
-        PolygonMode, PrimitiveTopology, Renderer, RendererComputePipeline,
+        BufferUsage, DISPLAY_CANVAS, DepthBias, FeatureRequest, GraphicsCommandArgs,
+        GraphicsPipelineOptions, PolygonMode, PrimitiveTopology, Renderer, RendererComputePipeline,
         RendererGraphicsPipeline, RendererPipeline, ResourceBinding, debug::RendererDebugObject,
     },
 };
@@ -788,11 +788,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             renderer.record_graphics_command(
                 DISPLAY_CANVAS,
                 graphics_pipeline.as_mut(),
-                None,
                 &[],
-                &[],
-                3,
-                1
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &[],
+                    draw_count: 3,
+                    instance_count: 1
+                }
             ),
             Error::InvalidArgument(_)
         );
@@ -920,11 +922,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             renderer.record_graphics_command(
                 DISPLAY_CANVAS,
                 graphics_pipeline,
-                None,
                 &[],
-                &[],
-                3,
-                1
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &[],
+                    draw_count: 3,
+                    instance_count: 1
+                }
             ),
             Error::InvalidArgument(_)
         );

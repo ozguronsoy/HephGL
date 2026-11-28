@@ -6,9 +6,9 @@ use heph_gl::{
     Projection, Shader, TextType, TextVertex, Transform,
     math::{Mat4, Quat, Vec3},
     renderers::{
-        BufferUsage, ColorBlending, DISPLAY_CANVAS, FeatureRequest, GraphicsPipelineOptions,
-        RendererBuffer, RendererGraphicsPipeline, ResourceBinding, SamplerOptions, TextureFormat,
-        TextureOptions,
+        BufferUsage, ColorBlending, DISPLAY_CANVAS, FeatureRequest, GraphicsCommandArgs,
+        GraphicsPipelineOptions, RendererBuffer, RendererGraphicsPipeline, ResourceBinding,
+        SamplerOptions, TextureFormat, TextureOptions,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -270,33 +270,39 @@ fn example(
             .record_graphics_command(
                 DISPLAY_CANVAS,
                 screen_pipeline.as_mut(),
-                None,
-                &screen_vertex_bindings,
                 &[&screen_resource_bindings],
-                screen_vertices.len() as u32,
-                1,
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &screen_vertex_bindings,
+                    draw_count: screen_vertices.len() as u32,
+                    instance_count: 1,
+                },
             )
             .unwrap();
         renderer
             .record_graphics_command(
                 DISPLAY_CANVAS,
                 world_pipeline.as_mut(),
-                None,
-                &world_vertex_bindings,
                 &[&world_resource_bindings],
-                world_vertices.len() as u32,
-                1,
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &world_vertex_bindings,
+                    draw_count: world_vertices.len() as u32,
+                    instance_count: 1,
+                },
             )
             .unwrap();
         renderer
             .record_graphics_command(
                 DISPLAY_CANVAS,
                 extruded_pipeline.as_mut(),
-                None,
-                &extruded_vertex_bindings,
                 &[&extruded_resource_bindings],
-                extruded_vertices.len() as u32,
-                1,
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &extruded_vertex_bindings,
+                    draw_count: extruded_vertices.len() as u32,
+                    instance_count: 1,
+                },
             )
             .unwrap();
 

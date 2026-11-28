@@ -3,9 +3,9 @@ use heph_gl::{
     Lighting, MaterialProperties, Shader,
     math::Vec3,
     renderers::{
-        BufferUsage, CullingMode, DISPLAY_CANVAS, FeatureRequest, GraphicsPipelineOptions,
-        PrimitiveTopology, ResourceBinding, SamplerAddressMode, SamplerOptions, TextureFormat,
-        TextureOptions,
+        BufferUsage, CullingMode, DISPLAY_CANVAS, FeatureRequest, GraphicsCommandArgs,
+        GraphicsPipelineOptions, PrimitiveTopology, ResourceBinding, SamplerAddressMode,
+        SamplerOptions, TextureFormat, TextureOptions,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -248,11 +248,13 @@ fn example(
         .record_graphics_command(
             DISPLAY_CANVAS,
             pipeline.as_mut(),
-            None,
-            &vertex_bindings,
             &[&resource_bindings],
-            vertex_count as u32,
-            1,
+            &GraphicsCommandArgs::VertexArgs {
+                index_buffer: None,
+                vertex_bindings: &vertex_bindings,
+                draw_count: vertex_count as u32,
+                instance_count: 1,
+            },
         )
         .unwrap();
     renderer.end_frame().unwrap();

@@ -1,4 +1,5 @@
 mod canvas;
+mod command;
 mod concurrency;
 pub mod debug;
 mod id;
@@ -13,7 +14,7 @@ pub mod vulkan;
 use std::any::{Any, type_name};
 
 pub use crate::renderers::{
-    canvas::*, concurrency::*, pipeline::*, resources::*, settings::*, version::*,
+    canvas::*, command::*, concurrency::*, pipeline::*, resources::*, settings::*, version::*,
 };
 use crate::{
     Error, Result, graphics_device::GraphicsDevice, renderers::debug::Debugger, shader::Shader,
@@ -161,11 +162,8 @@ pub trait Renderer: Any {
         &self,
         target_canvas: Option<&mut dyn RendererCanvas>,
         pipeline: &mut dyn RendererGraphicsPipeline,
-        index_buffer: Option<&dyn RendererBuffer>,
-        vertex_bindings: &[ResourceBinding<'_>],
         binding_sets: &[&[ResourceBinding<'_>]],
-        draw_count: u32,
-        instance_count: u32,
+        args: &GraphicsCommandArgs<'_>,
     ) -> Result<()>;
 
     /// Creates an off-screen canvas using the provided options, cleared to black.

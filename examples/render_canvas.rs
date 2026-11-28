@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use heph_gl::{
     Shader,
     renderers::{
-        BufferUsage, CanvasOptions, DISPLAY_CANVAS, GraphicsPipelineOptions,
+        BufferUsage, CanvasOptions, DISPLAY_CANVAS, GraphicsCommandArgs, GraphicsPipelineOptions,
         RendererGraphicsPipeline, ResourceBinding, SamplerOptions,
     },
 };
@@ -110,11 +110,13 @@ fn example(
             .record_graphics_command(
                 Some(canvas.as_mut()),
                 triangle_pipeline.as_mut(),
-                None,
                 &[],
-                &[],
-                3,
-                1,
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &[],
+                    draw_count: 3,
+                    instance_count: 1,
+                },
             )
             .unwrap();
 
@@ -133,11 +135,13 @@ fn example(
             .record_graphics_command(
                 DISPLAY_CANVAS,
                 canvas_pipeline.as_mut(),
-                None,
-                &vertex_bindings,
                 &[&resource_bindings],
-                vertices.len() as u32,
-                1,
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: None,
+                    vertex_bindings: &vertex_bindings,
+                    draw_count: vertices.len() as u32,
+                    instance_count: 1,
+                },
             )
             .unwrap();
 

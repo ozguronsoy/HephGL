@@ -10,7 +10,7 @@ use heph_gl::{
     Lighting, Mesh, MeshVertexAttribute, Projection, Shader, Transform,
     math::{Mat4, Quat, Vec3},
     renderers::{
-        BufferUsage, CullingMode, DISPLAY_CANVAS, FeatureRequest, FrontFace,
+        BufferUsage, CullingMode, DISPLAY_CANVAS, FeatureRequest, FrontFace, GraphicsCommandArgs,
         GraphicsPipelineOptions, ResourceBinding, SamplerAddressMode, SamplerOptions,
         TextureFormat, TextureOptions,
     },
@@ -304,11 +304,13 @@ fn example(
                         true => double_sided_pipeline.as_mut(),
                         false => pipeline.as_mut(),
                     },
-                    Some(index_buffer.as_ref()),
-                    &vertex_bindings,
                     &[&resource_bindings],
-                    *index_count,
-                    1,
+                    &GraphicsCommandArgs::VertexArgs {
+                        index_buffer: Some(index_buffer.as_ref()),
+                        vertex_bindings: &vertex_bindings,
+                        draw_count: *index_count,
+                        instance_count: 1,
+                    },
                 )
                 .unwrap();
         }

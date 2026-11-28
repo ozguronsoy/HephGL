@@ -1,6 +1,6 @@
 use heph_gl::{
     Error,
-    renderers::{DISPLAY_CANVAS, Renderer},
+    renderers::{DISPLAY_CANVAS, GraphicsCommandArgs, Renderer},
 };
 
 use crate::{heph_expect_err, heph_expect_success, renderer::RendererTests};
@@ -84,11 +84,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                 renderer.record_graphics_command(
                     DISPLAY_CANVAS,
                     graphics_pipeline.as_mut(),
-                    None,
                     &[],
-                    &[],
-                    3,
-                    1
+                    &GraphicsCommandArgs::VertexArgs {
+                        index_buffer: None,
+                        vertex_bindings: &[],
+                        draw_count: 3,
+                        instance_count: 1
+                    }
                 ),
                 Error::InvalidOperation(_)
             );
@@ -141,11 +143,13 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                     heph_expect_success!(renderer.record_graphics_command(
                         DISPLAY_CANVAS,
                         pipeline.as_mut(),
-                        None,
                         &[],
-                        &[],
-                        3,
-                        1
+                        &GraphicsCommandArgs::VertexArgs {
+                            index_buffer: None,
+                            vertex_bindings: &[],
+                            draw_count: 3,
+                            instance_count: 1
+                        }
                     ));
                     heph_expect_success!(renderer.end_frame());
                 }

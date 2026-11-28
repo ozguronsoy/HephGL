@@ -6,7 +6,7 @@ use heph_gl::{
     Lighting, Projection, Shader,
     math::{Mat4, Vec3},
     renderers::{
-        BufferUsage, CullingMode, DISPLAY_CANVAS, FeatureRequest, FrontFace,
+        BufferUsage, CullingMode, DISPLAY_CANVAS, FeatureRequest, FrontFace, GraphicsCommandArgs,
         GraphicsPipelineOptions, ResourceBinding, SamplerOptions, TextureFormat, TextureOptions,
     },
     {Mesh, MeshVertexAttribute},
@@ -310,11 +310,13 @@ fn example(
             .record_graphics_command(
                 DISPLAY_CANVAS,
                 pipeline.as_mut(),
-                Some(index_buffer.as_ref()),
-                &vertex_bindings,
                 &[&resource_bindings],
-                indices.len() as u32,
-                1,
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: Some(index_buffer.as_ref()),
+                    vertex_bindings: &vertex_bindings,
+                    draw_count: indices.len() as u32,
+                    instance_count: 1,
+                },
             )
             .unwrap();
 

@@ -4,7 +4,7 @@ use heph_gl::{
     GraphicsDeviceFeature, Shader,
     renderers::{
         BufferUsage, ColorBlending, CullingMode, DISPLAY_CANVAS, FeatureRequest, FrontFace,
-        GraphicsPipelineOptions, ResourceBinding,
+        GraphicsCommandArgs, GraphicsPipelineOptions, ResourceBinding,
     },
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -144,22 +144,26 @@ fn example(
             .record_graphics_command(
                 DISPLAY_CANVAS,
                 pipeline.as_mut(),
-                Some(index_buffer.as_ref()),
-                &cube_a_vertex_bindings,
                 &[],
-                INDICES.len() as u32,
-                1,
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: Some(index_buffer.as_ref()),
+                    vertex_bindings: &cube_a_vertex_bindings,
+                    draw_count: INDICES.len() as u32,
+                    instance_count: 1,
+                },
             )
             .unwrap();
         renderer
             .record_graphics_command(
                 DISPLAY_CANVAS,
                 pipeline.as_mut(),
-                Some(index_buffer.as_ref()),
-                &cube_b_vertex_bindings,
                 &[],
-                INDICES.len() as u32,
-                1,
+                &GraphicsCommandArgs::VertexArgs {
+                    index_buffer: Some(index_buffer.as_ref()),
+                    vertex_bindings: &cube_b_vertex_bindings,
+                    draw_count: INDICES.len() as u32,
+                    instance_count: 1,
+                },
             )
             .unwrap();
 
