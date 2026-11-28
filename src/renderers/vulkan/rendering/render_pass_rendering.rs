@@ -11,7 +11,8 @@ use crate::{
     renderers::{
         RendererCanvas, TextureFormat,
         id::RendererId,
-        settings::{GraphicsPipelineOptions, Msaa, Settings},
+        pipeline::GraphicsPipelineOptions,
+        settings::{Msaa, Settings},
         vulkan::{
             canvas::{VulkanColorCanvas, VulkanDepthCanvas},
             device::DeviceContext,

@@ -21,7 +21,8 @@ use crate::{
     renderers::{
         Renderer, TextureFormat,
         id::RendererId,
-        settings::{ColorBlending, GraphicsPipelineOptions, Msaa, PolygonMode, Settings},
+        pipeline::{ColorBlending, GraphicsPipelineOptions, PolygonMode},
+        settings::{Msaa, Settings},
         vulkan::{
             VulkanRenderer,
             canvas::{VulkanColorCanvas, VulkanDepthCanvas},

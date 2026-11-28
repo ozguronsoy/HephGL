@@ -13,10 +13,10 @@ use crate::{
         downcast_ref,
         id::RendererId,
         resources::{
-            BufferUsage, RendererBuffer, RendererResource, RendererSampler, RendererTexture,
-            ResourceBinding, ResourceBindingType, TextureFormat,
+            BufferUsage, CompareOp, RendererBuffer, RendererResource, RendererSampler,
+            RendererTexture, ResourceBinding, ResourceBindingType, SamplerAddressMode,
+            SamplerFilter, TextureFormat, TextureOptions,
         },
-        settings::TextureOptions,
         vulkan::{
             VulkanRenderer,
             frame::{ComputeFrame, GraphicsFrame},
@@ -559,6 +559,49 @@ impl TryFrom<ash::vk::Format> for TextureFormat {
     }
 }
 
+impl From<SamplerFilter> for ash::vk::Filter {
+    fn from(value: SamplerFilter) -> Self {
+        match value {
+            SamplerFilter::Nearest => Self::NEAREST,
+            SamplerFilter::Linear => Self::LINEAR,
+        }
+    }
+}
+
+impl From<SamplerFilter> for ash::vk::SamplerMipmapMode {
+    fn from(value: SamplerFilter) -> Self {
+        match value {
+            SamplerFilter::Nearest => Self::NEAREST,
+            SamplerFilter::Linear => Self::LINEAR,
+        }
+    }
+}
+
+impl From<SamplerAddressMode> for ash::vk::SamplerAddressMode {
+    fn from(value: SamplerAddressMode) -> Self {
+        match value {
+            SamplerAddressMode::Repeat => Self::REPEAT,
+            SamplerAddressMode::MirroredRepeat => Self::MIRRORED_REPEAT,
+            SamplerAddressMode::ClampToEdge => Self::CLAMP_TO_EDGE,
+        }
+    }
+}
+
+impl From<CompareOp> for ash::vk::CompareOp {
+    fn from(value: CompareOp) -> Self {
+        match value {
+            CompareOp::Never => Self::NEVER,
+            CompareOp::Equal => Self::EQUAL,
+            CompareOp::NotEqual => Self::NOT_EQUAL,
+            CompareOp::Less => Self::LESS,
+            CompareOp::LessOrEqual => Self::LESS_OR_EQUAL,
+            CompareOp::Greater => Self::GREATER,
+            CompareOp::GreaterOrEqual => Self::GREATER_OR_EQUAL,
+            CompareOp::Always => Self::ALWAYS,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -813,5 +856,77 @@ mod tests {
             TextureFormat::try_from(ash::vk::Format::A1R5G5B5_UNORM_PACK16),
             Err(Error::InvalidArgument(_))
         ));
+    }
+
+    #[test]
+    fn test_sampler_filter() {
+        assert_eq!(
+            ash::vk::Filter::from(SamplerFilter::Nearest),
+            ash::vk::Filter::NEAREST
+        );
+        assert_eq!(
+            ash::vk::Filter::from(SamplerFilter::Linear),
+            ash::vk::Filter::LINEAR
+        );
+        assert_eq!(
+            ash::vk::SamplerMipmapMode::from(SamplerFilter::Nearest),
+            ash::vk::SamplerMipmapMode::NEAREST
+        );
+        assert_eq!(
+            ash::vk::SamplerMipmapMode::from(SamplerFilter::Linear),
+            ash::vk::SamplerMipmapMode::LINEAR
+        );
+    }
+
+    #[test]
+    fn test_sampler_address_mode() {
+        assert_eq!(
+            ash::vk::SamplerAddressMode::from(SamplerAddressMode::Repeat),
+            ash::vk::SamplerAddressMode::REPEAT
+        );
+        assert_eq!(
+            ash::vk::SamplerAddressMode::from(SamplerAddressMode::MirroredRepeat),
+            ash::vk::SamplerAddressMode::MIRRORED_REPEAT
+        );
+        assert_eq!(
+            ash::vk::SamplerAddressMode::from(SamplerAddressMode::ClampToEdge),
+            ash::vk::SamplerAddressMode::CLAMP_TO_EDGE
+        );
+    }
+
+    #[test]
+    fn test_compare_op() {
+        assert_eq!(
+            ash::vk::CompareOp::from(CompareOp::Never),
+            ash::vk::CompareOp::NEVER
+        );
+        assert_eq!(
+            ash::vk::CompareOp::from(CompareOp::Equal),
+            ash::vk::CompareOp::EQUAL
+        );
+        assert_eq!(
+            ash::vk::CompareOp::from(CompareOp::NotEqual),
+            ash::vk::CompareOp::NOT_EQUAL
+        );
+        assert_eq!(
+            ash::vk::CompareOp::from(CompareOp::Less),
+            ash::vk::CompareOp::LESS
+        );
+        assert_eq!(
+            ash::vk::CompareOp::from(CompareOp::LessOrEqual),
+            ash::vk::CompareOp::LESS_OR_EQUAL
+        );
+        assert_eq!(
+            ash::vk::CompareOp::from(CompareOp::Greater),
+            ash::vk::CompareOp::GREATER
+        );
+        assert_eq!(
+            ash::vk::CompareOp::from(CompareOp::GreaterOrEqual),
+            ash::vk::CompareOp::GREATER_OR_EQUAL
+        );
+        assert_eq!(
+            ash::vk::CompareOp::from(CompareOp::Always),
+            ash::vk::CompareOp::ALWAYS
+        );
     }
 }
