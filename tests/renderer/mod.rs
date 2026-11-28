@@ -134,7 +134,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             };
         }
 
-        let renderer = TestRenderer::new();
+        let renderer = TestRenderer::new().unwrap();
         let latest_api_version = renderer
             .latest_api_version()
             .unwrap_or(renderer.min_api_version());
@@ -156,6 +156,8 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             }
 
             let mut test_suite = vec![
+                create_trial!(versioned_test_suite, test_create_multiple_instances),
+                create_trial!(versioned_test_suite, test_create_instances_concurrently),
                 create_trial!(versioned_test_suite, test_initialize_renderer),
                 create_trial!(versioned_test_suite, test_debugger),
                 create_trial!(versioned_test_suite, test_enumerate_devices),
@@ -180,15 +182,27 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
                     versioned_test_suite,
                     test_reject_resource_use_in_other_renderer
                 ),
+                create_trial!(
+                    versioned_test_suite,
+                    test_reject_resource_use_from_previous_device
+                ),
                 create_trial!(versioned_test_suite, test_reject_canvas_use_after_free),
                 create_trial!(
                     versioned_test_suite,
                     test_reject_canvas_use_in_other_renderer
                 ),
+                create_trial!(
+                    versioned_test_suite,
+                    test_reject_canvas_use_from_previous_device
+                ),
                 create_trial!(versioned_test_suite, test_reject_pipeline_use_after_free),
                 create_trial!(
                     versioned_test_suite,
                     test_reject_pipeline_use_in_other_renderer
+                ),
+                create_trial!(
+                    versioned_test_suite,
+                    test_reject_pipeline_use_from_previous_device
                 ),
                 create_trial!(versioned_test_suite, test_begin_twice),
                 create_trial!(versioned_test_suite, test_end_without_begin),

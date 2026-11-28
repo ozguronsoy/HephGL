@@ -118,7 +118,6 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
 
     pub(crate) fn test_reject_canvas_use_in_other_renderer(&self) {
         let renderer = self.create_renderer_with_any_device(&[]);
-        let other_renderer = self.create_renderer_with_any_device(&[]);
 
         heph_expect_success!(renderer.begin_frame());
         let mut canvas = heph_expect_success!(renderer.create_canvas(&CanvasOptions {
@@ -128,14 +127,28 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         }));
         heph_expect_success!(renderer.end_frame());
         heph_expect_success!(renderer.wait_idle());
-
-        Self::expect_canvas_rejected(&other_renderer, canvas.as_mut());
-        drop(other_renderer);
-        heph_expect_success!(renderer.debugger().ok_or("Debugger is not attached."))
-            .logs()
-            .append(&mut self.debugger.take().logs());
-
         heph_expect_success!(renderer.destroy_canvas(canvas.as_mut()));
+        drop(renderer);
+
+        let renderer = self.create_renderer_with_any_device(&[]);
+        Self::expect_canvas_rejected(&renderer, canvas.as_mut());
+    }
+
+    pub(crate) fn test_reject_canvas_use_from_previous_device(&self) {
+        let mut renderer = self.create_renderer_with_any_device(&[]);
+
+        heph_expect_success!(renderer.begin_frame());
+        let mut canvas = heph_expect_success!(renderer.create_canvas(&CanvasOptions {
+            width: 640,
+            height: 360,
+            ..Default::default()
+        }));
+        heph_expect_success!(renderer.end_frame());
+        heph_expect_success!(renderer.wait_idle());
+        heph_expect_success!(renderer.destroy_canvas(canvas.as_mut()));
+
+        heph_expect_success!(renderer.set_device(None, &[]));
+        Self::expect_canvas_rejected(&renderer, canvas.as_mut());
     }
 
     fn expect_canvas_rejected(renderer: &TestRenderer, canvas: &mut dyn RendererCanvas) {

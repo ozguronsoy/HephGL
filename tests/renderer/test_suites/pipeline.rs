@@ -834,7 +834,36 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     pub(crate) fn test_reject_pipeline_use_in_other_renderer(&self) {
         let renderer =
             self.create_renderer_with_any_device(&[FeatureRequest::new(ComputeShaders, true)]);
-        let other_renderer =
+        let compute_shader =
+            heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/addition.spv")));
+        let vert_shader = heph_expect_success!(Shader::from_file(format!(
+            "{SHADERS_DIR}/shapes/basic_triangle_vert.spv"
+        )));
+        let frag_shader = heph_expect_success!(Shader::from_file(format!(
+            "{SHADERS_DIR}/shapes/basic_triangle_frag.spv"
+        )));
+
+        let mut compute_pipeline =
+            heph_expect_success!(renderer.create_compute_pipeline(&compute_shader));
+        let mut graphics_pipeline = heph_expect_success!(renderer.create_graphics_pipeline(
+            &[&vert_shader, &frag_shader],
+            &GraphicsPipelineOptions::default()
+        ));
+        heph_expect_success!(renderer.destroy_compute_pipeline(compute_pipeline.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(graphics_pipeline.as_mut()));
+        drop(renderer);
+
+        let renderer =
+            self.create_renderer_with_any_device(&[FeatureRequest::new(ComputeShaders, true)]);
+        Self::expect_pipelines_rejected(
+            &renderer,
+            compute_pipeline.as_mut(),
+            graphics_pipeline.as_mut(),
+        );
+    }
+
+    pub(crate) fn test_reject_pipeline_use_from_previous_device(&self) {
+        let mut renderer =
             self.create_renderer_with_any_device(&[FeatureRequest::new(ComputeShaders, true)]);
         let compute_shader =
             heph_expect_success!(Shader::from_file(format!("{SHADERS_DIR}/addition.spv")));
@@ -851,19 +880,17 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
             &[&vert_shader, &frag_shader],
             &GraphicsPipelineOptions::default()
         ));
+        heph_expect_success!(renderer.destroy_compute_pipeline(compute_pipeline.as_mut()));
+        heph_expect_success!(renderer.destroy_graphics_pipeline(graphics_pipeline.as_mut()));
 
+        heph_expect_success!(
+            renderer.set_device(None, &[FeatureRequest::new(ComputeShaders, true)])
+        );
         Self::expect_pipelines_rejected(
-            &other_renderer,
+            &renderer,
             compute_pipeline.as_mut(),
             graphics_pipeline.as_mut(),
         );
-        drop(other_renderer);
-        heph_expect_success!(renderer.debugger().ok_or("Debugger is not attached."))
-            .logs()
-            .append(&mut self.debugger.take().logs());
-
-        heph_expect_success!(renderer.destroy_compute_pipeline(compute_pipeline.as_mut()));
-        heph_expect_success!(renderer.destroy_graphics_pipeline(graphics_pipeline.as_mut()));
     }
 
     fn expect_pipelines_rejected(

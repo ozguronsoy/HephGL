@@ -627,7 +627,43 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
     pub(crate) fn test_reject_resource_use_in_other_renderer(&self) {
         let renderer =
             self.create_renderer_with_any_device(&[FeatureRequest::new(ComputeShaders, true)]);
-        let other_renderer =
+
+        let mut buffer =
+            heph_expect_success!(renderer.create_buffer(COMPUTE_BUFFER_SIZE, BufferUsage::Storage));
+        let mut vertex_buffer = heph_expect_success!(
+            renderer.create_buffer(QUAD_VERTEX_BUFFER_SIZE, BufferUsage::Vertex)
+        );
+        let mut index_buffer = heph_expect_success!(
+            renderer.create_buffer(QUAD_INDEX_BUFFER_SIZE, BufferUsage::Index)
+        );
+        let mut sampler = heph_expect_success!(renderer.create_sampler(&SamplerOptions::default()));
+        heph_expect_success!(renderer.begin_frame());
+        let mut texture =
+            heph_expect_success!(renderer.create_texture(&SINGLE_PIXEL_TEXTURE_OPTIONS, &[255; 4]));
+        heph_expect_success!(renderer.end_frame());
+        heph_expect_success!(renderer.wait_idle());
+
+        heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(vertex_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(index_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
+        heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
+        drop(renderer);
+
+        let renderer =
+            self.create_renderer_with_any_device(&[FeatureRequest::new(ComputeShaders, true)]);
+        Self::expect_resources_rejected(
+            &renderer,
+            buffer.as_mut(),
+            vertex_buffer.as_mut(),
+            index_buffer.as_mut(),
+            texture.as_mut(),
+            sampler.as_mut(),
+        );
+    }
+
+    pub(crate) fn test_reject_resource_use_from_previous_device(&self) {
+        let mut renderer =
             self.create_renderer_with_any_device(&[FeatureRequest::new(ComputeShaders, true)]);
 
         let mut buffer =
@@ -645,24 +681,23 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         heph_expect_success!(renderer.end_frame());
         heph_expect_success!(renderer.wait_idle());
 
+        heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(vertex_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_buffer(index_buffer.as_mut()));
+        heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
+        heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
+
+        heph_expect_success!(
+            renderer.set_device(None, &[FeatureRequest::new(ComputeShaders, true)])
+        );
         Self::expect_resources_rejected(
-            &other_renderer,
+            &renderer,
             buffer.as_mut(),
             vertex_buffer.as_mut(),
             index_buffer.as_mut(),
             texture.as_mut(),
             sampler.as_mut(),
         );
-        drop(other_renderer);
-        heph_expect_success!(renderer.debugger().ok_or("Debugger is not attached."))
-            .logs()
-            .append(&mut self.debugger.take().logs());
-
-        heph_expect_success!(renderer.destroy_buffer(buffer.as_mut()));
-        heph_expect_success!(renderer.destroy_buffer(vertex_buffer.as_mut()));
-        heph_expect_success!(renderer.destroy_buffer(index_buffer.as_mut()));
-        heph_expect_success!(renderer.destroy_texture(texture.as_mut()));
-        heph_expect_success!(renderer.destroy_sampler(sampler.as_mut()));
     }
 
     fn expect_resources_rejected(

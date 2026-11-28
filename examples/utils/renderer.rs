@@ -11,7 +11,7 @@ pub fn create_renderer() -> ExampleRenderer {
     let name = std::env::var(RENDERER_ENV_VAR).unwrap_or_else(|_| "vulkan".to_owned());
     match name.as_str() {
         #[cfg(feature = "vulkan")]
-        "vulkan" => Box::new(heph_gl::renderers::vulkan::VulkanRenderer::new()),
+        "vulkan" => Box::new(heph_gl::renderers::vulkan::VulkanRenderer::new().unwrap()),
         _ => panic!("The `{name}` renderer is unknown or its feature is not enabled."),
     }
 }

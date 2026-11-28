@@ -33,7 +33,7 @@ pub const DISPLAY_TEXTURE_FORMAT: Option<TextureFormat> = None;
 /// The core interface for a graphics renderer.
 pub trait Renderer: Any {
     /// Creates an uninitialized instance of the renderer.
-    fn new() -> Self
+    fn new() -> Result<Self>
     where
         Self: Sized;
 

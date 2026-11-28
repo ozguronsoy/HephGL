@@ -1,4 +1,7 @@
-use std::sync::{Arc, Barrier};
+use std::sync::{
+    Arc, Barrier,
+    atomic::{AtomicUsize, Ordering},
+};
 
 use heph_gl::{
     Error,
@@ -24,10 +27,37 @@ use crate::{
 };
 
 impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
+    pub(crate) fn test_create_multiple_instances(&self) {
+        let renderer = heph_expect_success!(TestRenderer::new());
+        heph_expect_err!(TestRenderer::new(), Error::InvalidOperation(_));
+        drop(renderer);
+        let _renderer = heph_expect_success!(TestRenderer::new());
+    }
+
+    pub(crate) fn test_create_instances_concurrently(&self) {
+        const THREAD_COUNT: usize = 8;
+
+        let barrier = Barrier::new(THREAD_COUNT);
+        let success_count = AtomicUsize::new(0);
+        std::thread::scope(|s| {
+            for _ in 0..THREAD_COUNT {
+                let _ = s.spawn(|| {
+                    let _ = barrier.wait();
+                    let renderer = TestRenderer::new();
+                    if renderer.is_ok() {
+                        let _ = success_count.fetch_add(1, Ordering::Relaxed);
+                    }
+                    let _ = barrier.wait();
+                });
+            }
+        });
+        assert_eq!(success_count.load(Ordering::Relaxed), 1);
+    }
+
     pub(crate) fn test_initialize_renderer(&self) {
         {
             let test_env = test_env!();
-            let mut renderer = TestRenderer::new();
+            let mut renderer = heph_expect_success!(TestRenderer::new());
             let init_options = InitializeOptions {
                 app_name: "",
                 window_handle: test_env.raw_window_handle(),
@@ -45,7 +75,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
 
         {
             let test_env = test_env!();
-            let mut renderer = TestRenderer::new();
+            let mut renderer = heph_expect_success!(TestRenderer::new());
             heph_expect_err!(
                 renderer.initialize(&InitializeOptions {
                     app_name: "\0",
@@ -60,7 +90,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
 
         {
             let test_env = test_env!();
-            let mut renderer = TestRenderer::new();
+            let mut renderer = heph_expect_success!(TestRenderer::new());
             let init_options = InitializeOptions {
                 app_name: "",
                 window_handle: test_env.raw_window_handle(),
@@ -76,7 +106,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
 
         {
             let test_env = test_env!();
-            let mut renderer = TestRenderer::new();
+            let mut renderer = heph_expect_success!(TestRenderer::new());
             let init_options = InitializeOptions {
                 app_name: "",
                 window_handle: test_env.raw_window_handle(),
@@ -92,7 +122,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
 
         {
             let test_env = test_env!();
-            let mut renderer = TestRenderer::new();
+            let mut renderer = heph_expect_success!(TestRenderer::new());
             let init_options = InitializeOptions {
                 app_name: "",
                 window_handle: test_env.raw_window_handle(),
@@ -105,7 +135,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
 
         {
             let test_env = test_env!();
-            let mut renderer = TestRenderer::new();
+            let mut renderer = heph_expect_success!(TestRenderer::new());
             let init_options = InitializeOptions {
                 app_name: "",
                 window_handle: dummy_window_handle!(),
@@ -117,7 +147,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         }
 
         {
-            let mut renderer = TestRenderer::new();
+            let mut renderer = heph_expect_success!(TestRenderer::new());
             let init_options = InitializeOptions {
                 app_name: "",
                 window_handle: dummy_window_handle!(),
@@ -219,7 +249,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
         }
         let create_renderer = |requested_features: &[FeatureRequest]| {
             let test_env = test_env!();
-            let mut renderer = TestRenderer::new();
+            let mut renderer = heph_expect_success!(TestRenderer::new());
             heph_expect_success!(renderer.initialize(&InitializeOptions {
                 app_name: "",
                 window_handle: test_env.raw_window_handle(),
@@ -248,7 +278,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
 
         {
             let test_env = test_env!();
-            let mut renderer = TestRenderer::new();
+            let mut renderer = heph_expect_success!(TestRenderer::new());
             heph_expect_success!(renderer.initialize(&InitializeOptions {
                 app_name: "",
                 window_handle: test_env.raw_window_handle(),
@@ -275,7 +305,7 @@ impl<TestRenderer: Renderer> RendererTests<TestRenderer> {
 
         {
             let test_env = test_env!();
-            let mut renderer = TestRenderer::new();
+            let mut renderer = heph_expect_success!(TestRenderer::new());
             heph_expect_err!(
                 renderer
                     .attach_debugger(Debugger::default())

@@ -21,7 +21,10 @@ use std::{
     collections::{BTreeSet, HashMap, HashSet},
     ffi::CString,
     mem::DropGuard,
-    sync::Mutex,
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -122,8 +125,9 @@ pub struct VulkanRenderer {
 }
 
 impl Renderer for VulkanRenderer {
-    fn new() -> Self {
-        Self {
+    fn new() -> Result<Self> {
+        Self::acquire_instance()?;
+        Ok(Self {
             settings: Settings::default(),
 
             entry: None,
@@ -144,7 +148,7 @@ impl Renderer for VulkanRenderer {
 
             id: RendererId::new(),
             main_thread_id: std::thread::current().id(),
-        }
+        })
     }
 
     fn min_api_version(&self) -> Version {
@@ -2881,11 +2885,30 @@ impl Renderer for VulkanRenderer {
     }
 }
 
+impl VulkanRenderer {
+    fn acquire_instance() -> Result<()> {
+        Self::instance_exists()
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .map(|_| ())
+            .map_err(|_| Error::invalid_operation("Only one renderer can exist at a time."))
+    }
+
+    fn release_instance() {
+        Self::instance_exists().store(false, Ordering::Release);
+    }
+
+    fn instance_exists() -> &'static AtomicBool {
+        static INSTANCE_EXISTS: AtomicBool = AtomicBool::new(false);
+        &INSTANCE_EXISTS
+    }
+}
+
 impl Drop for VulkanRenderer {
     fn drop(&mut self) {
         if let Err(e) = self.uninitialize() {
             eprintln!("Failed to uninitialize renderer on drop: {e}");
             std::process::abort();
         }
+        Self::release_instance();
     }
 }
